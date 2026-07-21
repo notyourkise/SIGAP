@@ -1,0 +1,24 @@
+# Node & Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Golang
+/backend/bin/
+/backend/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
