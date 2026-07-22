@@ -1,4 +1,5 @@
 # Konfigurasi Code Owners untuk Monorepo SIGAP
+# Refresh status PR
 
 # Folder backend sepenuhnya dikelola oleh Abangku
 /backend/     @notyourkise
