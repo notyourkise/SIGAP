@@ -1,0 +1,7 @@
+# Garis yang diawali dengan tanda pagar adalah komentar.
+# Menetapkan pemilik utama untuk seluruh repositori
+*       @notyourkise
+
+# Atau spesifik berdasarkan folder monorepo kita:
+/backend/   @notyourkise
+/frontend/  @intniaaa20
