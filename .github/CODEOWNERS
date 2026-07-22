@@ -1,0 +1,7 @@
+# Konfigurasi Code Owners untuk Monorepo SIGAP
+
+# Folder backend sepenuhnya dikelola oleh Abangku
+/backend/     @notyourkise
+
+# Folder frontend sepenuhnya dikelola oleh Intan
+/frontend/    @intniaaa20
