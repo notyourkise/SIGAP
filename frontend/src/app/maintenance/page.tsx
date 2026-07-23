@@ -80,11 +80,10 @@ export default function MaintenanceLogsPage() {
       if (assetFilter) queryParams.push(`asset_id=${encodeURIComponent(assetFilter)}`);
       
       const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-      const response = await apiRequest<MaintenanceLog[]>(`/maintenance-logs${queryString}`);
+      const response = await apiRequest<any>(`/maintenance-logs${queryString}`);
       if (response.status === 'success' && response.data) {
-        // GORM Preload("User") loads into json "technician", so let's verify or map it
-        // Our handlers/maintenance.go preloads "User" and returns it under "technician" due to json:"technician"
-        setLogs(response.data);
+        const logsData = Array.isArray(response.data) ? response.data : (response.data.rows || []);
+        setLogs(logsData);
       }
     } catch (err: any) {
       setError(err.message || 'Gagal memuat log pemeliharaan');
@@ -95,9 +94,10 @@ export default function MaintenanceLogsPage() {
 
   const fetchAssetsList = async () => {
     try {
-      const response = await apiRequest<Asset[]>('/assets');
+      const response = await apiRequest<any>('/assets');
       if (response.status === 'success' && response.data) {
-        setAssets(response.data);
+        const assetsData = Array.isArray(response.data) ? response.data : (response.data.rows || []);
+        setAssets(assetsData);
       }
     } catch (err: any) {
       console.error('Gagal mengambil daftar aset:', err);

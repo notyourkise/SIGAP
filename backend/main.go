@@ -1,11 +1,17 @@
 package main
 
 import (
-	"log"
+	"os"
+	"os/signal"
 	"sigap-backend/config"
 	_ "sigap-backend/docs" // Dokumen yang dihasilkan oleh swag
+	"sigap-backend/handlers"
+	"sigap-backend/middleware"
 	"sigap-backend/models"
 	"sigap-backend/routes"
+	"sigap-backend/utils"
+	"syscall"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -22,6 +28,12 @@ import (
 // @name                       Authorization
 // @description                Format token JWT: Bearer <token_anda>
 func main() {
+	// Inisialisasi Logger Terstruktur
+	utils.InitLogger()
+	defer func() {
+		_ = utils.Log.Sync() // Flush buffer log ke file
+	}()
+
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
 
@@ -32,15 +44,18 @@ func main() {
 		&models.MaintenanceLog{},
 	)
 	if err != nil {
-		log.Fatal("❌ Gagal melakukan migrasi database: ", err)
+		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
 	}
-	log.Println("✅ Migrasi tabel database berhasil!")
+	utils.Log.Info("✅ Migrasi tabel database berhasil!")
 
 	// Jalankan Seeder untuk Admin Default pertama kali
 	models.SeedAdmin(config.DB)
 
 	// 3. Inisialisasi Aplikasi Fiber
 	app := fiber.New()
+
+	// Pasang Custom Recovery Middleware paling awal untuk melindung server dari crash/panic
+	app.Use(middleware.Recovery())
 
 	// Pasang Middleware CORS untuk membolehkan request dari Frontend (misal port 3001 atau domain local)
 	app.Use(cors.New(cors.Config{
@@ -49,14 +64,23 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
+	// Pasang Custom Structured Logger menggunakan Zap
+	app.Use(middleware.ZapLogger())
+
 	// Rute Dokumentasi Swagger UI
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	// 4. Setup Routes
-	api := app.Group("/api")
+	// 4. Setup Routes dengan Global Rate Limiting
+	api := app.Group("/api", middleware.GlobalLimiter())
 	routes.SetupAuthRoutes(api)
 	routes.SetupAssetRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
+
+	// Rute Health Check
+	api.Get("/health", handlers.HealthCheck)
+
+	// Rute Tes Panic Sementara untuk memvalidasi Auto-Recovery
+	api.Get("/test-panic", TestPanic)
 
 	// Rute Tes API Perdana
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -66,7 +90,47 @@ func main() {
 		})
 	})
 
-	// 5. Nyalakan Server di Port 3000
-	log.Println("⚡ Server menyala di http://localhost:3000")
-	log.Fatal(app.Listen(":3000"))
+	// 5. Nyalakan Server di Goroutine agar tidak memblokir main thread
+	go func() {
+		utils.Log.Info("⚡ Server menyala di http://localhost:3000")
+		if err := app.Listen(":3000"); err != nil {
+			utils.Log.Fatal("❌ Gagal menyalakan server: ", err)
+		}
+	}()
+
+	// Menangkap Signal OS untuk Graceful Shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Blokir program hingga sinyal penghentian diterima
+	<-quit
+	utils.Log.Info("⚠️ Menutup server SIGAP secara rapi (Graceful Shutdown)...")
+
+	// Shutdown Fiber dengan batas toleransi waktu 10 detik
+	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+		utils.Log.Errorf("❌ Terjadi kesalahan saat menutup server: %v", err)
+	}
+
+	// Menutup Koneksi Database PostgreSQL secara aman
+	sqlDB, err := config.DB.DB()
+	if err == nil {
+		if err := sqlDB.Close(); err != nil {
+			utils.Log.Errorf("❌ Gagal menutup koneksi database: %v", err)
+		} else {
+			utils.Log.Info("✅ Koneksi database PostgreSQL ditutup secara aman.")
+		}
+	}
+
+	utils.Log.Info("👋 Server SIGAP berhasil dimatikan secara bersih.")
+}
+
+// TestPanic pemicu panic buatan untuk pengujian
+// @Summary      Pemicu Panic Buatan
+// @Description  Meminta server untuk melakukan panic sengaja demi menguji kinerja Auto-Recovery.
+// @Tags         Pengujian
+// @Produce      json
+// @Success      500 {object} map[string]interface{} "Kembalian error internal seragam"
+// @Router       /test-panic [get]
+func TestPanic(c *fiber.Ctx) error {
+	panic("⚠️ Pemicu Panic Sengaja untuk Pengujian Auto-Recovery!")
 }

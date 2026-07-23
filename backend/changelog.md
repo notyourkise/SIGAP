@@ -147,3 +147,80 @@ kategori: low
 file yang diubah:
 - backend/handlers/auth_test.go
 alasan perubahan: Menyelesaikan error ketidakcocokan jumlah argumen query sqlmock yang menyebabkan pengujian Login gagal.
+
+perubahan yang dilakukan: Integrasi Logging Terstruktur (Zap Logger), Middleware HTTP Logger, dan Endpoint Health Check.
+before:
+- Menggunakan standar output terminal bawaan (`log.Println`, `log.Fatal`, dan `fmt.Println`) yang tidak terstruktur.
+- Tidak ada file log server permanen untuk aktivitas produksi.
+- Tidak ada endpoint pemantauan kesehatan layanan (health check).
+after:
+- Zap Logger terintegrasi di `utils/logger.go` dengan output ganda: Console dev berwarna dan file JSON di `logs/server.log`.
+- Dipasang `middleware.ZapLogger()` pada main Fiber app untuk mencatat setiap request HTTP masuk.
+- Dibuat endpoint `GET /api/health` di `handlers/health.go` yang memvalidasi keaktifan API dan koneksi database PostgreSQL (melalui Ping), terdaftar lengkap di Swagger UI.
+timestamp: 2026-07-23 10:48 WITA
+kategori: sedang
+file yang diubah:
+- backend/utils/logger.go
+- backend/middleware/logger.go
+- backend/handlers/health.go
+- backend/config/database.go
+- backend/main.go
+- backend/go.sum
+alasan perubahan: Memungkinkan audit operasional server melalui logging terstruktur yang tangguh dan menyediakan endpoint health check bagi load balancer / container orchestrator untuk memantau status kesehatan sistem.
+
+perubahan yang dilakukan: Implementasi fitur Auto-Recovery (Proteksi Panic) dan Graceful Shutdown (Pemadaman Bersih) pada server.
+before:
+- Server rentan mati total (crash) jika terjadi panic tak terduga dalam penanganan rute HTTP.
+- Penghentian server mematikan layanan secara kasar (abrupt), berpotensi memutus transaksi database menggantung dan request aktif.
+after:
+- Ditambahkan kustom `middleware.Recovery()` yang menangkap panic runtime, merekam stack trace menggunakan Zap Logger, dan membalas dengan respon JSON internal server error yang seragam.
+- Menyusun alur shutdown di `main.go` yang menunggu OS Signals (SIGINT/SIGTERM), membatasi waktu penutupan request aktif (10 detik), dan memutus koneksi database PostgreSQL secara aman (`sqlDB.Close()`).
+- Menyediakan endpoint pengujian sementara `GET /api/test-panic` untuk menguji fungsionalitas auto-recovery.
+timestamp: 2026-07-23 11:08 WITA
+kategori: sedang
+file yang diubah:
+- backend/main.go
+alasan perubahan: Melindungi operasional server agar tetap menyala (resilient) saat terjadi runtime crash tak terduga, dan menjaga kebersihan siklus memori/database saat server dihentikan.
+
+perubahan yang dilakukan: Pemindahan handler `test-panic` ke package-level function agar terdeteksi oleh generator Swagger UI.
+before:
+- Rute `test-panic` didaftarkan menggunakan anonymous inline function di dalam `main()`, sehingga diabaikan oleh swag CLI.
+after:
+- Rute `test-panic` menggunakan rujukan fungsi deklarasi `TestPanic` di tingkat package pada `main.go`.
+timestamp: 2026-07-23 11:22 WITA
+kategori: low
+file yang diubah:
+- backend/main.go
+alasan perubahan: Memungkinkan swag parser mengenali anotasi komentar di atas fungsi handler agar rute uji coba panic tampil di antarmuka Swagger UI.
+
+perubahan yang dilakukan: Pengamanan API menggunakan Rate Limiting (Global & Khusus Login).
+before:
+- Seluruh endpoint API tidak memiliki batasan pemanggilan, rentan terhadap serangan DDoS ringan.
+- Rute login `/api/auth/login` tidak terproteksi dari serangan brute force (percobaan tebakan password tanpa henti).
+after:
+- Dibuat berkas `middleware/limiter.go` berisi `GlobalLimiter` (maksimal 100 request/menit per IP) dan `AuthLimiter` (maksimal 5 request/menit per IP).
+- Menyematkan `GlobalLimiter` pada grup rute `/api` di `main.go`.
+- Menyematkan `AuthLimiter` khusus pada rute POST `/auth/login` di `routes/auth.go`.
+- Format respons terstandarisasi mengembalikan JSON error dan HTTP Status `429 Too Many Requests`.
+timestamp: 2026-07-23 11:39 WITA
+kategori: sedang
+file yang diubah:
+- backend/middleware/limiter.go
+- backend/routes/auth.go
+- backend/main.go
+- backend/go.sum
+alasan perubahan: Melindungi sumber daya komputasi server backend dari eksploitasi berlebihan dan memblokir upaya pembobolan kredensial pengguna secara otomatis melalui rate limiting dinamis berbasis IP.
+
+perubahan yang dilakukan: Penyesuaian ekstraksi data list aset dan log pemeliharaan di frontend akibat perubahan format paginasi API.
+before:
+- Kode React langsung memasukkan `response.data` (yang bertipe object dengan properti `rows` dan `pagination`) ke state `assets` dan `logs`.
+- Ini memicu error runtime `assets.filter is not a function` atau `assets.map is not a function` karena state bertipe object, bukan array.
+after:
+- Menambahkan pengecekan `Array.isArray(response.data) ? response.data : (response.data.rows || [])` di `src/app/page.tsx` dan `src/app/maintenance/page.tsx`.
+- State terisi data array `rows` secara aman sehingga metode `.filter` dan `.map` berjalan lancar.
+timestamp: 2026-07-23 11:45 WITA
+kategori: sedang
+file yang diubah:
+- frontend/src/app/page.tsx
+- frontend/src/app/maintenance/page.tsx
+alasan perubahan: Menyelesaikan konflik format integrasi antara API terpaginasi baru dengan visualisasi data front-end Next.js.

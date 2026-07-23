@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"sigap-backend/utils"
 
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
@@ -16,7 +16,7 @@ func ConnectDB() {
 	// Memuat file .env
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("⚠️ Peringatan: File .env tidak ditemukan!")
+		utils.Log.Warn("⚠️ Peringatan: File .env tidak ditemukan!")
 	}
 
 	// Merangkai koneksi dari environment variables
@@ -30,8 +30,8 @@ func ConnectDB() {
 
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("❌ Gagal koneksi ke database! \n", err)
+		utils.Log.Fatal("❌ Gagal koneksi ke database! ", err)
 	}
 
-	fmt.Println("🚀 Koneksi Database PostgreSQL Berhasil!")
+	utils.Log.Info("🚀 Koneksi Database PostgreSQL Berhasil!")
 }
