@@ -460,6 +460,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/health": {
+            "get": {
+                "description": "Memeriksa status keaktifan server API dan koneksi database PostgreSQL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health Check"
+                ],
+                "summary": "Periksa Kesehatan Layanan",
+                "responses": {
+                    "200": {
+                        "description": "Status Sehat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Database terputus atau bermasalah",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/maintenance-logs": {
             "get": {
                 "security": [
@@ -773,6 +801,27 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Log tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/test-panic": {
+            "get": {
+                "description": "Meminta server untuk melakukan panic sengaja demi menguji kinerja Auto-Recovery.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengujian"
+                ],
+                "summary": "Pemicu Panic Buatan",
+                "responses": {
+                    "500": {
+                        "description": "Kembalian error internal seragam",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

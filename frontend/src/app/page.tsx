@@ -85,10 +85,11 @@ export default function AssetsPage() {
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       
       const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-      const response = await apiRequest<Asset[]>(`/assets${queryString}`);
+      const response = await apiRequest<any>(`/assets${queryString}`);
       
       if (response.status === 'success' && response.data) {
-        setAssets(response.data);
+        const assetsData = Array.isArray(response.data) ? response.data : (response.data.rows || []);
+        setAssets(assetsData);
       }
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data aset');

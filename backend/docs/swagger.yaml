@@ -459,6 +459,25 @@ paths:
       summary: Registrasi User Baru
       tags:
       - Autentikasi
+  /health:
+    get:
+      description: Memeriksa status keaktifan server API dan koneksi database PostgreSQL.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status Sehat
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Database terputus atau bermasalah
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Periksa Kesehatan Layanan
+      tags:
+      - Health Check
   /maintenance-logs:
     get:
       consumes:
@@ -674,6 +693,21 @@ paths:
       summary: Update Log Pemeliharaan
       tags:
       - Log Pemeliharaan
+  /test-panic:
+    get:
+      description: Meminta server untuk melakukan panic sengaja demi menguji kinerja
+        Auto-Recovery.
+      produces:
+      - application/json
+      responses:
+        "500":
+          description: Kembalian error internal seragam
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Pemicu Panic Buatan
+      tags:
+      - Pengujian
 securityDefinitions:
   BearerAuth:
     description: 'Format token JWT: Bearer <token_anda>'
