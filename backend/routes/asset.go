@@ -13,6 +13,7 @@ func SetupAssetRoutes(router fiber.Router) {
 
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	assetGroup.Get("/", handlers.GetAllAssets)
+	assetGroup.Get("/export", handlers.ExportAssets)
 	assetGroup.Get("/:id", handlers.GetAssetByID)
 
 	// Rute yang hanya dapat diakses oleh Admin

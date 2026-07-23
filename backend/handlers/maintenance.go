@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/csv"
+	"fmt"
 	"time"
 
 	"sigap-backend/config"
@@ -410,4 +413,110 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 		"status":  "success",
 		"message": "Log pemeliharaan berhasil dihapus secara soft-delete",
 	})
+}
+
+// ExportMaintenanceLogs memproduksi file CSV log pemeliharaan
+// @Summary      Ekspor Log Pemeliharaan ke CSV
+// @Description  Mengunduh seluruh riwayat pemeliharaan CCTV terfilter (tanpa limit halaman) dalam format file CSV.
+// @Tags         Log Pemeliharaan
+// @Produce      text/csv
+// @Security     BearerAuth
+// @Param        asset_id query string false "Filter berdasarkan UUID Aset"
+// @Param        status query string false "Filter berdasarkan status log"
+// @Param        search query string false "Cari tindakan (action_taken) atau catatan (notes)"
+// @Success      200 {file} string "File CSV Log Pemeliharaan"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      500 {object} map[string]interface{} "Gagal mengekspor data"
+// @Router       /maintenance-logs/export [get]
+func ExportMaintenanceLogs(c *fiber.Ctx) error {
+	var logs []models.MaintenanceLog
+	query := config.DB.Model(&models.MaintenanceLog{}).Preload("Asset").Preload("User")
+
+	// Filter berdasarkan asset_id
+	if assetID := c.Query("asset_id"); assetID != "" {
+		assetUUID, err := uuid.Parse(assetID)
+		if err == nil {
+			query = query.Where("asset_id = ?", assetUUID)
+		}
+	}
+
+	// Filter berdasarkan status
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Pencarian teks
+	if search := c.Query("search"); search != "" {
+		query = query.Where("action_taken ILIKE ? OR notes ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Urutkan berdasarkan created_at desc agar data terbaru ada di paling atas
+	if err := query.Order("created_at desc").Find(&logs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil data log pemeliharaan untuk diekspor",
+		})
+	}
+
+	// Tulis ke CSV Buffer
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+	writer.Comma = ','
+
+	// Header
+	header := []string{"ID", "Asset ID", "Nama Aset", "Serial Number Aset", "Technician ID", "Nama Teknisi", "Tindakan", "Catatan", "Status", "Tanggal Dijadwalkan", "Tanggal Selesai", "Tanggal Pembuatan"}
+	if err := writer.Write(header); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menulis header CSV",
+		})
+	}
+
+	// Baris data
+	for _, logEntry := range logs {
+		schedStr := ""
+		if logEntry.ScheduledDate != nil {
+			schedStr = logEntry.ScheduledDate.Format("2006-01-02 15:04:05")
+		}
+		compStr := ""
+		if logEntry.CompletedAt != nil {
+			compStr = logEntry.CompletedAt.Format("2006-01-02 15:04:05")
+		}
+
+		row := []string{
+			logEntry.ID.String(),
+			logEntry.AssetID.String(),
+			logEntry.Asset.Name,
+			logEntry.Asset.SerialNumber,
+			logEntry.TechnicianID.String(),
+			logEntry.User.FullName,
+			logEntry.ActionTaken,
+			logEntry.Notes,
+			logEntry.Status,
+			schedStr,
+			compStr,
+			logEntry.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if err := writer.Write(row); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal menulis baris data CSV",
+			})
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal merampungkan penulisan CSV",
+		})
+	}
+
+	// Mengatur headers untuk respon download file CSV
+	filename := fmt.Sprintf("maintenance_logs_export_%s.csv", time.Now().Format("20060102_150405"))
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	return c.Send(buf.Bytes())
 }

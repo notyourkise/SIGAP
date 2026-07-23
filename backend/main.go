@@ -79,6 +79,9 @@ func main() {
 	// Rute Health Check
 	api.Get("/health", handlers.HealthCheck)
 
+	// Rute Statistik Dashboard (membutuhkan autentikasi)
+	api.Get("/dashboard/stats", middleware.Protected(), handlers.GetDashboardStats)
+
 	// Rute Tes Panic Sementara untuk memvalidasi Auto-Recovery
 	api.Get("/test-panic", TestPanic)
 
