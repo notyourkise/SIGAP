@@ -251,6 +251,18 @@ kategori: sedang
 file yang diubah:
 - backend/handlers/asset.go
 - backend/handlers/maintenance.go
-- backend/routes/asset.go
 - backend/routes/maintenance.go
 alasan perubahan: Menyediakan fitur pengeksporan data ke format CSV untuk kebutuhan audit data fisik dan pelaporan operasional sistem SIGAP.
+
+perubahan yang dilakukan: Implementasi Database Connection Pooling dan Tuning di tingkat GORM/sql.DB.
+before:
+- Koneksi database PostgreSQL dibuka tanpa konfigurasi limitasi pool, berpotensi memicu kebocoran koneksi (connection leak) dan pemborosan sumber daya PostgreSQL.
+after:
+- Ditambahkan penyesuaian pool koneksi pada `config/database.go` menggunakan `SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime`, dan `SetConnMaxIdleTime`.
+- Mendukung pemuatan parameter pooling secara dinamis melalui file konfigurasi `.env` dengan fallback nilai default aman.
+- Mencetak laporan spesifikasi pool yang aktif ke dalam log terstruktur menggunakan Zap Logger pada saat inisialisasi server.
+timestamp: 2026-07-23 15:46 WITA
+kategori: sedang
+file yang diubah:
+- backend/config/database.go
+alasan perubahan: Mencegah error "too many connections" dan mengoptimalkan efisiensi penanganan kueri konkuren di database PostgreSQL berskala industri.
