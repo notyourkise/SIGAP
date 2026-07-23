@@ -5,26 +5,51 @@ import (
 
 	"sigap-backend/config"
 	"sigap-backend/models"
+	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
-type AssetRequest struct {
-	Name             string  `json:"name"`
-	SerialNumber     string  `json:"serial_number"`
-	IPAddress        string  `json:"ip_address"`
-	LocationName     string  `json:"location_name"`
-	Latitude         float64 `json:"latitude"`
-	Longitude        float64 `json:"longitude"`
-	Status           string  `json:"status"`
-	Vendor           string  `json:"vendor"`
-	InstallationDate string  `json:"installation_date"` // format: YYYY-MM-DD
+type CreateAssetRequest struct {
+	Name             string  `json:"name" validate:"required,min=3,max=100"`
+	SerialNumber     string  `json:"serial_number" validate:"required,max=100"`
+	IPAddress        string  `json:"ip_address" validate:"omitempty,ip"`
+	LocationName     string  `json:"location_name" validate:"omitempty,max=255"`
+	Latitude         float64 `json:"latitude" validate:"omitempty,latitude"`
+	Longitude        float64 `json:"longitude" validate:"omitempty,longitude"`
+	Status           string  `json:"status" validate:"required,oneof=aktif rusak pemeliharaan nonaktif"`
+	Vendor           string  `json:"vendor" validate:"omitempty,max=100"`
+	InstallationDate string  `json:"installation_date" validate:"omitempty"` // format: YYYY-MM-DD
+}
+
+type UpdateAssetRequest struct {
+	Name             string  `json:"name" validate:"omitempty,min=3,max=100"`
+	SerialNumber     string  `json:"serial_number" validate:"omitempty,max=100"`
+	IPAddress        string  `json:"ip_address" validate:"omitempty,ip"`
+	LocationName     string  `json:"location_name" validate:"omitempty,max=255"`
+	Latitude         float64 `json:"latitude" validate:"omitempty,latitude"`
+	Longitude        float64 `json:"longitude" validate:"omitempty,longitude"`
+	Status           string  `json:"status" validate:"omitempty,oneof=aktif rusak pemeliharaan nonaktif"`
+	Vendor           string  `json:"vendor" validate:"omitempty,max=100"`
+	InstallationDate string  `json:"installation_date" validate:"omitempty"` // format: YYYY-MM-DD
 }
 
 // CreateAsset menambahkan aset CCTV baru (Admin saja)
+// @Summary      Tambah Aset CCTV
+// @Description  Membuat record aset CCTV baru. Hanya dapat diakses oleh Admin.
+// @Tags         Aset CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body CreateAssetRequest true "Data Aset Baru"
+// @Success      201 {object} map[string]interface{} "Aset berhasil dibuat"
+// @Failure      400 {object} map[string]interface{} "Data kurang, serial number duplikat, status tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Router       /assets [post]
 func CreateAsset(c *fiber.Ctx) error {
-	var req AssetRequest
+	var req CreateAssetRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -32,19 +57,11 @@ func CreateAsset(c *fiber.Ctx) error {
 		})
 	}
 
-	if req.Name == "" || req.SerialNumber == "" || req.Status == "" {
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Nama, Serial Number, dan Status wajib diisi",
-		})
-	}
-
-	// Validasi status
-	validStatuses := map[string]bool{"aktif": true, "rusak": true, "pemeliharaan": true, "nonaktif": true}
-	if !validStatuses[req.Status] {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Status tidak valid. Gunakan 'aktif', 'rusak', 'pemeliharaan', atau 'nonaktif'",
+			"message": "Validasi input gagal",
+			"errors":  errs,
 		})
 	}
 
@@ -101,9 +118,25 @@ func CreateAsset(c *fiber.Ctx) error {
 }
 
 // GetAllAssets mengambil daftar semua aset CCTV (Admin & Teknisi)
+// @Summary      Ambil Semua Aset CCTV
+// @Description  Mendapatkan list seluruh aset CCTV terpaginasi dengan filter status, vendor, pencarian, dan sorting.
+// @Tags         Aset CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        status query string false "Filter Status (aktif, rusak, pemeliharaan, nonaktif)"
+// @Param        vendor query string false "Filter Vendor"
+// @Param        search query string false "Cari nama, serial number, atau lokasi"
+// @Param        page query integer false "Nomor Halaman (default: 1)"
+// @Param        limit query integer false "Jumlah data per halaman (default: 10)"
+// @Param        sort_by query string false "Kolom pengurutan (default: created_at)"
+// @Param        order query string false "Arah pengurutan: asc, desc (default: desc)"
+// @Success      200 {object} map[string]interface{} "Daftar aset terpaginasi"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Router       /assets [get]
 func GetAllAssets(c *fiber.Ctx) error {
 	var assets []models.Asset
-	query := config.DB
+	query := config.DB.Model(&models.Asset{})
 
 	// Filter berdasarkan status
 	if status := c.Query("status"); status != "" {
@@ -115,12 +148,25 @@ func GetAllAssets(c *fiber.Ctx) error {
 		query = query.Where("vendor = ?", vendor)
 	}
 
-	// Pencarian teks (berdasarkan nama atau serial number)
+	// Pencarian teks (berdasarkan nama, serial number, atau lokasi)
 	if search := c.Query("search"); search != "" {
-		query = query.Where("name ILIKE ? OR serial_number ILIKE ?", "%"+search+"%", "%"+search+"%")
+		query = query.Where("name ILIKE ? OR serial_number ILIKE ? OR location_name ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
-	if err := query.Find(&assets).Error; err != nil {
+	// Ambil parameter paginasi & sorting (dengan whitelist keamanan)
+	allowedSort := []string{"id", "name", "serial_number", "ip_address", "location_name", "status", "vendor", "installation_date", "created_at", "updated_at"}
+	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
+
+	var totalRows int64
+	if err := query.Count(&totalRows).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung total aset",
+		})
+	}
+
+	offset := (page - 1) * limit
+	if err := query.Offset(offset).Limit(limit).Order(sort).Find(&assets).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar aset",
@@ -129,11 +175,26 @@ func GetAllAssets(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"status": "success",
-		"data":   assets,
+		"data": fiber.Map{
+			"rows":       assets,
+			"pagination": utils.CalculatePagination(totalRows, page, limit),
+		},
 	})
 }
 
 // GetAssetByID mengambil detail satu aset CCTV (Admin & Teknisi)
+// @Summary      Ambil Aset CCTV Detail
+// @Description  Mendapatkan detail satu aset CCTV berdasarkan UUID-nya.
+// @Tags         Aset CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "Asset UUID"
+// @Success      200 {object} map[string]interface{} "Data aset ditemukan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      404 {object} map[string]interface{} "Aset tidak ditemukan"
+// @Router       /assets/{id} [get]
 func GetAssetByID(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	id, err := uuid.Parse(idStr)
@@ -159,6 +220,20 @@ func GetAssetByID(c *fiber.Ctx) error {
 }
 
 // UpdateAsset mengubah data aset CCTV (Admin saja)
+// @Summary      Update Aset CCTV
+// @Description  Memperbarui data aset CCTV tertentu. Hanya dapat diakses oleh Admin.
+// @Tags         Aset CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "Asset UUID"
+// @Param        request body UpdateAssetRequest true "Data Update Aset"
+// @Success      200 {object} map[string]interface{} "Aset berhasil diperbarui"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid, format body salah, atau serial number duplikat"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "Aset tidak ditemukan"
+// @Router       /assets/{id} [put]
 func UpdateAsset(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	id, err := uuid.Parse(idStr)
@@ -177,11 +252,19 @@ func UpdateAsset(c *fiber.Ctx) error {
 		})
 	}
 
-	var req AssetRequest
+	var req UpdateAssetRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Validasi input gagal",
+			"errors":  errs,
 		})
 	}
 
@@ -216,13 +299,6 @@ func UpdateAsset(c *fiber.Ctx) error {
 		asset.Longitude = req.Longitude
 	}
 	if req.Status != "" {
-		validStatuses := map[string]bool{"aktif": true, "rusak": true, "pemeliharaan": true, "nonaktif": true}
-		if !validStatuses[req.Status] {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Status tidak valid. Gunakan 'aktif', 'rusak', 'pemeliharaan', atau 'nonaktif'",
-			})
-		}
 		asset.Status = req.Status
 	}
 	if req.Vendor != "" {
@@ -256,6 +332,19 @@ func UpdateAsset(c *fiber.Ctx) error {
 }
 
 // DeleteAsset menghapus data aset secara soft delete (Admin saja)
+// @Summary      Hapus Aset CCTV
+// @Description  Menghapus aset CCTV (soft-delete). Hanya dapat diakses oleh Admin.
+// @Tags         Aset CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "Asset UUID"
+// @Success      200 {object} map[string]interface{} "Aset berhasil dihapus secara soft-delete"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "Aset tidak ditemukan"
+// @Router       /assets/{id} [delete]
 func DeleteAsset(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	id, err := uuid.Parse(idStr)
