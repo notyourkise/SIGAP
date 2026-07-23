@@ -13,6 +13,7 @@ func SetupMaintenanceRoutes(router fiber.Router) {
 
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	logGroup.Get("/", handlers.GetAllMaintenanceLogs)
+	logGroup.Get("/export", handlers.ExportMaintenanceLogs)
 	logGroup.Get("/:id", handlers.GetMaintenanceLogByID)
 	logGroup.Post("/", handlers.CreateMaintenanceLog)
 	logGroup.Put("/:id", handlers.UpdateMaintenanceLog)

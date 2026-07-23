@@ -154,6 +154,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/assets/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunduh seluruh aset CCTV terfilter (tanpa limit halaman) dalam format file CSV.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Aset CCTV"
+                ],
+                "summary": "Ekspor Daftar Aset ke CSV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter Status (aktif, rusak, pemeliharaan, nonaktif)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter Vendor",
+                        "name": "vendor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari nama, serial number, atau lokasi",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File CSV Daftar Aset",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengekspor data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/assets/{id}": {
             "get": {
                 "security": [
@@ -460,6 +519,45 @@ const docTemplate = `{
                 }
             }
         },
+        "/dashboard/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan ringkasan data agregat: total aset, jumlah per status, total log pemeliharaan, aktivitas bulan ini, dan jumlah pengguna.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Statistik Dashboard",
+                "responses": {
+                    "200": {
+                        "description": "Statistik berhasil diambil",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.DashboardStatsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil statistik",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Memeriksa status keaktifan server API dan koneksi database PostgreSQL.",
@@ -612,6 +710,65 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/maintenance-logs/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunduh seluruh riwayat pemeliharaan CCTV terfilter (tanpa limit halaman) dalam format file CSV.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Log Pemeliharaan"
+                ],
+                "summary": "Ekspor Log Pemeliharaan ke CSV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan UUID Aset",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan status log",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari tindakan (action_taken) atau catatan (notes)",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File CSV Log Pemeliharaan",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengekspor data",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -952,6 +1109,38 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.DashboardStatsResponse": {
+            "type": "object",
+            "properties": {
+                "assets_by_status": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.StatusCount"
+                    }
+                },
+                "logs_completed_this_month": {
+                    "type": "integer"
+                },
+                "logs_pending_this_month": {
+                    "type": "integer"
+                },
+                "logs_this_month": {
+                    "type": "integer"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "total_assets": {
+                    "type": "integer"
+                },
+                "total_maintenance_logs": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
+                }
+            }
+        },
         "handlers.LoginRequest": {
             "type": "object",
             "required": [
@@ -963,6 +1152,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.StatusCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "status": {
                     "type": "string"
                 }
             }

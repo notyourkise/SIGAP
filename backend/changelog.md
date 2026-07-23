@@ -224,3 +224,33 @@ file yang diubah:
 - frontend/src/app/page.tsx
 - frontend/src/app/maintenance/page.tsx
 alasan perubahan: Menyelesaikan konflik format integrasi antara API terpaginasi baru dengan visualisasi data front-end Next.js.
+
+perubahan yang dilakukan: Pembuatan Endpoint Statistik Dashboard untuk data agregat.
+before:
+- Frontend menghitung statistik (total aset, jumlah per status) secara lokal dari seluruh data array menggunakan `.filter().length`, tidak efisien untuk dataset besar.
+- Tidak ada endpoint khusus yang menyediakan ringkasan data agregat langsung dari database.
+after:
+- Dibuat `handlers/dashboard.go` dengan endpoint `GET /api/dashboard/stats` yang mengembalikan: total aset, jumlah aset per status, total log pemeliharaan, log bulan ini (total/completed/pending), total pengguna, dan timestamp server.
+- Rute dilindungi middleware `Protected()` (JWT) dan terdaftar lengkap di Swagger UI.
+timestamp: 2026-07-23 14:21 WITA
+kategori: sedang
+file yang diubah:
+- backend/handlers/dashboard.go
+- backend/main.go
+alasan perubahan: Menyediakan data statistik agregat dari sisi server untuk mengurangi beban komputasi frontend dan mempercepat render halaman dashboard.
+
+perubahan yang dilakukan: Pembuatan Fitur Export Data Aset CCTV dan Log Pemeliharaan ke CSV.
+before:
+- Tidak ada opsi pengeksporan data tabular secara langsung dari server.
+after:
+- Ditambahkan fungsi `ExportAssets` di `handlers/asset.go` dan rute `GET /assets/export` yang mengunduh data seluruh aset terfilter ke dalam bentuk file CSV.
+- Ditambahkan fungsi `ExportMaintenanceLogs` di `handlers/maintenance.go` dan rute `GET /maintenance-logs/export` yang mengunduh seluruh data log pemeliharaan terfilter beserta preloaded relasi data ke CSV.
+- Kedua endpoint dilindungi autentikasi JWT dan terdaftar lengkap di dokumentasi Swagger UI.
+timestamp: 2026-07-23 14:50 WITA
+kategori: sedang
+file yang diubah:
+- backend/handlers/asset.go
+- backend/handlers/maintenance.go
+- backend/routes/asset.go
+- backend/routes/maintenance.go
+alasan perubahan: Menyediakan fitur pengeksporan data ke format CSV untuk kebutuhan audit data fisik dan pelaporan operasional sistem SIGAP.

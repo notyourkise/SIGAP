@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/csv"
+	"fmt"
 	"time"
 
 	"sigap-backend/config"
@@ -374,4 +377,97 @@ func DeleteAsset(c *fiber.Ctx) error {
 		"status":  "success",
 		"message": "Aset berhasil dihapus secara soft-delete",
 	})
+}
+
+// ExportAssets memproduksi file CSV daftar aset
+// @Summary      Ekspor Daftar Aset ke CSV
+// @Description  Mengunduh seluruh aset CCTV terfilter (tanpa limit halaman) dalam format file CSV.
+// @Tags         Aset CCTV
+// @Produce      text/csv
+// @Security     BearerAuth
+// @Param        status query string false "Filter Status (aktif, rusak, pemeliharaan, nonaktif)"
+// @Param        vendor query string false "Filter Vendor"
+// @Param        search query string false "Cari nama, serial number, atau lokasi"
+// @Success      200 {file} string "File CSV Daftar Aset"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      500 {object} map[string]interface{} "Gagal mengekspor data"
+// @Router       /assets/export [get]
+func ExportAssets(c *fiber.Ctx) error {
+	var assets []models.Asset
+	query := config.DB.Model(&models.Asset{})
+
+	// Filter berdasarkan status
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Filter berdasarkan vendor
+	if vendor := c.Query("vendor"); vendor != "" {
+		query = query.Where("vendor = ?", vendor)
+	}
+
+	// Pencarian teks
+	if search := c.Query("search"); search != "" {
+		query = query.Where("name ILIKE ? OR serial_number ILIKE ? OR location_name ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Urutkan berdasarkan created_at desc agar data terbaru ada di paling atas
+	if err := query.Order("created_at desc").Find(&assets).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil data aset untuk diekspor",
+		})
+	}
+
+	// Tulis ke CSV Buffer
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+	writer.Comma = ','
+
+	// Header
+	header := []string{"ID", "Nama Aset", "Serial Number", "IP Address", "Lokasi", "Latitude", "Longitude", "Status", "Vendor", "Tanggal Instalasi", "Tanggal Pembuatan"}
+	if err := writer.Write(header); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menulis header CSV",
+		})
+	}
+
+	// Baris data
+	for _, asset := range assets {
+		row := []string{
+			asset.ID.String(),
+			asset.Name,
+			asset.SerialNumber,
+			asset.IPAddress,
+			asset.LocationName,
+			fmt.Sprintf("%f", asset.Latitude),
+			fmt.Sprintf("%f", asset.Longitude),
+			asset.Status,
+			asset.Vendor,
+			asset.InstallationDate.Format("2006-01-02"),
+			asset.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if err := writer.Write(row); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal menulis baris data CSV",
+			})
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal merampungkan penulisan CSV",
+		})
+	}
+
+	// Mengatur headers untuk respon download file CSV
+	filename := fmt.Sprintf("assets_export_%s.csv", time.Now().Format("20060102_150405"))
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	return c.Send(buf.Bytes())
 }
