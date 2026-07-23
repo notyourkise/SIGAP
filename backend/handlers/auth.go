@@ -10,19 +10,29 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
 }
 
 type CreateUserRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
+	Username string `json:"username" validate:"required,min=4,max=50"`
+	Password string `json:"password" validate:"required,min=6"`
+	FullName string `json:"full_name" validate:"required"`
+	Email    string `json:"email" validate:"required,email"`
+	Role     string `json:"role" validate:"required,oneof=admin teknisi"`
 }
 
 // Login memproses permintaan login pengguna dan memberikan token JWT jika sukses
+// @Summary      Login Pengguna
+// @Description  Masuk ke sistem SIGAP menggunakan username/email dan password, mengembalikan token JWT.
+// @Tags         Autentikasi
+// @Accept       json
+// @Produce      json
+// @Param        request body LoginRequest true "Kredensial Login"
+// @Success      200 {object} map[string]interface{} "Sukses login dengan token JWT"
+// @Failure      400 {object} map[string]interface{} "Format input tidak valid atau data kurang"
+// @Failure      401 {object} map[string]interface{} "Username atau password salah"
+// @Router       /auth/login [post]
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -32,10 +42,11 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	if req.Username == "" || req.Password == "" {
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Username/Email dan Password wajib diisi",
+			"message": "Validasi input gagal",
+			"errors":  errs,
 		})
 	}
 
@@ -83,6 +94,18 @@ func Login(c *fiber.Ctx) error {
 }
 
 // CreateUser digunakan oleh Admin untuk meregistrasikan akun baru (Admin/Teknisi)
+// @Summary      Registrasi User Baru
+// @Description  Membuat akun user baru (Admin/Teknisi). Hanya dapat diakses oleh Admin.
+// @Tags         Autentikasi
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body CreateUserRequest true "Data User Baru"
+// @Success      201 {object} map[string]interface{} "User baru berhasil dibuat"
+// @Failure      400 {object} map[string]interface{} "Format tidak valid, email/username sudah dipakai, role tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Router       /auth/users [post]
 func CreateUser(c *fiber.Ctx) error {
 	var req CreateUserRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -92,19 +115,11 @@ func CreateUser(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validasi input wajib
-	if req.Username == "" || req.Password == "" || req.FullName == "" || req.Email == "" || req.Role == "" {
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Semua field (username, password, full_name, email, role) wajib diisi",
-		})
-	}
-
-	// Validasi role
-	if req.Role != "admin" && req.Role != "teknisi" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Role tidak valid. Gunakan 'admin' atau 'teknisi'",
+			"message": "Validasi input gagal",
+			"errors":  errs,
 		})
 	}
 

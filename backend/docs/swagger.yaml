@@ -1,0 +1,683 @@
+basePath: /api
+definitions:
+  handlers.CreateAssetRequest:
+    properties:
+      installation_date:
+        description: 'format: YYYY-MM-DD'
+        type: string
+      ip_address:
+        type: string
+      latitude:
+        type: number
+      location_name:
+        maxLength: 255
+        type: string
+      longitude:
+        type: number
+      name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      serial_number:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      vendor:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    - serial_number
+    - status
+    type: object
+  handlers.CreateMaintenanceLogRequest:
+    properties:
+      action_taken:
+        minLength: 5
+        type: string
+      asset_id:
+        type: string
+      completed_at:
+        description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      notes:
+        type: string
+      scheduled_date:
+        description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      status:
+        enum:
+        - scheduled
+        - ongoing
+        - completed
+        - failed
+        type: string
+    required:
+    - action_taken
+    - asset_id
+    - status
+    type: object
+  handlers.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      role:
+        enum:
+        - admin
+        - teknisi
+        type: string
+      username:
+        maxLength: 50
+        minLength: 4
+        type: string
+    required:
+    - email
+    - full_name
+    - password
+    - role
+    - username
+    type: object
+  handlers.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  handlers.UpdateAssetRequest:
+    properties:
+      installation_date:
+        description: 'format: YYYY-MM-DD'
+        type: string
+      ip_address:
+        type: string
+      latitude:
+        type: number
+      location_name:
+        maxLength: 255
+        type: string
+      longitude:
+        type: number
+      name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      serial_number:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      vendor:
+        maxLength: 100
+        type: string
+    type: object
+  handlers.UpdateMaintenanceLogRequest:
+    properties:
+      action_taken:
+        minLength: 5
+        type: string
+      asset_id:
+        type: string
+      completed_at:
+        description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      notes:
+        type: string
+      scheduled_date:
+        description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      status:
+        enum:
+        - scheduled
+        - ongoing
+        - completed
+        - failed
+        type: string
+    type: object
+host: localhost:3000
+info:
+  contact: {}
+  description: Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
+  title: SIGAP API
+  version: "1.0"
+paths:
+  /assets:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan list seluruh aset CCTV terpaginasi dengan filter status,
+        vendor, pencarian, dan sorting.
+      parameters:
+      - description: Filter Status (aktif, rusak, pemeliharaan, nonaktif)
+        in: query
+        name: status
+        type: string
+      - description: Filter Vendor
+        in: query
+        name: vendor
+        type: string
+      - description: Cari nama, serial number, atau lokasi
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar aset terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Aset CCTV
+      tags:
+      - Aset CCTV
+    post:
+      consumes:
+      - application/json
+      description: Membuat record aset CCTV baru. Hanya dapat diakses oleh Admin.
+      parameters:
+      - description: Data Aset Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateAssetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Aset berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Data kurang, serial number duplikat, status tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Aset CCTV
+      tags:
+      - Aset CCTV
+  /assets/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus aset CCTV (soft-delete). Hanya dapat diakses oleh Admin.
+      parameters:
+      - description: Asset UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Aset berhasil dihapus secara soft-delete
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Aset tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Aset CCTV
+      tags:
+      - Aset CCTV
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail satu aset CCTV berdasarkan UUID-nya.
+      parameters:
+      - description: Asset UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data aset ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Aset tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Aset CCTV Detail
+      tags:
+      - Aset CCTV
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data aset CCTV tertentu. Hanya dapat diakses oleh Admin.
+      parameters:
+      - description: Asset UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Aset
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateAssetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Aset berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau serial number duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Aset tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Aset CCTV
+      tags:
+      - Aset CCTV
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Masuk ke sistem SIGAP menggunakan username/email dan password,
+        mengembalikan token JWT.
+      parameters:
+      - description: Kredensial Login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses login dengan token JWT
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input tidak valid atau data kurang
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Username atau password salah
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login Pengguna
+      tags:
+      - Autentikasi
+  /auth/users:
+    post:
+      consumes:
+      - application/json
+      description: Membuat akun user baru (Admin/Teknisi). Hanya dapat diakses oleh
+        Admin.
+      parameters:
+      - description: Data User Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User baru berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format tidak valid, email/username sudah dipakai, role tidak
+            valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Registrasi User Baru
+      tags:
+      - Autentikasi
+  /maintenance-logs:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan list riwayat pemeliharaan CCTV terpaginasi dengan filter
+        asset_id, status, pencarian, dan sorting.
+      parameters:
+      - description: Filter berdasarkan UUID Aset
+        in: query
+        name: asset_id
+        type: string
+      - description: Filter berdasarkan status log
+        in: query
+        name: status
+        type: string
+      - description: Cari tindakan (action_taken) atau catatan (notes)
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar log terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Log Pemeliharaan
+      tags:
+      - Log Pemeliharaan
+    post:
+      consumes:
+      - application/json
+      description: Membuat catatan pemeliharaan baru untuk aset CCTV tertentu. ID
+        Teknisi dideteksi otomatis dari token JWT.
+      parameters:
+      - description: Detail Catatan Pemeliharaan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateMaintenanceLogRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Catatan berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format tidak valid, aset tidak ditemukan, data tidak lengkap
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Catat Pemeliharaan CCTV
+      tags:
+      - Log Pemeliharaan
+  /maintenance-logs/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus data riwayat pemeliharaan (soft-delete). Hanya dapat
+        diakses oleh Admin.
+      parameters:
+      - description: Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log berhasil dihapus secara soft-delete
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Log Pemeliharaan
+      tags:
+      - Log Pemeliharaan
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail satu riwayat pemeliharaan berdasarkan UUID-nya.
+      parameters:
+      - description: Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data log ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Log Pemeliharaan Detail
+      tags:
+      - Log Pemeliharaan
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data riwayat pemeliharaan tertentu.
+      parameters:
+      - description: Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Log
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateMaintenanceLogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid atau format body salah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Log Pemeliharaan
+      tags:
+      - Log Pemeliharaan
+securityDefinitions:
+  BearerAuth:
+    description: 'Format token JWT: Bearer <token_anda>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

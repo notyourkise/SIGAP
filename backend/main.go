@@ -3,13 +3,24 @@ package main
 import (
 	"log"
 	"sigap-backend/config"
+	_ "sigap-backend/docs" // Dokumen yang dihasilkan oleh swag
 	"sigap-backend/models"
 	"sigap-backend/routes"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/swagger"
 )
 
+// @title                      SIGAP API
+// @version                    1.0
+// @description                Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
+// @host                       localhost:3000
+// @BasePath                   /api
+// @securityDefinitions.apikey  BearerAuth
+// @in                         header
+// @name                       Authorization
+// @description                Format token JWT: Bearer <token_anda>
 func main() {
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
@@ -37,6 +48,9 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
+
+	// Rute Dokumentasi Swagger UI
+	app.Get("/swagger/*", swagger.HandlerDefault)
 
 	// 4. Setup Routes
 	api := app.Group("/api")
