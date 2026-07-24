@@ -2,7 +2,7 @@
 # Stage 1: Builder
 # Build binary Go menggunakan image golang:alpine
 # ==========================================
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install dependensi sistem yang diperlukan untuk build CGo (libpq)
 RUN apk add --no-cache git ca-certificates tzdata
