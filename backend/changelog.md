@@ -408,3 +408,14 @@ file yang diubah:
 - backend/docs/swagger.json
 - backend/docs/swagger.yaml
 alasan perubahan: Memungkinkan migrasi dan inventarisasi data CCTV massal secara cepat, rapi, dan sesuai arsitektur enterprise dengan validasi data baris per baris.
+
+perubahan yang dilakukan: Perbaikan Hook BeforeCreate GORM (Nil UUID Check).
+before:
+- Hook `BeforeCreate` pada model `Base` selalu menghasilkan UUID baru secara acak untuk kolom `ID` tanpa memedulikan apakah `ID` tersebut sudah diisi secara manual sebelumnya. Hal ini merusak sinkronisasi data QR Code terenkripsi (mismatch antara `ID` dan `QrPayload`).
+after:
+- Memodifikasi hook `BeforeCreate` agar mengecek kondisi `base.ID == uuid.Nil`. UUID baru hanya akan dihasilkan secara otomatis jika kolom `ID` kosong. ID kustom yang telah diisi sebelumnya (misalnya saat registrasi CCTV baru atau impor massal) akan dipertahankan dengan aman.
+timestamp: 2026-07-24 17:34 WITA
+kategori: sedang
+file yang diubah:
+- backend/models/setup.go
+alasan perubahan: Mencegah bug mismatch ID di mana data CCTV tidak dapat diidentifikasi oleh QR scanner karena ID UUID di database ditimpa secara tidak sengaja oleh hook GORM.

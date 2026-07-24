@@ -15,9 +15,11 @@ type Base struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
-// Hook GORM: Generate UUID secara otomatis sebelum data disimpan ke database
+// Hook GORM: Generate UUID secara otomatis sebelum data disimpan ke database jika belum diisi
 func (base *Base) BeforeCreate(tx *gorm.DB) (err error) {
-	base.ID = uuid.New()
+	if base.ID == uuid.Nil {
+		base.ID = uuid.New()
+	}
 	return
 }
 
