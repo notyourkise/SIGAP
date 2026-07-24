@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  # ==========================================
+  # Service 1: PostgreSQL Database
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    container_name: sigap_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sigap_user
+      POSTGRES_PASSWORD: sigap_password_aman
+      POSTGRES_DB: sigap_db
+    volumes:
+      # Named Volume: Data PostgreSQL tetap aman meskipun container dihapus & dibuat ulang
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Expose port 5432 ke mesin host agar bisa diakses dari DBeaver / pgAdmin lokal
+      - "5432:5432"
+    healthcheck:
+      # Cek apakah database sudah siap menerima koneksi sebelum service api dimulai
+      test: ["CMD-SHELL", "pg_isready -U sigap_user -d sigap_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sigap_network
+
+  # ==========================================
+  # Service 2: Go Fiber API Backend
+  # ==========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sigap_api
+    restart: unless-stopped
+    env_file:
+      # Membaca semua variabel konfigurasi dari .env.docker
+      - .env.docker
+    ports:
+      # Expose port 3000 ke mesin host
+      - "3000:3000"
+    depends_on:
+      db:
+        # Tunggu sampai database benar-benar sehat (healthcheck lulus) sebelum API dimulai
+        condition: service_healthy
+    volumes:
+      # Bind Mount: File foto pemeliharaan tersimpan aman di luar container
+      # Meskipun container api dihapus, semua file foto di ./uploads tetap ada
+      - ./uploads:/app/uploads
+    networks:
+      - sigap_network
+
+# ==========================================
+# Named Volumes
+# ==========================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  sigap_network:
+    driver: bridge
