@@ -1,15 +1,15 @@
 # ==========================================
 # Stage 1: Builder
 # ==========================================
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 # Salin package.json dan package-lock.json
 COPY package*.json ./
 
-# Install dependencies (termasuk devDependencies untuk build)
-RUN npm ci
+# Install dependencies menggunakan npm install sesuai request
+RUN npm install
 
 # Salin seluruh source code frontend
 COPY . .
@@ -20,7 +20,7 @@ RUN npm run build
 # ==========================================
 # Stage 2: Runner
 # ==========================================
-FROM node:20-alpine AS runner
+FROM node:18-alpine AS runner
 
 WORKDIR /app
 
@@ -32,8 +32,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 
-# Expose port 3001
-EXPOSE 3001
+# Expose port 3000 (Next.js berjalan di port 3000 di dalam container)
+EXPOSE 3000
 
-# Jalankan server Next.js pada port 3001
-CMD ["npm", "run", "start", "--", "-p", "3001"]
+# Jalankan server Next.js pada port 3000
+CMD ["npm", "run", "start", "--", "-p", "3000"]
