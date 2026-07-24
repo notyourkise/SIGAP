@@ -371,3 +371,19 @@ file yang diubah:
 - backend/docs/swagger.json
 - backend/docs/swagger.yaml
 alasan perubahan: Memungkinkan inventarisasi detail CCTV secara mandiri tanpa membocorkan kredensial, serta meningkatkan keamanan operasional melalui pelabelan kode QR terenkripsi tingkat tinggi.
+
+perubahan yang dilakukan: Standardisasi Keamanan Kredensial Environment (.env.example & .env.docker.example).
+before:
+- File `.env.docker` dilacak oleh Git (tidak di-ignore) dan berisi nilai kredensial langsung yang berpotensi bocor.
+- Tidak ada file template `.env.example` untuk membantu panduan inisialisasi berkas `.env` lokal baru bagi developer.
+after:
+- Berkas `.env.docker` dipindahkan (`git mv`) menjadi berkas template `.env.docker.example` yang kredensialnya sudah disamarkan dengan placeholder aman.
+- Dibuat berkas `.env.example` di dalam direktori `backend/` berisi panduan variabel environment lokal.
+- Menambahkan aturan `.env.docker` ke dalam berkas `.gitignore` di root folder proyek agar tidak pernah ter-push secara tidak sengaja oleh developer.
+timestamp: 2026-07-24 15:42 WITA
+kategori: sedang
+file yang diubah:
+- .gitignore
+- backend/.env.docker.example
+- backend/.env.example
+alasan perubahan: Mencegah kebocoran kredensial sensitif database dan kunci rahasia enkripsi ke dalam Git repositori dengan mengikuti standar industri.
