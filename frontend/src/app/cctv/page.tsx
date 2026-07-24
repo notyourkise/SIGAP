@@ -95,6 +95,9 @@ export default function CCTVPage() {
   const [scannedResult, setScannedResult] = useState<CCTV | null>(null);
   const [scanError, setScanError] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
+  
+  // Bulk Actions State
+  const [selectedIDs, setSelectedIDs] = useState<string[]>([]);
 
   // File Import State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -205,10 +208,65 @@ export default function CCTVPage() {
         method: 'DELETE'
       });
       if (response.status === 'success') {
+        setSelectedIDs(prev => prev.filter(item => item !== id));
         fetchCCTVs();
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menghapus data CCTV');
+    }
+  };
+
+  // Bulk Selection Handlers
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIDs(cctvs.map(c => c.id));
+    } else {
+      setSelectedIDs([]);
+    }
+  };
+
+  const handleSelectRow = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIDs(prev => [...prev, id]);
+    } else {
+      setSelectedIDs(prev => prev.filter(item => item !== id));
+    }
+  };
+
+  // Bulk Delete Handler (Selected or All)
+  const handleBulkDelete = async (deleteAll = false) => {
+    const confirmMessage = deleteAll 
+      ? '⚠️ PERINGATAN KERAS: Apakah Anda yakin ingin MENGOSONGKAN SELURUH data CCTV di database? Tindakan ini tidak dapat dibatalkan!'
+      : `Apakah Anda yakin ingin menghapus ${selectedIDs.length} data CCTV yang terpilih?`;
+      
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      const token = localStorage.getItem('sigap_token');
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+      
+      const response = await fetch(`${API_BASE_URL}/cctv/bulk-delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ids: deleteAll ? [] : selectedIDs,
+          all: deleteAll
+        })
+      });
+
+      const resJson = await response.json();
+      if (!response.ok) {
+        throw new Error(resJson.message || 'Gagal menghapus data secara massal');
+      }
+
+      setSelectedIDs([]);
+      fetchCCTVs();
+      alert(resJson.message || 'Hapus massal berhasil dilakukan!');
+    } catch (err: any) {
+      alert(err.message || 'Gagal melakukan hapus massal');
     }
   };
 
@@ -528,6 +586,16 @@ export default function CCTVPage() {
               <Upload className="h-4.5 w-4.5 text-emerald-500" />
               <span>Import Excel</span>
             </button>
+            {isAdmin && cctvs.length > 0 && (
+              <button
+                onClick={() => handleBulkDelete(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
+                title="Hapus Semua Data CCTV"
+              >
+                <Trash2 className="h-4.5 w-4.5" />
+                <span>Kosongkan Data</span>
+              </button>
+            )}
             {isAdmin && (
               <button
                 onClick={() => handleOpenForm()}
@@ -644,6 +712,16 @@ export default function CCTVPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    {isAdmin && (
+                      <th className="py-4 px-6 w-12 text-center">
+                        <input
+                          type="checkbox"
+                          onChange={handleSelectAll}
+                          checked={cctvs.length > 0 && selectedIDs.length === cctvs.length}
+                          className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     <th className="py-4 px-6">Identitas CCTV</th>
                     <th className="py-4 px-6">Spesifikasi Koneksi</th>
                     <th className="py-4 px-6">Indoor / Outdoor</th>
@@ -654,7 +732,17 @@ export default function CCTVPage() {
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
                   {cctvs.map((cctv) => (
-                    <tr key={cctv.id} className="hover:bg-background/25 transition-colors">
+                    <tr key={cctv.id} className={`hover:bg-background/25 transition-colors ${selectedIDs.includes(cctv.id) ? 'bg-blue-500/5 dark:bg-blue-500/5' : ''}`}>
+                      {isAdmin && (
+                        <td className="py-4.5 px-6 w-12 text-center">
+                          <input
+                            type="checkbox"
+                            onChange={(e) => handleSelectRow(cctv.id, e.target.checked)}
+                            checked={selectedIDs.includes(cctv.id)}
+                            className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="py-4.5 px-6">
                         <div className="flex items-center gap-3">
                           <button
@@ -754,6 +842,23 @@ export default function CCTVPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* Floating Bulk Actions Bar */}
+        {selectedIDs.length > 0 && isAdmin && (
+          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-card border border-border px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 animate-slideUp backdrop-blur-md bg-card/90">
+            <span className="text-sm font-semibold">
+              <span className="text-blue-500 font-bold">{selectedIDs.length}</span> CCTV terpilih
+            </span>
+            <div className="h-4 w-px bg-border"></div>
+            <button
+              onClick={() => handleBulkDelete(false)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-md shadow-red-500/10 active:scale-95 transition-all cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Hapus Terpilih</span>
+            </button>
           </div>
         )}
 
