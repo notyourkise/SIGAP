@@ -1,0 +1,82 @@
+version: "3.9"
+
+services:
+  # ==========================================
+  # Service 1: PostgreSQL Database
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    container_name: sigap_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sigap_user
+      POSTGRES_PASSWORD: sigap_password_aman
+      POSTGRES_DB: sigap_db
+    volumes:
+      # Named Volume untuk menyimpan data PostgreSQL agar persisten
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sigap_user -d sigap_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sigap_network
+
+  # ==========================================
+  # Service 2: Go Fiber API Backend
+  # ==========================================
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sigap_api
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.docker
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Bind mount untuk menyimpan foto lampiran di luar container
+      - ./backend/uploads:/app/uploads
+    networks:
+      - sigap_network
+
+  # ==========================================
+  # Service 3: Next.js Frontend
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sigap_frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      # URL API Backend yang diakses oleh browser client
+      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+    depends_on:
+      - api
+    networks:
+      - sigap_network
+
+# ==========================================
+# Named Volumes
+# ==========================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  sigap_network:
+    driver: bridge
