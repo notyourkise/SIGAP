@@ -75,6 +75,7 @@ func main() {
 	routes.SetupAuthRoutes(api)
 	routes.SetupAssetRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
+	routes.SetupUserRoutes(api)
 
 	// Rute Health Check
 	api.Get("/health", handlers.HealthCheck)

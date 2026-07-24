@@ -266,3 +266,19 @@ kategori: sedang
 file yang diubah:
 - backend/config/database.go
 alasan perubahan: Mencegah error "too many connections" dan mengoptimalkan efisiensi penanganan kueri konkuren di database PostgreSQL berskala industri.
+
+perubahan yang dilakukan: Pembuatan Modul Manajemen Pengguna (User CRUD & Admin Controls) Terproteksi.
+before:
+- Hanya ada endpoint registrasi terbatas `/api/auth/users` dan tidak ada fungsi pengelolaan akun user yang komprehensif.
+after:
+- Dibuat `handlers/user.go` berisi handler GetAllUsers (paginasi & pencarian), GetUserByID, UpdateUser, DeleteUser (soft-delete), dan ResetUserPassword (penyetelan sandi paksa).
+- Dibuat `routes/user.go` yang mendaftarkan seluruh endpoint di bawah grup rute `/api/users`.
+- Rute didaftarkan di `main.go` dan dilindungi oleh middleware `Protected()` dan `RequireRole("admin")` untuk menjamin keamanan administratif.
+- Seluruh endpoint terdokumentasi secara penuh di Swagger UI.
+timestamp: 2026-07-24 09:10 WITA
+kategori: sedang
+file yang diubah:
+- backend/handlers/user.go
+- backend/routes/user.go
+- backend/main.go
+alasan perubahan: Melengkapi kebutuhan administrasi portal SIGAP agar admin dapat mengelola akun pengguna, mereset password, dan menonaktifkan pengguna dengan aman.
