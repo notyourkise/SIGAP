@@ -1,0 +1,53 @@
+# ==========================================
+# File dan Folder Sensitif / Rahasia
+# ==========================================
+# Jangan masukkan file .env lokal ke dalam image Docker
+.env
+.env.local
+
+# ==========================================
+# Direktori Output & Build Artefak
+# ==========================================
+# Binary hasil build lokal tidak perlu masuk ke image
+sigap-api
+*.exe
+
+# ==========================================
+# Direktori Log Aplikasi
+# ==========================================
+# File log server tidak perlu di-copy ke dalam image
+logs/
+
+# ==========================================
+# Direktori Unggahan File (akan di-mount sebagai volume)
+# ==========================================
+# Folder uploads akan di-mount sebagai Docker Named Volume
+uploads/
+
+# ==========================================
+# Direktori Kontrol Versi Git
+# ==========================================
+.git
+.gitignore
+.gitattributes
+
+# ==========================================
+# File Dokumentasi & Konfigurasi Pengembang
+# ==========================================
+README.md
+agent.md
+changelog.md
+*.md
+
+# ==========================================
+# File Konfigurasi CI/CD & Editor
+# ==========================================
+.github/
+.vscode/
+.idea/
+
+# ==========================================
+# File Pengujian
+# ==========================================
+# Test file tidak perlu ada di production image
+*_test.go
