@@ -575,6 +575,422 @@
                 }
             }
         },
+        "/cctv": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar data master CCTV dengan paginasi, pencarian, dan penyaringan berdasarkan status, lokasi, jenis, pemilik, dll.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Ambil Semua Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan jenis CCTV",
+                        "name": "jenis_cctv",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan indoor/outdoor",
+                        "name": "indoor_outdoor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Nomor Halaman (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah data per halaman (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kolom pengurutan (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Arah pengurutan: asc, desc (default: desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar CCTV terpaginasi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat record master data CCTV baru. Sistem otomatis membuat UUID ID baru, mengenkripsinya dengan AES-256, lalu menyimpan hasilnya sebagai QrPayload unik.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Tambah Data CCTV",
+                "parameters": [
+                    {
+                        "description": "Data CCTV Baru",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Data CCTV berhasil disimpan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format input salah, validasi gagal, kode_cctv duplikat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengenkripsi atau menyimpan data ke database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/scan": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menerima parameter string QR Payload terenkripsi, mendekripsinya menggunakan AES-256 untuk mendapatkan UUID asli, lalu mengembalikan data umum CCTV yang cocok.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Scan \u0026 Identifikasi CCTV via QR Payload",
+                "parameters": [
+                    {
+                        "description": "Payload QR Terenkripsi dari CCTV fisik",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ScanCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Identitas CCTV berhasil dipindai dan ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "QR Payload tidak valid atau gagal didekripsi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Data CCTV tidak ditemukan di database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan detail CCTV berdasarkan UUID-nya.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Ambil CCTV Detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail data CCTV ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah detail data master CCTV yang sudah terdaftar. Hanya dapat diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Edit Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data Update CCTV",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data CCTV berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid, format body salah, atau validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan perubahan ke database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus data CCTV secara soft-delete berdasarkan UUID. Hanya dapat diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Hapus Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data CCTV berhasil dihapus secara soft-delete",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/dashboard/stats": {
             "get": {
                 "security": [
@@ -1466,6 +1882,85 @@
                 }
             }
         },
+        "handlers.CreateCCTVRequest": {
+            "type": "object",
+            "required": [
+                "kode_cctv",
+                "nama",
+                "status"
+            ],
+            "properties": {
+                "id_channel": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "indoor_outdoor": {
+                    "type": "string",
+                    "enum": [
+                        "indoor",
+                        "outdoor",
+                        "INDOOR",
+                        "OUTDOOR"
+                    ]
+                },
+                "ip_camera": {
+                    "type": "string"
+                },
+                "ip_nvr": {
+                    "type": "string"
+                },
+                "jenis_cctv": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "keterangan": {
+                    "type": "string"
+                },
+                "kode_cctv": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
+                },
+                "latitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "lokasi_area": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "longitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nama": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "pemilik": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "aktif",
+                        "rusak",
+                        "pemeliharaan",
+                        "nonaktif"
+                    ]
+                },
+                "sumber_listrik": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "tipe_koneksi": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
         "handlers.CreateMaintenanceLogRequest": {
             "type": "object",
             "required": [
@@ -1597,6 +2092,17 @@
                 }
             }
         },
+        "handlers.ScanCCTVRequest": {
+            "type": "object",
+            "required": [
+                "qr_payload"
+            ],
+            "properties": {
+                "qr_payload": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.StatusCount": {
             "type": "object",
             "properties": {
@@ -1649,6 +2155,80 @@
                 "vendor": {
                     "type": "string",
                     "maxLength": 100
+                }
+            }
+        },
+        "handlers.UpdateCCTVRequest": {
+            "type": "object",
+            "properties": {
+                "id_channel": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "indoor_outdoor": {
+                    "type": "string",
+                    "enum": [
+                        "indoor",
+                        "outdoor",
+                        "INDOOR",
+                        "OUTDOOR"
+                    ]
+                },
+                "ip_camera": {
+                    "type": "string"
+                },
+                "ip_nvr": {
+                    "type": "string"
+                },
+                "jenis_cctv": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "keterangan": {
+                    "type": "string"
+                },
+                "kode_cctv": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
+                },
+                "latitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "lokasi_area": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "longitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nama": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "pemilik": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "aktif",
+                        "rusak",
+                        "pemeliharaan",
+                        "nonaktif"
+                    ]
+                },
+                "sumber_listrik": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "tipe_koneksi": {
+                    "type": "string",
+                    "maxLength": 50
                 }
             }
         },

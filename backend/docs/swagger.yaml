@@ -36,6 +36,65 @@ definitions:
     - serial_number
     - status
     type: object
+  handlers.CreateCCTVRequest:
+    properties:
+      id_channel:
+        maxLength: 50
+        type: string
+      indoor_outdoor:
+        enum:
+        - indoor
+        - outdoor
+        - INDOOR
+        - OUTDOOR
+        type: string
+      ip_camera:
+        type: string
+      ip_nvr:
+        type: string
+      jenis_cctv:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      kode_cctv:
+        maxLength: 50
+        minLength: 3
+        type: string
+      latitude:
+        maxLength: 50
+        type: string
+      lokasi_area:
+        maxLength: 255
+        type: string
+      longitude:
+        maxLength: 50
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 3
+        type: string
+      pemilik:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      sumber_listrik:
+        maxLength: 50
+        type: string
+      tipe_koneksi:
+        maxLength: 50
+        type: string
+    required:
+    - kode_cctv
+    - nama
+    - status
+    type: object
   handlers.CreateMaintenanceLogRequest:
     properties:
       action_taken:
@@ -128,6 +187,13 @@ definitions:
     required:
     - new_password
     type: object
+  handlers.ScanCCTVRequest:
+    properties:
+      qr_payload:
+        type: string
+    required:
+    - qr_payload
+    type: object
   handlers.StatusCount:
     properties:
       count:
@@ -165,6 +231,61 @@ definitions:
         type: string
       vendor:
         maxLength: 100
+        type: string
+    type: object
+  handlers.UpdateCCTVRequest:
+    properties:
+      id_channel:
+        maxLength: 50
+        type: string
+      indoor_outdoor:
+        enum:
+        - indoor
+        - outdoor
+        - INDOOR
+        - OUTDOOR
+        type: string
+      ip_camera:
+        type: string
+      ip_nvr:
+        type: string
+      jenis_cctv:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      kode_cctv:
+        maxLength: 50
+        minLength: 3
+        type: string
+      latitude:
+        maxLength: 50
+        type: string
+      lokasi_area:
+        maxLength: 255
+        type: string
+      longitude:
+        maxLength: 50
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 3
+        type: string
+      pemilik:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      sumber_listrik:
+        maxLength: 50
+        type: string
+      tipe_koneksi:
+        maxLength: 50
         type: string
     type: object
   handlers.UpdateMaintenanceLogRequest:
@@ -592,6 +713,289 @@ paths:
       summary: Registrasi User Baru
       tags:
       - Autentikasi
+  /cctv:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar data master CCTV dengan paginasi, pencarian,
+        dan penyaringan berdasarkan status, lokasi, jenis, pemilik, dll.
+      parameters:
+      - description: Filter berdasarkan status
+        in: query
+        name: status
+        type: string
+      - description: Filter berdasarkan jenis CCTV
+        in: query
+        name: jenis_cctv
+        type: string
+      - description: Filter berdasarkan indoor/outdoor
+        in: query
+        name: indoor_outdoor
+        type: string
+      - description: Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar CCTV terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Data CCTV
+      tags:
+      - Master CCTV
+    post:
+      consumes:
+      - application/json
+      description: Membuat record master data CCTV baru. Sistem otomatis membuat UUID
+        ID baru, mengenkripsinya dengan AES-256, lalu menyimpan hasilnya sebagai QrPayload
+        unik.
+      parameters:
+      - description: Data CCTV Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Data CCTV berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah, validasi gagal, kode_cctv duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengenkripsi atau menyimpan data ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Data CCTV
+      tags:
+      - Master CCTV
+  /cctv/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus data CCTV secara soft-delete berdasarkan UUID. Hanya
+        dapat diakses oleh Admin.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data CCTV berhasil dihapus secara soft-delete
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Data CCTV
+      tags:
+      - Master CCTV
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail CCTV berdasarkan UUID-nya.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail data CCTV ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil CCTV Detail
+      tags:
+      - Master CCTV
+    put:
+      consumes:
+      - application/json
+      description: Mengubah detail data master CCTV yang sudah terdaftar. Hanya dapat
+        diakses oleh Admin.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update CCTV
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data CCTV berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan perubahan ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Edit Data CCTV
+      tags:
+      - Master CCTV
+  /cctv/scan:
+    post:
+      consumes:
+      - application/json
+      description: Menerima parameter string QR Payload terenkripsi, mendekripsinya
+        menggunakan AES-256 untuk mendapatkan UUID asli, lalu mengembalikan data umum
+        CCTV yang cocok.
+      parameters:
+      - description: Payload QR Terenkripsi dari CCTV fisik
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ScanCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Identitas CCTV berhasil dipindai dan ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: QR Payload tidak valid atau gagal didekripsi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Data CCTV tidak ditemukan di database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Scan & Identifikasi CCTV via QR Payload
+      tags:
+      - Master CCTV
   /dashboard/stats:
     get:
       description: 'Mendapatkan ringkasan data agregat: total aset, jumlah per status,

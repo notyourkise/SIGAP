@@ -42,6 +42,7 @@ func main() {
 		&models.User{},
 		&models.Asset{},
 		&models.MaintenanceLog{},
+		&models.CCTV{},
 	)
 	if err != nil {
 		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
@@ -77,6 +78,7 @@ func main() {
 	routes.SetupAssetRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
 	routes.SetupUserRoutes(api)
+	routes.SetupCCTVRoutes(api)
 
 	// Rute Health Check
 	api.Get("/health", handlers.HealthCheck)
