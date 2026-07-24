@@ -14,7 +14,8 @@ import {
   User as UserIcon, 
   Sun, 
   Moon,
-  Laptop
+  Laptop,
+  Database
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,6 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const navigation = [
     { name: 'Aset CCTV', href: '/', icon: Camera },
+    { name: 'Master CCTV', href: '/cctv', icon: Database },
     { name: 'Log Pemeliharaan', href: '/maintenance', icon: Wrench },
   ];
 
