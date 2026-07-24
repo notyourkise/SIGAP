@@ -991,9 +991,9 @@ export default function CCTVPage() {
                   {!showManualInput ? (
                     /* CAMERA SCANNER VIEW */
                     <div className="space-y-4 text-center">
-                      <div className="relative mx-auto w-full max-w-sm aspect-square overflow-hidden rounded-2xl bg-black border border-border flex items-center justify-center">
+                      <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl bg-black border border-border flex items-center justify-center min-h-[280px]">
                         {/* html5-qrcode video container */}
-                        <div id="reader" className="w-full h-full"></div>
+                        <div id="reader" className="w-full"></div>
                         
                         {/* Custom overlay laser scan animation */}
                         {cameraActive && (
