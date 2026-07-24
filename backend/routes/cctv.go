@@ -13,11 +13,13 @@ func SetupCCTVRoutes(router fiber.Router) {
 
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	cctvGroup.Get("/", handlers.GetAllCCTV)
+	cctvGroup.Get("/template", handlers.DownloadTemplateCCTV)
 	cctvGroup.Post("/scan", handlers.ScanCCTV)
 	cctvGroup.Get("/:id", handlers.GetCCTVByID)
 
 	// Rute yang hanya dapat diakses oleh Admin
 	cctvGroup.Post("/", middleware.RequireRole("admin"), handlers.CreateCCTV)
+	cctvGroup.Post("/import", middleware.RequireRole("admin"), handlers.ImportCCTV)
 	cctvGroup.Put("/:id", middleware.RequireRole("admin"), handlers.UpdateCCTV)
 	cctvGroup.Delete("/:id", middleware.RequireRole("admin"), handlers.DeleteCCTV)
 }

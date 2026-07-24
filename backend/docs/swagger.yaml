@@ -960,6 +960,52 @@ paths:
       summary: Edit Data CCTV
       tags:
       - Master CCTV
+  /cctv/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar
+        untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256
+        untuk kolom QrPayload.
+      parameters:
+      - description: Berkas Excel Template CCTV (.xlsx)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Proses impor selesai dengan detail jumlah sukses/gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Tidak ada file / format file tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membaca atau memproses berkas Excel
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Impor Massal Data CCTV
+      tags:
+      - Master CCTV
   /cctv/scan:
     post:
       consumes:
@@ -1000,6 +1046,32 @@ paths:
       security:
       - BearerAuth: []
       summary: Scan & Identifikasi CCTV via QR Payload
+      tags:
+      - Master CCTV
+  /cctv/template:
+    get:
+      description: Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan
+        kolom header standar untuk mempermudah impor data CCTV secara massal.
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Berkas template Excel (.xlsx)
+          schema:
+            type: string
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membuat file template
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unduh Template Excel CCTV
       tags:
       - Master CCTV
   /dashboard/stats:

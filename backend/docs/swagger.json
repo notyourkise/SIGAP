@@ -727,6 +727,72 @@
                 }
             }
         },
+        "/cctv/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256 untuk kolom QrPayload.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Impor Massal Data CCTV",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Berkas Excel Template CCTV (.xlsx)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Proses impor selesai dengan detail jumlah sukses/gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Tidak ada file / format file tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membaca atau memproses berkas Excel",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/cctv/scan": {
             "post": {
                 "security": [
@@ -780,6 +846,45 @@
                     },
                     "404": {
                         "description": "Data CCTV tidak ditemukan di database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/template": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan kolom header standar untuk mempermudah impor data CCTV secara massal.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Unduh Template Excel CCTV",
+                "responses": {
+                    "200": {
+                        "description": "Berkas template Excel (.xlsx)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membuat file template",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

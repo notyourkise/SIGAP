@@ -387,3 +387,24 @@ file yang diubah:
 - backend/.env.docker.example
 - backend/.env.example
 alasan perubahan: Mencegah kebocoran kredensial sensitif database dan kunci rahasia enkripsi ke dalam Git repositori dengan mengikuti standar industri.
+
+perubahan yang dilakukan: Penyediaan Template & Fitur Impor Massal CCTV dari Excel.
+before:
+- Data CCTV hanya bisa ditambahkan satu per satu melalui form/API manual.
+- Tidak tersedia template Excel standar untuk mempermudah migrasi data besar.
+after:
+- Ditambahkan library `github.com/xuri/excelize/v2` untuk mendukung pengolahan file Excel (.xlsx).
+- Ditambahkan endpoint `GET /api/cctv/template` (handler `DownloadTemplateCCTV`) untuk mengunduh template kosong berisi header kolom terstandarisasi.
+- Ditambahkan endpoint `POST /api/cctv/import` (handler `ImportCCTV`) yang menerima file multipart form data, membaca baris-baris data dari spreadsheet, menghasilkan UUID baru secara otomatis, mengenkripsi UUID tersebut menggunakan AES-256 menjadi `QrPayload`, dan menyimpannya secara transaksional ke database PostgreSQL.
+- Rute-rute baru dilindungi JWT dan didaftarkan di `routes/cctv.go` (aman dari collision routing).
+timestamp: 2026-07-24 16:33 WITA
+kategori: sedang
+file yang diubah:
+- backend/go.mod
+- backend/go.sum
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memungkinkan migrasi dan inventarisasi data CCTV massal secara cepat, rapi, dan sesuai arsitektur enterprise dengan validasi data baris per baris.
