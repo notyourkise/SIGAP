@@ -20,6 +20,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	// Rute yang hanya dapat diakses oleh Admin
 	cctvGroup.Post("/", middleware.RequireRole("admin"), handlers.CreateCCTV)
 	cctvGroup.Post("/import", middleware.RequireRole("admin"), handlers.ImportCCTV)
+	cctvGroup.Post("/bulk-delete", middleware.RequireRole("admin"), handlers.BulkDeleteCCTV)
 	cctvGroup.Put("/:id", middleware.RequireRole("admin"), handlers.UpdateCCTV)
 	cctvGroup.Delete("/:id", middleware.RequireRole("admin"), handlers.DeleteCCTV)
 }

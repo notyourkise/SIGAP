@@ -738,3 +738,98 @@ func ImportCCTV(c *fiber.Ctx) error {
 	})
 }
 
+// BulkDeleteCCTV menghapus beberapa data CCTV sekaligus atau mengosongkan seluruh tabel (Admin saja)
+// @Summary      Hapus Massal Data CCTV
+// @Description  Menghapus beberapa perangkat CCTV berdasarkan daftar UUID yang dipilih, atau mengosongkan seluruh tabel CCTV jika opsi 'all' bernilai true.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body BulkDeleteRequest true "Daftar ID CCTV yang akan dihapus atau flag hapus semua"
+// @Success      200 {object} map[string]interface{} "Proses hapus massal berhasil"
+// @Failure      400 {object} map[string]interface{} "Format data tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak"
+// @Failure      500 {object} map[string]interface{} "Gagal menghapus data dari database"
+// @Router       /cctv/bulk-delete [post]
+type BulkDeleteRequest struct {
+	IDs []string `json:"ids"`
+	All bool     `json:"all"`
+}
+
+func BulkDeleteCCTV(c *fiber.Ctx) error {
+	var req BulkDeleteRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if req.All {
+		// Hapus semua data CCTV (soft-delete oleh GORM)
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.CCTV{}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengosongkan seluruh data CCTV",
+			})
+		}
+	} else {
+		if len(req.IDs) == 0 {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Daftar ID CCTV tidak boleh kosong",
+			})
+		}
+
+		// Konversi string IDs ke UUIDs
+		var uuids []uuid.UUID
+		for _, idStr := range req.IDs {
+			parsedUUID, err := uuid.Parse(idStr)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("ID tidak valid: %s", idStr),
+				})
+			}
+			uuids = append(uuids, parsedUUID)
+		}
+
+		// Hapus CCTV berdasarkan ID yang dicocokkan
+		if err := tx.Where("id IN ?", uuids).Delete(&models.CCTV{}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal menghapus data CCTV terpilih",
+			})
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan perubahan transaksi hapus massal",
+		})
+	}
+
+	message := "Berhasil menghapus data CCTV terpilih"
+	if req.All {
+		message = "Berhasil mengosongkan seluruh data CCTV"
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": message,
+	})
+}
+
