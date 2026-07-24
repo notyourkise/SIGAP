@@ -987,6 +987,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti pemeliharaan CCTV. Mengembalikan URL path file yang bisa disimpan ke field image_url pada log pemeliharaan.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Upload"
+                ],
+                "summary": "Unggah Foto Pemeliharaan",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "File gambar (JPEG/PNG/WebP, maks 2MB)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Upload sukses, mengembalikan URL file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Tidak ada file / tipe tidak valid / ukuran melebihi batas",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/users": {
             "get": {
                 "security": [
@@ -1429,6 +1488,10 @@ const docTemplate = `{
                     "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
                     "type": "string"
                 },
+                "image_url": {
+                    "description": "URL dari endpoint /api/upload",
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -1608,6 +1671,10 @@ const docTemplate = `{
                 },
                 "completed_at": {
                     "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
+                    "type": "string"
+                },
+                "image_url": {
+                    "description": "URL baru dari /api/upload (opsional)",
                     "type": "string"
                 },
                 "notes": {

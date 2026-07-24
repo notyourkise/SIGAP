@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"sigap-backend/config"
@@ -21,6 +23,7 @@ type CreateMaintenanceLogRequest struct {
 	Status        string `json:"status" validate:"required,oneof=scheduled ongoing completed failed"`
 	ScheduledDate string `json:"scheduled_date" validate:"omitempty"` // YYYY-MM-DD HH:MM:SS or RFC3339
 	CompletedAt   string `json:"completed_at" validate:"omitempty"`   // YYYY-MM-DD HH:MM:SS or RFC3339
+	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL dari endpoint /api/upload
 }
 
 type UpdateMaintenanceLogRequest struct {
@@ -30,6 +33,7 @@ type UpdateMaintenanceLogRequest struct {
 	Status        string `json:"status" validate:"omitempty,oneof=scheduled ongoing completed failed"`
 	ScheduledDate string `json:"scheduled_date" validate:"omitempty"` // YYYY-MM-DD HH:MM:SS or RFC3339
 	CompletedAt   string `json:"completed_at" validate:"omitempty"`   // YYYY-MM-DD HH:MM:SS or RFC3339
+	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL baru dari /api/upload (opsional)
 }
 
 // CreateMaintenanceLog membuat log pemeliharaan baru (Admin & Teknisi)
@@ -140,6 +144,7 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		Status:        req.Status,
 		ScheduledDate: schedDate,
 		CompletedAt:   compDate,
+		ImageUrl:      req.ImageUrl,
 	}
 
 	if err := config.DB.Create(&logEntry).Error; err != nil {
@@ -355,6 +360,15 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 
+	// Jika image_url baru diberikan, hapus file lama sebelum mengganti
+	if req.ImageUrl != "" && req.ImageUrl != logEntry.ImageUrl {
+		if logEntry.ImageUrl != "" {
+			oldPath := "." + logEntry.ImageUrl // /uploads/xxx.jpg -> ./uploads/xxx.jpg
+			_ = os.Remove(oldPath)            // Abaikan error jika file sudah tidak ada
+		}
+		logEntry.ImageUrl = req.ImageUrl
+	}
+
 	if err := config.DB.Save(&logEntry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -402,6 +416,21 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
+	// AUTO-DELETE: Hapus file fisik jika ada image_url sebelum menghapus record DB
+	if logEntry.ImageUrl != "" {
+		// Konversi URL path (/uploads/xxx.jpg) ke path filesystem (./uploads/xxx.jpg)
+		filePath := "." + logEntry.ImageUrl
+		// Keamanan: pastikan path tidak keluar dari direktori uploads
+		if strings.HasPrefix(logEntry.ImageUrl, "/uploads/") {
+			if removeErr := os.Remove(filePath); removeErr != nil && !os.IsNotExist(removeErr) {
+				// Log error tapi lanjutkan proses penghapusan record DB
+				utils.Log.Warnf("⚠️ Gagal menghapus file fisik lampiran: %v", removeErr)
+			} else {
+				utils.Log.Infof("🗑️ File lampiran foto berhasil dihapus: %s", filePath)
+			}
+		}
+	}
+
 	if err := config.DB.Delete(&logEntry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -411,7 +440,7 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
-		"message": "Log pemeliharaan berhasil dihapus secara soft-delete",
+		"message": "Log pemeliharaan beserta lampiran foto berhasil dihapus",
 	})
 }
 
