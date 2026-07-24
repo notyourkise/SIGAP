@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -471,3 +474,267 @@ func ScanCCTV(c *fiber.Ctx) error {
 		"data":   cctv,
 	})
 }
+
+// DownloadTemplateCCTV mengunduh template Excel kosong untuk import data CCTV (Admin & Teknisi)
+// @Summary      Unduh Template Excel CCTV
+// @Description  Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan kolom header standar untuk mempermudah impor data CCTV secara massal.
+// @Tags         Master CCTV
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Security     BearerAuth
+// @Success      200 {string} string "Berkas template Excel (.xlsx)"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      500 {object} map[string]interface{} "Gagal membuat file template"
+// @Router       /cctv/template [get]
+func DownloadTemplateCCTV(c *fiber.Ctx) error {
+	f := excelize.NewFile()
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// Set nama sheet default
+	sheetName := "Sheet1"
+	
+	// Daftar header kolom template
+	headers := []string{
+		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area", 
+		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik", 
+		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status", 
+		"IP NVR", "IP Camera", "Keterangan",
+	}
+
+	// Tulis header ke baris pertama (Baris 1) secara berurutan
+	for i, header := range headers {
+		colName, err := excelize.ColumnNumberToName(i + 1)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal memproses kolom template",
+			})
+		}
+		cellRef := colName + "1"
+		_ = f.SetCellValue(sheetName, cellRef, header)
+	}
+
+	// Buat buffer memori untuk menyimpan spreadsheet
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menulis file template",
+		})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", "attachment; filename=template_import_cctv.xlsx")
+	
+	return c.Send(buf.Bytes())
+}
+
+// ImportCCTV mengimpor data master CCTV secara massal menggunakan file Excel (Admin saja)
+// @Summary      Impor Massal Data CCTV
+// @Description  Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256 untuk kolom QrPayload.
+// @Tags         Master CCTV
+// @Accept       multipart/form-data
+// @Produce      json
+// @Security     BearerAuth
+// @Param        file formData file true "Berkas Excel Template CCTV (.xlsx)"
+// @Success      200 {object} map[string]interface{} "Proses impor selesai dengan detail jumlah sukses/gagal"
+// @Failure      400 {object} map[string]interface{} "Tidak ada file / format file tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      500 {object} map[string]interface{} "Gagal membaca atau memproses berkas Excel"
+// @Router       /cctv/import [post]
+func ImportCCTV(c *fiber.Ctx) error {
+	// Ambil file dari form-data
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File tidak ditemukan. Pastikan key form-data bernama 'file'.",
+		})
+	}
+
+	// Buka file multipart
+	file, err := fileHeader.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuka file yang diunggah",
+		})
+	}
+	defer file.Close()
+
+	// Baca dengan excelize
+	f, err := excelize.OpenReader(file)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format file tidak valid. Pastikan mengunggah file Excel (.xlsx).",
+		})
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// Baca sheet pertama
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File Excel kosong atau tidak memiliki sheet",
+		})
+	}
+	sheetName := sheets[0]
+
+	// Dapatkan semua baris
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membaca data dari sheet",
+		})
+	}
+
+	// Validasi minimal baris (minimal ada header dan 1 data)
+	if len(rows) <= 1 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File Excel tidak berisi data untuk diimpor",
+		})
+	}
+
+	// Mulai GORM transaction untuk keamanan data (jika salah satu gagal, rollback semua)
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var importedCount int
+
+	for idx, row := range rows {
+		// Lewati header (index 0 adalah Baris 1)
+		if idx == 0 {
+			continue
+		}
+
+		// Jika baris kosong atau tidak memiliki cell apa-apa, lewati
+		if len(row) == 0 || (len(row) > 0 && row[0] == "") {
+			continue
+		}
+
+		// Pastikan panjang array kolom aman diakses (excelize memotong array jika kolom kanan kosong)
+		getCell := func(cellIdx int) string {
+			if cellIdx < len(row) {
+				return row[cellIdx]
+			}
+			return ""
+		}
+
+		kodeCCTV := getCell(0)
+		idChannel := getCell(1)
+		nama := getCell(2)
+		lokasiArea := getCell(3)
+		longitude := getCell(4)
+		latitude := getCell(5)
+		jenisCCTV := getCell(6)
+		sumberListrik := getCell(7)
+		tipeKoneksi := getCell(8)
+		indoorOutdoor := getCell(9)
+		pemilik := getCell(10)
+		status := getCell(11)
+		ipNVR := getCell(12)
+		ipCamera := getCell(13)
+		keterangan := getCell(14)
+
+		// Validasi kolom wajib
+		rowNum := idx + 1
+		if kodeCCTV == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Kode CCTV wajib diisi", rowNum),
+			})
+		}
+		if nama == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Nama CCTV wajib diisi", rowNum),
+			})
+		}
+		if status == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Status wajib diisi", rowNum),
+			})
+		}
+
+		// Cek keunikan Kode CCTV di database (termasuk di transaksi aktif)
+		var existing models.CCTV
+		if err := tx.Where("kode_cctv = ?", kodeCCTV).First(&existing).Error; err == nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Kode CCTV '%s' sudah digunakan", rowNum, kodeCCTV),
+			})
+		}
+
+		// Generate ID & QrPayload
+		newID := uuid.New()
+		encryptedPayload, err := utils.EncryptAES256(newID.String())
+		if err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Gagal memproses enkripsi QR Payload", rowNum),
+			})
+		}
+
+		cctv := models.CCTV{
+			KodeCCTV:      kodeCCTV,
+			IDChannel:     idChannel,
+			Nama:          nama,
+			LokasiArea:    lokasiArea,
+			Longitude:     longitude,
+			Latitude:      latitude,
+			JenisCCTV:     jenisCCTV,
+			SumberListrik: sumberListrik,
+			TipeKoneksi:   tipeKoneksi,
+			IndoorOutdoor: indoorOutdoor,
+			Pemilik:       pemilik,
+			Status:        status,
+			IPNVR:         ipNVR,
+			IPCamera:      ipCamera,
+			Keterangan:    keterangan,
+			QrPayload:     encryptedPayload,
+		}
+		cctv.ID = newID
+
+		if err := tx.Create(&cctv).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Gagal menyimpan data CCTV ke database: %v", rowNum, err),
+			})
+		}
+
+		importedCount++
+	}
+
+	// Commit transaksi jika semua baris valid
+	if err := tx.Commit().Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal melakukan transaksi commit impor data",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"message": fmt.Sprintf("Berhasil mengimpor %d data CCTV secara massal", importedCount),
+	})
+}
+
