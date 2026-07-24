@@ -88,13 +88,23 @@ func CreateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
-	// Cek keunikan kode_cctv
+	// Cek keunikan kode_cctv (termasuk yang di-soft-delete)
 	var existing models.CCTV
-	if err := config.DB.Where("kode_cctv = ?", req.KodeCCTV).First(&existing).Error; err == nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Kode CCTV sudah digunakan oleh perangkat lain",
-		})
+	if err := config.DB.Unscoped().Where("kode_cctv = ?", req.KodeCCTV).First(&existing).Error; err == nil {
+		if existing.DeletedAt.Valid {
+			// Hapus secara permanen data soft-deleted agar tidak memicu error unique constraint di PostgreSQL
+			if err := config.DB.Unscoped().Delete(&existing).Error; err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Gagal membersihkan data CCTV usang di database",
+				})
+			}
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Kode CCTV sudah digunakan oleh perangkat lain",
+			})
+		}
 	}
 
 	// Generate UUID baru secara manual terlebih dahulu untuk kebutuhan enkripsi QrPayload
@@ -672,14 +682,25 @@ func ImportCCTV(c *fiber.Ctx) error {
 			})
 		}
 
-		// Cek keunikan Kode CCTV di database (termasuk di transaksi aktif)
+		// Cek keunikan Kode CCTV di database (termasuk yang di-soft-delete)
 		var existing models.CCTV
-		if err := tx.Where("kode_cctv = ?", kodeCCTV).First(&existing).Error; err == nil {
-			tx.Rollback()
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": fmt.Sprintf("Baris %d: Kode CCTV '%s' sudah digunakan", rowNum, kodeCCTV),
-			})
+		if err := tx.Unscoped().Where("kode_cctv = ?", kodeCCTV).First(&existing).Error; err == nil {
+			if existing.DeletedAt.Valid {
+				// Hapus secara permanen data soft-deleted agar tidak memicu error unique constraint di PostgreSQL
+				if err := tx.Unscoped().Delete(&existing).Error; err != nil {
+					tx.Rollback()
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+						"status":  "error",
+						"message": fmt.Sprintf("Baris %d: Gagal membersihkan data CCTV usang di database", rowNum),
+					})
+				}
+			} else {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Kode CCTV '%s' sudah digunakan", rowNum, kodeCCTV),
+				})
+			}
 		}
 
 		// Generate ID & QrPayload
