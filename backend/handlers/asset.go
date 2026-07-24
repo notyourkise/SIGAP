@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"os"
 	"time"
 
 	"sigap-backend/config"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/skip2/go-qrcode"
 )
 
 type CreateAssetRequest struct {
@@ -470,4 +472,58 @@ func ExportAssets(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	return c.Send(buf.Bytes())
+}
+
+// GetAssetQRCode menghasilkan QR Code untuk aset CCTV tertentu (Admin & Teknisi)
+// @Summary      Unduh QR Code Aset CCTV
+// @Description  Membuat QR Code dalam format PNG berisi URL detail pemeliharaan aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.
+// @Tags         Aset CCTV
+// @Produce      image/png
+// @Security     BearerAuth
+// @Param        id path string true "Asset UUID"
+// @Success      200 {string} string "Gambar QR Code dalam format raw PNG"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      404 {object} map[string]interface{} "Aset tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal memproses QR Code"
+// @Router       /assets/{id}/qrcode [get]
+func GetAssetQRCode(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID aset tidak valid",
+		})
+	}
+
+	var asset models.Asset
+	if err := config.DB.First(&asset, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Aset CCTV tidak ditemukan",
+		})
+	}
+
+	// Ambil URL frontend dari environment variable, default ke http://localhost:3001
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3001"
+	}
+
+	// Konten QR Code berisi link langsung ke halaman pemeliharaan dengan filter asset_id
+	qrContent := fmt.Sprintf("%s/maintenance?asset_id=%s", frontendURL, asset.ID.String())
+
+	// Generate QR Code bytes menggunakan library skip2/go-qrcode
+	// 256px x 256px, Level error correction Medium
+	qrBytes, err := qrcode.Encode(qrContent, qrcode.Medium, 256)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuat gambar QR Code",
+		})
+	}
+
+	c.Set("Content-Type", "image/png")
+	return c.Send(qrBytes)
 }

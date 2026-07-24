@@ -324,3 +324,27 @@ file yang diubah:
 - backend/docs/swagger.json
 - backend/docs/swagger.yaml
 alasan perubahan: Memenuhi kebutuhan pencatatan bukti visual pemeliharaan perangkat CCTV SIGAP IKN, sekaligus menjaga kebersihan penyimpanan server dengan mekanisme Auto-Delete file yatim piatu.
+
+perubahan yang dilakukan: Penyediaan Data Seeder CCTV Default dan Pembuatan QR Code Asset CCTV.
+before:
+- Tidak ada data CCTV default (seeder) saat inisialisasi database awal.
+- Tidak ada endpoint untuk mengunduh QR Code fisik aset CCTV.
+after:
+- Ditambahkan fungsi `SeedAssets` di `models/seeder.go` yang otomatis menyuntikkan 4 aset CCTV dummy dengan koordinat dan IP address di area Jakarta saat pertama kali server diinisialisasi.
+- Dipanggil `models.SeedAssets` di `main.go` setelah inisialisasi koneksi database.
+- Ditambahkan pustaka `github.com/skip2/go-qrcode` untuk kebutuhan encoding string URL ke bentuk QR Code PNG.
+- Diimplementasikan endpoint `GET /api/assets/:id/qrcode` (handler `GetAssetQRCode` di `handlers/asset.go`) yang mendeteksi UUID aset, mengecek kecocokan data di database, dan menghasilkan QR Code (PNG 256x256px) berisi URL detail/maintenance aset pada frontend (`{FRONTEND_URL}/maintenance?asset_id={id}`).
+- Rute baru terproteksi JWT didaftarkan di `routes/asset.go`.
+timestamp: 2026-07-24 14:46 WITA
+kategori: sedang
+file yang diubah:
+- backend/main.go
+- backend/models/seeder.go
+- backend/handlers/asset.go
+- backend/routes/asset.go
+- backend/go.mod
+- backend/go.sum
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memudahkan administrator menyebarkan kode QR fisik pada perangkat CCTV agar teknisi di lapangan tinggal memindai QR Code untuk langsung mencatat pemeliharaan aset CCTV yang bersangkutan.
