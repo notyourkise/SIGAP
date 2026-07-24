@@ -46,6 +46,9 @@ definitions:
       completed_at:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
         type: string
+      image_url:
+        description: URL dari endpoint /api/upload
+        type: string
       notes:
         type: string
       scheduled_date:
@@ -176,6 +179,9 @@ definitions:
         type: string
       completed_at:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      image_url:
+        description: URL baru dari /api/upload (opsional)
         type: string
       notes:
         type: string
@@ -864,6 +870,47 @@ paths:
       summary: Pemicu Panic Buatan
       tags:
       - Pengujian
+  /upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti
+        pemeliharaan CCTV. Mengembalikan URL path file yang bisa disimpan ke field
+        image_url pada log pemeliharaan.
+      parameters:
+      - description: File gambar (JPEG/PNG/WebP, maks 2MB)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Upload sukses, mengembalikan URL file
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Tidak ada file / tipe tidak valid / ukuran melebihi batas
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan file
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unggah Foto Pemeliharaan
+      tags:
+      - Upload
   /users:
     get:
       description: Mengembalikan daftar pengguna terdaftar berdasarkan parameter pencarian,

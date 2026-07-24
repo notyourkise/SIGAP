@@ -54,4 +54,5 @@ type MaintenanceLog struct {
 	Status        string     `gorm:"type:varchar(20);not null" json:"status"`
 	ScheduledDate *time.Time `json:"scheduled_date"`
 	CompletedAt   *time.Time `json:"completed_at"`
+	ImageUrl      string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
 }

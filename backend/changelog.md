@@ -282,3 +282,45 @@ file yang diubah:
 - backend/routes/user.go
 - backend/main.go
 alasan perubahan: Melengkapi kebutuhan administrasi portal SIGAP agar admin dapat mengelola akun pengguna, mereset password, dan menonaktifkan pengguna dengan aman.
+
+perubahan yang dilakukan: Konfigurasi Docker untuk Containerisasi Backend SIGAP dan PostgreSQL.
+before:
+- Tidak ada konfigurasi containerisasi; aplikasi hanya bisa dijalankan secara manual dengan PostgreSQL lokal.
+after:
+- Dibuat `Dockerfile` dengan Multi-stage Build (golang:alpine sebagai builder, alpine murni sebagai runner) untuk menghasilkan image produksi yang kecil dan aman.
+- Dibuat `docker-compose.yml` dengan dua service: `db` (postgres:15-alpine dengan named volume `postgres_data`) dan `api` (build dari Dockerfile, env_file dari `.env.docker`, volume bind `./uploads:/app/uploads`).
+- Dibuat `.env.docker` berisi variabel konfigurasi lingkungan Docker dengan `DB_HOST=db`.
+- Dibuat `.dockerignore` untuk mengecualikan file tidak perlu dari proses build Docker.
+- Service `api` menggunakan `depends_on` dengan kondisi `service_healthy` agar menunggu database siap sebelum API dimulai.
+timestamp: 2026-07-24 09:26 WITA
+kategori: sedang
+file yang diubah:
+- backend/Dockerfile
+- backend/docker-compose.yml
+- backend/.env.docker
+- backend/.dockerignore
+alasan perubahan: Memungkinkan rekan tim menjalankan seluruh stack backend SIGAP (API + PostgreSQL) dengan satu perintah `docker compose up --build` tanpa konfigurasi manual apapun.
+
+perubahan yang dilakukan: Implementasi Lampiran Foto Pemeliharaan CCTV (File Upload & Auto-Delete).
+before:
+- Log pemeliharaan tidak memiliki kemampuan melampirkan bukti foto kegiatan pemeliharaan.
+after:
+- Ditambahkan kolom `image_url VARCHAR(255)` pada tabel `maintenance_logs` melalui penambahan field `ImageUrl` pada struct GORM `MaintenanceLog` di `models/setup.go`.
+- Dibuat endpoint `POST /api/upload` (handler `handlers/upload.go`) yang menerima file multipart/form-data dengan validasi tipe konten (hanya JPEG/PNG/WebP), batas ukuran 2MB, dan penamaan berkas berbasis UUID untuk menghindari tabrakan nama file.
+- Dimodifikasi `handlers/maintenance.go`: struct `CreateMaintenanceLogRequest` dan `UpdateMaintenanceLogRequest` menerima field `image_url`. Saat Update, file lama otomatis dihapus secara fisik jika diganti URL baru.
+- Logika Auto-Delete diterapkan pada `DeleteMaintenanceLog`: sebelum record DB dihapus, sistem mengecek `image_url`, memvalidasi prefix path keamanan (`/uploads/`), lalu menghapus file fisik dari direktori menggunakan `os.Remove`.
+- Ditambahkan `app.Static("/uploads", "./uploads")` di `main.go` agar file gambar yang diunggah dapat diakses publik via URL.
+- Ditambahkan `os.MkdirAll("./uploads")` di startup `main.go` agar direktori dibuat otomatis jika belum ada.
+- Diregistrasikan rute baru `POST /api/upload` di `routes/upload.go` di bawah proteksi middleware `Protected()` JWT.
+timestamp: 2026-07-24 13:54 WITA
+kategori: besar
+file yang diubah:
+- backend/models/setup.go
+- backend/handlers/upload.go
+- backend/handlers/maintenance.go
+- backend/routes/upload.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memenuhi kebutuhan pencatatan bukti visual pemeliharaan perangkat CCTV SIGAP IKN, sekaligus menjaga kebersihan penyimpanan server dengan mekanisme Auto-Delete file yatim piatu.
