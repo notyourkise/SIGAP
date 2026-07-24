@@ -87,7 +87,10 @@ export default function CCTVPage() {
     keterangan: ''
   });
 
-  // Scanner Simulator / Input State
+  // Scanner State
+  const scannerRef = React.useRef<any>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
   const [scanPayload, setScanPayload] = useState('');
   const [scannedResult, setScannedResult] = useState<CCTV | null>(null);
   const [scanError, setScanError] = useState('');
@@ -281,7 +284,124 @@ export default function CCTVPage() {
     }
   };
 
-  // Scan QR Code
+  // Handle scanned QR code text
+  const handleDecodedQR = async (decodedText: string) => {
+    // Hentikan camera scan agar tidak membaca berkali-kali
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      await scannerRef.current.stop().catch((err: any) => console.error(err));
+      setCameraActive(false);
+    }
+    
+    setScanLoading(true);
+    setScanError('');
+    setScanPayload(decodedText);
+    setScannedResult(null);
+
+    try {
+      const response = await apiRequest<CCTV>('/cctv/scan', {
+        method: 'POST',
+        body: JSON.stringify({ qr_payload: decodedText.trim() })
+      });
+
+      if (response.status === 'success' && response.data) {
+        setScannedResult(response.data);
+      }
+    } catch (err: any) {
+      setScanError(err.message || 'QR Payload tidak valid atau gagal didekripsi');
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  // Start webcam scanner
+  const startCameraScanner = () => {
+    setScanError('');
+    setScannedResult(null);
+    setScanPayload('');
+    
+    setTimeout(() => {
+      import('html5-qrcode').then((module) => {
+        if (scannerRef.current && scannerRef.current.isScanning) {
+          scannerRef.current.stop().then(() => {
+            initializeScanner(module);
+          }).catch(() => {
+            initializeScanner(module);
+          });
+        } else {
+          initializeScanner(module);
+        }
+      }).catch(err => {
+        setScanError('Gagal memuat modul kamera: ' + err.message);
+      });
+    }, 300);
+  };
+
+  const initializeScanner = (module: any) => {
+    try {
+      const html5Qr = new module.Html5Qrcode("reader");
+      scannerRef.current = html5Qr;
+
+      html5Qr.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: (width: number, height: number) => {
+            const size = Math.min(width, height) * 0.7;
+            return { width: size, height: size };
+          }
+        },
+        (decodedText: string) => {
+          handleDecodedQR(decodedText);
+        },
+        () => {
+          // Abaikan log frame
+        }
+      ).then(() => {
+        setCameraActive(true);
+      }).catch((err: any) => {
+        console.error("Camera start error:", err);
+        setScanError("Gagal mengakses kamera. Pastikan izin kamera telah diberikan atau gunakan input manual.");
+        setCameraActive(false);
+      });
+    } catch (e: any) {
+      console.error(e);
+      setScanError("Inisialisasi pemindai gagal: " + e.message);
+    }
+  };
+
+  // Stop camera scanner
+  const stopCameraScanner = async () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      await scannerRef.current.stop().catch((err: any) => console.error("Gagal stop camera:", err));
+    }
+    setCameraActive(false);
+  };
+
+  // Effect to handle modal open/close scanner trigger
+  useEffect(() => {
+    if (isScanModalOpen && !scannedResult && !showManualInput) {
+      startCameraScanner();
+    } else {
+      stopCameraScanner();
+    }
+
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch((err: any) => console.error("Cleanup error:", err));
+      }
+    };
+  }, [isScanModalOpen, scannedResult, showManualInput]);
+
+  const handleCloseScanModal = async () => {
+    await stopCameraScanner();
+    setIsScanModalOpen(false);
+    setScannedResult(null);
+    setScanPayload('');
+    setScanError('');
+    setShowManualInput(false);
+  };
+
+  // Manual Scan Input Handler (Backup)
   const handleScanCCTV = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanPayload) {
@@ -837,38 +957,106 @@ export default function CCTVPage() {
                   <Scan className="h-5 w-5 text-blue-500" />
                   <h3 className="text-xl font-bold">Scanner QR Code CCTV</h3>
                 </div>
-                <button onClick={() => { setIsScanModalOpen(false); setScannedResult(null); setScanPayload(''); }} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <button onClick={handleCloseScanModal} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {!scannedResult ? (
-                <form onSubmit={handleScanCCTV} className="space-y-4">
-                  <div className="p-6 rounded-xl bg-background border border-border border-dashed text-center flex flex-col items-center justify-center space-y-3 relative overflow-hidden">
-                    <div className="h-16 w-16 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center animate-pulse">
-                      <Scan className="h-8 w-8" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold">Simulasi Pemindaian Kode QR</h4>
-                      <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-                        Tempel/masukkan string payload terenkripsi AES-256 yang dibaca dari kamera CCTV fisik di bawah ini.
-                      </p>
-                    </div>
-                    {/* Laser Scanner animation effect */}
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_2s_infinite] shadow-lg shadow-blue-500/50"></div>
+                <div className="space-y-4">
+                  {/* Toggle Mode Button */}
+                  <div className="flex justify-center border-b border-border pb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowManualInput(!showManualInput);
+                        setScanError('');
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background hover:text-foreground text-gray-500 transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                    >
+                      {showManualInput ? (
+                        <>
+                          <Camera className="h-4 w-4 text-blue-500" />
+                          <span>Gunakan Kamera Live</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 text-emerald-500" />
+                          <span>Input Teks Manual</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Payload Enkripsi QR</label>
-                    <textarea
-                      required
-                      value={scanPayload}
-                      onChange={(e) => setScanPayload(e.target.value)}
-                      placeholder="Tempel string hex terenkripsi di sini..."
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                    />
-                  </div>
+                  {!showManualInput ? (
+                    /* CAMERA SCANNER VIEW */
+                    <div className="space-y-4 text-center">
+                      <div className="relative mx-auto w-full max-w-sm aspect-square overflow-hidden rounded-2xl bg-black border border-border flex items-center justify-center">
+                        {/* html5-qrcode video container */}
+                        <div id="reader" className="w-full h-full"></div>
+                        
+                        {/* Custom overlay laser scan animation */}
+                        {cameraActive && (
+                          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_2s_infinite] shadow-lg shadow-blue-500/50 pointer-events-none z-10"></div>
+                        )}
+                        
+                        {!cameraActive && !scanError && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-card/90 z-20">
+                            <div className="h-12 w-12 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center animate-spin border-2 border-blue-500 border-t-transparent"></div>
+                            <span className="text-xs text-gray-400 font-medium">Menghubungkan Kamera...</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-gray-400 max-w-xs mx-auto">
+                        Posisikan QR Code CCTV fisik tepat di dalam kotak pemindaian kamera Anda.
+                      </p>
+                    </div>
+                  ) : (
+                    /* MANUAL TEXT INPUT VIEW */
+                    <form onSubmit={handleScanCCTV} className="space-y-4">
+                      <div className="p-6 rounded-xl bg-background border border-border border-dashed text-center flex flex-col items-center justify-center space-y-3 relative overflow-hidden">
+                        <div className="h-16 w-16 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                          <Scan className="h-8 w-8" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold">Input Payload QR Manual</h4>
+                          <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
+                            Masukkan atau tempel string payload terenkripsi AES-256 CCTV di bawah ini.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400">Payload Enkripsi QR</label>
+                        <textarea
+                          required
+                          value={scanPayload}
+                          onChange={(e) => setScanPayload(e.target.value)}
+                          placeholder="Tempel string hex terenkripsi di sini..."
+                          rows={3}
+                          className="w-full px-3 py-2 rounded-lg border border-input-border bg-input font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 border-t border-border pt-4">
+                        <button
+                          type="button"
+                          onClick={handleCloseScanModal}
+                          className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={scanLoading}
+                          className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
+                        >
+                          {scanLoading ? 'Mendekripsi...' : 'Dekripsi & Identifikasi'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   {scanError && (
                     <div className="p-3 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-xs flex items-center gap-2">
@@ -877,23 +1065,18 @@ export default function CCTVPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-end gap-2 border-t border-border pt-4">
-                    <button
-                      type="button"
-                      onClick={() => { setIsScanModalOpen(false); setScanPayload(''); }}
-                      className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={scanLoading}
-                      className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
-                    >
-                      {scanLoading ? 'Mendekripsi...' : 'Dekripsi & Identifikasi'}
-                    </button>
-                  </div>
-                </form>
+                  {!showManualInput && (
+                    <div className="flex justify-end gap-2 border-t border-border pt-4">
+                      <button
+                        type="button"
+                        onClick={handleCloseScanModal}
+                        className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
+                      >
+                        Tutup
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className="p-4.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-xs flex items-center gap-2 font-medium">
@@ -947,14 +1130,17 @@ export default function CCTVPage() {
                   <div className="flex justify-end gap-2 border-t border-border pt-4">
                     <button
                       type="button"
-                      onClick={() => setScannedResult(null)}
+                      onClick={() => {
+                        setScannedResult(null);
+                        if (!showManualInput) startCameraScanner();
+                      }}
                       className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
                     >
                       Scan Lagi
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setIsScanModalOpen(false); setScannedResult(null); setScanPayload(''); }}
+                      onClick={handleCloseScanModal}
                       className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-sm cursor-pointer"
                     >
                       Selesai
