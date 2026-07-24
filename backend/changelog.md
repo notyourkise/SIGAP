@@ -348,3 +348,26 @@ file yang diubah:
 - backend/docs/swagger.json
 - backend/docs/swagger.yaml
 alasan perubahan: Memudahkan administrator menyebarkan kode QR fisik pada perangkat CCTV agar teknisi di lapangan tinggal memindai QR Code untuk langsung mencatat pemeliharaan aset CCTV yang bersangkutan.
+
+perubahan yang dilakukan: Implementasi Master Data CCTV dan QR Code Terenkripsi AES-256 (GCM).
+before:
+- Tidak ada modul khusus untuk master data detail spesifikasi CCTV (general info).
+- Scanner QR code CCTV fisik belum mendukung dekripsi payload aman berbasis enkripsi tingkat militer (AES-256).
+after:
+- Dibuat `backend/utils/encryption.go` berisi helper `EncryptAES256` dan `DecryptAES256` menggunakan AES-256-GCM terenkripsi dengan kunci simetris `AES_SECRET_KEY` dari `.env`.
+- Dibuat model database `models.CCTV` (`backend/models/cctv.go`) yang mendata spesifikasi detail general CCTV (tanpa kredensial login) dan didaftarkan ke AutoMigrate di `main.go`.
+- Diimplementasikan CRUD lengkap untuk CCTV di `backend/handlers/cctv.go`. Pada saat pembuatan (`CreateCCTV`), UUID perangkat dienkripsi menjadi string acak dan disimpan di kolom `QrPayload`.
+- Dibuat endpoint scanner khusus `POST /api/cctv/scan` (`ScanCCTV` di `handlers/cctv.go`) yang mendekompresi payload QR terenkripsi, mencari kecocokan perangkat di database, dan mengembalikan data spesifikasi umum.
+- Rute-rute baru dilindungi JWT dan didaftarkan di `backend/routes/cctv.go` serta dihubungkan ke `main.go`.
+timestamp: 2026-07-24 15:06 WITA
+kategori: besar
+file yang diubah:
+- backend/utils/encryption.go
+- backend/models/cctv.go
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memungkinkan inventarisasi detail CCTV secara mandiri tanpa membocorkan kredensial, serta meningkatkan keamanan operasional melalui pelabelan kode QR terenkripsi tingkat tinggi.
