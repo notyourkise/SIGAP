@@ -37,6 +37,11 @@ func main() {
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
 
+	// 1.5. Pastikan direktori uploads tersedia untuk lampiran foto pemeliharaan
+	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
+		utils.Log.Fatalf("❌ Gagal membuat direktori uploads: %v", err)
+	}
+
 	// 2. Jalankan Auto-Migrate (Mencetak tabel otomatis ke PostgreSQL)
 	err := config.DB.AutoMigrate(
 		&models.User{},
@@ -71,12 +76,16 @@ func main() {
 	// Rute Dokumentasi Swagger UI
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
+	// Sajikan folder uploads sebagai direktori statis (untuk akses gambar lampiran foto)
+	app.Static("/uploads", "./uploads")
+
 	// 4. Setup Routes dengan Global Rate Limiting
 	api := app.Group("/api", middleware.GlobalLimiter())
 	routes.SetupAuthRoutes(api)
 	routes.SetupAssetRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
 	routes.SetupUserRoutes(api)
+	routes.SetupUploadRoutes(api)
 
 	// Rute Health Check
 	api.Get("/health", handlers.HealthCheck)
