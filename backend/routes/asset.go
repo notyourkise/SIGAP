@@ -15,6 +15,7 @@ func SetupAssetRoutes(router fiber.Router) {
 	assetGroup.Get("/", handlers.GetAllAssets)
 	assetGroup.Get("/export", handlers.ExportAssets)
 	assetGroup.Get("/:id", handlers.GetAssetByID)
+	assetGroup.Get("/:id/qrcode", handlers.GetAssetQRCode)
 
 	// Rute yang hanya dapat diakses oleh Admin
 	assetGroup.Post("/", middleware.RequireRole("admin"), handlers.CreateAsset)

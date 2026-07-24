@@ -435,6 +435,48 @@ paths:
       summary: Update Aset CCTV
       tags:
       - Aset CCTV
+  /assets/{id}/qrcode:
+    get:
+      description: Membuat QR Code dalam format PNG berisi URL detail pemeliharaan
+        aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.
+      parameters:
+      - description: Asset UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: Gambar QR Code dalam format raw PNG
+          schema:
+            type: string
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Aset tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memproses QR Code
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unduh QR Code Aset CCTV
+      tags:
+      - Aset CCTV
   /assets/export:
     get:
       description: Mengunduh seluruh aset CCTV terfilter (tanpa limit halaman) dalam

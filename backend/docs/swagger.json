@@ -403,6 +403,68 @@
                 }
             }
         },
+        "/assets/{id}/qrcode": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat QR Code dalam format PNG berisi URL detail pemeliharaan aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "Aset CCTV"
+                ],
+                "summary": "Unduh QR Code Aset CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Asset UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Gambar QR Code dalam format raw PNG",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Aset tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memproses QR Code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Masuk ke sistem SIGAP menggunakan username/email dan password, mengembalikan token JWT.",

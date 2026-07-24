@@ -48,8 +48,9 @@ func main() {
 	}
 	utils.Log.Info("✅ Migrasi tabel database berhasil!")
 
-	// Jalankan Seeder untuk Admin Default pertama kali
+	// Jalankan Seeder untuk Admin Default & Aset CCTV pertama kali
 	models.SeedAdmin(config.DB)
+	models.SeedAssets(config.DB)
 
 	// 3. Inisialisasi Aplikasi Fiber
 	app := fiber.New()
