@@ -1,0 +1,856 @@
+package handlers
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"sigap-backend/config"
+	"sigap-backend/models"
+	"sigap-backend/utils"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
+	"gorm.io/gorm"
+)
+
+// Request body untuk pembuatan CCTV baru
+type CreateCCTVRequest struct {
+	KodeCCTV      string `json:"kode_cctv" validate:"required,min=3,max=50"`
+	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string `json:"nama" validate:"required,min=3,max=100"`
+	LokasiArea    string `json:"lokasi_area" validate:"omitempty,max=255"`
+	Longitude     string `json:"longitude" validate:"omitempty,max=50"`
+	Latitude      string `json:"latitude" validate:"omitempty,max=50"`
+	JenisCCTV     string `json:"jenis_cctv" validate:"omitempty,max=50"`
+	SumberListrik string `json:"sumber_listrik" validate:"omitempty,max=50"`
+	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
+	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
+	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
+	Status        string `json:"status" validate:"required,oneof=aktif rusak pemeliharaan nonaktif"`
+	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
+	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
+	Keterangan    string `json:"keterangan" validate:"omitempty"`
+}
+
+// Request body untuk update data CCTV
+type UpdateCCTVRequest struct {
+	KodeCCTV      string `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
+	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string `json:"nama" validate:"omitempty,min=3,max=100"`
+	LokasiArea    string `json:"lokasi_area" validate:"omitempty,max=255"`
+	Longitude     string `json:"longitude" validate:"omitempty,max=50"`
+	Latitude      string `json:"latitude" validate:"omitempty,max=50"`
+	JenisCCTV     string `json:"jenis_cctv" validate:"omitempty,max=50"`
+	SumberListrik string `json:"sumber_listrik" validate:"omitempty,max=50"`
+	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
+	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
+	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
+	Status        string `json:"status" validate:"omitempty,oneof=aktif rusak pemeliharaan nonaktif"`
+	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
+	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
+	Keterangan    string `json:"keterangan" validate:"omitempty"`
+}
+
+// Request body untuk scanner QR Payload
+type ScanCCTVRequest struct {
+	QrPayload string `json:"qr_payload" validate:"required"`
+}
+
+// CreateCCTV membuat data CCTV baru & meng-generate QR Payload AES terenkripsi (Admin saja)
+// @Summary      Tambah Data CCTV
+// @Description  Membuat record master data CCTV baru. Sistem otomatis membuat UUID ID baru, mengenkripsinya dengan AES-256, lalu menyimpan hasilnya sebagai QrPayload unik.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body CreateCCTVRequest true "Data CCTV Baru"
+// @Success      201 {object} map[string]interface{} "Data CCTV berhasil disimpan"
+// @Failure      400 {object} map[string]interface{} "Format input salah, validasi gagal, kode_cctv duplikat"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      500 {object} map[string]interface{} "Gagal mengenkripsi atau menyimpan data ke database"
+// @Router       /cctv [post]
+func CreateCCTV(c *fiber.Ctx) error {
+	var req CreateCCTVRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Validasi input gagal",
+			"errors":  errs,
+		})
+	}
+
+	// Cek keunikan kode_cctv (termasuk yang di-soft-delete)
+	var existing models.CCTV
+	if err := config.DB.Unscoped().Where("kode_cctv = ?", req.KodeCCTV).First(&existing).Error; err == nil {
+		if existing.DeletedAt.Valid {
+			// Hapus secara permanen data soft-deleted agar tidak memicu error unique constraint di PostgreSQL
+			if err := config.DB.Unscoped().Delete(&existing).Error; err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Gagal membersihkan data CCTV usang di database",
+				})
+			}
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Kode CCTV sudah digunakan oleh perangkat lain",
+			})
+		}
+	}
+
+	// Generate UUID baru secara manual terlebih dahulu untuk kebutuhan enkripsi QrPayload
+	newID := uuid.New()
+	encryptedPayload, err := utils.EncryptAES256(newID.String())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memproses pembuatan QR payload terenkripsi",
+		})
+	}
+
+	cctv := models.CCTV{
+		KodeCCTV:      req.KodeCCTV,
+		IDChannel:     req.IDChannel,
+		Nama:          req.Nama,
+		LokasiArea:    req.LokasiArea,
+		Longitude:     req.Longitude,
+		Latitude:      req.Latitude,
+		JenisCCTV:     req.JenisCCTV,
+		SumberListrik: req.SumberListrik,
+		TipeKoneksi:   req.TipeKoneksi,
+		IndoorOutdoor: req.IndoorOutdoor,
+		Pemilik:       req.Pemilik,
+		Status:        req.Status,
+		IPNVR:         req.IPNVR,
+		IPCamera:      req.IPCamera,
+		Keterangan:    req.Keterangan,
+		QrPayload:     encryptedPayload,
+	}
+	cctv.ID = newID // Set ID yang sudah dienkripsi tadi
+
+	if err := config.DB.Create(&cctv).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan data CCTV ke database",
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"status": "success",
+		"data":   cctv,
+	})
+}
+
+// GetAllCCTV mengambil daftar master data CCTV terpaginasi (Admin & Teknisi)
+// @Summary      Ambil Semua Data CCTV
+// @Description  Mendapatkan daftar data master CCTV dengan paginasi, pencarian, dan penyaringan berdasarkan status, lokasi, jenis, pemilik, dll.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        status query string false "Filter berdasarkan status"
+// @Param        jenis_cctv query string false "Filter berdasarkan jenis CCTV"
+// @Param        indoor_outdoor query string false "Filter berdasarkan indoor/outdoor"
+// @Param        search query string false "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area"
+// @Param        page query integer false "Nomor Halaman (default: 1)"
+// @Param        limit query integer false "Jumlah data per halaman (default: 10)"
+// @Param        sort_by query string false "Kolom pengurutan (default: created_at)"
+// @Param        order query string false "Arah pengurutan: asc, desc (default: desc)"
+// @Success      200 {object} map[string]interface{} "Daftar CCTV terpaginasi"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Router       /cctv [get]
+func GetAllCCTV(c *fiber.Ctx) error {
+	var cctvs []models.CCTV
+	query := config.DB.Model(&models.CCTV{})
+
+	// Filter
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if jenis := c.Query("jenis_cctv"); jenis != "" {
+		query = query.Where("jenis_cctv = ?", jenis)
+	}
+	if io := c.Query("indoor_outdoor"); io != "" {
+		query = query.Where("indoor_outdoor = ?", io)
+	}
+
+	// Pencarian
+	if search := c.Query("search"); search != "" {
+		query = query.Where("nama ILIKE ? OR kode_cctv ILIKE ? OR id_channel ILIKE ? OR lokasi_area ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Paginasi & Sorting
+	allowedSort := []string{"id", "kode_cctv", "nama", "lokasi_area", "status", "created_at", "updated_at"}
+	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
+
+	var totalRows int64
+	if err := query.Count(&totalRows).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung total data CCTV",
+		})
+	}
+
+	offset := (page - 1) * limit
+	if err := query.Offset(offset).Limit(limit).Order(sort).Find(&cctvs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil daftar data CCTV",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"rows":       cctvs,
+			"pagination": utils.CalculatePagination(totalRows, page, limit),
+		},
+	})
+}
+
+// GetCCTVByID mengambil data detail CCTV berdasarkan UUID (Admin & Teknisi)
+// @Summary      Ambil CCTV Detail
+// @Description  Mendapatkan detail CCTV berdasarkan UUID-nya.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "Detail data CCTV ditemukan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Router       /cctv/{id} [get]
+func GetCCTVByID(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   cctv,
+	})
+}
+
+// UpdateCCTV mengedit data CCTV (Admin saja)
+// @Summary      Edit Data CCTV
+// @Description  Mengubah detail data master CCTV yang sudah terdaftar. Hanya dapat diakses oleh Admin.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Param        request body UpdateCCTVRequest true "Data Update CCTV"
+// @Success      200 {object} map[string]interface{} "Data CCTV berhasil diperbarui"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid, format body salah, atau validasi gagal"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal menyimpan perubahan ke database"
+// @Router       /cctv/{id} [put]
+func UpdateCCTV(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	var req UpdateCCTVRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Validasi input gagal",
+			"errors":  errs,
+		})
+	}
+
+	// Update field jika disediakan
+	if req.KodeCCTV != "" && req.KodeCCTV != cctv.KodeCCTV {
+		// Validasi keunikan kode baru
+		var existing models.CCTV
+		if err := config.DB.Where("kode_cctv = ? AND id != ?", req.KodeCCTV, id).First(&existing).Error; err == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Kode CCTV sudah digunakan oleh perangkat lain",
+			})
+		}
+		cctv.KodeCCTV = req.KodeCCTV
+	}
+
+	if req.IDChannel != "" {
+		cctv.IDChannel = req.IDChannel
+	}
+	if req.Nama != "" {
+		cctv.Nama = req.Nama
+	}
+	if req.LokasiArea != "" {
+		cctv.LokasiArea = req.LokasiArea
+	}
+	if req.Longitude != "" {
+		cctv.Longitude = req.Longitude
+	}
+	if req.Latitude != "" {
+		cctv.Latitude = req.Latitude
+	}
+	if req.JenisCCTV != "" {
+		cctv.JenisCCTV = req.JenisCCTV
+	}
+	if req.SumberListrik != "" {
+		cctv.SumberListrik = req.SumberListrik
+	}
+	if req.TipeKoneksi != "" {
+		cctv.TipeKoneksi = req.TipeKoneksi
+	}
+	if req.IndoorOutdoor != "" {
+		cctv.IndoorOutdoor = req.IndoorOutdoor
+	}
+	if req.Pemilik != "" {
+		cctv.Pemilik = req.Pemilik
+	}
+	if req.Status != "" {
+		cctv.Status = req.Status
+	}
+	if req.IPNVR != "" {
+		cctv.IPNVR = req.IPNVR
+	}
+	if req.IPCamera != "" {
+		cctv.IPCamera = req.IPCamera
+	}
+	if req.Keterangan != "" {
+		cctv.Keterangan = req.Keterangan
+	}
+
+	if err := config.DB.Save(&cctv).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memperbarui data CCTV",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   cctv,
+	})
+}
+
+// DeleteCCTV menghapus data CCTV secara soft-delete (Admin saja)
+// @Summary      Hapus Data CCTV
+// @Description  Menghapus data CCTV secara soft-delete berdasarkan UUID. Hanya dapat diakses oleh Admin.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "Data CCTV berhasil dihapus secara soft-delete"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Router       /cctv/{id} [delete]
+func DeleteCCTV(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	if err := config.DB.Delete(&cctv).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghapus data CCTV",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Data CCTV berhasil dihapus secara soft-delete",
+	})
+}
+
+// ScanCCTV mendekripsi payload QR code dan mengembalikan detail CCTV yang bersangkutan (Admin & Teknisi)
+// @Summary      Scan & Identifikasi CCTV via QR Payload
+// @Description  Menerima parameter string QR Payload terenkripsi, mendekripsinya menggunakan AES-256 untuk mendapatkan UUID asli, lalu mengembalikan data umum CCTV yang cocok.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body ScanCCTVRequest true "Payload QR Terenkripsi dari CCTV fisik"
+// @Success      200 {object} map[string]interface{} "Identitas CCTV berhasil dipindai dan ditemukan"
+// @Failure      400 {object} map[string]interface{} "QR Payload tidak valid atau gagal didekripsi"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      404 {object} map[string]interface{} "Data CCTV tidak ditemukan di database"
+// @Router       /cctv/scan [post]
+func ScanCCTV(c *fiber.Ctx) error {
+	var req ScanCCTVRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "QR payload tidak boleh kosong",
+		})
+	}
+
+	// Lakukan dekripsi payload
+	decryptedUUID, err := utils.DecryptAES256(req.QrPayload)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "QR payload tidak valid atau gagal didekripsi secara aman",
+		})
+	}
+
+	// Parse hasil dekripsi menjadi UUID
+	cctvID, err := uuid.Parse(decryptedUUID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Kunci enkripsi QR tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", cctvID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Perangkat CCTV tidak terdaftar dalam sistem",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Terjadi kesalahan internal saat membaca data",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   cctv,
+	})
+}
+
+// DownloadTemplateCCTV mengunduh template Excel kosong untuk import data CCTV (Admin & Teknisi)
+// @Summary      Unduh Template Excel CCTV
+// @Description  Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan kolom header standar untuk mempermudah impor data CCTV secara massal.
+// @Tags         Master CCTV
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Security     BearerAuth
+// @Success      200 {string} string "Berkas template Excel (.xlsx)"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      500 {object} map[string]interface{} "Gagal membuat file template"
+// @Router       /cctv/template [get]
+func DownloadTemplateCCTV(c *fiber.Ctx) error {
+	f := excelize.NewFile()
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// Set nama sheet default
+	sheetName := "Sheet1"
+	
+	// Daftar header kolom template
+	headers := []string{
+		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area", 
+		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik", 
+		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status", 
+		"IP NVR", "IP Camera", "Keterangan",
+	}
+
+	// Tulis header ke baris pertama (Baris 1) secara berurutan
+	for i, header := range headers {
+		colName, err := excelize.ColumnNumberToName(i + 1)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal memproses kolom template",
+			})
+		}
+		cellRef := colName + "1"
+		_ = f.SetCellValue(sheetName, cellRef, header)
+	}
+
+	// Buat buffer memori untuk menyimpan spreadsheet
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menulis file template",
+		})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", "attachment; filename=template_import_cctv.xlsx")
+	
+	return c.Send(buf.Bytes())
+}
+
+// ImportCCTV mengimpor data master CCTV secara massal menggunakan file Excel (Admin saja)
+// @Summary      Impor Massal Data CCTV
+// @Description  Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256 untuk kolom QrPayload.
+// @Tags         Master CCTV
+// @Accept       multipart/form-data
+// @Produce      json
+// @Security     BearerAuth
+// @Param        file formData file true "Berkas Excel Template CCTV (.xlsx)"
+// @Success      200 {object} map[string]interface{} "Proses impor selesai dengan detail jumlah sukses/gagal"
+// @Failure      400 {object} map[string]interface{} "Tidak ada file / format file tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      500 {object} map[string]interface{} "Gagal membaca atau memproses berkas Excel"
+// @Router       /cctv/import [post]
+func ImportCCTV(c *fiber.Ctx) error {
+	// Ambil file dari form-data
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File tidak ditemukan. Pastikan key form-data bernama 'file'.",
+		})
+	}
+
+	// Buka file multipart
+	file, err := fileHeader.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuka file yang diunggah",
+		})
+	}
+	defer file.Close()
+
+	// Baca dengan excelize
+	f, err := excelize.OpenReader(file)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format file tidak valid. Pastikan mengunggah file Excel (.xlsx).",
+		})
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// Baca sheet pertama
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File Excel kosong atau tidak memiliki sheet",
+		})
+	}
+	sheetName := sheets[0]
+
+	// Dapatkan semua baris
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membaca data dari sheet",
+		})
+	}
+
+	// Validasi minimal baris (minimal ada header dan 1 data)
+	if len(rows) <= 1 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File Excel tidak berisi data untuk diimpor",
+		})
+	}
+
+	// Mulai GORM transaction untuk keamanan data (jika salah satu gagal, rollback semua)
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var importedCount int
+
+	for idx, row := range rows {
+		// Lewati header (index 0 adalah Baris 1)
+		if idx == 0 {
+			continue
+		}
+
+		// Jika baris kosong atau tidak memiliki cell apa-apa, lewati
+		if len(row) == 0 || (len(row) > 0 && row[0] == "") {
+			continue
+		}
+
+		// Pastikan panjang array kolom aman diakses (excelize memotong array jika kolom kanan kosong)
+		getCell := func(cellIdx int) string {
+			if cellIdx < len(row) {
+				return row[cellIdx]
+			}
+			return ""
+		}
+
+		kodeCCTV := getCell(0)
+		idChannel := getCell(1)
+		nama := getCell(2)
+		lokasiArea := getCell(3)
+		longitude := getCell(4)
+		latitude := getCell(5)
+		jenisCCTV := getCell(6)
+		sumberListrik := getCell(7)
+		tipeKoneksi := getCell(8)
+		indoorOutdoor := getCell(9)
+		pemilik := getCell(10)
+		status := getCell(11)
+		ipNVR := getCell(12)
+		ipCamera := getCell(13)
+		keterangan := getCell(14)
+
+		// Validasi kolom wajib
+		rowNum := idx + 1
+		if kodeCCTV == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Kode CCTV wajib diisi", rowNum),
+			})
+		}
+		if nama == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Nama CCTV wajib diisi", rowNum),
+			})
+		}
+		if status == "" {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Status wajib diisi", rowNum),
+			})
+		}
+
+		// Cek keunikan Kode CCTV di database (termasuk yang di-soft-delete)
+		var existing models.CCTV
+		if err := tx.Unscoped().Where("kode_cctv = ?", kodeCCTV).First(&existing).Error; err == nil {
+			if existing.DeletedAt.Valid {
+				// Hapus secara permanen data soft-deleted agar tidak memicu error unique constraint di PostgreSQL
+				if err := tx.Unscoped().Delete(&existing).Error; err != nil {
+					tx.Rollback()
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+						"status":  "error",
+						"message": fmt.Sprintf("Baris %d: Gagal membersihkan data CCTV usang di database", rowNum),
+					})
+				}
+			} else {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Kode CCTV '%s' sudah digunakan", rowNum, kodeCCTV),
+				})
+			}
+		}
+
+		// Generate ID & QrPayload
+		newID := uuid.New()
+		encryptedPayload, err := utils.EncryptAES256(newID.String())
+		if err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Gagal memproses enkripsi QR Payload", rowNum),
+			})
+		}
+
+		cctv := models.CCTV{
+			KodeCCTV:      kodeCCTV,
+			IDChannel:     idChannel,
+			Nama:          nama,
+			LokasiArea:    lokasiArea,
+			Longitude:     longitude,
+			Latitude:      latitude,
+			JenisCCTV:     jenisCCTV,
+			SumberListrik: sumberListrik,
+			TipeKoneksi:   tipeKoneksi,
+			IndoorOutdoor: indoorOutdoor,
+			Pemilik:       pemilik,
+			Status:        status,
+			IPNVR:         ipNVR,
+			IPCamera:      ipCamera,
+			Keterangan:    keterangan,
+			QrPayload:     encryptedPayload,
+		}
+		cctv.ID = newID
+
+		if err := tx.Create(&cctv).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Gagal menyimpan data CCTV ke database: %v", rowNum, err),
+			})
+		}
+
+		importedCount++
+	}
+
+	// Commit transaksi jika semua baris valid
+	if err := tx.Commit().Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal melakukan transaksi commit impor data",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"message": fmt.Sprintf("Berhasil mengimpor %d data CCTV secara massal", importedCount),
+	})
+}
+
+// BulkDeleteCCTV menghapus beberapa data CCTV sekaligus atau mengosongkan seluruh tabel (Admin saja)
+// @Summary      Hapus Massal Data CCTV
+// @Description  Menghapus beberapa perangkat CCTV berdasarkan daftar UUID yang dipilih, atau mengosongkan seluruh tabel CCTV jika opsi 'all' bernilai true.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body BulkDeleteRequest true "Daftar ID CCTV yang akan dihapus atau flag hapus semua"
+// @Success      200 {object} map[string]interface{} "Proses hapus massal berhasil"
+// @Failure      400 {object} map[string]interface{} "Format data tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak"
+// @Failure      500 {object} map[string]interface{} "Gagal menghapus data dari database"
+// @Router       /cctv/bulk-delete [post]
+type BulkDeleteRequest struct {
+	IDs []string `json:"ids"`
+	All bool     `json:"all"`
+}
+
+func BulkDeleteCCTV(c *fiber.Ctx) error {
+	var req BulkDeleteRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if req.All {
+		// Hapus semua data CCTV (soft-delete oleh GORM)
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.CCTV{}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengosongkan seluruh data CCTV",
+			})
+		}
+	} else {
+		if len(req.IDs) == 0 {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Daftar ID CCTV tidak boleh kosong",
+			})
+		}
+
+		// Konversi string IDs ke UUIDs
+		var uuids []uuid.UUID
+		for _, idStr := range req.IDs {
+			parsedUUID, err := uuid.Parse(idStr)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("ID tidak valid: %s", idStr),
+				})
+			}
+			uuids = append(uuids, parsedUUID)
+		}
+
+		// Hapus CCTV berdasarkan ID yang dicocokkan
+		if err := tx.Where("id IN ?", uuids).Delete(&models.CCTV{}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal menghapus data CCTV terpilih",
+			})
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan perubahan transaksi hapus massal",
+		})
+	}
+
+	message := "Berhasil menghapus data CCTV terpilih"
+	if req.All {
+		message = "Berhasil mengosongkan seluruh data CCTV"
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": message,
+	})
+}
+

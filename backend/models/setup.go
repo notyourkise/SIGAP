@@ -15,9 +15,11 @@ type Base struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
-// Hook GORM: Generate UUID secara otomatis sebelum data disimpan ke database
+// Hook GORM: Generate UUID secara otomatis sebelum data disimpan ke database jika belum diisi
 func (base *Base) BeforeCreate(tx *gorm.DB) (err error) {
-	base.ID = uuid.New()
+	if base.ID == uuid.Nil {
+		base.ID = uuid.New()
+	}
 	return
 }
 
@@ -54,4 +56,5 @@ type MaintenanceLog struct {
 	Status        string     `gorm:"type:varchar(20);not null" json:"status"`
 	ScheduledDate *time.Time `json:"scheduled_date"`
 	CompletedAt   *time.Time `json:"completed_at"`
+	ImageUrl      string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
 }

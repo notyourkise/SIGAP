@@ -266,3 +266,156 @@ kategori: sedang
 file yang diubah:
 - backend/config/database.go
 alasan perubahan: Mencegah error "too many connections" dan mengoptimalkan efisiensi penanganan kueri konkuren di database PostgreSQL berskala industri.
+
+perubahan yang dilakukan: Pembuatan Modul Manajemen Pengguna (User CRUD & Admin Controls) Terproteksi.
+before:
+- Hanya ada endpoint registrasi terbatas `/api/auth/users` dan tidak ada fungsi pengelolaan akun user yang komprehensif.
+after:
+- Dibuat `handlers/user.go` berisi handler GetAllUsers (paginasi & pencarian), GetUserByID, UpdateUser, DeleteUser (soft-delete), dan ResetUserPassword (penyetelan sandi paksa).
+- Dibuat `routes/user.go` yang mendaftarkan seluruh endpoint di bawah grup rute `/api/users`.
+- Rute didaftarkan di `main.go` dan dilindungi oleh middleware `Protected()` dan `RequireRole("admin")` untuk menjamin keamanan administratif.
+- Seluruh endpoint terdokumentasi secara penuh di Swagger UI.
+timestamp: 2026-07-24 09:10 WITA
+kategori: sedang
+file yang diubah:
+- backend/handlers/user.go
+- backend/routes/user.go
+- backend/main.go
+alasan perubahan: Melengkapi kebutuhan administrasi portal SIGAP agar admin dapat mengelola akun pengguna, mereset password, dan menonaktifkan pengguna dengan aman.
+
+perubahan yang dilakukan: Konfigurasi Docker untuk Containerisasi Backend SIGAP dan PostgreSQL.
+before:
+- Tidak ada konfigurasi containerisasi; aplikasi hanya bisa dijalankan secara manual dengan PostgreSQL lokal.
+after:
+- Dibuat `Dockerfile` dengan Multi-stage Build (golang:alpine sebagai builder, alpine murni sebagai runner) untuk menghasilkan image produksi yang kecil dan aman.
+- Dibuat `docker-compose.yml` dengan dua service: `db` (postgres:15-alpine dengan named volume `postgres_data`) dan `api` (build dari Dockerfile, env_file dari `.env.docker`, volume bind `./uploads:/app/uploads`).
+- Dibuat `.env.docker` berisi variabel konfigurasi lingkungan Docker dengan `DB_HOST=db`.
+- Dibuat `.dockerignore` untuk mengecualikan file tidak perlu dari proses build Docker.
+- Service `api` menggunakan `depends_on` dengan kondisi `service_healthy` agar menunggu database siap sebelum API dimulai.
+timestamp: 2026-07-24 09:26 WITA
+kategori: sedang
+file yang diubah:
+- backend/Dockerfile
+- backend/docker-compose.yml
+- backend/.env.docker
+- backend/.dockerignore
+alasan perubahan: Memungkinkan rekan tim menjalankan seluruh stack backend SIGAP (API + PostgreSQL) dengan satu perintah `docker compose up --build` tanpa konfigurasi manual apapun.
+
+perubahan yang dilakukan: Implementasi Lampiran Foto Pemeliharaan CCTV (File Upload & Auto-Delete).
+before:
+- Log pemeliharaan tidak memiliki kemampuan melampirkan bukti foto kegiatan pemeliharaan.
+after:
+- Ditambahkan kolom `image_url VARCHAR(255)` pada tabel `maintenance_logs` melalui penambahan field `ImageUrl` pada struct GORM `MaintenanceLog` di `models/setup.go`.
+- Dibuat endpoint `POST /api/upload` (handler `handlers/upload.go`) yang menerima file multipart/form-data dengan validasi tipe konten (hanya JPEG/PNG/WebP), batas ukuran 2MB, dan penamaan berkas berbasis UUID untuk menghindari tabrakan nama file.
+- Dimodifikasi `handlers/maintenance.go`: struct `CreateMaintenanceLogRequest` dan `UpdateMaintenanceLogRequest` menerima field `image_url`. Saat Update, file lama otomatis dihapus secara fisik jika diganti URL baru.
+- Logika Auto-Delete diterapkan pada `DeleteMaintenanceLog`: sebelum record DB dihapus, sistem mengecek `image_url`, memvalidasi prefix path keamanan (`/uploads/`), lalu menghapus file fisik dari direktori menggunakan `os.Remove`.
+- Ditambahkan `app.Static("/uploads", "./uploads")` di `main.go` agar file gambar yang diunggah dapat diakses publik via URL.
+- Ditambahkan `os.MkdirAll("./uploads")` di startup `main.go` agar direktori dibuat otomatis jika belum ada.
+- Diregistrasikan rute baru `POST /api/upload` di `routes/upload.go` di bawah proteksi middleware `Protected()` JWT.
+timestamp: 2026-07-24 13:54 WITA
+kategori: besar
+file yang diubah:
+- backend/models/setup.go
+- backend/handlers/upload.go
+- backend/handlers/maintenance.go
+- backend/routes/upload.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memenuhi kebutuhan pencatatan bukti visual pemeliharaan perangkat CCTV SIGAP IKN, sekaligus menjaga kebersihan penyimpanan server dengan mekanisme Auto-Delete file yatim piatu.
+
+perubahan yang dilakukan: Penyediaan Data Seeder CCTV Default dan Pembuatan QR Code Asset CCTV.
+before:
+- Tidak ada data CCTV default (seeder) saat inisialisasi database awal.
+- Tidak ada endpoint untuk mengunduh QR Code fisik aset CCTV.
+after:
+- Ditambahkan fungsi `SeedAssets` di `models/seeder.go` yang otomatis menyuntikkan 4 aset CCTV dummy dengan koordinat dan IP address di area Jakarta saat pertama kali server diinisialisasi.
+- Dipanggil `models.SeedAssets` di `main.go` setelah inisialisasi koneksi database.
+- Ditambahkan pustaka `github.com/skip2/go-qrcode` untuk kebutuhan encoding string URL ke bentuk QR Code PNG.
+- Diimplementasikan endpoint `GET /api/assets/:id/qrcode` (handler `GetAssetQRCode` di `handlers/asset.go`) yang mendeteksi UUID aset, mengecek kecocokan data di database, dan menghasilkan QR Code (PNG 256x256px) berisi URL detail/maintenance aset pada frontend (`{FRONTEND_URL}/maintenance?asset_id={id}`).
+- Rute baru terproteksi JWT didaftarkan di `routes/asset.go`.
+timestamp: 2026-07-24 14:46 WITA
+kategori: sedang
+file yang diubah:
+- backend/main.go
+- backend/models/seeder.go
+- backend/handlers/asset.go
+- backend/routes/asset.go
+- backend/go.mod
+- backend/go.sum
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memudahkan administrator menyebarkan kode QR fisik pada perangkat CCTV agar teknisi di lapangan tinggal memindai QR Code untuk langsung mencatat pemeliharaan aset CCTV yang bersangkutan.
+
+perubahan yang dilakukan: Implementasi Master Data CCTV dan QR Code Terenkripsi AES-256 (GCM).
+before:
+- Tidak ada modul khusus untuk master data detail spesifikasi CCTV (general info).
+- Scanner QR code CCTV fisik belum mendukung dekripsi payload aman berbasis enkripsi tingkat militer (AES-256).
+after:
+- Dibuat `backend/utils/encryption.go` berisi helper `EncryptAES256` dan `DecryptAES256` menggunakan AES-256-GCM terenkripsi dengan kunci simetris `AES_SECRET_KEY` dari `.env`.
+- Dibuat model database `models.CCTV` (`backend/models/cctv.go`) yang mendata spesifikasi detail general CCTV (tanpa kredensial login) dan didaftarkan ke AutoMigrate di `main.go`.
+- Diimplementasikan CRUD lengkap untuk CCTV di `backend/handlers/cctv.go`. Pada saat pembuatan (`CreateCCTV`), UUID perangkat dienkripsi menjadi string acak dan disimpan di kolom `QrPayload`.
+- Dibuat endpoint scanner khusus `POST /api/cctv/scan` (`ScanCCTV` di `handlers/cctv.go`) yang mendekompresi payload QR terenkripsi, mencari kecocokan perangkat di database, dan mengembalikan data spesifikasi umum.
+- Rute-rute baru dilindungi JWT dan didaftarkan di `backend/routes/cctv.go` serta dihubungkan ke `main.go`.
+timestamp: 2026-07-24 15:06 WITA
+kategori: besar
+file yang diubah:
+- backend/utils/encryption.go
+- backend/models/cctv.go
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memungkinkan inventarisasi detail CCTV secara mandiri tanpa membocorkan kredensial, serta meningkatkan keamanan operasional melalui pelabelan kode QR terenkripsi tingkat tinggi.
+
+perubahan yang dilakukan: Standardisasi Keamanan Kredensial Environment (.env.example & .env.docker.example).
+before:
+- File `.env.docker` dilacak oleh Git (tidak di-ignore) dan berisi nilai kredensial langsung yang berpotensi bocor.
+- Tidak ada file template `.env.example` untuk membantu panduan inisialisasi berkas `.env` lokal baru bagi developer.
+after:
+- Berkas `.env.docker` dipindahkan (`git mv`) menjadi berkas template `.env.docker.example` yang kredensialnya sudah disamarkan dengan placeholder aman.
+- Dibuat berkas `.env.example` di dalam direktori `backend/` berisi panduan variabel environment lokal.
+- Menambahkan aturan `.env.docker` ke dalam berkas `.gitignore` di root folder proyek agar tidak pernah ter-push secara tidak sengaja oleh developer.
+timestamp: 2026-07-24 15:42 WITA
+kategori: sedang
+file yang diubah:
+- .gitignore
+- backend/.env.docker.example
+- backend/.env.example
+alasan perubahan: Mencegah kebocoran kredensial sensitif database dan kunci rahasia enkripsi ke dalam Git repositori dengan mengikuti standar industri.
+
+perubahan yang dilakukan: Penyediaan Template & Fitur Impor Massal CCTV dari Excel.
+before:
+- Data CCTV hanya bisa ditambahkan satu per satu melalui form/API manual.
+- Tidak tersedia template Excel standar untuk mempermudah migrasi data besar.
+after:
+- Ditambahkan library `github.com/xuri/excelize/v2` untuk mendukung pengolahan file Excel (.xlsx).
+- Ditambahkan endpoint `GET /api/cctv/template` (handler `DownloadTemplateCCTV`) untuk mengunduh template kosong berisi header kolom terstandarisasi.
+- Ditambahkan endpoint `POST /api/cctv/import` (handler `ImportCCTV`) yang menerima file multipart form data, membaca baris-baris data dari spreadsheet, menghasilkan UUID baru secara otomatis, mengenkripsi UUID tersebut menggunakan AES-256 menjadi `QrPayload`, dan menyimpannya secara transaksional ke database PostgreSQL.
+- Rute-rute baru dilindungi JWT dan didaftarkan di `routes/cctv.go` (aman dari collision routing).
+timestamp: 2026-07-24 16:33 WITA
+kategori: sedang
+file yang diubah:
+- backend/go.mod
+- backend/go.sum
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+alasan perubahan: Memungkinkan migrasi dan inventarisasi data CCTV massal secara cepat, rapi, dan sesuai arsitektur enterprise dengan validasi data baris per baris.
+
+perubahan yang dilakukan: Perbaikan Hook BeforeCreate GORM (Nil UUID Check).
+before:
+- Hook `BeforeCreate` pada model `Base` selalu menghasilkan UUID baru secara acak untuk kolom `ID` tanpa memedulikan apakah `ID` tersebut sudah diisi secara manual sebelumnya. Hal ini merusak sinkronisasi data QR Code terenkripsi (mismatch antara `ID` dan `QrPayload`).
+after:
+- Memodifikasi hook `BeforeCreate` agar mengecek kondisi `base.ID == uuid.Nil`. UUID baru hanya akan dihasilkan secara otomatis jika kolom `ID` kosong. ID kustom yang telah diisi sebelumnya (misalnya saat registrasi CCTV baru atau impor massal) akan dipertahankan dengan aman.
+timestamp: 2026-07-24 17:34 WITA
+kategori: sedang
+file yang diubah:
+- backend/models/setup.go
+alasan perubahan: Mencegah bug mismatch ID di mana data CCTV tidak dapat diidentifikasi oleh QR scanner karena ID UUID di database ditimpa secara tidak sengaja oleh hook GORM.

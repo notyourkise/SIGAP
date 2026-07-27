@@ -409,6 +409,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/assets/{id}/qrcode": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat QR Code dalam format PNG berisi URL detail pemeliharaan aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "Aset CCTV"
+                ],
+                "summary": "Unduh QR Code Aset CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Asset UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Gambar QR Code dalam format raw PNG",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Aset tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memproses QR Code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Masuk ke sistem SIGAP menggunakan username/email dan password, mengembalikan token JWT.",
@@ -511,6 +573,527 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar data master CCTV dengan paginasi, pencarian, dan penyaringan berdasarkan status, lokasi, jenis, pemilik, dll.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Ambil Semua Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan jenis CCTV",
+                        "name": "jenis_cctv",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan indoor/outdoor",
+                        "name": "indoor_outdoor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Nomor Halaman (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah data per halaman (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kolom pengurutan (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Arah pengurutan: asc, desc (default: desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar CCTV terpaginasi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat record master data CCTV baru. Sistem otomatis membuat UUID ID baru, mengenkripsinya dengan AES-256, lalu menyimpan hasilnya sebagai QrPayload unik.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Tambah Data CCTV",
+                "parameters": [
+                    {
+                        "description": "Data CCTV Baru",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Data CCTV berhasil disimpan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format input salah, validasi gagal, kode_cctv duplikat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengenkripsi atau menyimpan data ke database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256 untuk kolom QrPayload.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Impor Massal Data CCTV",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Berkas Excel Template CCTV (.xlsx)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Proses impor selesai dengan detail jumlah sukses/gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Tidak ada file / format file tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membaca atau memproses berkas Excel",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/scan": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menerima parameter string QR Payload terenkripsi, mendekripsinya menggunakan AES-256 untuk mendapatkan UUID asli, lalu mengembalikan data umum CCTV yang cocok.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Scan \u0026 Identifikasi CCTV via QR Payload",
+                "parameters": [
+                    {
+                        "description": "Payload QR Terenkripsi dari CCTV fisik",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ScanCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Identitas CCTV berhasil dipindai dan ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "QR Payload tidak valid atau gagal didekripsi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Data CCTV tidak ditemukan di database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/template": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan kolom header standar untuk mempermudah impor data CCTV secara massal.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Unduh Template Excel CCTV",
+                "responses": {
+                    "200": {
+                        "description": "Berkas template Excel (.xlsx)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membuat file template",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan detail CCTV berdasarkan UUID-nya.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Ambil CCTV Detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail data CCTV ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah detail data master CCTV yang sudah terdaftar. Hanya dapat diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Edit Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data Update CCTV",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateCCTVRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data CCTV berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid, format body salah, atau validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan perubahan ke database",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus data CCTV secara soft-delete berdasarkan UUID. Hanya dapat diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Hapus Data CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data CCTV berhasil dihapus secara soft-delete",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -986,6 +1569,437 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti pemeliharaan CCTV. Mengembalikan URL path file yang bisa disimpan ke field image_url pada log pemeliharaan.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Upload"
+                ],
+                "summary": "Unggah Foto Pemeliharaan",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "File gambar (JPEG/PNG/WebP, maks 2MB)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Upload sukses, mengembalikan URL file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Tidak ada file / tipe tidak valid / ukuran melebihi batas",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan daftar pengguna terdaftar berdasarkan parameter pencarian, pengurutan, dan paginasi. Hanya bisa diakses oleh Admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Manajemen Pengguna"
+                ],
+                "summary": "Mendapatkan Daftar Pengguna",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Nomor Halaman (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah Data per Halaman (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kolom Pengurutan (username, full_name, email, role, created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Arah Pengurutan (asc, desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari berdasarkan username, full_name, atau email",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses mendapatkan daftar pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan informasi lengkap satu pengguna berdasarkan UUID. Hanya bisa diakses oleh Admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Manajemen Pengguna"
+                ],
+                "summary": "Mendapatkan Detail Pengguna",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses mendapatkan detail pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Memperbarui data nama lengkap (full_name), email, atau peran (role) pengguna. Hanya bisa diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Manajemen Pengguna"
+                ],
+                "summary": "Memperbarui Profil Pengguna",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data pembaruan user",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses memperbarui pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Input tidak valid / Email duplikat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memperbarui pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus data pengguna dari sistem menggunakan mekanisme soft-delete. Hanya bisa diakses oleh Admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Manajemen Pengguna"
+                ],
+                "summary": "Menghapus Pengguna (Soft Delete)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses menghapus pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid / Tidak bisa menghapus diri sendiri",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menghapus pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/reset-password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menyetel ulang sandi pengguna secara paksa ke sandi baru pilihan Admin. Hanya bisa diakses oleh Admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Manajemen Pengguna"
+                ],
+                "summary": "Reset Password Pengguna",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data password baru",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ResetUserPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses reset password",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid / Validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal enkripsi / Gagal menyimpan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1038,6 +2052,85 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.CreateCCTVRequest": {
+            "type": "object",
+            "required": [
+                "kode_cctv",
+                "nama",
+                "status"
+            ],
+            "properties": {
+                "id_channel": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "indoor_outdoor": {
+                    "type": "string",
+                    "enum": [
+                        "indoor",
+                        "outdoor",
+                        "INDOOR",
+                        "OUTDOOR"
+                    ]
+                },
+                "ip_camera": {
+                    "type": "string"
+                },
+                "ip_nvr": {
+                    "type": "string"
+                },
+                "jenis_cctv": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "keterangan": {
+                    "type": "string"
+                },
+                "kode_cctv": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
+                },
+                "latitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "lokasi_area": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "longitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nama": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "pemilik": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "aktif",
+                        "rusak",
+                        "pemeliharaan",
+                        "nonaktif"
+                    ]
+                },
+                "sumber_listrik": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "tipe_koneksi": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
         "handlers.CreateMaintenanceLogRequest": {
             "type": "object",
             "required": [
@@ -1055,6 +2148,10 @@ const docTemplate = `{
                 },
                 "completed_at": {
                     "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
+                    "type": "string"
+                },
+                "image_url": {
+                    "description": "URL dari endpoint /api/upload",
                     "type": "string"
                 },
                 "notes": {
@@ -1156,6 +2253,30 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.ResetUserPasswordRequest": {
+            "type": "object",
+            "required": [
+                "new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 6
+                }
+            }
+        },
+        "handlers.ScanCCTVRequest": {
+            "type": "object",
+            "required": [
+                "qr_payload"
+            ],
+            "properties": {
+                "qr_payload": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.StatusCount": {
             "type": "object",
             "properties": {
@@ -1211,6 +2332,80 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.UpdateCCTVRequest": {
+            "type": "object",
+            "properties": {
+                "id_channel": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "indoor_outdoor": {
+                    "type": "string",
+                    "enum": [
+                        "indoor",
+                        "outdoor",
+                        "INDOOR",
+                        "OUTDOOR"
+                    ]
+                },
+                "ip_camera": {
+                    "type": "string"
+                },
+                "ip_nvr": {
+                    "type": "string"
+                },
+                "jenis_cctv": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "keterangan": {
+                    "type": "string"
+                },
+                "kode_cctv": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
+                },
+                "latitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "lokasi_area": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "longitude": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "nama": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "pemilik": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "aktif",
+                        "rusak",
+                        "pemeliharaan",
+                        "nonaktif"
+                    ]
+                },
+                "sumber_listrik": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "tipe_koneksi": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
         "handlers.UpdateMaintenanceLogRequest": {
             "type": "object",
             "properties": {
@@ -1223,6 +2418,10 @@ const docTemplate = `{
                 },
                 "completed_at": {
                     "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
+                    "type": "string"
+                },
+                "image_url": {
+                    "description": "URL baru dari /api/upload (opsional)",
                     "type": "string"
                 },
                 "notes": {
@@ -1239,6 +2438,27 @@ const docTemplate = `{
                         "ongoing",
                         "completed",
                         "failed"
+                    ]
+                }
+            }
+        },
+        "handlers.UpdateUserRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "full_name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "teknisi"
                     ]
                 }
             }

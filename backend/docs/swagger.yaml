@@ -36,6 +36,65 @@ definitions:
     - serial_number
     - status
     type: object
+  handlers.CreateCCTVRequest:
+    properties:
+      id_channel:
+        maxLength: 50
+        type: string
+      indoor_outdoor:
+        enum:
+        - indoor
+        - outdoor
+        - INDOOR
+        - OUTDOOR
+        type: string
+      ip_camera:
+        type: string
+      ip_nvr:
+        type: string
+      jenis_cctv:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      kode_cctv:
+        maxLength: 50
+        minLength: 3
+        type: string
+      latitude:
+        maxLength: 50
+        type: string
+      lokasi_area:
+        maxLength: 255
+        type: string
+      longitude:
+        maxLength: 50
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 3
+        type: string
+      pemilik:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      sumber_listrik:
+        maxLength: 50
+        type: string
+      tipe_koneksi:
+        maxLength: 50
+        type: string
+    required:
+    - kode_cctv
+    - nama
+    - status
+    type: object
   handlers.CreateMaintenanceLogRequest:
     properties:
       action_taken:
@@ -45,6 +104,9 @@ definitions:
         type: string
       completed_at:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      image_url:
+        description: URL dari endpoint /api/upload
         type: string
       notes:
         type: string
@@ -119,6 +181,22 @@ definitions:
     - password
     - username
     type: object
+  handlers.ResetUserPasswordRequest:
+    properties:
+      new_password:
+        maxLength: 100
+        minLength: 6
+        type: string
+    required:
+    - new_password
+    type: object
+  handlers.ScanCCTVRequest:
+    properties:
+      qr_payload:
+        type: string
+    required:
+    - qr_payload
+    type: object
   handlers.StatusCount:
     properties:
       count:
@@ -158,6 +236,61 @@ definitions:
         maxLength: 100
         type: string
     type: object
+  handlers.UpdateCCTVRequest:
+    properties:
+      id_channel:
+        maxLength: 50
+        type: string
+      indoor_outdoor:
+        enum:
+        - indoor
+        - outdoor
+        - INDOOR
+        - OUTDOOR
+        type: string
+      ip_camera:
+        type: string
+      ip_nvr:
+        type: string
+      jenis_cctv:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      kode_cctv:
+        maxLength: 50
+        minLength: 3
+        type: string
+      latitude:
+        maxLength: 50
+        type: string
+      lokasi_area:
+        maxLength: 255
+        type: string
+      longitude:
+        maxLength: 50
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 3
+        type: string
+      pemilik:
+        maxLength: 100
+        type: string
+      status:
+        enum:
+        - aktif
+        - rusak
+        - pemeliharaan
+        - nonaktif
+        type: string
+      sumber_listrik:
+        maxLength: 50
+        type: string
+      tipe_koneksi:
+        maxLength: 50
+        type: string
+    type: object
   handlers.UpdateMaintenanceLogRequest:
     properties:
       action_taken:
@@ -167,6 +300,9 @@ definitions:
         type: string
       completed_at:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+      image_url:
+        description: URL baru dari /api/upload (opsional)
         type: string
       notes:
         type: string
@@ -179,6 +315,21 @@ definitions:
         - ongoing
         - completed
         - failed
+        type: string
+    type: object
+  handlers.UpdateUserRequest:
+    properties:
+      email:
+        maxLength: 100
+        type: string
+      full_name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      role:
+        enum:
+        - admin
+        - teknisi
         type: string
     type: object
 host: localhost:3000
@@ -411,6 +562,48 @@ paths:
       summary: Update Aset CCTV
       tags:
       - Aset CCTV
+  /assets/{id}/qrcode:
+    get:
+      description: Membuat QR Code dalam format PNG berisi URL detail pemeliharaan
+        aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.
+      parameters:
+      - description: Asset UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: Gambar QR Code dalam format raw PNG
+          schema:
+            type: string
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Aset tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memproses QR Code
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unduh QR Code Aset CCTV
+      tags:
+      - Aset CCTV
   /assets/export:
     get:
       description: Mengunduh seluruh aset CCTV terfilter (tanpa limit halaman) dalam
@@ -526,6 +719,361 @@ paths:
       summary: Registrasi User Baru
       tags:
       - Autentikasi
+  /cctv:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar data master CCTV dengan paginasi, pencarian,
+        dan penyaringan berdasarkan status, lokasi, jenis, pemilik, dll.
+      parameters:
+      - description: Filter berdasarkan status
+        in: query
+        name: status
+        type: string
+      - description: Filter berdasarkan jenis CCTV
+        in: query
+        name: jenis_cctv
+        type: string
+      - description: Filter berdasarkan indoor/outdoor
+        in: query
+        name: indoor_outdoor
+        type: string
+      - description: Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar CCTV terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Data CCTV
+      tags:
+      - Master CCTV
+    post:
+      consumes:
+      - application/json
+      description: Membuat record master data CCTV baru. Sistem otomatis membuat UUID
+        ID baru, mengenkripsinya dengan AES-256, lalu menyimpan hasilnya sebagai QrPayload
+        unik.
+      parameters:
+      - description: Data CCTV Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Data CCTV berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah, validasi gagal, kode_cctv duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengenkripsi atau menyimpan data ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Data CCTV
+      tags:
+      - Master CCTV
+  /cctv/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus data CCTV secara soft-delete berdasarkan UUID. Hanya
+        dapat diakses oleh Admin.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data CCTV berhasil dihapus secara soft-delete
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Data CCTV
+      tags:
+      - Master CCTV
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail CCTV berdasarkan UUID-nya.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail data CCTV ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil CCTV Detail
+      tags:
+      - Master CCTV
+    put:
+      consumes:
+      - application/json
+      description: Mengubah detail data master CCTV yang sudah terdaftar. Hanya dapat
+        diakses oleh Admin.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update CCTV
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data CCTV berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan perubahan ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Edit Data CCTV
+      tags:
+      - Master CCTV
+  /cctv/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Mengunggah berkas Excel (.xlsx) yang diisi sesuai template standar
+        untuk diimpor secara massal ke dalam database. UUID dienkripsi dengan AES-256
+        untuk kolom QrPayload.
+      parameters:
+      - description: Berkas Excel Template CCTV (.xlsx)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Proses impor selesai dengan detail jumlah sukses/gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Tidak ada file / format file tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membaca atau memproses berkas Excel
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Impor Massal Data CCTV
+      tags:
+      - Master CCTV
+  /cctv/scan:
+    post:
+      consumes:
+      - application/json
+      description: Menerima parameter string QR Payload terenkripsi, mendekripsinya
+        menggunakan AES-256 untuk mendapatkan UUID asli, lalu mengembalikan data umum
+        CCTV yang cocok.
+      parameters:
+      - description: Payload QR Terenkripsi dari CCTV fisik
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ScanCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Identitas CCTV berhasil dipindai dan ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: QR Payload tidak valid atau gagal didekripsi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Data CCTV tidak ditemukan di database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Scan & Identifikasi CCTV via QR Payload
+      tags:
+      - Master CCTV
+  /cctv/template:
+    get:
+      description: Membuat dan mengunduh berkas spreadsheet Excel (.xlsx) kosong dengan
+        kolom header standar untuk mempermudah impor data CCTV secara massal.
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Berkas template Excel (.xlsx)
+          schema:
+            type: string
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membuat file template
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unduh Template Excel CCTV
+      tags:
+      - Master CCTV
   /dashboard/stats:
     get:
       description: 'Mendapatkan ringkasan data agregat: total aset, jumlah per status,
@@ -840,6 +1388,301 @@ paths:
       summary: Pemicu Panic Buatan
       tags:
       - Pengujian
+  /upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti
+        pemeliharaan CCTV. Mengembalikan URL path file yang bisa disimpan ke field
+        image_url pada log pemeliharaan.
+      parameters:
+      - description: File gambar (JPEG/PNG/WebP, maks 2MB)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Upload sukses, mengembalikan URL file
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Tidak ada file / tipe tidak valid / ukuran melebihi batas
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan file
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unggah Foto Pemeliharaan
+      tags:
+      - Upload
+  /users:
+    get:
+      description: Mengembalikan daftar pengguna terdaftar berdasarkan parameter pencarian,
+        pengurutan, dan paginasi. Hanya bisa diakses oleh Admin.
+      parameters:
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah Data per Halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Kolom Pengurutan (username, full_name, email, role, created_at)
+        in: query
+        name: sort_by
+        type: string
+      - description: Arah Pengurutan (asc, desc)
+        in: query
+        name: order
+        type: string
+      - description: Cari berdasarkan username, full_name, atau email
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses mendapatkan daftar pengguna
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil data
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan Daftar Pengguna
+      tags:
+      - Manajemen Pengguna
+  /users/{id}:
+    delete:
+      description: Menghapus data pengguna dari sistem menggunakan mekanisme soft-delete.
+        Hanya bisa diakses oleh Admin.
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses menghapus pengguna
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid / Tidak bisa menghapus diri sendiri
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus pengguna
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Menghapus Pengguna (Soft Delete)
+      tags:
+      - Manajemen Pengguna
+    get:
+      description: Mengembalikan informasi lengkap satu pengguna berdasarkan UUID.
+        Hanya bisa diakses oleh Admin.
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses mendapatkan detail pengguna
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan Detail Pengguna
+      tags:
+      - Manajemen Pengguna
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data nama lengkap (full_name), email, atau peran (role)
+        pengguna. Hanya bisa diakses oleh Admin.
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data pembaruan user
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses memperbarui pengguna
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Input tidak valid / Email duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui pengguna
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memperbarui Profil Pengguna
+      tags:
+      - Manajemen Pengguna
+  /users/{id}/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Menyetel ulang sandi pengguna secara paksa ke sandi baru pilihan
+        Admin. Hanya bisa diakses oleh Admin.
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data password baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ResetUserPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses reset password
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid / Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal enkripsi / Gagal menyimpan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reset Password Pengguna
+      tags:
+      - Manajemen Pengguna
 securityDefinitions:
   BearerAuth:
     description: 'Format token JWT: Bearer <token_anda>'
