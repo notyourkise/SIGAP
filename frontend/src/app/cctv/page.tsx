@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import Pagination from '@/components/Pagination';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { 
@@ -11,18 +12,17 @@ import {
   Trash2, 
   Camera, 
   MapPin, 
-  Download, 
   Upload, 
   Scan, 
   X, 
-  CheckCircle, 
   AlertTriangle, 
   Activity, 
+  ShieldCheck,
+  Wrench,
   Cpu, 
   Minimize2, 
   Eye, 
-  Printer,
-  FileSpreadsheet
+  Printer
 } from 'lucide-react';
 
 interface CCTV {
@@ -38,7 +38,7 @@ interface CCTV {
   tipe_koneksi: string;
   indoor_outdoor: string;
   pemilik: string;
-  status: 'aktif' | 'rusak' | 'pemeliharaan' | 'nonaktif';
+  status: string;
   ip_nvr: string;
   ip_camera: string;
   keterangan: string;
@@ -51,8 +51,16 @@ export default function CCTVPage() {
   const isAdmin = user?.role === 'admin';
 
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
+  const [allCCTVs, setAllCCTVs] = useState<CCTV[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    total_rows: 0,
+    total_pages: 1,
+    page: 1,
+    limit: 10,
+  });
 
   // Search & Filter State
   const [search, setSearch] = useState('');
@@ -79,9 +87,9 @@ export default function CCTVPage() {
     jenis_cctv: '',
     sumber_listrik: '',
     tipe_koneksi: '',
-    indoor_outdoor: 'indoor',
+    indoor_outdoor: 'INDOOR',
     pemilik: '',
-    status: 'aktif',
+    status: 'ACTIVE',
     ip_nvr: '',
     ip_camera: '',
     keterangan: ''
@@ -107,18 +115,23 @@ export default function CCTVPage() {
 
   const fetchCCTVs = async () => {
     setLoading(true);
+    setError('');
     try {
-      const queryParams = [];
+      const queryParams = [`page=${page}`, 'limit=10'];
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
       
-      const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-      const response = await apiRequest<any>(`/cctv${queryString}`);
+      const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`);
       
       if (response.status === 'success' && response.data) {
-        const data = Array.isArray(response.data) ? response.data : (response.data.rows || []);
-        setCctvs(data);
+        setCctvs(response.data.rows || []);
+        setPagination(response.data.pagination || {
+          total_rows: 0,
+          total_pages: 1,
+          page: 1,
+          limit: 10,
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data CCTV');
@@ -127,15 +140,50 @@ export default function CCTVPage() {
     }
   };
 
+  const fetchCCTVSummary = async () => {
+    try {
+      const response = await apiRequest<any>('/cctv?page=1&limit=100');
+      if (response.status === 'success' && response.data) {
+        setAllCCTVs(response.data.rows || []);
+      }
+    } catch {
+      setAllCCTVs([]);
+    }
+  };
+
   useEffect(() => {
     fetchCCTVs();
-  }, [search, statusFilter, ioFilter]);
+  }, [page, search, statusFilter, ioFilter]);
+
+  useEffect(() => {
+    fetchCCTVSummary();
+  }, []);
 
   // Stats
-  const totalCount = cctvs.length;
-  const activeCount = cctvs.filter(c => c.status === 'aktif').length;
-  const brokenCount = cctvs.filter(c => c.status === 'rusak').length;
-  const maintenanceCount = cctvs.filter(c => c.status === 'pemeliharaan').length;
+  const normalizedStatus = (status: string) => status.trim().toUpperCase();
+  const isStatus = (status: string, values: string[]) => values.includes(normalizedStatus(status));
+  const statusLabel = (status: string) => {
+    const normalized = normalizedStatus(status);
+    if (['ACTIVE', 'AKTIF'].includes(normalized)) return 'Aktif';
+    if (['INACTIVE', 'NONAKTIF'].includes(normalized)) return 'Nonaktif';
+    if (['MAINTENANCE', 'PEMELIHARAAN'].includes(normalized)) return 'Pemeliharaan';
+    if (['BROKEN', 'RUSAK'].includes(normalized)) return 'Nonaktif';
+    return status;
+  };
+  const totalCount = allCCTVs.length;
+  const activeCount = allCCTVs.filter(c => isStatus(c.status, ['ACTIVE', 'AKTIF'])).length;
+  const inactiveCount = allCCTVs.filter(c => isStatus(c.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'])).length;
+  const maintenanceCount = allCCTVs.filter(c => isStatus(c.status, ['MAINTENANCE', 'PEMELIHARAAN'])).length;
+  const selectableCCTVs = allCCTVs.filter((cctv) => {
+    if (statusFilter && normalizedStatus(cctv.status) !== statusFilter) return false;
+    if (ioFilter && cctv.indoor_outdoor.trim().toUpperCase() !== ioFilter) return false;
+
+    const normalizedSearch = search.trim().toLowerCase();
+    if (!normalizedSearch) return true;
+
+    return [cctv.nama, cctv.kode_cctv, cctv.id_channel, cctv.lokasi_area]
+      .some((value) => (value || '').toLowerCase().includes(normalizedSearch));
+  });
 
   // Handlers
   const handleOpenForm = (cctv: CCTV | null = null) => {
@@ -170,9 +218,9 @@ export default function CCTVPage() {
         jenis_cctv: '',
         sumber_listrik: '',
         tipe_koneksi: '',
-        indoor_outdoor: 'indoor',
+        indoor_outdoor: 'INDOOR',
         pemilik: '',
-        status: 'aktif',
+        status: 'ACTIVE',
         ip_nvr: '',
         ip_camera: '',
         keterangan: ''
@@ -195,6 +243,7 @@ export default function CCTVPage() {
       if (response.status === 'success') {
         setIsFormModalOpen(false);
         fetchCCTVs();
+        fetchCCTVSummary();
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menyimpan data CCTV');
@@ -210,6 +259,7 @@ export default function CCTVPage() {
       if (response.status === 'success') {
         setSelectedIDs(prev => prev.filter(item => item !== id));
         fetchCCTVs();
+        fetchCCTVSummary();
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menghapus data CCTV');
@@ -219,7 +269,7 @@ export default function CCTVPage() {
   // Bulk Selection Handlers
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedIDs(cctvs.map(c => c.id));
+      setSelectedIDs(selectableCCTVs.map(c => c.id));
     } else {
       setSelectedIDs([]);
     }
@@ -227,7 +277,7 @@ export default function CCTVPage() {
 
   const handleSelectRow = (id: string, checked: boolean) => {
     if (checked) {
-      setSelectedIDs(prev => [...prev, id]);
+      setSelectedIDs(prev => prev.includes(id) ? prev : [...prev, id]);
     } else {
       setSelectedIDs(prev => prev.filter(item => item !== id));
     }
@@ -236,7 +286,7 @@ export default function CCTVPage() {
   // Bulk Delete Handler (Selected or All)
   const handleBulkDelete = async (deleteAll = false) => {
     const confirmMessage = deleteAll 
-      ? '⚠️ PERINGATAN KERAS: Apakah Anda yakin ingin MENGOSONGKAN SELURUH data CCTV di database? Tindakan ini tidak dapat dibatalkan!'
+      ? 'PERINGATAN: Apakah Anda yakin ingin mengosongkan seluruh data CCTV di database? Tindakan ini tidak dapat dibatalkan.'
       : `Apakah Anda yakin ingin menghapus ${selectedIDs.length} data CCTV yang terpilih?`;
       
     if (!confirm(confirmMessage)) return;
@@ -264,6 +314,7 @@ export default function CCTVPage() {
 
       setSelectedIDs([]);
       fetchCCTVs();
+      fetchCCTVSummary();
       alert(resJson.message || 'Hapus massal berhasil dilakukan!');
     } catch (err: any) {
       alert(err.message || 'Gagal melakukan hapus massal');
@@ -335,6 +386,7 @@ export default function CCTVPage() {
       setImportSuccess(resJson.message || 'Data CCTV berhasil diimpor!');
       setSelectedFile(null);
       fetchCCTVs();
+      fetchCCTVSummary();
     } catch (err: any) {
       setImportError(err.message || 'Terjadi kesalahan saat mengimpor berkas');
     } finally {
@@ -494,59 +546,89 @@ export default function CCTVPage() {
     if (!printWindow) return;
 
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentCCTV.qr_payload)}`;
+    const logoUrl = `${window.location.origin}/nusantara-logo.png`;
 
     printWindow.document.write(`
       <html>
         <head>
           <title>Cetak QR Code - ${currentCCTV.kode_cctv}</title>
           <style>
+            @page { size: 100mm 38mm; margin: 0; }
+            * { box-sizing: border-box; }
             body {
               font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
               display: flex;
-              flex-direction: column;
               align-items: center;
               justify-content: center;
-              height: 90vh;
-              text-align: center;
+              width: 100mm;
+              height: 38mm;
+              margin: 0;
               background-color: white;
-              color: black;
+              color: #203f25;
             }
-            .card {
-              border: 3px solid #2563eb;
-              border-radius: 20px;
-              padding: 30px;
-              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            .label {
+              display: grid;
+              grid-template-columns: 29mm 35mm 1fr;
+              align-items: center;
+              width: 100mm;
+              height: 38mm;
+              padding: 2.5mm;
+              border: 0.4mm solid #d7aa63;
+              border-radius: 2mm;
               background: white;
+              overflow: hidden;
             }
-            .qr-image {
-              width: 250px;
-              height: 250px;
-              margin-bottom: 20px;
+            .brand {
+              height: 31mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding-right: 2mm;
+              border-right: 0.3mm solid #467235;
             }
-            h1 {
-              font-size: 24px;
-              margin: 10px 0;
-              color: #1e3a8a;
+            .brand img {
+              width: 25mm;
+              height: 30mm;
+              object-fit: contain;
             }
-            h2 {
-              font-size: 16px;
-              color: #4b5563;
-              margin: 5px 0 20px 0;
+            .qr {
+              width: 31mm;
+              height: 31mm;
+              margin: 0 auto;
             }
-            .footer {
-              font-size: 11px;
-              color: #9ca3af;
-              margin-top: 15px;
+            .details {
+              min-width: 0;
+              padding-left: 1mm;
+              line-height: 1.25;
+            }
+            .name {
+              margin: 0 0 1.5mm;
+              font-size: 9pt;
+              font-weight: 700;
+            }
+            .meta {
+              margin: 0.7mm 0;
+              font-size: 7pt;
+              color: #62705a;
+              word-break: break-word;
+            }
+            .code {
+              color: #467235;
+              font-weight: 700;
             }
           </style>
         </head>
         <body>
-          <div class="card">
-            <h1>SIGAP - CCTV QR CODE</h1>
-            <img class="qr-image" src="${qrUrl}" alt="QR CODE" />
-            <h1>${currentCCTV.nama}</h1>
-            <h2>KODE: ${currentCCTV.kode_cctv} | LOKASI: ${currentCCTV.lokasi_area || '-'}</h2>
-            <div class="footer">Sistem Identifikasi Gangguan Aset Pusat - IKN</div>
+          <div class="label">
+            <div class="brand">
+              <img src="${logoUrl}" alt="Nusantara" />
+            </div>
+            <img class="qr" src="${qrUrl}" alt="QR Code" />
+            <div class="details">
+              <p class="name">${currentCCTV.nama}</p>
+              <p class="meta code">${currentCCTV.kode_cctv}</p>
+              <p class="meta">${currentCCTV.lokasi_area || '-'}</p>
+            </div>
           </div>
           <script>
             window.onload = function() {
@@ -564,32 +646,27 @@ export default function CCTVPage() {
     <DashboardLayout>
       <div className="space-y-8 animate-fadeIn">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Master Data CCTV</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Inventaris detail spesifikasi, ekspor/impor Excel, dan sistem pemindaian QR Code terenkripsi.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <h1 className="shrink-0 whitespace-nowrap text-3xl font-bold tracking-tight">Aset CCTV</h1>
+          <div className="flex flex-wrap gap-2 xl:justify-end">
             <button
               onClick={() => setIsScanModalOpen(true)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
             >
-              <Scan className="h-4.5 w-4.5 text-blue-500" />
+              <Scan className="h-4.5 w-4.5 text-primary" />
               <span>Scanner QR</span>
             </button>
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
             >
-              <Upload className="h-4.5 w-4.5 text-emerald-500" />
+              <Upload className="h-4.5 w-4.5 text-primary" />
               <span>Import Excel</span>
             </button>
             {isAdmin && cctvs.length > 0 && (
               <button
                 onClick={() => handleBulkDelete(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
+                className="order-4 flex items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-500/10 active:scale-[0.98] dark:text-red-400"
                 title="Hapus Semua Data CCTV"
               >
                 <Trash2 className="h-4.5 w-4.5" />
@@ -599,7 +676,7 @@ export default function CCTVPage() {
             {isAdmin && (
               <button
                 onClick={() => handleOpenForm()}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold shadow-lg shadow-blue-500/10 active:scale-[0.98] transition-all cursor-pointer text-sm"
+                className="order-3 flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98]"
               >
                 <Plus className="h-5 w-5" />
                 <span>Tambah CCTV</span>
@@ -609,46 +686,45 @@ export default function CCTVPage() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-card border border-border flex items-center gap-4">
-            <div className="p-3.5 rounded-xl bg-blue-500/10 text-blue-500 dark:bg-blue-500/20">
-              <Camera className="h-6 w-6" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: 'Total CCTV',
+              value: totalCount,
+              icon: Camera,
+              tone: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+            },
+            {
+              label: 'Aktif',
+              value: activeCount,
+              icon: ShieldCheck,
+              tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+            },
+            {
+              label: 'Nonaktif',
+              value: inactiveCount,
+              icon: Activity,
+              tone: 'bg-red-500/10 text-red-600 dark:text-red-400',
+            },
+            {
+              label: 'Pemeliharaan',
+              value: maintenanceCount,
+              icon: Wrench,
+              tone: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+            },
+          ].map(({ label, value, icon: Icon, tone }) => (
+            <div key={label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted">{label}</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[-0.025em]">{value}</p>
+                </div>
+                <div className={`rounded-xl p-2.5 ${tone}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
             </div>
-            <div>
-              <span className="text-xs text-gray-400 font-medium">Total CCTV</span>
-              <h3 className="text-2xl font-bold mt-0.5">{totalCount}</h3>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-card border border-border flex items-center gap-4">
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20">
-              <CheckCircle className="h-6 w-6" />
-            </div>
-            <div>
-              <span className="text-xs text-gray-400 font-medium">Aktif</span>
-              <h3 className="text-2xl font-bold mt-0.5 text-emerald-500">{activeCount}</h3>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-card border border-border flex items-center gap-4">
-            <div className="p-3.5 rounded-xl bg-red-500/10 text-red-500 dark:bg-red-500/20">
-              <AlertTriangle className="h-6 w-6" />
-            </div>
-            <div>
-              <span className="text-xs text-gray-400 font-medium">Rusak</span>
-              <h3 className="text-2xl font-bold mt-0.5 text-red-500">{brokenCount}</h3>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-card border border-border flex items-center gap-4">
-            <div className="p-3.5 rounded-xl bg-amber-500/10 text-amber-500 dark:bg-amber-500/20">
-              <Activity className="h-6 w-6" />
-            </div>
-            <div>
-              <span className="text-xs text-gray-400 font-medium">Pemeliharaan</span>
-              <h3 className="text-2xl font-bold mt-0.5 text-amber-500">{maintenanceCount}</h3>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Filter & Search Controls */}
@@ -662,7 +738,11 @@ export default function CCTVPage() {
               type="text"
               placeholder="Cari CCTV (Nama, Kode, Channel, Lokasi)..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setSelectedIDs([]);
+                setPage(1);
+              }}
               className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary text-sm transition-all"
             />
           </div>
@@ -671,27 +751,48 @@ export default function CCTVPage() {
           <div className="flex flex-wrap gap-2.5">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setSelectedIDs([]);
+                setPage(1);
+              }}
               className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
             >
               <option value="">Semua Status</option>
-              <option value="aktif">Aktif</option>
-              <option value="rusak">Rusak</option>
-              <option value="pemeliharaan">Pemeliharaan</option>
-              <option value="nonaktif">Nonaktif</option>
+              <option value="ACTIVE">Aktif</option>
+              <option value="INACTIVE">Nonaktif</option>
             </select>
 
             <select
               value={ioFilter}
-              onChange={(e) => setIoFilter(e.target.value)}
+              onChange={(e) => {
+                setIoFilter(e.target.value);
+                setSelectedIDs([]);
+                setPage(1);
+              }}
               className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
             >
-              <option value="">Indoor / Outdoor</option>
-              <option value="indoor">Indoor</option>
-              <option value="outdoor">Outdoor</option>
+              <option value="">Semua Status</option>
+              <option value="INDOOR">Indoor</option>
+              <option value="OUTDOOR">Outdoor</option>
             </select>
           </div>
         </div>
+
+        {selectedIDs.length > 0 && isAdmin && (
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold">
+              <span className="text-primary">{selectedIDs.length}</span> CCTV terpilih
+            </p>
+            <button
+              onClick={() => handleBulkDelete(false)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-600"
+            >
+              <Trash2 className="h-4 w-4" />
+              Hapus Terpilih
+            </button>
+          </div>
+        )}
 
         {/* CCTV Master List Table */}
         {loading ? (
@@ -702,9 +803,6 @@ export default function CCTVPage() {
           <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
             <Camera className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-3" />
             <h3 className="text-base font-semibold">Tidak Ada Perangkat CCTV Ditemukan</h3>
-            <p className="text-xs text-gray-400 mt-1 max-w-sm">
-              Cobalah untuk mengubah pencarian atau menyuntikkan template impor baru.
-            </p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -717,14 +815,15 @@ export default function CCTVPage() {
                         <input
                           type="checkbox"
                           onChange={handleSelectAll}
-                          checked={cctvs.length > 0 && selectedIDs.length === cctvs.length}
+                          checked={selectableCCTVs.length > 0 && selectableCCTVs.every((cctv) => selectedIDs.includes(cctv.id))}
+                          aria-label={`Pilih semua ${selectableCCTVs.length} CCTV hasil filter`}
                           className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                         />
                       </th>
                     )}
                     <th className="py-4 px-6">Identitas CCTV</th>
                     <th className="py-4 px-6">Spesifikasi Koneksi</th>
-                    <th className="py-4 px-6">Indoor / Outdoor</th>
+                    <th className="py-4 px-6">Semua Status</th>
                     <th className="py-4 px-6">Sumber Daya & Lokasi</th>
                     <th className="py-4 px-6">Status</th>
                     <th className="py-4 px-6 text-right">Aksi</th>
@@ -732,7 +831,7 @@ export default function CCTVPage() {
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
                   {cctvs.map((cctv) => (
-                    <tr key={cctv.id} className={`hover:bg-background/25 transition-colors ${selectedIDs.includes(cctv.id) ? 'bg-blue-500/5 dark:bg-blue-500/5' : ''}`}>
+                    <tr key={cctv.id} className={`hover:bg-background/35 transition-colors ${selectedIDs.includes(cctv.id) ? 'bg-primary/8' : ''}`}>
                       {isAdmin && (
                         <td className="py-4.5 px-6 w-12 text-center">
                           <input
@@ -750,15 +849,24 @@ export default function CCTVPage() {
                               setCurrentCCTV(cctv);
                               setIsQrModalOpen(true);
                             }}
-                            className="p-2.5 rounded-lg bg-blue-500/5 text-blue-500 hover:bg-blue-500/10 dark:bg-blue-400/5 dark:text-blue-400 border border-blue-500/10 cursor-pointer"
+                            className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/15 bg-white p-1.5 shadow-sm transition hover:border-primary/35"
                             title="Tampilkan QR Code"
                           >
-                            <Scan className="h-5 w-5" />
+                            {cctv.qr_payload ? (
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(cctv.qr_payload)}`}
+                                alt={`QR Code ${cctv.kode_cctv}`}
+                                className="h-full w-full object-contain"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="text-[9px] font-bold text-muted">QR</span>
+                            )}
                           </button>
                           <div>
                             <h4 className="font-semibold">{cctv.nama}</h4>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 uppercase tracking-wider font-mono">{cctv.kode_cctv}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent/20 text-[#775800] dark:text-accent uppercase tracking-wider font-mono">{cctv.kode_cctv}</span>
                               {cctv.id_channel && <span className="text-xs text-gray-400">CH: {cctv.id_channel}</span>}
                             </div>
                           </div>
@@ -791,18 +899,18 @@ export default function CCTVPage() {
                       </td>
                       <td className="py-4.5 px-6">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-                          cctv.status === 'aktif' 
-                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                            : cctv.status === 'rusak'
-                            ? 'bg-red-500/10 text-red-500 border border-red-500/20'
-                            : cctv.status === 'pemeliharaan'
-                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                          isStatus(cctv.status, ['ACTIVE', 'AKTIF'])
+                            ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : isStatus(cctv.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'])
+                            ? 'border border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400'
+                            : isStatus(cctv.status, ['MAINTENANCE', 'PEMELIHARAAN'])
+                            ? 'border border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                             : 'bg-gray-500/10 text-gray-500 border border-gray-500/20'
                         }`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${
-                            cctv.status === 'aktif' ? 'bg-emerald-500' : cctv.status === 'rusak' ? 'bg-red-500' : cctv.status === 'pemeliharaan' ? 'bg-amber-500' : 'bg-gray-500'
+                            isStatus(cctv.status, ['ACTIVE', 'AKTIF']) ? 'bg-emerald-500' : isStatus(cctv.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK']) ? 'bg-red-500' : isStatus(cctv.status, ['MAINTENANCE', 'PEMELIHARAAN']) ? 'bg-amber-500' : 'bg-gray-500'
                           }`} />
-                          {cctv.status}
+                          {statusLabel(cctv.status)}
                         </span>
                       </td>
                       <td className="py-4.5 px-6 text-right">
@@ -821,7 +929,7 @@ export default function CCTVPage() {
                             <>
                               <button
                                 onClick={() => handleOpenForm(cctv)}
-                                className="p-2 rounded-lg border border-border bg-card hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                                className="p-2 rounded-lg border border-border bg-card hover:border-primary/25 hover:bg-primary/8 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                                 title="Edit CCTV"
                               >
                                 <Edit2 className="h-4 w-4" />
@@ -842,23 +950,16 @@ export default function CCTVPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-
-        {/* Floating Bulk Actions Bar */}
-        {selectedIDs.length > 0 && isAdmin && (
-          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-card border border-border px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 animate-slideUp backdrop-blur-md bg-card/90">
-            <span className="text-sm font-semibold">
-              <span className="text-blue-500 font-bold">{selectedIDs.length}</span> CCTV terpilih
-            </span>
-            <div className="h-4 w-px bg-border"></div>
-            <button
-              onClick={() => handleBulkDelete(false)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-md shadow-red-500/10 active:scale-95 transition-all cursor-pointer"
-            >
-              <Trash2 className="h-4 w-4" />
-              <span>Hapus Terpilih</span>
-            </button>
+            <Pagination
+              page={pagination.page}
+              limit={pagination.limit}
+              totalRows={pagination.total_rows}
+              totalPages={pagination.total_pages}
+              onPageChange={(nextPage) => {
+                setPage(nextPage);
+              }}
+              itemLabel="CCTV"
+            />
           </div>
         )}
 
@@ -974,8 +1075,8 @@ export default function CCTVPage() {
                       onChange={(e) => setFormData({...formData, indoor_outdoor: e.target.value})}
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     >
-                      <option value="indoor">Indoor</option>
-                      <option value="outdoor">Outdoor</option>
+                      <option value="INDOOR">Indoor</option>
+                      <option value="OUTDOOR">Outdoor</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -995,10 +1096,9 @@ export default function CCTVPage() {
                       onChange={(e) => setFormData({...formData, status: e.target.value})}
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     >
-                      <option value="aktif">Aktif</option>
-                      <option value="rusak">Rusak</option>
-                      <option value="pemeliharaan">Pemeliharaan</option>
-                      <option value="nonaktif">Nonaktif</option>
+                      <option value="ACTIVE">Aktif</option>
+                      <option value="INACTIVE">Nonaktif</option>
+                      <option value="MAINTENANCE">Pemeliharaan</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -1056,47 +1156,34 @@ export default function CCTVPage() {
         {/* Scan QR Code Modal */}
         {isScanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-            <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex items-center gap-2">
-                  <Scan className="h-5 w-5 text-blue-500" />
-                  <h3 className="text-xl font-bold">Scanner QR Code CCTV</h3>
-                </div>
+            <div className="relative w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold">Scanner QR CCTV</h3>
                 <button onClick={handleCloseScanModal} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {!scannedResult ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {/* Toggle Mode Button */}
-                  <div className="flex justify-center border-b border-border pb-3">
+                  <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={() => {
                         setShowManualInput(!showManualInput);
                         setScanError('');
                       }}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background hover:text-foreground text-gray-500 transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
                     >
-                      {showManualInput ? (
-                        <>
-                          <Camera className="h-4 w-4 text-blue-500" />
-                          <span>Gunakan Kamera Live</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-4 w-4 text-emerald-500" />
-                          <span>Input Teks Manual</span>
-                        </>
-                      )}
+                      {showManualInput ? 'Gunakan kamera' : 'Input manual'}
                     </button>
                   </div>
 
                   {!showManualInput ? (
                     /* CAMERA SCANNER VIEW */
-                    <div className="space-y-4 text-center">
-                      <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl bg-black border border-border flex items-center justify-center min-h-[280px]">
+                    <div className="text-center">
+                      <div className="relative mx-auto flex min-h-[220px] w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border bg-black">
                         {/* html5-qrcode video container */}
                         <div id="reader" className="w-full"></div>
                         
@@ -1106,45 +1193,29 @@ export default function CCTVPage() {
                         )}
                         
                         {!cameraActive && !scanError && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-card/90 z-20">
-                            <div className="h-12 w-12 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center animate-spin border-2 border-blue-500 border-t-transparent"></div>
-                            <span className="text-xs text-gray-400 font-medium">Menghubungkan Kamera...</span>
+                          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-card/90 p-6 text-center">
+                            <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                            <span className="text-xs font-medium text-muted">Menghubungkan kamera</span>
                           </div>
                         )}
                       </div>
-
-                      <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                        Posisikan QR Code CCTV fisik tepat di dalam kotak pemindaian kamera Anda.
-                      </p>
                     </div>
                   ) : (
                     /* MANUAL TEXT INPUT VIEW */
-                    <form onSubmit={handleScanCCTV} className="space-y-4">
-                      <div className="p-6 rounded-xl bg-background border border-border border-dashed text-center flex flex-col items-center justify-center space-y-3 relative overflow-hidden">
-                        <div className="h-16 w-16 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                          <Scan className="h-8 w-8" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold">Input Payload QR Manual</h4>
-                          <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-                            Masukkan atau tempel string payload terenkripsi AES-256 CCTV di bawah ini.
-                          </p>
-                        </div>
-                      </div>
-
+                    <form onSubmit={handleScanCCTV} className="space-y-3">
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400">Payload Enkripsi QR</label>
+                        <label className="text-xs font-semibold text-muted">Payload QR</label>
                         <textarea
                           required
                           value={scanPayload}
                           onChange={(e) => setScanPayload(e.target.value)}
-                          placeholder="Tempel string hex terenkripsi di sini..."
+                          placeholder="Tempel payload QR"
                           rows={3}
                           className="w-full px-3 py-2 rounded-lg border border-input-border bg-input font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                         />
                       </div>
 
-                      <div className="flex justify-end gap-2 border-t border-border pt-4">
+                      <div className="flex justify-end gap-2">
                         <button
                           type="button"
                           onClick={handleCloseScanModal}
@@ -1157,7 +1228,7 @@ export default function CCTVPage() {
                           disabled={scanLoading}
                           className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
                         >
-                          {scanLoading ? 'Mendekripsi...' : 'Dekripsi & Identifikasi'}
+                          {scanLoading ? 'Memeriksa...' : 'Identifikasi'}
                         </button>
                       </div>
                     </form>
@@ -1171,7 +1242,7 @@ export default function CCTVPage() {
                   )}
 
                   {!showManualInput && (
-                    <div className="flex justify-end gap-2 border-t border-border pt-4">
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         onClick={handleCloseScanModal}
@@ -1184,9 +1255,8 @@ export default function CCTVPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="p-4.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-xs flex items-center gap-2 font-medium">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    <span>Pemindaian Berhasil! Perangkat teridentifikasi dengan aman.</span>
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    CCTV berhasil diidentifikasi.
                   </div>
 
                   <div className="p-5 rounded-xl bg-background border border-border space-y-3">
@@ -1196,7 +1266,7 @@ export default function CCTVPage() {
                         <span className="text-xs font-mono font-bold mt-0.5 px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded inline-block uppercase tracking-wider">{scannedResult.kode_cctv}</span>
                       </div>
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${
-                        scannedResult.status === 'aktif' 
+                        isStatus(scannedResult.status, ['ACTIVE', 'AKTIF'])
                           ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
                           : 'bg-red-500/10 text-red-500 border border-red-500/20'
                       }`}>
@@ -1260,47 +1330,36 @@ export default function CCTVPage() {
         {/* Import Excel Modal */}
         {isImportModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-            <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex items-center gap-2">
-                  <Upload className="h-5 w-5 text-emerald-500" />
-                  <h3 className="text-xl font-bold">Impor Massal via Excel</h3>
-                </div>
+            <div className="relative w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold">Impor Excel</h3>
                 <button onClick={() => { setIsImportModalOpen(false); setSelectedFile(null); setImportError(''); setImportSuccess(''); }} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleImportExcel} className="space-y-4">
-                <div className="p-4.5 rounded-xl bg-blue-500/5 text-blue-500 dark:bg-blue-400/5 dark:text-blue-400 border border-blue-500/10 text-xs space-y-2">
-                  <p className="font-semibold flex items-center gap-1.5 text-[13px]">
-                    <FileSpreadsheet className="h-4 w-4 shrink-0" />
-                    Unduh Template Standar Terlebih Dahulu:
-                  </p>
-                  <p className="text-gray-400 leading-relaxed">
-                    Sebelum melakukan impor, pastikan Anda mengisi data menggunakan template Excel resmi agar format kolom sesuai dan terhindar dari error.
-                  </p>
+              <form onSubmit={handleImportExcel} className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-xs">
+                  <p className="font-medium text-muted">Template data CCTV</p>
                   <button
                     type="button"
                     onClick={handleDownloadTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 transition-all cursor-pointer text-xs mt-1 shadow-sm"
+                    className="shrink-0 font-semibold text-primary hover:underline"
                   >
-                    <Download className="h-3.5 w-3.5" />
-                    <span>Download Template (.xlsx)</span>
+                    Unduh .xlsx
                   </button>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-400">Pilih Berkas Excel (.xlsx)</label>
+                <div>
                   <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-border border-dashed rounded-xl cursor-pointer bg-background hover:bg-background/80 transition-colors">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                        <p className="text-xs text-gray-400 font-semibold">
+                    <label className="flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-input-border bg-input px-4 text-center transition-colors hover:border-primary/50">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-foreground">
                           {selectedFile ? selectedFile.name : 'Klik untuk memilih berkas Excel'}
                         </p>
-                        <p className="text-[10px] text-gray-400 mt-1">Hanya mendukung format .xlsx</p>
+                        <p className="mt-0.5 text-[10px] text-muted">Berkas .xlsx</p>
                       </div>
+                      <span className="mt-2 shrink-0 rounded-md border border-border bg-card px-3 py-1 text-[11px] font-semibold">Pilih file</span>
                       <input 
                         type="file" 
                         accept=".xlsx" 
@@ -1316,20 +1375,14 @@ export default function CCTVPage() {
                 </div>
 
                 {importError && (
-                  <div className="p-3 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-xs flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                    <span>{importError}</span>
-                  </div>
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">{importError}</div>
                 )}
 
                 {importSuccess && (
-                  <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-xs flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    <span>{importSuccess}</span>
-                  </div>
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400">{importSuccess}</div>
                 )}
 
-                <div className="flex justify-end gap-2 border-t border-border pt-4">
+                <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => { setIsImportModalOpen(false); setSelectedFile(null); setImportError(''); setImportSuccess(''); }}
@@ -1353,41 +1406,46 @@ export default function CCTVPage() {
         {/* CCTV QR Code Detail Modal */}
         {isQrModalOpen && currentCCTV && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-            <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-center">
-              <div className="flex justify-between items-center border-b border-border pb-3">
-                <span className="font-bold text-sm text-foreground">Detail QR Code</span>
+            <div className="relative w-full max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-4 shadow-2xl sm:p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-foreground">Label QR CCTV</span>
                 <button onClick={() => setIsQrModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-white border border-border">
-                {/* Live QR Code Generator via public free qrserver API using QrPayload */}
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentCCTV.qr_payload)}`} 
+              <div className="mx-auto grid aspect-[100/38] w-full max-w-[600px] grid-cols-[1.1fr_1.2fr_1.4fr] items-center overflow-hidden rounded-xl border-2 border-[#d7aa63] bg-white p-2 text-[#203f25] shadow-sm sm:p-4">
+                <div className="flex h-full items-center justify-center overflow-hidden border-r-2 border-primary pr-1.5 sm:pr-3">
+                  <img
+                    src="/nusantara-logo.png"
+                    alt="Logo Nusantara"
+                    className="h-full max-h-32 w-full object-contain"
+                  />
+                </div>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentCCTV.qr_payload)}`}
                   alt={`QR Code CCTV - ${currentCCTV.kode_cctv}`}
-                  className="h-48 w-48 object-contain"
+                  className="mx-auto h-20 w-20 object-contain sm:h-32 sm:w-32"
                 />
+                <div className="min-w-0 pl-1.5 sm:pl-3">
+                  <p className="line-clamp-3 text-[10px] font-bold leading-tight sm:text-sm">{currentCCTV.nama}</p>
+                  <p className="mt-1 text-[9px] font-bold text-primary sm:mt-2 sm:text-xs">{currentCCTV.kode_cctv}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[8px] text-[#62705a] sm:mt-1 sm:text-[11px]">{currentCCTV.lokasi_area || '-'}</p>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <h4 className="font-bold text-base">{currentCCTV.nama}</h4>
-                <span className="text-xs font-mono font-bold text-blue-500 uppercase tracking-wider bg-blue-500/10 px-2.5 py-0.5 rounded inline-block">{currentCCTV.kode_cctv}</span>
-                <p className="text-[11px] text-gray-400 italic font-mono truncate max-w-[280px] mx-auto mt-2" title={currentCCTV.qr_payload}>
-                  Payload: {currentCCTV.qr_payload}
-                </p>
-              </div>
+              <p className="text-center text-[11px] text-muted">Ukuran cetak 38 × 100 mm (horizontal)</p>
 
-              <div className="flex gap-2 pt-2 border-t border-border">
+              <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setIsQrModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
+                  className="rounded-lg border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-background"
                 >
                   Tutup
                 </button>
                 <button
                   onClick={handlePrintQR}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-semibold text-sm flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-blue-500/10"
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover"
                 >
                   <Printer className="h-4 w-4" />
                   <span>Cetak QR</span>

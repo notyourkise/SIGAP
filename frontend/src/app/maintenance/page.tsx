@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import Pagination from '@/components/Pagination';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { 
@@ -24,6 +25,12 @@ interface Asset {
   id: string;
   name: string;
   serial_number: string;
+}
+
+interface MasterCCTV {
+  id: string;
+  nama: string;
+  kode_cctv: string;
 }
 
 interface User {
@@ -53,6 +60,14 @@ export default function MaintenanceLogsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [assetsError, setAssetsError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    total_rows: 0,
+    total_pages: 1,
+    page: 1,
+    limit: 10,
+  });
 
   // Filter State
   const [statusFilter, setStatusFilter] = useState('');
@@ -74,16 +89,21 @@ export default function MaintenanceLogsPage() {
 
   const fetchLogs = async () => {
     setLoading(true);
+    setError('');
     try {
-      const queryParams = [];
+      const queryParams = [`page=${page}`, 'limit=10'];
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (assetFilter) queryParams.push(`asset_id=${encodeURIComponent(assetFilter)}`);
       
-      const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-      const response = await apiRequest<any>(`/maintenance-logs${queryString}`);
+      const response = await apiRequest<any>(`/maintenance-logs?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
-        const logsData = Array.isArray(response.data) ? response.data : (response.data.rows || []);
-        setLogs(logsData);
+        setLogs(response.data.rows || []);
+        setPagination(response.data.pagination || {
+          total_rows: 0,
+          total_pages: 1,
+          page: 1,
+          limit: 10,
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Gagal memuat log pemeliharaan');
@@ -93,21 +113,36 @@ export default function MaintenanceLogsPage() {
   };
 
   const fetchAssetsList = async () => {
+    setAssetsError('');
     try {
-      const response = await apiRequest<any>('/assets');
+      const response = await apiRequest<any>('/cctv?page=1&limit=100');
       if (response.status === 'success' && response.data) {
-        const assetsData = Array.isArray(response.data) ? response.data : (response.data.rows || []);
-        setAssets(assetsData);
+        const rows: MasterCCTV[] = Array.isArray(response.data)
+          ? response.data
+          : (response.data.rows || []);
+        setAssets(rows.map((cctv) => ({
+          id: cctv.id,
+          name: cctv.nama,
+          serial_number: cctv.kode_cctv,
+        })));
       }
-    } catch (err: any) {
-      console.error('Gagal mengambil daftar aset:', err);
+    } catch (err: unknown) {
+      setAssets([]);
+      setAssetsError(
+        err instanceof Error
+          ? err.message
+          : 'Daftar aset belum dapat dimuat dari server SIGAP.'
+      );
     }
   };
 
   useEffect(() => {
     fetchLogs();
+  }, [page, statusFilter, assetFilter]);
+
+  useEffect(() => {
     fetchAssetsList();
-  }, [statusFilter, assetFilter]);
+  }, []);
 
   const handleOpenModal = (log: MaintenanceLog | null = null) => {
     if (log) {
@@ -195,15 +230,10 @@ export default function MaintenanceLogsPage() {
       <div className="space-y-8 animate-fadeIn">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Riwayat Pemeliharaan</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Catatan pemeliharaan preventif, perbaikan, dan pergantian suku cadang CCTV.
-            </p>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight">Riwayat Pemeliharaan</h1>
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all cursor-pointer text-sm"
+            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/15 active:scale-[0.98] transition-all cursor-pointer text-sm"
           >
             <Plus className="h-5 w-5" />
             <span>Catat Pemeliharaan</span>
@@ -217,7 +247,10 @@ export default function MaintenanceLogsPage() {
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter CCTV</label>
             <select
               value={assetFilter}
-              onChange={(e) => setAssetFilter(e.target.value)}
+              onChange={(e) => {
+                setAssetFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
             >
               <option value="">Semua CCTV</option>
@@ -232,7 +265,10 @@ export default function MaintenanceLogsPage() {
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter Status</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
             >
               <option value="">Semua Status</option>
@@ -244,10 +280,45 @@ export default function MaintenanceLogsPage() {
           </div>
         </div>
 
+        {assetsError && (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 rounded-2xl border border-warning/25 bg-warning/10 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+              <div>
+                <p className="font-semibold text-foreground">Daftar aset belum tersedia</p>
+                <p className="mt-0.5 text-xs text-muted">{assetsError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={fetchAssetsList}
+              className="shrink-0 rounded-lg border border-warning/30 bg-card px-3 py-2 text-xs font-bold text-foreground transition-colors hover:border-warning"
+            >
+              Coba lagi
+            </button>
+          </div>
+        )}
+
         {/* Logs Table */}
         {loading ? (
           <div className="flex justify-center items-center py-20 bg-card rounded-2xl border border-border">
             <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-error/25 bg-card px-6 py-16 text-center">
+            <AlertTriangle className="h-11 w-11 text-error" />
+            <h3 className="mt-3 text-base font-semibold">Data pemeliharaan belum dapat dimuat</h3>
+            <p className="mt-1 max-w-md text-xs text-muted">{error}</p>
+            <button
+              type="button"
+              onClick={fetchLogs}
+              className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-hover"
+            >
+              Coba lagi
+            </button>
           </div>
         ) : logs.length === 0 ? (
           <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
@@ -355,6 +426,14 @@ export default function MaintenanceLogsPage() {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              page={pagination.page}
+              limit={pagination.limit}
+              totalRows={pagination.total_rows}
+              totalPages={pagination.total_pages}
+              onPageChange={setPage}
+              itemLabel="catatan"
+            />
           </div>
         )}
 
