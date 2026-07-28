@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest } from '@/lib/api';
+import { API_BASE_URL, apiRequest, downloadApiFile } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { 
   Plus, 
@@ -18,7 +18,10 @@ import {
   Settings,
   X,
   FileText,
-  Clock
+  Clock,
+  Download,
+  Eye,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface Asset {
@@ -49,6 +52,7 @@ interface MaintenanceLog {
   status: 'scheduled' | 'ongoing' | 'completed' | 'failed';
   scheduled_date: string | null;
   completed_at: string | null;
+  image_url?: string;
   created_at: string;
 }
 
@@ -76,6 +80,8 @@ export default function MaintenanceLogsPage() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentLog, setCurrentLog] = useState<MaintenanceLog | null>(null);
+  const [detailLog, setDetailLog] = useState<MaintenanceLog | null>(null);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -84,7 +90,8 @@ export default function MaintenanceLogsPage() {
     notes: '',
     status: 'completed',
     scheduled_date: '',
-    completed_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    completed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    image_url: ''
   });
 
   const fetchLogs = async () => {
@@ -153,7 +160,8 @@ export default function MaintenanceLogsPage() {
         notes: log.notes || '',
         status: log.status,
         scheduled_date: log.scheduled_date ? log.scheduled_date.split('T')[0] : '',
-        completed_at: log.completed_at ? log.completed_at.replace('T', ' ').slice(0, 19) : ''
+        completed_at: log.completed_at ? log.completed_at.replace('T', ' ').slice(0, 19) : '',
+        image_url: log.image_url || ''
       });
     } else {
       setCurrentLog(null);
@@ -163,9 +171,11 @@ export default function MaintenanceLogsPage() {
         notes: '',
         status: 'completed',
         scheduled_date: '',
-        completed_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        completed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        image_url: ''
       });
     }
+    setEvidenceFile(null);
     setIsModalOpen(true);
   };
 
@@ -177,12 +187,22 @@ export default function MaintenanceLogsPage() {
     }
 
     try {
+      let imageUrl = formData.image_url;
+      if (evidenceFile) {
+        const uploadData = new FormData();
+        uploadData.append('file', evidenceFile);
+        const upload = await apiRequest<{ url: string }>('/upload', {
+          method: 'POST',
+          body: uploadData,
+        });
+        imageUrl = upload.data?.url || '';
+      }
       const endpoint = currentLog ? `/maintenance-logs/${currentLog.id}` : '/maintenance-logs';
       const method = currentLog ? 'PUT' : 'POST';
 
       const response = await apiRequest<MaintenanceLog>(endpoint, {
         method,
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, image_url: imageUrl }),
       });
 
       if (response.status === 'success') {
@@ -193,6 +213,28 @@ export default function MaintenanceLogsPage() {
       alert(err.message || 'Gagal menyimpan log pemeliharaan');
     }
   };
+
+  const handleViewLog = async (id: string) => {
+    try {
+      const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${id}`);
+      setDetailLog(response.data || null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Detail log gagal dimuat');
+    }
+  };
+
+  const handleExport = async () => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set('status', statusFilter);
+    if (assetFilter) params.set('asset_id', assetFilter);
+    try {
+      await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Ekspor log gagal');
+    }
+  };
+
+  const uploadBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
   const handleDeleteLog = async (id: string) => {
     if (!confirm('Apakah Anda yakin ingin menghapus data riwayat pemeliharaan ini? (Soft delete)')) return;
@@ -231,13 +273,18 @@ export default function MaintenanceLogsPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Riwayat Pemeliharaan</h1>
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/15 active:scale-[0.98] transition-all cursor-pointer text-sm"
-          >
-            <Plus className="h-5 w-5" />
-            <span>Catat Pemeliharaan</span>
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handleExport} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold hover:border-primary">
+              <Download className="h-4 w-4" /> Ekspor CSV
+            </button>
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/15 active:scale-[0.98] transition-all cursor-pointer text-sm"
+            >
+              <Plus className="h-5 w-5" />
+              <span>Catat Pemeliharaan</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter Controls */}
@@ -339,7 +386,7 @@ export default function MaintenanceLogsPage() {
                     <th className="py-4 px-6">Teknisi</th>
                     <th className="py-4 px-6">Tanggal Selesai</th>
                     <th className="py-4 px-6">Status</th>
-                    {isAdmin && <th className="py-4 px-6 text-right">Aksi</th>}
+                    <th className="py-4 px-6 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
@@ -400,10 +447,15 @@ export default function MaintenanceLogsPage() {
                         </span>
                       </td>
 
-                      {/* Delete Action (Admin Only) */}
-                      {isAdmin && (
-                        <td className="py-4.5 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                      <td className="py-4.5 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleViewLog(log.id)}
+                              className="p-2 rounded-lg border border-border bg-card hover:border-primary/20 hover:bg-primary/5 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                              title="Detail Log"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => handleOpenModal(log)}
                               className="p-2 rounded-lg border border-border bg-card hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
@@ -411,16 +463,15 @@ export default function MaintenanceLogsPage() {
                             >
                               <Settings className="h-4 w-4" />
                             </button>
-                            <button
-                              onClick={() => handleDeleteLog(log.id)}
-                              className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                              title="Hapus Log"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                            {isAdmin && <button
+                                onClick={() => handleDeleteLog(log.id)}
+                                className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                                title="Hapus Log"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -527,6 +578,15 @@ export default function MaintenanceLogsPage() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Foto Bukti</label>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input-border bg-input px-4 py-3 text-sm text-muted hover:border-primary">
+                    <ImageIcon className="h-5 w-5" />
+                    <span>{evidenceFile?.name || (formData.image_url ? 'Ganti foto bukti' : 'Pilih JPEG, PNG, atau WebP (maks. 2 MB)')}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)} />
+                  </label>
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
                   <button
                     type="button"
@@ -543,6 +603,35 @@ export default function MaintenanceLogsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {detailLog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetailLog(null)} />
+            <div className="z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="text-xl font-bold">Detail Pemeliharaan</h3>
+                <button onClick={() => setDetailLog(null)} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button>
+              </div>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                {Object.entries({
+                  CCTV: detailLog.asset?.name || '—',
+                  Teknisi: detailLog.technician?.full_name || '—',
+                  Status: detailLog.status,
+                  Tanggal: formatDate(detailLog.completed_at || detailLog.scheduled_date),
+                  Tindakan: detailLog.action_taken,
+                  Catatan: detailLog.notes || '—',
+                }).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 text-sm font-medium">{value}</dd></div>)}
+              </dl>
+              {detailLog.image_url && (
+                <div className="mt-5">
+                  <p className="mb-2 text-xs font-semibold uppercase text-muted">Foto Bukti</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`${uploadBaseUrl}${detailLog.image_url}`} alt="Bukti pemeliharaan" className="max-h-72 w-full rounded-xl border border-border object-contain" />
+                </div>
+              )}
             </div>
           </div>
         )}

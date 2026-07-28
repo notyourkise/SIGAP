@@ -186,6 +186,18 @@ export default function CCTVPage() {
   });
 
   // Handlers
+  const handleOpenDetail = async (id: string) => {
+    try {
+      const response = await apiRequest<CCTV>(`/cctv/${id}`);
+      if (response.data) {
+        setCurrentCCTV(response.data);
+        setIsDetailModalOpen(true);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Detail CCTV gagal dimuat');
+    }
+  };
+
   const handleOpenForm = (cctv: CCTV | null = null) => {
     if (cctv) {
       setCurrentCCTV(cctv);
@@ -656,13 +668,15 @@ export default function CCTVPage() {
               <Scan className="h-4.5 w-4.5 text-primary" />
               <span>Scanner QR</span>
             </button>
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
-            >
-              <Upload className="h-4.5 w-4.5 text-primary" />
-              <span>Import Excel</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
+              >
+                <Upload className="h-4.5 w-4.5 text-primary" />
+                <span>Import Excel</span>
+              </button>
+            )}
             {isAdmin && cctvs.length > 0 && (
               <button
                 onClick={() => handleBulkDelete(true)}
@@ -736,7 +750,7 @@ export default function CCTVPage() {
             </div>
             <input
               type="text"
-              placeholder="Cari CCTV (Nama, Kode, Channel, Lokasi)..."
+              placeholder="Cari CCTV"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -916,10 +930,7 @@ export default function CCTVPage() {
                       <td className="py-4.5 px-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => {
-                              setCurrentCCTV(cctv);
-                              setIsDetailModalOpen(true);
-                            }}
+                            onClick={() => handleOpenDetail(cctv.id)}
                             className="p-2 rounded-lg border border-border bg-card hover:border-gray-500/20 hover:bg-gray-500/5 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                             title="Detail CCTV"
                           >

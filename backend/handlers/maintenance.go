@@ -36,6 +36,36 @@ type UpdateMaintenanceLogRequest struct {
 	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL baru dari /api/upload (opsional)
 }
 
+// resolveMaintenanceAsset keeps maintenance logs compatible with the CCTV master
+// list. Imported CCTV records are materialized into the legacy assets table only
+// when they are first used for maintenance.
+func resolveMaintenanceAsset(assetID uuid.UUID) (models.Asset, error) {
+	var asset models.Asset
+	if err := config.DB.First(&asset, "id = ?", assetID).Error; err == nil {
+		return asset, nil
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", assetID).Error; err != nil {
+		return asset, err
+	}
+
+	asset = models.Asset{
+		Base:         models.Base{ID: cctv.ID},
+		Name:         cctv.Nama,
+		SerialNumber: cctv.KodeCCTV,
+		IPAddress:    cctv.IPCamera,
+		LocationName: cctv.LokasiArea,
+		Status:       strings.ToLower(cctv.Status),
+		Vendor:       cctv.Pemilik,
+	}
+	if err := config.DB.Create(&asset).Error; err != nil {
+		return asset, err
+	}
+
+	return asset, nil
+}
+
 // CreateMaintenanceLog membuat log pemeliharaan baru (Admin & Teknisi)
 // @Summary      Catat Pemeliharaan CCTV
 // @Description  Membuat catatan pemeliharaan baru untuk aset CCTV tertentu. ID Teknisi dideteksi otomatis dari token JWT.
@@ -74,8 +104,7 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	var asset models.Asset
-	if err := config.DB.First(&asset, "id = ?", assetUUID).Error; err != nil {
+	if _, err := resolveMaintenanceAsset(assetUUID); err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Aset CCTV tidak ditemukan",
@@ -320,8 +349,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if req.AssetID != "" {
 		assetUUID, err := uuid.Parse(req.AssetID)
 		if err == nil {
-			var asset models.Asset
-			if config.DB.First(&asset, "id = ?", assetUUID).Error == nil {
+			if _, resolveErr := resolveMaintenanceAsset(assetUUID); resolveErr == nil {
 				logEntry.AssetID = assetUUID
 			}
 		}
@@ -364,7 +392,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if req.ImageUrl != "" && req.ImageUrl != logEntry.ImageUrl {
 		if logEntry.ImageUrl != "" {
 			oldPath := "." + logEntry.ImageUrl // /uploads/xxx.jpg -> ./uploads/xxx.jpg
-			_ = os.Remove(oldPath)            // Abaikan error jika file sudah tidak ada
+			_ = os.Remove(oldPath)             // Abaikan error jika file sudah tidak ada
 		}
 		logEntry.ImageUrl = req.ImageUrl
 	}
