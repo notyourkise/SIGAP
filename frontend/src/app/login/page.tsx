@@ -64,8 +64,8 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12 transition-colors duration-300">
       {/* Background Gradients */}
-      <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-blue-500/10 blur-[120px] dark:bg-blue-500/5"></div>
-      <div className="absolute -bottom-40 -right-40 h-[600px] w-[600px] rounded-full bg-indigo-500/10 blur-[120px] dark:bg-indigo-500/5"></div>
+      <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-accent/15 blur-[120px] dark:bg-accent/5"></div>
+      <div className="absolute -bottom-40 -right-40 h-[600px] w-[600px] rounded-full bg-primary/15 blur-[120px] dark:bg-primary/10"></div>
 
       {/* Floating Theme Toggle */}
       <button
@@ -80,7 +80,7 @@ export default function LoginPage() {
         <div className="glass rounded-3xl p-8 shadow-2xl border border-border bg-card/60 backdrop-blur-md">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-500 to-indigo-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-indigo-400">
+            <h1 className="text-4xl font-extrabold tracking-tight text-primary">
               SIGAP
             </h1>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -154,7 +154,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold shadow-lg shadow-blue-500/20 active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/20 active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>

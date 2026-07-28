@@ -1,43 +1,49 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #fff9e9;
+  --foreground: #203f25;
   
-  --card-bg: #ffffff;
-  --card-foreground: #0f172a;
+  --card-bg: #fffef8;
+  --card-foreground: #203f25;
   
-  --border-color: #e2e8f0;
+  --border-color: #e4d6a7;
   
-  --primary-color: #3b82f6;
-  --primary-hover: #2563eb;
+  --primary-color: #467235;
+  --primary-hover: #365b2b;
+  --accent-color: #ffbf00;
+  --accent-soft: #fff78d;
+  --muted-color: #62705a;
   
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
+  --success-color: #467235;
+  --warning-color: #c88f00;
+  --error-color: #b54432;
   
   --input-bg: #ffffff;
-  --input-border: #cbd5e1;
+  --input-border: #d4c58f;
 }
 
 .dark {
-  --background: #090d16;
-  --foreground: #f8fafc;
+  --background: #162218;
+  --foreground: #fff9d7;
   
-  --card-bg: #111827;
-  --card-foreground: #f8fafc;
+  --card-bg: #203122;
+  --card-foreground: #fff9d7;
   
-  --border-color: #1f2937;
+  --border-color: #3d553b;
   
-  --primary-color: #3b82f6;
-  --primary-hover: #2563eb;
+  --primary-color: #6d9a57;
+  --primary-hover: #7eaa68;
+  --accent-color: #ffbf00;
+  --accent-soft: #6a632f;
+  --muted-color: #b6b99f;
   
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
+  --success-color: #78a763;
+  --warning-color: #ffbf00;
+  --error-color: #e06b56;
   
-  --input-bg: #1f2937;
-  --input-border: #374151;
+  --input-bg: #263b28;
+  --input-border: #496247;
 }
 
 @theme inline {
@@ -49,6 +55,9 @@
   
   --color-primary: var(--primary-color);
   --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent-color);
+  --color-accent-soft: var(--accent-soft);
+  --color-muted: var(--muted-color);
   --color-success: var(--success-color);
   --color-warning: var(--warning-color);
   --color-error: var(--error-color);
@@ -60,24 +69,26 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   min-height: 100vh;
 }
 
 /* Glassmorphism utility */
 .glass {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 253, 245, 0.78);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(222, 216, 189, 0.7);
 }
 
 .dark .glass {
-  background: rgba(17, 24, 39, 0.45);
+  background: rgba(32, 49, 34, 0.82);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(109, 154, 87, 0.18);
 }
 
 @keyframes scan {

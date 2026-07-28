@@ -23,7 +23,14 @@ export async function apiRequest<T>(
     headers,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  } catch {
+    throw new Error(
+      'Tidak dapat terhubung ke server SIGAP. Pastikan backend berjalan di localhost:3000.'
+    );
+  }
 
   if (response.status === 401) {
     if (typeof window !== 'undefined') {
@@ -35,7 +42,17 @@ export async function apiRequest<T>(
     }
   }
 
-  const data = await response.json();
+  let data: ApiResponse<T>;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(
+      response.ok
+        ? 'Respons server SIGAP tidak dapat dibaca.'
+        : `Server SIGAP mengembalikan kesalahan HTTP ${response.status}.`
+    );
+  }
+
   if (!response.ok) {
     throw new Error(data.message || 'Terjadi kesalahan pada server');
   }
