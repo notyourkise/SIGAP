@@ -2,7 +2,7 @@
 
 ## [0.1.0] - 2026-07-22
 
-### Added
+### Added New
 - Inisialisasi proyek Next.js menggunakan **TypeScript**, **App Router**, **ESLint**, dan **Tailwind CSS v4** di dalam direktori `src/`.
 - Pemasangan pustaka **`lucide-react`** untuk kebutuhan ikon antarmuka.
 - Pembuatan API client helper (`src/lib/api.ts`) untuk mempermudah pemanggilan REST API backend dengan dukungan otomatisasi otentikasi Bearer Token JWT.
