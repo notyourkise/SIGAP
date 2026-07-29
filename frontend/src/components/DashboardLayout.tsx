@@ -14,6 +14,8 @@ import {
   Sun, 
   Moon,
   Database,
+  LayoutDashboard,
+  Users,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -31,8 +33,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
     { name: 'Log Pemeliharaan', href: '/maintenance', icon: Wrench },
+    ...(user?.role === 'admin'
+      ? [{ name: 'Manajemen Pengguna', href: '/users', icon: Users }]
+      : []),
   ];
 
   const handleLogout = () => {

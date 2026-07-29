@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 export interface ApiResponse<T> {
   status: string;
@@ -13,7 +13,9 @@ export async function apiRequest<T>(
   const token = typeof window !== 'undefined' ? localStorage.getItem('sigap_token') : null;
 
   const headers = new Headers(options.headers);
-  headers.set('Content-Type', 'application/json');
+  if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -58,4 +60,34 @@ export async function apiRequest<T>(
   }
 
   return data;
+}
+
+export async function downloadApiFile(endpoint: string, fallbackName: string): Promise<void> {
+  const token = localStorage.getItem('sigap_token');
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!response.ok) {
+    let message = 'Gagal mengunduh file';
+    try {
+      const payload = await response.json();
+      message = payload.message || message;
+    } catch {
+      // Respons unduhan yang gagal tidak selalu berupa JSON.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition');
+  const fileName = disposition?.match(/filename="?([^"]+)"?/i)?.[1] || fallbackName;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
