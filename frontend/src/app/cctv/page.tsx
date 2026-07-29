@@ -137,7 +137,7 @@ export default function CCTVPage() {
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Gagal memuat data CCTV');
+      setError(err.message || 'Data CCTV belum dapat dimuat. Coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -205,7 +205,7 @@ export default function CCTVPage() {
         setIsDetailModalOpen(true);
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail CCTV gagal dimuat');
+      alert(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -272,26 +272,26 @@ export default function CCTVPage() {
         fetchCCTVSummary();
       }
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan data CCTV');
+      alert(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleDeleteCCTV = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus CCTV ini? (Soft delete)')) return;
-    setActionLoading(`delete-${id}`);
+  const handleDeleteCCTV = async (cctv: CCTV) => {
+    if (!confirm(`Hapus CCTV “${cctv.nama}”? CCTV tidak akan ditampilkan dalam daftar aktif.`)) return;
+    setActionLoading(`delete-${cctv.id}`);
     try {
-      const response = await apiRequest(`/cctv/${id}`, {
+      const response = await apiRequest(`/cctv/${cctv.id}`, {
         method: 'DELETE'
       });
       if (response.status === 'success') {
-        setSelectedIDs(prev => prev.filter(item => item !== id));
+        setSelectedIDs(prev => prev.filter(item => item !== cctv.id));
         fetchCCTVs();
         fetchCCTVSummary();
       }
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus data CCTV');
+      alert(err.message || 'CCTV belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -317,8 +317,8 @@ export default function CCTVPage() {
   // Bulk Delete Handler (Selected or All)
   const handleBulkDelete = async (deleteAll = false) => {
     const confirmMessage = deleteAll 
-      ? 'PERINGATAN: Apakah Anda yakin ingin mengosongkan seluruh data CCTV di database? Tindakan ini tidak dapat dibatalkan.'
-      : `Apakah Anda yakin ingin menghapus ${selectedIDs.length} data CCTV yang terpilih?`;
+      ? 'Hapus seluruh data CCTV? Semua CCTV akan dihapus dari SIGAP dan tindakan ini tidak dapat dibatalkan.'
+      : `Hapus ${selectedIDs.length} CCTV terpilih dari SIGAP?`;
       
     if (!confirm(confirmMessage)) return;
 
@@ -341,15 +341,15 @@ export default function CCTVPage() {
 
       const resJson = await response.json();
       if (!response.ok) {
-        throw new Error(resJson.message || 'Gagal menghapus data secara massal');
+        throw new Error(resJson.message || 'Data CCTV terpilih belum dapat dihapus.');
       }
 
       setSelectedIDs([]);
       fetchCCTVs();
       fetchCCTVSummary();
-      alert(resJson.message || 'Hapus massal berhasil dilakukan!');
+      alert(resJson.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
     } catch (err: any) {
-      alert(err.message || 'Gagal melakukan hapus massal');
+      alert(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -368,7 +368,7 @@ export default function CCTVPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Gagal mengunduh template');
+        throw new Error('Template impor belum dapat diunduh.');
       }
 
       const blob = await response.blob();
@@ -381,7 +381,7 @@ export default function CCTVPage() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat mengunduh template');
+      alert(err.message || 'Template impor belum dapat diunduh. Coba lagi.');
     }
   };
 
@@ -414,15 +414,15 @@ export default function CCTVPage() {
 
       const resJson = await response.json();
       if (!response.ok) {
-        throw new Error(resJson.message || 'Gagal mengimpor berkas Excel');
+        throw new Error(resJson.message || 'Berkas Excel belum dapat diimpor. Periksa format lalu coba lagi.');
       }
 
-      setImportSuccess(resJson.message || 'Data CCTV berhasil diimpor!');
+      setImportSuccess(resJson.message || 'Data CCTV berhasil diimpor.');
       setSelectedFile(null);
       fetchCCTVs();
       fetchCCTVSummary();
     } catch (err: any) {
-      setImportError(err.message || 'Terjadi kesalahan saat mengimpor berkas');
+      setImportError(err.message || 'Berkas Excel belum dapat diimpor. Periksa format lalu coba lagi.');
     } finally {
       setImportLoading(false);
     }
@@ -451,7 +451,7 @@ export default function CCTVPage() {
         setScannedResult(response.data);
       }
     } catch (err: any) {
-      setScanError(err.message || 'QR Payload tidak valid atau gagal didekripsi');
+      setScanError(err.message || 'Payload QR tidak valid atau tidak dapat didekripsi. Pindai ulang atau gunakan input manual.');
     } finally {
       setScanLoading(false);
     }
@@ -475,7 +475,7 @@ export default function CCTVPage() {
           initializeScanner(module);
         }
       }).catch(err => {
-        setScanError('Gagal memuat modul kamera: ' + err.message);
+        setScanError('Pemindai kamera belum dapat dimuat. Gunakan input manual. ' + err.message);
       });
     }, 300);
   };
@@ -504,12 +504,12 @@ export default function CCTVPage() {
         setCameraActive(true);
       }).catch((err: any) => {
         console.error("Camera start error:", err);
-        setScanError("Gagal mengakses kamera. Pastikan izin kamera telah diberikan atau gunakan input manual.");
+        setScanError("Kamera tidak dapat diakses. Berikan izin kamera atau gunakan input manual.");
         setCameraActive(false);
       });
     } catch (e: any) {
       console.error(e);
-      setScanError("Inisialisasi pemindai gagal: " + e.message);
+      setScanError("Pemindai belum dapat dijalankan. Gunakan input manual. " + e.message);
     }
   };
 
@@ -549,7 +549,7 @@ export default function CCTVPage() {
   const handleScanCCTV = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanPayload) {
-      setScanError('QR payload tidak boleh kosong.');
+      setScanError('Payload QR wajib diisi.');
       return;
     }
 
@@ -567,7 +567,7 @@ export default function CCTVPage() {
         setScannedResult(response.data);
       }
     } catch (err: any) {
-      setScanError(err.message || 'QR Payload tidak valid atau gagal didekripsi');
+      setScanError(err.message || 'Payload QR tidak valid atau tidak dapat didekripsi. Periksa payload lalu coba lagi.');
     } finally {
       setScanLoading(false);
     }
@@ -681,14 +681,17 @@ export default function CCTVPage() {
       <div className="space-y-8 animate-fadeIn">
         {/* Header */}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <h1 className="shrink-0 whitespace-nowrap text-3xl font-bold tracking-tight">Aset CCTV</h1>
+          <div>
+            <h1 className="shrink-0 whitespace-nowrap text-3xl font-bold tracking-tight">Aset CCTV</h1>
+            <p className="mt-1 text-sm text-muted">Kelola identitas, koneksi, lokasi, dan status CCTV kawasan IKN.</p>
+          </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
             <button
               onClick={() => setIsScanModalOpen(true)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
             >
               <Scan className="h-4.5 w-4.5 text-primary" />
-              <span>Scanner QR</span>
+              <span>Pindai QR</span>
             </button>
             {isAdmin && (
               <button
@@ -696,7 +699,7 @@ export default function CCTVPage() {
                 className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
               >
                 <Upload className="h-4.5 w-4.5 text-primary" />
-                <span>Import Excel</span>
+                <span>Impor Excel</span>
               </button>
             )}
             {isAdmin && cctvs.length > 0 && (
@@ -704,10 +707,10 @@ export default function CCTVPage() {
                 onClick={() => handleBulkDelete(true)}
                 disabled={actionLoading === 'delete-all'}
                 className="order-4 flex items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-500/10 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 dark:text-red-400"
-                title="Hapus Semua Data CCTV"
+                title="Hapus semua CCTV"
               >
                 {actionLoading === 'delete-all' ? <LoaderCircle className="h-4.5 w-4.5 animate-spin" /> : <Trash2 className="h-4.5 w-4.5" />}
-                <span>{actionLoading === 'delete-all' ? 'Menghapus...' : 'Kosongkan Data'}</span>
+                <span>{actionLoading === 'delete-all' ? 'Menghapus semua CCTV…' : 'Hapus Semua CCTV'}</span>
               </button>
             )}
             {isAdmin && (
@@ -777,7 +780,7 @@ export default function CCTVPage() {
             </div>
             <input
               type="text"
-              placeholder="Cari CCTV"
+              placeholder="Cari nama, kode, channel, atau lokasi"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -799,7 +802,7 @@ export default function CCTVPage() {
               }}
               className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
             >
-              <option value="">Semua Status</option>
+              <option value="">Semua status</option>
               <option value="ACTIVE">Aktif</option>
               <option value="INACTIVE">Nonaktif</option>
             </select>
@@ -813,7 +816,7 @@ export default function CCTVPage() {
               }}
               className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
             >
-              <option value="">Semua Status</option>
+              <option value="">Semua lokasi pemasangan</option>
               <option value="INDOOR">Indoor</option>
               <option value="OUTDOOR">Outdoor</option>
             </select>
@@ -831,20 +834,33 @@ export default function CCTVPage() {
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-wait disabled:opacity-60"
             >
               {actionLoading === 'delete-selected' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {actionLoading === 'delete-selected' ? 'Menghapus...' : 'Hapus Terpilih'}
+              {actionLoading === 'delete-selected' ? 'Menghapus CCTV…' : `Hapus ${selectedIDs.length} CCTV`}
             </button>
           </div>
         )}
 
         {/* CCTV Master List Table */}
         {loading ? (
-          <div className="flex justify-center items-center py-20 bg-card rounded-2xl border border-border">
+          <div className="flex justify-center items-center gap-3 py-20 bg-card rounded-2xl border border-border" role="status">
             <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+            <span className="text-sm text-muted">Memuat data CCTV…</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-error/25 bg-card px-6 py-16 text-center">
+            <AlertTriangle className="h-11 w-11 text-error" />
+            <h3 className="mt-3 text-base font-semibold">Data CCTV belum dapat dimuat</h3>
+            <p className="mt-1 max-w-md text-xs text-muted">{error}</p>
+            <button type="button" onClick={fetchCCTVs} className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white">
+              Coba lagi
+            </button>
           </div>
         ) : cctvs.length === 0 ? (
           <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
             <Camera className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-3" />
-            <h3 className="text-base font-semibold">Tidak Ada Perangkat CCTV Ditemukan</h3>
+            <h3 className="text-base font-semibold">{search || statusFilter || ioFilter ? 'Tidak ada CCTV yang cocok' : 'Belum ada data CCTV'}</h3>
+            <p className="mt-1 max-w-sm text-xs text-muted">
+              {search || statusFilter || ioFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol “Tambah CCTV” atau “Impor Excel” untuk menambahkan data.'}
+            </p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -865,10 +881,10 @@ export default function CCTVPage() {
                     )}
                     <th className="py-4 px-6">Identitas CCTV</th>
                     <th className="py-4 px-6">Spesifikasi Koneksi</th>
-                    <th className="py-4 px-6">Semua Status</th>
+                    <th className="py-4 px-6">Pemasangan</th>
                     <th className="py-4 px-6">Sumber Daya & Lokasi</th>
                     <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6 text-right">Aksi</th>
+                    <th className="py-4 px-6 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
@@ -880,6 +896,7 @@ export default function CCTVPage() {
                             type="checkbox"
                             onChange={(e) => handleSelectRow(cctv.id, e.target.checked)}
                             checked={selectedIDs.includes(cctv.id)}
+                            aria-label={`Pilih CCTV ${cctv.nama}`}
                             className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                           />
                         </td>
@@ -892,7 +909,8 @@ export default function CCTVPage() {
                               setIsQrModalOpen(true);
                             }}
                             className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/15 bg-white p-1.5 shadow-sm transition hover:border-primary/35"
-                            title="Tampilkan QR Code"
+                            title="Tampilkan kode QR"
+                            aria-label={`Tampilkan kode QR ${cctv.nama}`}
                           >
                             {cctv.qr_payload ? (
                               <img
@@ -909,14 +927,14 @@ export default function CCTVPage() {
                             <h4 className="font-semibold">{cctv.nama}</h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent/20 text-[#775800] dark:text-accent uppercase tracking-wider font-mono">{cctv.kode_cctv}</span>
-                              {cctv.id_channel && <span className="text-xs text-gray-400">CH: {cctv.id_channel}</span>}
+                              {cctv.id_channel && <span className="text-xs text-gray-400">Channel: {cctv.id_channel}</span>}
                             </div>
                           </div>
                         </div>
                       </td>
                       <td className="py-4.5 px-6 font-mono text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                        <div><span className="text-[10px] text-gray-400">CAM:</span> {cctv.ip_camera || '-'}</div>
-                        {cctv.ip_nvr && <div><span className="text-[10px] text-gray-400">NVR:</span> {cctv.ip_nvr}</div>}
+                        <div><span className="text-[10px] text-gray-400">IP kamera:</span> {cctv.ip_camera || '-'}</div>
+                        {cctv.ip_nvr && <div><span className="text-[10px] text-gray-400">IP NVR:</span> {cctv.ip_nvr}</div>}
                       </td>
                       <td className="py-4.5 px-6">
                         <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded border capitalize ${
@@ -961,7 +979,8 @@ export default function CCTVPage() {
                             onClick={() => handleOpenDetail(cctv.id)}
                             disabled={actionLoading === `detail-${cctv.id}`}
                             className="p-2 rounded-lg border border-border bg-card hover:border-gray-500/20 hover:bg-gray-500/5 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                            title="Detail CCTV"
+                            title="Lihat detail CCTV"
+                            aria-label={`Lihat detail CCTV ${cctv.nama}`}
                           >
                             {actionLoading === `detail-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -970,15 +989,17 @@ export default function CCTVPage() {
                               <button
                                 onClick={() => handleOpenForm(cctv)}
                                 className="p-2 rounded-lg border border-border bg-card hover:border-primary/25 hover:bg-primary/8 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                                title="Edit CCTV"
+                                title="Ubah data CCTV"
+                                aria-label={`Ubah data CCTV ${cctv.nama}`}
                               >
                                 <Edit2 className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteCCTV(cctv.id)}
+                                onClick={() => handleDeleteCCTV(cctv)}
                                 disabled={actionLoading === `delete-${cctv.id}`}
                                 className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                                 title="Hapus CCTV"
+                                aria-label={`Hapus CCTV ${cctv.nama}`}
                               >
                                 {actionLoading === `delete-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>
@@ -1009,13 +1030,14 @@ export default function CCTVPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
             <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-border pb-4">
-                <h3 className="text-xl font-bold">{currentCCTV ? 'Edit Data CCTV' : 'Tambah Perangkat CCTV'}</h3>
-                <button onClick={() => setIsFormModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <h3 className="text-xl font-bold">{currentCCTV ? 'Ubah Data CCTV' : 'Tambah CCTV'}</h3>
+                <button type="button" aria-label="Tutup formulir CCTV" onClick={() => setIsFormModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
               <form onSubmit={handleSaveCCTV} className="space-y-4">
+                <p className="text-xs text-muted">Kolom bertanda * wajib diisi.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-gray-400">Kode CCTV *</label>
@@ -1024,7 +1046,7 @@ export default function CCTVPage() {
                       required
                       value={formData.kode_cctv}
                       onChange={(e) => setFormData({...formData, kode_cctv: e.target.value})}
-                      placeholder="Contoh: THD-01"
+                      placeholder="Contoh: IKN-THD-01"
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -1045,7 +1067,7 @@ export default function CCTVPage() {
                       required
                       value={formData.nama}
                       onChange={(e) => setFormData({...formData, nama: e.target.value})}
-                      placeholder="Contoh: CCTV Bundaran HI Utama"
+                      placeholder="Contoh: CCTV Sumbu Kebangsaan Utama"
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -1055,7 +1077,7 @@ export default function CCTVPage() {
                       type="text"
                       value={formData.lokasi_area}
                       onChange={(e) => setFormData({...formData, lokasi_area: e.target.value})}
-                      placeholder="Contoh: Kawasan Bundaran HI, Jakarta Pusat"
+                      placeholder="Contoh: Kawasan Inti Pusat Pemerintahan"
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -1126,7 +1148,7 @@ export default function CCTVPage() {
                       type="text"
                       value={formData.pemilik}
                       onChange={(e) => setFormData({...formData, pemilik: e.target.value})}
-                      placeholder="Contoh: Dishub / Polda"
+                      placeholder="Contoh: Otorita IKN / Dishub"
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -1167,7 +1189,7 @@ export default function CCTVPage() {
                     <textarea
                       value={formData.keterangan}
                       onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
-                      placeholder="Tuliskan keterangan detail CCTV di sini..."
+                      placeholder="Tambahkan kondisi atau informasi teknis CCTV"
                       rows={3}
                       className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                     />
@@ -1188,7 +1210,7 @@ export default function CCTVPage() {
                     className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15 disabled:cursor-wait disabled:opacity-65"
                   >
                     {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                    {actionLoading === 'save' ? 'Menyimpan...' : 'Simpan'}
+                    {actionLoading === 'save' ? 'Menyimpan data CCTV…' : currentCCTV ? 'Simpan Perubahan' : 'Tambah CCTV'}
                   </button>
                 </div>
               </form>
@@ -1201,8 +1223,8 @@ export default function CCTVPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
             <div className="relative w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5 shadow-2xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold">Scanner QR CCTV</h3>
-                <button onClick={handleCloseScanModal} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <h3 className="text-base font-bold">Pindai QR CCTV</h3>
+                <button type="button" aria-label="Tutup pemindai QR" onClick={handleCloseScanModal} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1219,7 +1241,7 @@ export default function CCTVPage() {
                       }}
                       className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
                     >
-                      {showManualInput ? 'Gunakan kamera' : 'Input manual'}
+                      {showManualInput ? 'Gunakan kamera' : 'Masukkan payload'}
                     </button>
                   </div>
 
@@ -1271,7 +1293,7 @@ export default function CCTVPage() {
                           disabled={scanLoading}
                           className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
                         >
-                          {scanLoading ? 'Memeriksa...' : 'Identifikasi'}
+                          {scanLoading ? 'Mengidentifikasi CCTV…' : 'Identifikasi CCTV'}
                         </button>
                       </div>
                     </form>
@@ -1354,14 +1376,14 @@ export default function CCTVPage() {
                       }}
                       className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
                     >
-                      Scan Lagi
+                      Pindai Lagi
                     </button>
                     <button
                       type="button"
                       onClick={handleCloseScanModal}
                       className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-sm cursor-pointer"
                     >
-                      Selesai
+                      Tutup
                     </button>
                   </div>
                 </div>
@@ -1376,7 +1398,7 @@ export default function CCTVPage() {
             <div className="relative w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5 shadow-2xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold">Impor Excel</h3>
-                <button onClick={() => { setIsImportModalOpen(false); setSelectedFile(null); setImportError(''); setImportSuccess(''); }} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <button type="button" aria-label="Tutup impor Excel" onClick={() => { setIsImportModalOpen(false); setSelectedFile(null); setImportError(''); setImportSuccess(''); }} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1389,7 +1411,7 @@ export default function CCTVPage() {
                     onClick={handleDownloadTemplate}
                     className="shrink-0 font-semibold text-primary hover:underline"
                   >
-                    Unduh .xlsx
+                    Unduh template
                   </button>
                 </div>
 
@@ -1438,7 +1460,7 @@ export default function CCTVPage() {
                     disabled={importLoading || !selectedFile}
                     className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
                   >
-                    {importLoading ? 'Memproses...' : 'Impor Sekarang'}
+                    {importLoading ? 'Mengimpor data CCTV…' : 'Impor Data CCTV'}
                   </button>
                 </div>
               </form>
@@ -1452,7 +1474,7 @@ export default function CCTVPage() {
             <div className="relative w-full max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-4 shadow-2xl sm:p-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-foreground">Label QR CCTV</span>
-                <button onClick={() => setIsQrModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <button type="button" aria-label="Tutup label QR CCTV" onClick={() => setIsQrModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -1503,8 +1525,8 @@ export default function CCTVPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
             <div className="relative w-full max-w-xl bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-border pb-4">
-                <h3 className="text-xl font-bold">Spesifikasi CCTV</h3>
-                <button onClick={() => setIsDetailModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
+                <h3 className="text-xl font-bold">Detail CCTV</h3>
+                <button type="button" aria-label="Tutup detail CCTV" onClick={() => setIsDetailModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>

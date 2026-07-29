@@ -25,7 +25,7 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     if (!username || !password) {
-      setError('Username/email dan kata sandi wajib diisi.');
+      setError('Username atau email dan kata sandi wajib diisi.');
       return;
     }
 
@@ -41,7 +41,7 @@ export default function LoginPage() {
         setError(response.message || 'Akun atau kata sandi tidak sesuai.');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Server belum dapat dihubungi.');
+      setError(err instanceof Error ? err.message : 'Layanan SIGAP belum dapat dihubungi. Periksa koneksi lalu coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -49,8 +49,9 @@ export default function LoginPage() {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center gap-3 bg-background" role="status">
         <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+        <span className="text-sm text-muted">Memeriksa sesi pengguna…</span>
       </div>
     );
   }
@@ -65,7 +66,7 @@ export default function LoginPage() {
         type="button"
         onClick={toggleTheme}
         aria-label={theme === 'light' ? 'Aktifkan mode gelap' : 'Aktifkan mode terang'}
-        title={theme === 'light' ? 'Mode Gelap' : 'Mode Terang'}
+        title={theme === 'light' ? 'Aktifkan mode gelap' : 'Aktifkan mode terang'}
         className="absolute right-5 top-5 rounded-xl border border-border bg-card p-2.5 shadow-sm transition-colors hover:border-primary"
       >
         {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-accent" />}
@@ -74,7 +75,7 @@ export default function LoginPage() {
       <div className="z-10 w-full max-w-sm rounded-3xl border border-border bg-card p-7 shadow-[0_24px_70px_rgba(40,63,36,0.12)] sm:p-8">
         <header className="mb-7 text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-primary">SIGAP</h1>
-          <p className="mt-2 text-sm text-muted">Masuk untuk melanjutkan.</p>
+          <p className="mt-2 text-sm text-muted">Sistem internal pengelolaan CCTV kawasan IKN.</p>
         </header>
 
         {error && (
@@ -95,7 +96,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="Masukkan akun"
+                placeholder="Masukkan username atau email"
                 disabled={loading}
                 className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-4 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
                 required
@@ -135,7 +136,7 @@ export default function LoginPage() {
             disabled={loading}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98] disabled:cursor-wait disabled:scale-100 disabled:opacity-70"
           >
-            {loading ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Memproses...</> : 'Masuk'}
+            {loading ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Memeriksa akun…</> : 'Masuk'}
           </button>
         </form>
       </div>
