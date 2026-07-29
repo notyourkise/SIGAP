@@ -22,7 +22,8 @@ import {
   Cpu, 
   Minimize2, 
   Eye, 
-  Printer
+  Printer,
+  LoaderCircle
 } from 'lucide-react';
 
 interface CCTV {
@@ -52,6 +53,7 @@ export default function CCTVPage() {
 
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
   const [allCCTVs, setAllCCTVs] = useState<CCTV[]>([]);
+  const [maintenanceTotal, setMaintenanceTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
@@ -75,6 +77,7 @@ export default function CCTVPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -142,12 +145,19 @@ export default function CCTVPage() {
 
   const fetchCCTVSummary = async () => {
     try {
-      const response = await apiRequest<any>('/cctv?page=1&limit=100');
+      const [response, maintenanceResponse] = await Promise.all([
+        apiRequest<any>('/cctv?page=1&limit=100'),
+        apiRequest<any>('/maintenance-logs?page=1&limit=1'),
+      ]);
       if (response.status === 'success' && response.data) {
         setAllCCTVs(response.data.rows || []);
       }
+      if (maintenanceResponse.status === 'success' && maintenanceResponse.data) {
+        setMaintenanceTotal(maintenanceResponse.data.pagination?.total_rows || 0);
+      }
     } catch {
       setAllCCTVs([]);
+      setMaintenanceTotal(0);
     }
   };
 
@@ -173,7 +183,7 @@ export default function CCTVPage() {
   const totalCount = allCCTVs.length;
   const activeCount = allCCTVs.filter(c => isStatus(c.status, ['ACTIVE', 'AKTIF'])).length;
   const inactiveCount = allCCTVs.filter(c => isStatus(c.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'])).length;
-  const maintenanceCount = allCCTVs.filter(c => isStatus(c.status, ['MAINTENANCE', 'PEMELIHARAAN'])).length;
+  const maintenanceCount = maintenanceTotal;
   const selectableCCTVs = allCCTVs.filter((cctv) => {
     if (statusFilter && normalizedStatus(cctv.status) !== statusFilter) return false;
     if (ioFilter && cctv.indoor_outdoor.trim().toUpperCase() !== ioFilter) return false;
@@ -187,6 +197,7 @@ export default function CCTVPage() {
 
   // Handlers
   const handleOpenDetail = async (id: string) => {
+    setActionLoading(`detail-${id}`);
     try {
       const response = await apiRequest<CCTV>(`/cctv/${id}`);
       if (response.data) {
@@ -195,6 +206,8 @@ export default function CCTVPage() {
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Detail CCTV gagal dimuat');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -243,6 +256,7 @@ export default function CCTVPage() {
 
   const handleSaveCCTV = async (e: React.FormEvent) => {
     e.preventDefault();
+    setActionLoading('save');
     try {
       const endpoint = currentCCTV ? `/cctv/${currentCCTV.id}` : '/cctv';
       const method = currentCCTV ? 'PUT' : 'POST';
@@ -259,11 +273,14 @@ export default function CCTVPage() {
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menyimpan data CCTV');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleDeleteCCTV = async (id: string) => {
     if (!confirm('Apakah Anda yakin ingin menghapus CCTV ini? (Soft delete)')) return;
+    setActionLoading(`delete-${id}`);
     try {
       const response = await apiRequest(`/cctv/${id}`, {
         method: 'DELETE'
@@ -275,6 +292,8 @@ export default function CCTVPage() {
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menghapus data CCTV');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -303,6 +322,7 @@ export default function CCTVPage() {
       
     if (!confirm(confirmMessage)) return;
 
+    setActionLoading(deleteAll ? 'delete-all' : 'delete-selected');
     try {
       const token = localStorage.getItem('sigap_token');
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
@@ -330,6 +350,8 @@ export default function CCTVPage() {
       alert(resJson.message || 'Hapus massal berhasil dilakukan!');
     } catch (err: any) {
       alert(err.message || 'Gagal melakukan hapus massal');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -680,11 +702,12 @@ export default function CCTVPage() {
             {isAdmin && cctvs.length > 0 && (
               <button
                 onClick={() => handleBulkDelete(true)}
-                className="order-4 flex items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-500/10 active:scale-[0.98] dark:text-red-400"
+                disabled={actionLoading === 'delete-all'}
+                className="order-4 flex items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-500/10 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 dark:text-red-400"
                 title="Hapus Semua Data CCTV"
               >
-                <Trash2 className="h-4.5 w-4.5" />
-                <span>Kosongkan Data</span>
+                {actionLoading === 'delete-all' ? <LoaderCircle className="h-4.5 w-4.5 animate-spin" /> : <Trash2 className="h-4.5 w-4.5" />}
+                <span>{actionLoading === 'delete-all' ? 'Menghapus...' : 'Kosongkan Data'}</span>
               </button>
             )}
             {isAdmin && (
@@ -706,28 +729,32 @@ export default function CCTVPage() {
               label: 'Total CCTV',
               value: totalCount,
               icon: Camera,
+              border: 'border-t-blue-500',
               tone: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
             },
             {
               label: 'Aktif',
               value: activeCount,
               icon: ShieldCheck,
+              border: 'border-t-success',
               tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
             },
             {
               label: 'Nonaktif',
               value: inactiveCount,
               icon: Activity,
+              border: 'border-t-error',
               tone: 'bg-red-500/10 text-red-600 dark:text-red-400',
             },
             {
               label: 'Pemeliharaan',
               value: maintenanceCount,
               icon: Wrench,
+              border: 'border-t-warning',
               tone: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
             },
-          ].map(({ label, value, icon: Icon, tone }) => (
-            <div key={label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          ].map(({ label, value, icon: Icon, tone, border }) => (
+            <div key={label} className={`rounded-2xl border border-t-4 border-border bg-card p-5 shadow-sm ${border}`}>
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs font-semibold text-muted">{label}</p>
@@ -800,10 +827,11 @@ export default function CCTVPage() {
             </p>
             <button
               onClick={() => handleBulkDelete(false)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-600"
+              disabled={actionLoading === 'delete-selected'}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-wait disabled:opacity-60"
             >
-              <Trash2 className="h-4 w-4" />
-              Hapus Terpilih
+              {actionLoading === 'delete-selected' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {actionLoading === 'delete-selected' ? 'Menghapus...' : 'Hapus Terpilih'}
             </button>
           </div>
         )}
@@ -931,10 +959,11 @@ export default function CCTVPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenDetail(cctv.id)}
+                            disabled={actionLoading === `detail-${cctv.id}`}
                             className="p-2 rounded-lg border border-border bg-card hover:border-gray-500/20 hover:bg-gray-500/5 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                             title="Detail CCTV"
                           >
-                            <Eye className="h-4 w-4" />
+                            {actionLoading === `detail-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                           </button>
                           {isAdmin && (
                             <>
@@ -947,10 +976,11 @@ export default function CCTVPage() {
                               </button>
                               <button
                                 onClick={() => handleDeleteCCTV(cctv.id)}
+                                disabled={actionLoading === `delete-${cctv.id}`}
                                 className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                                 title="Hapus CCTV"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {actionLoading === `delete-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>
                             </>
                           )}
@@ -1154,9 +1184,11 @@ export default function CCTVPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15"
+                    disabled={actionLoading === 'save'}
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15 disabled:cursor-wait disabled:opacity-65"
                   >
-                    Simpan
+                    {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    {actionLoading === 'save' ? 'Menyimpan...' : 'Simpan'}
                   </button>
                 </div>
               </form>
