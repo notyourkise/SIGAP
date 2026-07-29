@@ -85,11 +85,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}>
           <div className="space-y-8">
-            {/* Logo */}
+            {/* Identitas aplikasi tetap terlihat saat sidebar diciutkan */}
             <div className={`hidden md:flex items-center ${isSidebarCollapsed ? 'flex-col gap-3' : 'justify-between'}`}>
-              {!isSidebarCollapsed && (
-                <span className="text-2xl font-black tracking-tight text-primary">SIGAP</span>
-              )}
+              <Link
+                href="/dashboard"
+                aria-label="Dashboard SIGAP"
+                title={isSidebarCollapsed ? 'SIGAP' : undefined}
+                className="flex items-center justify-center text-primary"
+              >
+                <span className={`${isSidebarCollapsed ? 'text-xs' : 'text-2xl'} font-black tracking-tight`}>SIGAP</span>
+              </Link>
               <div className={`flex gap-2 ${isSidebarCollapsed ? 'flex-col' : ''}`}>
                 <button
                   type="button"
@@ -172,7 +177,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button
             onClick={handleLogout}
             title={isSidebarCollapsed ? 'Keluar Aplikasi' : undefined}
-            className={`flex items-center gap-3 rounded-xl border border-transparent px-4 py-3.5 text-sm font-medium text-red-500 transition-all duration-200 hover:border-red-500/10 hover:bg-red-500/10 active:scale-[0.98] ${isSidebarCollapsed ? 'md:hidden' : ''}`}
+            aria-label="Keluar Aplikasi"
+            className={`flex items-center gap-3 rounded-xl border border-transparent px-4 py-3.5 text-sm font-medium text-red-500 transition-all duration-200 hover:border-red-500/10 hover:bg-red-500/10 active:scale-[0.98] ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}
           >
             <LogOut className="h-5 w-5" />
             <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar Aplikasi</span>

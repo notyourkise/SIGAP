@@ -21,7 +21,8 @@ import {
   Clock,
   Download,
   Eye,
-  Image as ImageIcon
+  Image as ImageIcon,
+  LoaderCircle
 } from 'lucide-react';
 
 interface Asset {
@@ -82,6 +83,7 @@ export default function MaintenanceLogsPage() {
   const [currentLog, setCurrentLog] = useState<MaintenanceLog | null>(null);
   const [detailLog, setDetailLog] = useState<MaintenanceLog | null>(null);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -121,6 +123,7 @@ export default function MaintenanceLogsPage() {
 
   const fetchAssetsList = async () => {
     setAssetsError('');
+    setActionLoading('save');
     try {
       const response = await apiRequest<any>('/cctv?page=1&limit=100');
       if (response.status === 'success' && response.data) {
@@ -211,15 +214,20 @@ export default function MaintenanceLogsPage() {
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menyimpan log pemeliharaan');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleViewLog = async (id: string) => {
+    setActionLoading(`detail-${id}`);
     try {
       const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${id}`);
       setDetailLog(response.data || null);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Detail log gagal dimuat');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -227,10 +235,13 @@ export default function MaintenanceLogsPage() {
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
     if (assetFilter) params.set('asset_id', assetFilter);
+    setActionLoading('export');
     try {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Ekspor log gagal');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -238,6 +249,7 @@ export default function MaintenanceLogsPage() {
 
   const handleDeleteLog = async (id: string) => {
     if (!confirm('Apakah Anda yakin ingin menghapus data riwayat pemeliharaan ini? (Soft delete)')) return;
+    setActionLoading(`delete-${id}`);
     try {
       const response = await apiRequest(`/maintenance-logs/${id}`, {
         method: 'DELETE'
@@ -247,6 +259,8 @@ export default function MaintenanceLogsPage() {
       }
     } catch (err: any) {
       alert(err.message || 'Gagal menghapus log');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -274,8 +288,9 @@ export default function MaintenanceLogsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Riwayat Pemeliharaan</h1>
           <div className="flex flex-wrap gap-2">
-            <button onClick={handleExport} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold hover:border-primary">
-              <Download className="h-4 w-4" /> Ekspor CSV
+            <button disabled={actionLoading === 'export'} onClick={handleExport} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold hover:border-primary disabled:cursor-wait disabled:opacity-60">
+              {actionLoading === 'export' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {actionLoading === 'export' ? 'Menyiapkan...' : 'Ekspor CSV'}
             </button>
             <button
               onClick={() => handleOpenModal()}
@@ -451,13 +466,15 @@ export default function MaintenanceLogsPage() {
                         <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleViewLog(log.id)}
+                              disabled={actionLoading === `detail-${log.id}`}
                               className="p-2 rounded-lg border border-border bg-card hover:border-primary/20 hover:bg-primary/5 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                               title="Detail Log"
                             >
-                              <Eye className="h-4 w-4" />
+                              {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
                             <button
                               onClick={() => handleOpenModal(log)}
+                              disabled={actionLoading !== null}
                               className="p-2 rounded-lg border border-border bg-card hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                               title="Edit Log"
                             >
@@ -465,10 +482,11 @@ export default function MaintenanceLogsPage() {
                             </button>
                             {isAdmin && <button
                                 onClick={() => handleDeleteLog(log.id)}
+                                disabled={actionLoading === `delete-${log.id}`}
                                 className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
                                 title="Hapus Log"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {actionLoading === `delete-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>}
                         </div>
                       </td>
@@ -597,9 +615,11 @@ export default function MaintenanceLogsPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all cursor-pointer text-sm"
+                    disabled={actionLoading === 'save'}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/10 active:scale-[0.98] transition-all cursor-pointer text-sm disabled:cursor-wait disabled:opacity-65"
                   >
-                    {currentLog ? 'Simpan Perubahan' : 'Simpan Catatan'}
+                    {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    {actionLoading === 'save' ? 'Menyimpan...' : currentLog ? 'Simpan Perubahan' : 'Simpan Catatan'}
                   </button>
                 </div>
               </form>

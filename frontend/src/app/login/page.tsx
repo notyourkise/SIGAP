@@ -1,53 +1,47 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { apiRequest } from '@/lib/api';
+import { Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
+import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Eye, EyeOff, Lock, User, Sun, Moon, ShieldAlert } from 'lucide-react';
+import { apiRequest } from '@/lib/api';
 
 export default function LoginPage() {
   const { login, isAuthenticated, loading: authLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
-
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Jika user sudah terautentikasi, alihkan ke dashboard
   useEffect(() => {
-    if (isAuthenticated && !authLoading) {
-      router.push('/');
-    }
+    if (isAuthenticated && !authLoading) router.push('/');
   }, [isAuthenticated, authLoading, router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    
     if (!username || !password) {
-      setError('Username/Email dan Password wajib diisi');
+      setError('Username/email dan kata sandi wajib diisi.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await apiRequest<{ token: string; user: any }>('/auth/login', {
+      const response = await apiRequest<{ token: string; user: AuthUser }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-
       if (response.status === 'success' && response.data) {
         login(response.data.token, response.data.user);
       } else {
-        setError(response.message || 'Login gagal, silakan periksa kredensial Anda');
+        setError(response.message || 'Akun atau kata sandi tidak sesuai.');
       }
-    } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan jaringan atau server');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Server belum dapat dihubungi.');
     } finally {
       setLoading(false);
     }
@@ -55,116 +49,96 @@ export default function LoginPage() {
 
   if (authLoading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12 transition-colors duration-300">
-      {/* Background Gradients */}
-      <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-accent/15 blur-[120px] dark:bg-accent/5"></div>
-      <div className="absolute -bottom-40 -right-40 h-[600px] w-[600px] rounded-full bg-primary/15 blur-[120px] dark:bg-primary/10"></div>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
+      <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-accent via-accent-soft to-primary" />
+      <div className="absolute left-0 top-0 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/10 blur-3xl" />
+      <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-1/2 translate-y-1/2 rounded-full bg-primary/10 blur-3xl" />
 
-      {/* Floating Theme Toggle */}
       <button
+        type="button"
         onClick={toggleTheme}
-        className="absolute top-6 right-6 p-3 rounded-xl border border-border bg-card shadow-sm hover:scale-105 active:scale-95 transition-all duration-200"
+        aria-label={theme === 'light' ? 'Aktifkan mode gelap' : 'Aktifkan mode terang'}
         title={theme === 'light' ? 'Mode Gelap' : 'Mode Terang'}
+        className="absolute right-5 top-5 rounded-xl border border-border bg-card p-2.5 shadow-sm transition-colors hover:border-primary"
       >
-        {theme === 'light' ? <Moon className="h-5 w-5 text-gray-700" /> : <Sun className="h-5 w-5 text-yellow-400" />}
+        {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-accent" />}
       </button>
 
-      <div className="w-full max-w-md z-10">
-        <div className="glass rounded-3xl p-8 shadow-2xl border border-border bg-card/60 backdrop-blur-md">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-extrabold tracking-tight text-primary">
-              SIGAP
-            </h1>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Sistem Identifikasi Gangguan Aset Pusat
-            </p>
-            <h2 className="mt-6 text-xl font-bold">
-              Selamat datang kembali
-            </h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Silakan login ke akun Anda untuk memantau CCTV IKN
-            </p>
+      <div className="z-10 w-full max-w-sm rounded-3xl border border-border bg-card p-7 shadow-[0_24px_70px_rgba(40,63,36,0.12)] sm:p-8">
+        <header className="mb-7 text-center">
+          <h1 className="text-3xl font-extrabold tracking-tight text-primary">SIGAP</h1>
+          <p className="mt-2 text-sm text-muted">Masuk untuk melanjutkan.</p>
+        </header>
+
+        {error && (
+          <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl border border-error/20 bg-error/10 p-3.5 text-sm text-error">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="mb-2 block text-sm font-medium" htmlFor="username">Username atau email</label>
+            <div className="relative">
+              <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                id="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Masukkan akun"
+                disabled={loading}
+                className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-4 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
+                required
+              />
+            </div>
           </div>
 
-          {/* Error Alert */}
-          {error && (
-            <div className="mb-6 flex items-center gap-3 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-sm text-red-600 dark:text-red-400 animate-shake">
-              <ShieldAlert className="h-5 w-5 shrink-0" />
-              <span>{error}</span>
+          <div>
+            <label className="mb-2 block text-sm font-medium" htmlFor="password">Kata sandi</label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Masukkan kata sandi"
+                disabled={loading}
+                className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                disabled={loading}
+                aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                className="absolute inset-y-0 right-0 flex items-center pr-4 text-muted transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
-          )}
+          </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium mb-2" htmlFor="username">
-                Username / Email
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-gray-400">
-                  <User className="h-5 w-5" />
-                </div>
-                <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Masukkan username atau email"
-                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2" htmlFor="password">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-gray-400">
-                  <Lock className="h-5 w-5" />
-                </div>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-11 pr-12 py-3 rounded-xl border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400 hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/20 active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-              ) : (
-                'Masuk ke Sistem'
-              )}
-            </button>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98] disabled:cursor-wait disabled:scale-100 disabled:opacity-70"
+          >
+            {loading ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Memproses...</> : 'Masuk'}
+          </button>
+        </form>
       </div>
-    </div>
+    </main>
   );
 }
