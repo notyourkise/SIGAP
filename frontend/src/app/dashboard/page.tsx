@@ -65,7 +65,7 @@ export default function DashboardPage() {
         setCctvs(cctvRows);
         setTotalCctv(cctvData?.pagination?.total_rows ?? cctvRows.length);
       } else {
-        setError(cctvResult.reason instanceof Error ? cctvResult.reason.message : 'Data CCTV tidak dapat dimuat.');
+        setError(cctvResult.reason instanceof Error ? cctvResult.reason.message : 'Data CCTV belum dapat dimuat. Muat ulang dashboard.');
       }
 
       if (maintenanceResult.status === 'fulfilled') {
@@ -74,7 +74,7 @@ export default function DashboardPage() {
         setLogs(maintenanceRows);
         setTotalLogs(maintenanceData?.pagination?.total_rows ?? maintenanceRows.length);
       } else {
-        setError((current) => current || (maintenanceResult.reason instanceof Error ? maintenanceResult.reason.message : 'Data pemeliharaan tidak dapat dimuat.'));
+        setError((current) => current || (maintenanceResult.reason instanceof Error ? maintenanceResult.reason.message : 'Data pemeliharaan belum dapat dimuat. Muat ulang dashboard.'));
       }
 
       setHealth(healthResult.status === 'fulfilled' ? 'Terhubung' : 'Tidak terhubung');
@@ -96,120 +96,107 @@ export default function DashboardPage() {
   const failed = logs.filter((item) => item.status === 'failed').length;
   const selectedLogs = selectedStatus ? logs.filter((item) => item.status === selectedStatus) : [];
 
-  const adminCards = [
-    { label: 'Total CCTV', value: totalCctv || '—', tone: 'border-t-blue-500' },
-    { label: 'CCTV Aktif', value: active, tone: 'border-t-success' },
-    { label: 'CCTV Nonaktif', value: inactive, tone: 'border-t-error' },
-    { label: 'Pemeliharaan', value: totalLogs, tone: 'border-t-warning' },
+  const summary = [
+    { label: 'Total CCTV', value: totalCctv, tone: 'bg-blue-500' },
+    { label: 'Aktif', value: active, tone: 'bg-success' },
+    { label: 'Nonaktif', value: inactive, tone: 'bg-error' },
   ];
-
-  const technicianCards = [
-    { label: 'Total CCTV', value: totalCctv || '—', tone: 'border-t-blue-500' },
-    { label: 'CCTV Aktif', value: active, tone: 'border-t-success' },
-    { label: 'CCTV Nonaktif', value: inactive, tone: 'border-t-error' },
-    { label: 'Pemeliharaan', value: totalLogs, tone: 'border-t-warning' },
-  ];
-
-  const cards = isAdmin ? adminCards : technicianCards;
-  const healthDescription = health === 'Terhubung'
-    ? 'Backend merespons normal dan data dashboard berhasil dimuat.'
-    : health === 'Memeriksa'
-      ? 'Sistem sedang memeriksa koneksi ke backend.'
-      : 'Backend tidak dapat dijangkau. Periksa service dan port API.';
 
   return (
     <DashboardLayout>
-      <div className="space-y-7">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="space-y-8">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${isAdmin ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'}`}>
-              {isAdmin ? 'Dashboard Admin' : 'Dashboard Teknisi'}
-            </span>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight">
-              Selamat datang, {user?.full_name || (isAdmin ? 'Admin' : 'Teknisi')}
-            </h1>
-            {isAdmin && <p className="mt-1 text-sm text-muted">Ringkasan pengelolaan aset, pemeliharaan, dan pengguna SIGAP.</p>}
+            <h1 className="text-3xl font-bold tracking-[-0.025em]">Dashboard CCTV</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              {isAdmin ? 'Pantau kondisi aset dan pekerjaan pemeliharaan.' : 'Pantau kondisi CCTV dan prioritas pekerjaan.'}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={loadDashboard}
-            disabled={loading}
-            className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold transition-colors hover:border-primary disabled:cursor-wait disabled:opacity-70"
-          >
-            <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
-            API {health}
-          </button>
-        </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
+              <span>{health === 'Terhubung' ? 'Layanan normal' : health}</span>
+            </div>
+            <button
+              type="button"
+              onClick={loadDashboard}
+              disabled={loading}
+              className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold transition-colors hover:border-primary disabled:cursor-wait disabled:opacity-60"
+            >
+              {loading ? 'Memuat…' : 'Muat ulang'}
+            </button>
+          </div>
+        </header>
 
-        {error && <div className="rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>}
+        {error && <div role="alert" className="rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>}
+        {!loading && health === 'Tidak terhubung' && (
+          <div role="alert" className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+            Layanan SIGAP tidak dapat dijangkau. Periksa koneksi atau hubungi pengelola sistem.
+          </div>
+        )}
 
         {loading ? (
           <DashboardSkeleton />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {cards.map(({ label, value, tone }) => (
-                <div key={label} className={`rounded-2xl border border-t-4 border-border bg-card p-5 shadow-sm ${tone}`}>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
-                  <p className="mt-1 text-3xl font-bold">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-5 lg:grid-cols-[1.45fr_0.75fr]">
-              <section className="rounded-2xl border border-border bg-card p-5">
-                <h2 className="font-semibold">{isAdmin ? 'Aktivitas Pemeliharaan' : 'Prioritas Teknisi'}</h2>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <StatusCard label="Terjadwal" value={scheduled} note="Belum mulai dikerjakan" tone="blue" active={selectedStatus === 'scheduled'} onClick={() => setSelectedStatus('scheduled')} />
-                  <StatusCard label="Dalam proses" value={ongoing} note="Sedang dikerjakan" tone="warning" active={selectedStatus === 'ongoing'} onClick={() => setSelectedStatus('ongoing')} />
-                  <StatusCard label="Selesai" value={completed} note="Pekerjaan telah dituntaskan" tone="success" active={selectedStatus === 'completed'} onClick={() => setSelectedStatus('completed')} />
-                  <StatusCard label="Gagal" value={failed} note="Memerlukan tindak lanjut" tone="error" active={selectedStatus === 'failed'} onClick={() => setSelectedStatus('failed')} />
-                </div>
-                {selectedStatus && (
-                  <div className="mt-5 border-t border-border pt-5">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-semibold">Daftar CCTV — {statusLabel(selectedStatus)}</h3>
-                      <button type="button" onClick={() => setSelectedStatus(null)} className="text-xs font-semibold text-muted hover:text-foreground">Tutup</button>
+            <section aria-label="Ringkasan CCTV" className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                {summary.map(({ label, value, tone }) => (
+                  <div key={label} className="flex items-center justify-between gap-6 px-5 py-5">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`h-2.5 w-2.5 rounded-full ${tone}`} />
+                      <p className="text-sm font-medium text-muted">{label}</p>
                     </div>
-                    {selectedLogs.length === 0 ? (
-                      <p className="rounded-xl bg-background px-4 py-4 text-sm text-muted">Tidak ada pekerjaan dengan status ini.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedLogs.map((log) => (
-                          <div key={log.id} className="grid gap-2 rounded-xl border border-border bg-background px-4 py-3 sm:grid-cols-[1fr_1fr]">
-                            <div><p className="text-xs text-muted">CCTV</p><p className="mt-0.5 text-sm font-semibold">{log.asset?.name || 'CCTV tidak tersedia'}</p></div>
-                            <div><p className="text-xs text-muted">Lokasi</p><p className="mt-0.5 text-sm font-medium">{log.asset?.location_name || 'Lokasi belum dicatat'}</p></div>
-                            <p className="text-xs text-muted sm:col-span-2">{log.action_taken}</p>
+                    <p className="text-2xl font-bold tabular-nums">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section aria-labelledby="maintenance-heading">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 id="maintenance-heading" className="text-xl font-bold">
+                    {isAdmin ? 'Pemeliharaan' : 'Prioritas Pemeliharaan'}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">Pilih status untuk melihat CCTV terkait.</p>
+                </div>
+                <p className="text-sm font-semibold text-muted">{totalLogs} catatan</p>
+              </div>
+
+              <div className="mt-4 grid overflow-hidden rounded-2xl border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
+                <StatusCard label="Terjadwal" value={scheduled} tone="blue" active={selectedStatus === 'scheduled'} onClick={() => setSelectedStatus((current) => current === 'scheduled' ? null : 'scheduled')} />
+                <StatusCard label="Dalam proses" value={ongoing} tone="warning" active={selectedStatus === 'ongoing'} onClick={() => setSelectedStatus((current) => current === 'ongoing' ? null : 'ongoing')} />
+                <StatusCard label="Selesai" value={completed} tone="success" active={selectedStatus === 'completed'} onClick={() => setSelectedStatus((current) => current === 'completed' ? null : 'completed')} />
+                <StatusCard label="Gagal" value={failed} tone="error" active={selectedStatus === 'failed'} onClick={() => setSelectedStatus((current) => current === 'failed' ? null : 'failed')} />
+              </div>
+
+              {selectedStatus && (
+                <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card">
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                    <h3 className="text-sm font-semibold">CCTV — {statusLabel(selectedStatus)}</h3>
+                    <button type="button" onClick={() => setSelectedStatus(null)} className="text-xs font-semibold text-muted hover:text-foreground">Tutup</button>
+                  </div>
+                  {selectedLogs.length === 0 ? (
+                    <p className="px-5 py-6 text-sm text-muted">
+                      Belum ada pekerjaan berstatus {statusLabel(selectedStatus).toLowerCase()}.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {selectedLogs.map((log) => (
+                        <div key={log.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                          <div>
+                            <p className="text-sm font-semibold">{log.asset?.name || 'CCTV tidak tersedia'}</p>
+                            <p className="mt-0.5 text-xs text-muted">{log.asset?.location_name || 'Lokasi belum dicatat'}</p>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              <section className={`overflow-hidden rounded-2xl border bg-card ${health === 'Terhubung' ? 'border-success/35' : 'border-error/35'}`}>
-                <div className={`h-1.5 ${health === 'Terhubung' ? 'bg-success' : 'bg-error'}`} />
-                <div className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted">Kesehatan API</p>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${health === 'Terhubung' ? 'bg-success' : 'bg-error'}`} />
-                      <h2 className="text-lg font-bold">{health === 'Terhubung' ? 'Normal' : health}</h2>
+                          <p className="text-sm text-muted sm:text-right">{log.action_taken}</p>
+                        </div>
+                      ))}
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase ${health === 'Terhubung' ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
-                      {health === 'Terhubung' ? 'Online' : 'Offline'}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-sm leading-relaxed text-muted">{healthDescription}</p>
-                  <dl className="mt-5 divide-y divide-border rounded-xl border border-border bg-background px-4">
-                    <div className="flex items-center justify-between py-3 text-xs"><dt className="text-muted">Layanan backend</dt><dd className="font-semibold">{health === 'Terhubung' ? 'Tersedia' : 'Tidak tersedia'}</dd></div>
-                    <div className="flex items-center justify-between py-3 text-xs"><dt className="text-muted">Sinkronisasi data</dt><dd className="font-semibold">{health === 'Terhubung' ? 'Aktif' : 'Terhenti'}</dd></div>
-                    <div className="flex items-center justify-between py-3 text-xs"><dt className="text-muted">Diperiksa</dt><dd className="font-semibold">{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</dd></div>
-                  </dl>
+                  )}
                 </div>
-              </section>
-            </div>
+              )}
+            </section>
           </>
         )}
       </div>
@@ -217,10 +204,9 @@ export default function DashboardPage() {
   );
 }
 
-function StatusCard({ label, value, note, tone, active, onClick }: {
+function StatusCard({ label, value, tone, active, onClick }: {
   label: string;
   value: number;
-  note: string;
   tone: 'success' | 'warning' | 'error' | 'blue';
   active: boolean;
   onClick: () => void;
@@ -236,26 +222,26 @@ function StatusCard({ label, value, note, tone, active, onClick }: {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-center gap-4 rounded-xl border bg-background p-4 text-left transition-colors hover:border-primary ${active ? 'border-primary ring-2 ring-primary/10' : 'border-border'}`}
+      className={`flex w-full items-center justify-between gap-4 border-b border-border px-5 py-4 text-left transition-colors last:border-b-0 hover:bg-background sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0 ${
+        active ? 'bg-primary/10 text-foreground' : 'bg-card'
+      }`}
     >
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tones[tone]}`} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">{label}</p><strong className="text-xl">{value}</strong></div>
-        <p className="mt-0.5 text-xs text-muted">{note}</p>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tones[tone]}`} />
+        <span className="text-sm font-semibold">{label}</span>
       </div>
+      <strong className="text-xl tabular-nums">{value}</strong>
     </button>
   );
 }
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5" aria-label="Memuat dashboard">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl border border-border bg-card" />)}
-      </div>
-      <div className="grid gap-5 lg:grid-cols-[1.45fr_0.75fr]">
-        <div className="h-80 animate-pulse rounded-2xl border border-border bg-card" />
-        <div className="h-80 animate-pulse rounded-2xl border border-border bg-card" />
+    <div className="space-y-8" role="status" aria-label="Memuat ringkasan dashboard">
+      <div className="h-24 animate-pulse rounded-2xl border border-border bg-card" />
+      <div className="space-y-4">
+        <div className="h-12 w-52 animate-pulse rounded-xl bg-card" />
+        <div className="h-20 animate-pulse rounded-2xl border border-border bg-card" />
       </div>
     </div>
   );

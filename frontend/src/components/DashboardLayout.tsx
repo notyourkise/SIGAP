@@ -35,7 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
-    { name: 'Log Pemeliharaan', href: '/maintenance', icon: Wrench },
+    { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
     ...(user?.role === 'admin'
       ? [{ name: 'Manajemen Pengguna', href: '/users', icon: Users }]
       : []),
@@ -56,13 +56,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Link>
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={toggleTheme}
+              aria-label={theme === 'light' ? 'Aktifkan mode gelap' : 'Aktifkan mode terang'}
               className="p-2 rounded-lg border border-border bg-background hover:scale-105 active:scale-95 transition-all"
             >
               {theme === 'light' ? <Moon className="h-4 w-4 text-gray-700" /> : <Sun className="h-4 w-4 text-yellow-400" />}
             </button>
             <button
+              type="button"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              aria-label={isSidebarOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
               className="p-2 rounded-lg border border-border bg-background"
             >
               {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -176,12 +180,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Logout Button */}
           <button
             onClick={handleLogout}
-            title={isSidebarCollapsed ? 'Keluar Aplikasi' : undefined}
-            aria-label="Keluar Aplikasi"
+            title={isSidebarCollapsed ? 'Keluar dari SIGAP' : undefined}
+            aria-label="Keluar dari SIGAP"
             className={`flex items-center gap-3 rounded-xl border border-transparent px-4 py-3.5 text-sm font-medium text-red-500 transition-all duration-200 hover:border-red-500/10 hover:bg-red-500/10 active:scale-[0.98] ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}
           >
             <LogOut className="h-5 w-5" />
-            <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar Aplikasi</span>
+            <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar dari SIGAP</span>
           </button>
         </aside>
 

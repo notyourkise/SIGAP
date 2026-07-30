@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-29T14:14:05.4894032+08:00",
+  "title": "Design System: SIGAP",
+  "extensions": {
+    "colorMeta": {
+      "command-green": {
+        "role": "primary",
+        "displayName": "Hijau Komando",
+        "canonical": "#467235",
+        "tonalRamp": ["oklch(15% 0.103 137.7)", "oklch(26% 0.103 137.7)", "oklch(38% 0.103 137.7)", "oklch(50% 0.103 137.7)", "oklch(62% 0.103 137.7)", "oklch(74% 0.103 137.7)", "oklch(86% 0.103 137.7)", "oklch(95% 0.103 137.7)"]
+      },
+      "command-green-hover": {
+        "role": "primary",
+        "displayName": "Hijau Komando Hover",
+        "canonical": "#365b2b",
+        "tonalRamp": ["oklch(15% 0.086 138.9)", "oklch(26% 0.086 138.9)", "oklch(38% 0.086 138.9)", "oklch(50% 0.086 138.9)", "oklch(62% 0.086 138.9)", "oklch(74% 0.086 138.9)", "oklch(86% 0.086 138.9)", "oklch(95% 0.086 138.9)"]
+      },
+      "signal-yellow": {
+        "role": "secondary",
+        "displayName": "Kuning Sinyal",
+        "canonical": "#ffbf00",
+        "tonalRamp": ["oklch(15% 0.172 84.1)", "oklch(26% 0.172 84.1)", "oklch(38% 0.172 84.1)", "oklch(50% 0.172 84.1)", "oklch(62% 0.172 84.1)", "oklch(74% 0.172 84.1)", "oklch(86% 0.172 84.1)", "oklch(95% 0.172 84.1)"]
+      },
+      "signal-soft": {
+        "role": "secondary",
+        "displayName": "Kuning Sinyal Lembut",
+        "canonical": "#fff78d",
+        "tonalRamp": ["oklch(15% 0.128 104.7)", "oklch(26% 0.128 104.7)", "oklch(38% 0.128 104.7)", "oklch(50% 0.128 104.7)", "oklch(62% 0.128 104.7)", "oklch(74% 0.128 104.7)", "oklch(86% 0.128 104.7)", "oklch(95% 0.128 104.7)"]
+      },
+      "archive-ivory": {
+        "role": "neutral",
+        "displayName": "Gading Arsip",
+        "canonical": "#fff9e9",
+        "tonalRamp": ["oklch(15% 0.022 89.8)", "oklch(26% 0.022 89.8)", "oklch(38% 0.022 89.8)", "oklch(50% 0.022 89.8)", "oklch(62% 0.022 89.8)", "oklch(74% 0.022 89.8)", "oklch(86% 0.022 89.8)", "oklch(95% 0.022 89.8)"]
+      },
+      "paper-card": {
+        "role": "neutral",
+        "displayName": "Kertas Pos",
+        "canonical": "#fffef8",
+        "tonalRamp": ["oklch(15% 0.008 98.9)", "oklch(26% 0.008 98.9)", "oklch(38% 0.008 98.9)", "oklch(50% 0.008 98.9)", "oklch(62% 0.008 98.9)", "oklch(74% 0.008 98.9)", "oklch(86% 0.008 98.9)", "oklch(95% 0.008 98.9)"]
+      },
+      "forest-ink": {
+        "role": "neutral",
+        "displayName": "Tinta Rimba",
+        "canonical": "#203f25",
+        "tonalRamp": ["oklch(15% 0.059 147.9)", "oklch(26% 0.059 147.9)", "oklch(38% 0.059 147.9)", "oklch(50% 0.059 147.9)", "oklch(62% 0.059 147.9)", "oklch(74% 0.059 147.9)", "oklch(86% 0.059 147.9)", "oklch(95% 0.059 147.9)"]
+      },
+      "field-muted": {
+        "role": "neutral",
+        "displayName": "Catatan Lapangan",
+        "canonical": "#62705a",
+        "tonalRamp": ["oklch(15% 0.038 134.2)", "oklch(26% 0.038 134.2)", "oklch(38% 0.038 134.2)", "oklch(50% 0.038 134.2)", "oklch(62% 0.038 134.2)", "oklch(74% 0.038 134.2)", "oklch(86% 0.038 134.2)", "oklch(95% 0.038 134.2)"]
+      },
+      "sand-border": {
+        "role": "neutral",
+        "displayName": "Garis Pasir",
+        "canonical": "#e4d6a7",
+        "tonalRamp": ["oklch(15% 0.063 93.5)", "oklch(26% 0.063 93.5)", "oklch(38% 0.063 93.5)", "oklch(50% 0.063 93.5)", "oklch(62% 0.063 93.5)", "oklch(74% 0.063 93.5)", "oklch(86% 0.063 93.5)", "oklch(95% 0.063 93.5)"]
+      },
+      "input-border": {
+        "role": "neutral",
+        "displayName": "Garis Input",
+        "canonical": "#d4c58f",
+        "tonalRamp": ["oklch(15% 0.073 94.4)", "oklch(26% 0.073 94.4)", "oklch(38% 0.073 94.4)", "oklch(50% 0.073 94.4)", "oklch(62% 0.073 94.4)", "oklch(74% 0.073 94.4)", "oklch(86% 0.073 94.4)", "oklch(95% 0.073 94.4)"]
+      },
+      "action-on-primary": {
+        "role": "neutral",
+        "displayName": "Putih Aksi",
+        "canonical": "#ffffff",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "status-blue": {
+        "role": "tertiary",
+        "displayName": "Biru Data",
+        "canonical": "#3b82f6",
+        "tonalRamp": ["oklch(15% 0.176 259.8)", "oklch(26% 0.176 259.8)", "oklch(38% 0.176 259.8)", "oklch(50% 0.176 259.8)", "oklch(62% 0.176 259.8)", "oklch(74% 0.176 259.8)", "oklch(86% 0.176 259.8)", "oklch(95% 0.176 259.8)"]
+      },
+      "warning-light": {
+        "role": "secondary",
+        "displayName": "Kuning Peringatan",
+        "canonical": "#c88f00",
+        "tonalRamp": ["oklch(15% 0.142 80.2)", "oklch(26% 0.142 80.2)", "oklch(38% 0.142 80.2)", "oklch(50% 0.142 80.2)", "oklch(62% 0.142 80.2)", "oklch(74% 0.142 80.2)", "oklch(86% 0.142 80.2)", "oklch(95% 0.142 80.2)"]
+      },
+      "error-light": {
+        "role": "tertiary",
+        "displayName": "Merah Gangguan",
+        "canonical": "#b54432",
+        "tonalRamp": ["oklch(15% 0.151 31.4)", "oklch(26% 0.151 31.4)", "oklch(38% 0.151 31.4)", "oklch(50% 0.151 31.4)", "oklch(62% 0.151 31.4)", "oklch(74% 0.151 31.4)", "oklch(86% 0.151 31.4)", "oklch(95% 0.151 31.4)"]
+      },
+      "night-canopy": {
+        "role": "neutral",
+        "displayName": "Kanopi Malam",
+        "canonical": "#162218",
+        "tonalRamp": ["oklch(15% 0.025 149.2)", "oklch(26% 0.025 149.2)", "oklch(38% 0.025 149.2)", "oklch(50% 0.025 149.2)", "oklch(62% 0.025 149.2)", "oklch(74% 0.025 149.2)", "oklch(86% 0.025 149.2)", "oklch(95% 0.025 149.2)"]
+      },
+      "night-card": {
+        "role": "neutral",
+        "displayName": "Panel Malam",
+        "canonical": "#203122",
+        "tonalRamp": ["oklch(15% 0.035 147.6)", "oklch(26% 0.035 147.6)", "oklch(38% 0.035 147.6)", "oklch(50% 0.035 147.6)", "oklch(62% 0.035 147.6)", "oklch(74% 0.035 147.6)", "oklch(86% 0.035 147.6)", "oklch(95% 0.035 147.6)"]
+      },
+      "night-input": {
+        "role": "neutral",
+        "displayName": "Bidang Input Malam",
+        "canonical": "#263b28",
+        "tonalRamp": ["oklch(15% 0.043 146.9)", "oklch(26% 0.043 146.9)", "oklch(38% 0.043 146.9)", "oklch(50% 0.043 146.9)", "oklch(62% 0.043 146.9)", "oklch(74% 0.043 146.9)", "oklch(86% 0.043 146.9)", "oklch(95% 0.043 146.9)"]
+      },
+      "night-border": {
+        "role": "neutral",
+        "displayName": "Garis Malam",
+        "canonical": "#3d553b",
+        "tonalRamp": ["oklch(15% 0.051 142.7)", "oklch(26% 0.051 142.7)", "oklch(38% 0.051 142.7)", "oklch(50% 0.051 142.7)", "oklch(62% 0.051 142.7)", "oklch(74% 0.051 142.7)", "oklch(86% 0.051 142.7)", "oklch(95% 0.051 142.7)"]
+      },
+      "night-command-green": {
+        "role": "primary",
+        "displayName": "Hijau Komando Malam",
+        "canonical": "#6d9a57",
+        "tonalRamp": ["oklch(15% 0.107 136.0)", "oklch(26% 0.107 136.0)", "oklch(38% 0.107 136.0)", "oklch(50% 0.107 136.0)", "oklch(62% 0.107 136.0)", "oklch(74% 0.107 136.0)", "oklch(86% 0.107 136.0)", "oklch(95% 0.107 136.0)"]
+      },
+      "night-command-green-hover": {
+        "role": "primary",
+        "displayName": "Hijau Komando Malam Hover",
+        "canonical": "#7eaa68",
+        "tonalRamp": ["oklch(15% 0.104 135.7)", "oklch(26% 0.104 135.7)", "oklch(38% 0.104 135.7)", "oklch(50% 0.104 135.7)", "oklch(62% 0.104 135.7)", "oklch(74% 0.104 135.7)", "oklch(86% 0.104 135.7)", "oklch(95% 0.104 135.7)"]
+      },
+      "night-foreground": {
+        "role": "neutral",
+        "displayName": "Gading Malam",
+        "canonical": "#fff9d7",
+        "tonalRamp": ["oklch(15% 0.045 98.9)", "oklch(26% 0.045 98.9)", "oklch(38% 0.045 98.9)", "oklch(50% 0.045 98.9)", "oklch(62% 0.045 98.9)", "oklch(74% 0.045 98.9)", "oklch(86% 0.045 98.9)", "oklch(95% 0.045 98.9)"]
+      },
+      "night-muted": {
+        "role": "neutral",
+        "displayName": "Catatan Malam",
+        "canonical": "#b6b99f",
+        "tonalRamp": ["oklch(15% 0.036 112.6)", "oklch(26% 0.036 112.6)", "oklch(38% 0.036 112.6)", "oklch(50% 0.036 112.6)", "oklch(62% 0.036 112.6)", "oklch(74% 0.036 112.6)", "oklch(86% 0.036 112.6)", "oklch(95% 0.036 112.6)"]
+      },
+      "night-success": {
+        "role": "primary",
+        "displayName": "Hijau Selesai Malam",
+        "canonical": "#78a763",
+        "tonalRamp": ["oklch(15% 0.108 136.5)", "oklch(26% 0.108 136.5)", "oklch(38% 0.108 136.5)", "oklch(50% 0.108 136.5)", "oklch(62% 0.108 136.5)", "oklch(74% 0.108 136.5)", "oklch(86% 0.108 136.5)", "oklch(95% 0.108 136.5)"]
+      },
+      "error-night": {
+        "role": "tertiary",
+        "displayName": "Merah Gangguan Malam",
+        "canonical": "#e06b56",
+        "tonalRamp": ["oklch(15% 0.151 31.8)", "oklch(26% 0.151 31.8)", "oklch(38% 0.151 31.8)", "oklch(50% 0.151 31.8)", "oklch(62% 0.151 31.8)", "oklch(74% 0.151 31.8)", "oklch(86% 0.151 31.8)", "oklch(95% 0.151 31.8)"]
+      }
+    },
+    "typographyMeta": {
+      "display": {"displayName": "Display", "purpose": "Judul halaman dan sapaan dashboard."},
+      "headline": {"displayName": "Headline", "purpose": "Judul modal dan kelompok kerja penting."},
+      "title": {"displayName": "Title", "purpose": "Judul kartu, seksi, dan nama entitas."},
+      "body": {"displayName": "Body", "purpose": "Teks antarmuka standar."},
+      "body-sm": {"displayName": "Body Small", "purpose": "Tabel, kontrol, tombol, dan metadata."},
+      "label": {"displayName": "Operational Label", "purpose": "Status dan kategori ringkas."},
+      "technical": {"displayName": "Technical Data", "purpose": "Kode CCTV, IP, koordinat, dan payload."}
+    },
+    "shadows": [
+      {"name": "subtle-rest", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Pemisahan tipis untuk tabel, kartu statistik, dan kontrol."},
+      {"name": "command-action", "value": "0 4px 6px -1px rgb(70 114 53 / 0.20), 0 2px 4px -2px rgb(70 114 53 / 0.20)", "purpose": "Navigasi aktif dan aksi primer penting."},
+      {"name": "modal-lift", "value": "0 25px 50px -12px rgb(0 0 0 / 0.25)", "purpose": "Dialog di atas overlay."},
+      {"name": "login-ambient", "value": "0 24px 70px rgba(40, 63, 36, 0.12)", "purpose": "Kartu autentikasi."}
+    ],
+    "motion": [
+      {"name": "state-fast", "value": "200ms ease", "purpose": "Perubahan warna, border, hover, dan focus."},
+      {"name": "shell-standard", "value": "300ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Sidebar, drawer, dan transisi shell."},
+      {"name": "slide-up", "value": "300ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Notifikasi atau elemen yang masuk dari bawah."},
+      {"name": "scanner-line", "value": "2000ms linear infinite", "purpose": "Garis pemindaian kamera QR."}
+    ],
+    "breakpoints": [
+      {"name": "sm", "value": "640px"},
+      {"name": "md", "value": "768px"},
+      {"name": "lg", "value": "1024px"},
+      {"name": "xl", "value": "1280px"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Aksi utama yang tegas dengan umpan balik hover, focus, dan active.",
+      "html": "<button class=\"ds-btn-primary\">Simpan Perubahan</button>",
+      "css": ".ds-btn-primary { background: var(--primary-color, #467235); color: #fff; padding: 10px 20px; border: 0; border-radius: 12px; font: 600 14px/1.4 Geist, system-ui, sans-serif; transition: background-color 200ms ease, transform 200ms ease, box-shadow 200ms ease; cursor: pointer; } .ds-btn-primary:hover { background: var(--primary-hover, #365b2b); box-shadow: 0 4px 6px -1px rgb(70 114 53 / .2); } .ds-btn-primary:focus-visible { outline: 3px solid rgb(70 114 53 / .28); outline-offset: 2px; } .ds-btn-primary:active { transform: scale(.98); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Aksi pendamping dengan struktur border dan permukaan netral.",
+      "html": "<button class=\"ds-btn-secondary\">Batal</button>",
+      "css": ".ds-btn-secondary { background: var(--card-bg, #fffef8); color: var(--foreground, #203f25); padding: 10px 16px; border: 1px solid var(--border-color, #e4d6a7); border-radius: 12px; font: 600 14px/1.4 Geist, system-ui, sans-serif; transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease; cursor: pointer; } .ds-btn-secondary:hover { border-color: var(--primary-color, #467235); background: var(--background, #fff9e9); } .ds-btn-secondary:focus-visible { outline: 3px solid rgb(70 114 53 / .22); outline-offset: 2px; } .ds-btn-secondary:active { transform: scale(.98); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Bidang input operasional dengan focus ring Hijau Komando.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Kode CCTV</span><input class=\"ds-input\" value=\"CCTV-IKN-014\" aria-label=\"Kode CCTV\"></label>",
+      "css": ".ds-field { display: grid; gap: 8px; color: var(--foreground, #203f25); font-family: Geist, system-ui, sans-serif; } .ds-field-label { color: var(--muted-color, #62705a); font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; } .ds-input { min-height: 44px; background: var(--input-bg, #fff); color: var(--foreground, #203f25); padding: 10px 16px; border: 1px solid var(--input-border, #d4c58f); border-radius: 12px; font: 400 14px/1.4 Geist, system-ui, sans-serif; outline: none; transition: border-color 200ms ease, box-shadow 200ms ease; } .ds-input:hover { border-color: var(--primary-color, #467235); } .ds-input:focus { border-color: var(--primary-color, #467235); box-shadow: 0 0 0 3px rgb(70 114 53 / .20); }"
+    },
+    {
+      "name": "Active Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Item sidebar aktif dengan bidang hijau dan ikon yang tetap terbaca.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z\" fill=\"currentColor\"/></svg><span>Dashboard</span></a>",
+      "css": ".ds-nav-active { display: inline-flex; align-items: center; gap: 14px; background: var(--primary-color, #467235); color: #fff; padding: 14px 16px; border-radius: 12px; font: 500 14px/1.4 Geist, system-ui, sans-serif; text-decoration: none; box-shadow: 0 4px 6px -1px rgb(70 114 53 / .2); transition: background-color 200ms ease, transform 200ms ease; } .ds-nav-active svg { width: 20px; height: 20px; } .ds-nav-active:hover { background: var(--primary-hover, #365b2b); } .ds-nav-active:focus-visible { outline: 3px solid rgb(255 191 0 / .40); outline-offset: 2px; } .ds-nav-active:active { transform: scale(.98); }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Status menggabungkan warna, titik, dan label agar tidak bergantung pada warna saja.",
+      "html": "<span class=\"ds-chip-success\"><span class=\"ds-chip-dot\"></span>Aktif</span>",
+      "css": ".ds-chip-success { display: inline-flex; align-items: center; gap: 6px; background: rgb(70 114 53 / .10); color: var(--primary-color, #467235); padding: 4px 10px; border: 1px solid rgb(70 114 53 / .20); border-radius: 9999px; font: 700 12px/1.33 Geist, system-ui, sans-serif; } .ds-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }"
+    },
+    {
+      "name": "Operational Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Kontainer kerja berlapis melalui warna dan border, datar secara default.",
+      "html": "<section class=\"ds-card\"><p class=\"ds-card-label\">Kesehatan API</p><div class=\"ds-card-status\"><span class=\"ds-card-dot\"></span><strong>Normal</strong></div><p class=\"ds-card-copy\">Backend merespons normal dan data berhasil dimuat.</p></section>",
+      "css": ".ds-card { width: 320px; background: var(--card-bg, #fffef8); color: var(--foreground, #203f25); padding: 20px; border: 1px solid var(--border-color, #e4d6a7); border-top: 6px solid var(--success-color, #467235); border-radius: 16px; font-family: Geist, system-ui, sans-serif; } .ds-card-label { margin: 0; color: var(--muted-color, #62705a); font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; } .ds-card-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 18px; } .ds-card-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success-color, #467235); } .ds-card-copy { margin: 14px 0 0; color: var(--muted-color, #62705a); font-size: 14px; line-height: 1.5; }"
+    },
+    {
+      "name": "Pagination Control",
+      "kind": "custom",
+      "description": "Kontrol halaman kompak dengan state aktif yang memakai Hijau Komando.",
+      "html": "<nav class=\"ds-pagination\" aria-label=\"Pagination\"><button class=\"ds-page\">‹</button><button class=\"ds-page ds-page-active\">2</button><button class=\"ds-page\">3</button><button class=\"ds-page\">›</button></nav>",
+      "css": ".ds-pagination { display: flex; align-items: center; gap: 8px; font-family: Geist, system-ui, sans-serif; } .ds-page { min-width: 36px; height: 36px; background: var(--card-bg, #fffef8); color: var(--muted-color, #62705a); border: 1px solid var(--border-color, #e4d6a7); border-radius: 8px; font-size: 12px; font-weight: 700; transition: border-color 200ms ease, color 200ms ease, background-color 200ms ease; cursor: pointer; } .ds-page:hover { border-color: var(--primary-color, #467235); color: var(--primary-color, #467235); } .ds-page:focus-visible { outline: 3px solid rgb(70 114 53 / .20); outline-offset: 2px; } .ds-page-active { background: var(--primary-color, #467235); color: #fff; border-color: var(--primary-color, #467235); box-shadow: 0 1px 2px rgb(0 0 0 / .05); }"
+    },
+    {
+      "name": "Modal Surface",
+      "kind": "custom",
+      "description": "Dialog terangkat dengan header jelas dan aksi terpisah di bagian bawah.",
+      "html": "<section class=\"ds-modal\" role=\"dialog\" aria-labelledby=\"ds-modal-title\"><header class=\"ds-modal-head\"><h2 id=\"ds-modal-title\">Detail Pemeliharaan</h2><button class=\"ds-modal-close\" aria-label=\"Tutup\">×</button></header><p class=\"ds-modal-copy\">Periksa tindakan, teknisi, status, dan foto bukti.</p><footer class=\"ds-modal-actions\"><button class=\"ds-btn-modal\">Selesai</button></footer></section>",
+      "css": ".ds-modal { width: 420px; background: var(--card-bg, #fffef8); color: var(--foreground, #203f25); border: 1px solid var(--border-color, #e4d6a7); border-radius: 16px; padding: 24px; box-shadow: 0 25px 50px -12px rgb(0 0 0 / .25); font-family: Geist, system-ui, sans-serif; } .ds-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color, #e4d6a7); } .ds-modal-head h2 { margin: 0; font-size: 20px; line-height: 1.4; } .ds-modal-close { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-color, #e4d6a7); background: var(--background, #fff9e9); color: inherit; font-size: 22px; cursor: pointer; } .ds-modal-close:hover { border-color: var(--primary-color, #467235); } .ds-modal-close:focus-visible { outline: 3px solid rgb(70 114 53 / .20); outline-offset: 2px; } .ds-modal-copy { margin: 20px 0; color: var(--muted-color, #62705a); font-size: 14px; line-height: 1.5; } .ds-modal-actions { display: flex; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-color, #e4d6a7); } .ds-btn-modal { background: var(--primary-color, #467235); color: #fff; border: 0; border-radius: 12px; padding: 10px 20px; font-weight: 600; cursor: pointer; } .ds-btn-modal:hover { background: var(--primary-hover, #365b2b); } .ds-btn-modal:focus-visible { outline: 3px solid rgb(70 114 53 / .20); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Pos Komando Nusantara",
+    "overview": "SIGAP terasa seperti ruang kendali operasional yang berpijak pada lingkungan Nusantara: terpercaya, sigap, teknis, dan tangguh. Antarmuka mengutamakan pembacaan kondisi, tindakan langsung, dan keterlacakan kerja. Warna hijau memegang kendali, kuning memberi sinyal, sementara permukaan gading atau hijau malam menjaga suasana tetap membumi.\n\nKepadatan berada di tingkat nyaman hingga padat: cukup lapang untuk membedakan kelompok informasi, tetapi tidak membuang ruang yang dibutuhkan admin dan teknisi. Sistem visual tidak mengejar kemewahan dekoratif. Otoritasnya datang dari hierarki yang tegas, status yang mudah dipindai, border yang konsisten, dan respons interaksi yang cepat.",
+    "keyCharacteristics": [
+      "Dua tema yang mempertahankan hubungan warna dan hierarki yang sama.",
+      "Hijau untuk navigasi, tindakan utama, dan kondisi sehat.",
+      "Kuning sebagai sinyal terbatas untuk perhatian dan status.",
+      "Kontainer berlapis melalui warna permukaan dan border.",
+      "Komponen tegas, siap kerja, dan berorientasi tugas.",
+      "Data teknis menggunakan angka, label ringkas, serta mono seperlunya."
+    ],
+    "rules": [
+      {"name": "The Signal Discipline Rule", "body": "Hijau menunjukkan kendali atau keberhasilan; kuning menunjukkan perhatian. Jangan memakai keduanya sebagai dekorasi tanpa makna.", "section": "colors"},
+      {"name": "The Theme Continuity Rule", "body": "Tema gelap bukan identitas kedua. Pertahankan urutan peran, hierarki, dan kepadatan yang sama; hanya nilai permukaan dan kontras yang bergeser.", "section": "colors"},
+      {"name": "The Operational Hierarchy Rule", "body": "Satu layar memiliki satu judul dominan. Kartu dan tabel menggunakan title atau label; jangan mengangkat semua kelompok informasi menjadi headline.", "section": "typography"},
+      {"name": "The Mono Is Evidence Rule", "body": "Mono menandai data teknis, bukan gaya. Jangan gunakan Geist Mono pada narasi, tombol umum, atau judul halaman.", "section": "typography"},
+      {"name": "The Command-Zone Rule", "body": "Kelompokkan filter, aksi utama, dan status dalam zona yang jelas. Aksi destruktif harus terpisah secara warna dan posisi dari alur primer.", "section": "layout"},
+      {"name": "The Borders Before Shadows Rule", "body": "Gunakan perubahan warna permukaan dan border untuk struktur sehari-hari. Shadow hanya untuk modal, aksi penting, navigasi aktif, atau keadaan sementara yang benar-benar terangkat.", "section": "elevation"},
+      {"name": "The Radius Ladder Rule", "body": "Ukuran bentuk mengikuti hierarki: kontrol < kartu < permukaan hero. Jangan memakai radius 24 px pada setiap elemen.", "section": "shapes"},
+      {"name": "The State Must Speak Rule", "body": "Jangan bergantung pada warna saja. Status penting juga membutuhkan label, ikon, bentuk, atau teks yang menjelaskan kondisinya.", "section": "components"}
+    ],
+    "dos": [
+      "Do gunakan Hijau Komando untuk navigasi aktif, aksi primer, focus, dan kondisi sehat.",
+      "Do gunakan Kuning Sinyal secara terbatas untuk perhatian, proses, atau status yang harus cepat ditemukan.",
+      "Do bangun hierarki dengan perbedaan permukaan dan border sebelum menambahkan shadow.",
+      "Do pertahankan bahasa Indonesia yang singkat, operasional, dan konsisten.",
+      "Do gunakan Geist Mono hanya pada kode, alamat, koordinat, dan payload teknis.",
+      "Do pertahankan Logo Nusantara pada konteks identitas fisik atau produk yang relevan, termasuk label QR.",
+      "Do sediakan mode mobile yang mempertahankan seluruh fungsi penting admin dan teknisi."
+    ],
+    "donts": [
+      "Don't mengubah SIGAP menjadi dashboard SaaS generik dengan kartu bertumpuk tanpa hierarki tugas.",
+      "Don't memakai neon futuristik, glow berlebihan, atau efek terminal sebagai identitas utama.",
+      "Don't memberi shadow pada setiap kartu; gunakan hanya untuk modal, aksi penting, navigasi aktif, atau elevation sementara.",
+      "Don't memakai kuning sebagai bidang besar atau dekorasi yang tidak membawa sinyal.",
+      "Don't mencampur radius secara acak atau membuat semua komponen berbentuk pill.",
+      "Don't menyembunyikan status operasional hanya dalam warna tanpa label yang dapat dibaca."
+    ]
+  }
+}

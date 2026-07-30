@@ -48,7 +48,7 @@ export default function UsersPage() {
       setUsers(response.data?.rows || []);
       if (response.data?.pagination) setPagination(response.data.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Pengguna tidak dapat dimuat');
+      setError(err instanceof Error ? err.message : 'Daftar pengguna belum dapat dimuat. Coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ export default function UsersPage() {
       setNewPassword('');
       setModal(mode);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail pengguna gagal dimuat');
+      alert(err instanceof Error ? err.message : 'Detail pengguna belum dapat dimuat. Coba lagi.');
     }
   };
 
@@ -92,7 +92,7 @@ export default function UsersPage() {
       setModal(null);
       loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Pengguna gagal disimpan');
+      alert(err instanceof Error ? err.message : 'Data pengguna belum dapat disimpan. Periksa isian lalu coba lagi.');
     }
   };
 
@@ -105,19 +105,19 @@ export default function UsersPage() {
         body: JSON.stringify({ new_password: newPassword }),
       });
       setModal(null);
-      alert('Sandi pengguna berhasil diperbarui.');
+      alert('Kata sandi pengguna berhasil diperbarui.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Sandi gagal diperbarui');
+      alert(err instanceof Error ? err.message : 'Kata sandi belum dapat diperbarui. Coba lagi.');
     }
   };
 
   const removeUser = async (item: ManagedUser) => {
-    if (!confirm(`Hapus pengguna “${item.full_name}”?`)) return;
+    if (!confirm(`Hapus pengguna “${item.full_name}”? Pengguna ini tidak akan dapat mengakses SIGAP.`)) return;
     try {
       await apiRequest(`/users/${item.id}`, { method: 'DELETE' });
       loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Pengguna gagal dihapus');
+      alert(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
     }
   };
 
@@ -142,14 +142,14 @@ export default function UsersPage() {
         </label>
 
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          {loading ? <div className="py-20 text-center text-sm text-muted">Memuat pengguna…</div> :
-            error ? <div className="py-20 text-center text-sm text-error">{error}</div> :
-            users.length === 0 ? <div className="py-20 text-center text-sm text-muted">Belum ada pengguna.</div> : (
+          {loading ? <div className="py-20 text-center text-sm text-muted" role="status">Memuat daftar pengguna…</div> :
+            error ? <div className="py-16 text-center text-sm text-error"><p>{error}</p><button type="button" onClick={loadUsers} className="mt-4 rounded-xl border border-error/30 px-4 py-2 font-semibold">Coba lagi</button></div> :
+            users.length === 0 ? <div className="py-20 text-center text-sm text-muted">{search ? 'Tidak ada pengguna yang cocok. Ubah kata kunci pencarian.' : 'Belum ada pengguna. Tambahkan pengguna untuk memberi akses ke SIGAP.'}</div> : (
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="border-b border-border bg-background/60 text-xs uppercase tracking-wider text-muted">
-                      <tr><th className="px-5 py-4">Pengguna</th><th className="px-5 py-4">Email</th><th className="px-5 py-4">Role</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+                      <tr><th className="px-5 py-4">Pengguna</th><th className="px-5 py-4">Email</th><th className="px-5 py-4">Peran</th><th className="px-5 py-4 text-right">Tindakan</th></tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {users.map((item) => (
@@ -158,10 +158,10 @@ export default function UsersPage() {
                           <td className="px-5 py-4">{item.email}</td>
                           <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${item.role === 'admin' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'}`}>{item.role}</span></td>
                           <td className="px-5 py-4"><div className="flex justify-end gap-2">
-                            <Action title="Detail" onClick={() => openUser(item, 'detail')}><Eye /></Action>
-                            <Action title="Ubah" onClick={() => openUser(item, 'edit')}><Pencil /></Action>
-                            <Action title="Reset sandi" onClick={() => openUser(item, 'password')}><KeyRound /></Action>
-                            <Action title="Hapus" onClick={() => removeUser(item)} danger><Trash2 /></Action>
+                            <Action title={`Lihat detail ${item.full_name}`} onClick={() => openUser(item, 'detail')}><Eye /></Action>
+                            <Action title={`Ubah pengguna ${item.full_name}`} onClick={() => openUser(item, 'edit')}><Pencil /></Action>
+                            <Action title={`Atur ulang kata sandi ${item.full_name}`} onClick={() => openUser(item, 'password')}><KeyRound /></Action>
+                            <Action title={`Hapus pengguna ${item.full_name}`} onClick={() => removeUser(item)} danger><Trash2 /></Action>
                           </div></td>
                         </tr>
                       ))}
@@ -180,13 +180,13 @@ export default function UsersPage() {
             {modal === 'create' && <Field label="Username" value={form.username} onChange={(value) => setForm({ ...form, username: value })} minLength={4} />}
             <Field label="Nama lengkap" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} minLength={3} />
             <Field label="Email" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
-            {modal === 'create' && <Field label="Password" type="password" value={form.password} onChange={(value) => setForm({ ...form, password: value })} minLength={6} />}
-            <label className="block space-y-1.5 text-xs font-semibold text-muted">Role
+            {modal === 'create' && <Field label="Kata sandi" type="password" value={form.password} onChange={(value) => setForm({ ...form, password: value })} minLength={6} />}
+            <label className="block space-y-1.5 text-xs font-semibold text-muted">Peran
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as 'admin' | 'teknisi' })} className="w-full rounded-xl border border-input-border bg-input px-3 py-2.5 text-sm text-foreground">
                 <option value="teknisi">Teknisi</option><option value="admin">Admin</option>
               </select>
             </label>
-            <SubmitRow onCancel={() => setModal(null)} />
+            <SubmitRow onCancel={() => setModal(null)} label={modal === 'create' ? 'Tambah Pengguna' : 'Simpan Perubahan'} />
           </form>
         </Modal>
       )}
@@ -196,17 +196,17 @@ export default function UsersPage() {
           <div className="flex items-start gap-4">
             <div className="rounded-xl bg-primary/10 p-3 text-primary"><UserCog className="h-6 w-6" /></div>
             <dl className="grid flex-1 gap-4 sm:grid-cols-2">
-              {Object.entries({ 'Nama lengkap': selected.full_name, Username: selected.username, Email: selected.email, Role: selected.role }).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
+              {Object.entries({ 'Nama lengkap': selected.full_name, Username: selected.username, Email: selected.email, Peran: selected.role }).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 font-medium capitalize">{value}</dd></div>)}
             </dl>
           </div>
         </Modal>
       )}
 
       {modal === 'password' && selected && (
-        <Modal title={`Reset Sandi — ${selected.full_name}`} onClose={() => setModal(null)}>
+        <Modal title={`Atur Ulang Kata Sandi — ${selected.full_name}`} onClose={() => setModal(null)}>
           <form onSubmit={resetPassword} className="space-y-4">
-            <Field label="Sandi baru" type="password" value={newPassword} onChange={setNewPassword} minLength={6} />
-            <SubmitRow onCancel={() => setModal(null)} label="Reset Sandi" />
+            <Field label="Kata sandi baru" type="password" value={newPassword} onChange={setNewPassword} minLength={6} />
+            <SubmitRow onCancel={() => setModal(null)} label="Perbarui Kata Sandi" />
           </form>
         </Modal>
       )}
@@ -215,7 +215,7 @@ export default function UsersPage() {
 }
 
 function Action({ title, onClick, danger, children }: { title: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) {
-  return <button title={title} onClick={onClick} className={`rounded-lg border border-border p-2 [&>svg]:h-4 [&>svg]:w-4 ${danger ? 'hover:text-error' : 'hover:text-primary'}`}>{children}</button>;
+  return <button type="button" title={title} aria-label={title} onClick={onClick} className={`rounded-lg border border-border p-2 [&>svg]:h-4 [&>svg]:w-4 ${danger ? 'hover:text-error' : 'hover:text-primary'}`}>{children}</button>;
 }
 
 function Field({ label, value, onChange, type = 'text', minLength }: { label: string; value: string; onChange: (value: string) => void; type?: string; minLength?: number }) {
@@ -227,5 +227,5 @@ function SubmitRow({ onCancel, label = 'Simpan' }: { onCancel: () => void; label
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><button aria-label="Tutup modal" className="absolute inset-0 bg-black/60" onClick={onClose} /><div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2><button onClick={onClose} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button></div>{children}</div></div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><button type="button" aria-label="Tutup modal" className="absolute inset-0 bg-black/60" onClick={onClose} /><div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2><button type="button" aria-label={`Tutup ${title}`} onClick={onClose} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button></div>{children}</div></div>;
 }

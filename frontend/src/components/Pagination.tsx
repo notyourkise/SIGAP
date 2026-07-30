@@ -57,6 +57,7 @@ export default function Pagination({
             key={pageNumber}
             onClick={() => onPageChange(pageNumber)}
             aria-current={pageNumber === safePage ? 'page' : undefined}
+            aria-label={`Buka halaman ${pageNumber}`}
             className={`h-9 min-w-9 rounded-lg border px-3 text-xs font-bold transition-colors ${
               pageNumber === safePage
                 ? 'border-primary bg-primary text-white shadow-sm'

@@ -115,7 +115,7 @@ export default function MaintenanceLogsPage() {
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Gagal memuat log pemeliharaan');
+      setError(err.message || 'Catatan pemeliharaan belum dapat dimuat. Coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ export default function MaintenanceLogsPage() {
       setAssetsError(
         err instanceof Error
           ? err.message
-          : 'Daftar aset belum dapat dimuat dari server SIGAP.'
+          : 'Daftar CCTV belum dapat dimuat. Muat ulang sebelum mencatat pemeliharaan.'
       );
     }
   };
@@ -185,7 +185,7 @@ export default function MaintenanceLogsPage() {
   const handleSaveLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.asset_id) {
-      alert('Pilihlah salah satu aset CCTV');
+      alert('Pilih CCTV yang dipelihara.');
       return;
     }
 
@@ -213,7 +213,7 @@ export default function MaintenanceLogsPage() {
         fetchLogs();
       }
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan log pemeliharaan');
+      alert(err.message || 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -225,7 +225,7 @@ export default function MaintenanceLogsPage() {
       const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${id}`);
       setDetailLog(response.data || null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail log gagal dimuat');
+      alert(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -239,7 +239,7 @@ export default function MaintenanceLogsPage() {
     try {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Ekspor log gagal');
+      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat diekspor. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -248,7 +248,7 @@ export default function MaintenanceLogsPage() {
   const uploadBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
   const handleDeleteLog = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data riwayat pemeliharaan ini? (Soft delete)')) return;
+    if (!confirm('Hapus catatan pemeliharaan ini? Catatan tidak akan ditampilkan lagi.')) return;
     setActionLoading(`delete-${id}`);
     try {
       const response = await apiRequest(`/maintenance-logs/${id}`, {
@@ -258,7 +258,7 @@ export default function MaintenanceLogsPage() {
         fetchLogs();
       }
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus log');
+      alert(err.message || 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -286,11 +286,14 @@ export default function MaintenanceLogsPage() {
       <div className="space-y-8 animate-fadeIn">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">Riwayat Pemeliharaan</h1>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Pemeliharaan CCTV</h1>
+            <p className="mt-1 text-sm text-muted">Pantau riwayat pekerjaan dan catat tindakan pemeliharaan CCTV.</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button disabled={actionLoading === 'export'} onClick={handleExport} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold hover:border-primary disabled:cursor-wait disabled:opacity-60">
               {actionLoading === 'export' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {actionLoading === 'export' ? 'Menyiapkan...' : 'Ekspor CSV'}
+              {actionLoading === 'export' ? 'Menyiapkan ekspor…' : 'Ekspor CSV'}
             </button>
             <button
               onClick={() => handleOpenModal()}
@@ -306,7 +309,7 @@ export default function MaintenanceLogsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-card border border-border bg-card/60 backdrop-blur-md">
           {/* Asset Select Filter */}
           <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter CCTV</label>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">CCTV</label>
             <select
               value={assetFilter}
               onChange={(e) => {
@@ -324,7 +327,7 @@ export default function MaintenanceLogsPage() {
 
           {/* Status Select Filter */}
           <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter Status</label>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Status</label>
             <select
               value={statusFilter}
               onChange={(e) => {
@@ -333,11 +336,11 @@ export default function MaintenanceLogsPage() {
               }}
               className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
             >
-              <option value="">Semua Status</option>
-              <option value="completed">Selesai (Completed)</option>
-              <option value="scheduled">Terjadwal (Scheduled)</option>
-              <option value="ongoing">Dalam Proses (Ongoing)</option>
-              <option value="failed">Gagal (Failed)</option>
+              <option value="">Semua status</option>
+              <option value="completed">Selesai</option>
+              <option value="scheduled">Terjadwal</option>
+              <option value="ongoing">Dalam proses</option>
+              <option value="failed">Gagal</option>
             </select>
           </div>
         </div>
@@ -350,7 +353,7 @@ export default function MaintenanceLogsPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
               <div>
-                <p className="font-semibold text-foreground">Daftar aset belum tersedia</p>
+                <p className="font-semibold text-foreground">Daftar CCTV belum tersedia</p>
                 <p className="mt-0.5 text-xs text-muted">{assetsError}</p>
               </div>
             </div>
@@ -366,8 +369,9 @@ export default function MaintenanceLogsPage() {
 
         {/* Logs Table */}
         {loading ? (
-          <div className="flex justify-center items-center py-20 bg-card rounded-2xl border border-border">
+          <div className="flex justify-center items-center gap-3 py-20 bg-card rounded-2xl border border-border" role="status">
             <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+            <span className="text-sm text-muted">Memuat catatan pemeliharaan…</span>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-error/25 bg-card px-6 py-16 text-center">
@@ -385,9 +389,9 @@ export default function MaintenanceLogsPage() {
         ) : logs.length === 0 ? (
           <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
             <Wrench className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-3" />
-            <h3 className="text-base font-semibold">Belum Ada Catatan Pemeliharaan</h3>
+            <h3 className="text-base font-semibold">{statusFilter || assetFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
             <p className="text-xs text-gray-400 mt-1 max-w-sm">
-              Silakan buat catatan baru dengan mengklik tombol "Catat Pemeliharaan" di kanan atas.
+              {statusFilter || assetFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan tombol “Catat Pemeliharaan” untuk membuat catatan pertama.'}
             </p>
           </div>
         ) : (
@@ -401,7 +405,7 @@ export default function MaintenanceLogsPage() {
                     <th className="py-4 px-6">Teknisi</th>
                     <th className="py-4 px-6">Tanggal Selesai</th>
                     <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6 text-right">Aksi</th>
+                    <th className="py-4 px-6 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
@@ -412,7 +416,7 @@ export default function MaintenanceLogsPage() {
                         <div className="flex items-center gap-2.5">
                           <Camera className="h-4 w-4 text-gray-400 shrink-0" />
                           <span className="font-semibold text-gray-700 dark:text-gray-200">
-                            {log.asset?.name || 'Aset Tidak Ditemukan'}
+                            {log.asset?.name || 'CCTV tidak tersedia'}
                           </span>
                         </div>
                       </td>
@@ -458,7 +462,7 @@ export default function MaintenanceLogsPage() {
                             ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
                             : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
                         }`}>
-                          {log.status === 'completed' ? 'Selesai' : log.status === 'failed' ? 'Gagal' : log.status === 'ongoing' ? 'Dalam Proses' : 'Terjadwal'}
+                          {log.status === 'completed' ? 'Selesai' : log.status === 'failed' ? 'Gagal' : log.status === 'ongoing' ? 'Dalam proses' : 'Terjadwal'}
                         </span>
                       </td>
 
@@ -468,7 +472,8 @@ export default function MaintenanceLogsPage() {
                               onClick={() => handleViewLog(log.id)}
                               disabled={actionLoading === `detail-${log.id}`}
                               className="p-2 rounded-lg border border-border bg-card hover:border-primary/20 hover:bg-primary/5 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                              title="Detail Log"
+                              title="Lihat detail pemeliharaan"
+                              aria-label={`Lihat detail pemeliharaan ${log.asset?.name || 'CCTV'}`}
                             >
                               {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
@@ -476,7 +481,8 @@ export default function MaintenanceLogsPage() {
                               onClick={() => handleOpenModal(log)}
                               disabled={actionLoading !== null}
                               className="p-2 rounded-lg border border-border bg-card hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                              title="Edit Log"
+                              title="Ubah catatan pemeliharaan"
+                              aria-label={`Ubah catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
                             >
                               <Settings className="h-4 w-4" />
                             </button>
@@ -484,7 +490,8 @@ export default function MaintenanceLogsPage() {
                                 onClick={() => handleDeleteLog(log.id)}
                                 disabled={actionLoading === `delete-${log.id}`}
                                 className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
-                                title="Hapus Log"
+                                title="Hapus catatan pemeliharaan"
+                                aria-label={`Hapus catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
                               >
                                 {actionLoading === `delete-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>}
@@ -513,8 +520,8 @@ export default function MaintenanceLogsPage() {
             
             <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl p-6 z-10 animate-scaleIn">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">{currentLog ? 'Edit Catatan Pemeliharaan' : 'Catat Pemeliharaan Baru'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-lg border border-border bg-background hover:bg-border text-gray-500 transition-colors">
+                <h3 className="text-xl font-bold">{currentLog ? 'Ubah Catatan Pemeliharaan' : 'Catat Pemeliharaan Baru'}</h3>
+                <button type="button" aria-label="Tutup formulir pemeliharaan" onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-lg border border-border bg-background hover:bg-border text-gray-500 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -522,7 +529,7 @@ export default function MaintenanceLogsPage() {
               <form onSubmit={handleSaveLog} className="space-y-4">
                 {/* Select Asset */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Pilih CCTV *</label>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">CCTV *</label>
                   <select
                     value={formData.asset_id}
                     onChange={(e) => setFormData({...formData, asset_id: e.target.value})}
@@ -530,7 +537,7 @@ export default function MaintenanceLogsPage() {
                     required
                     disabled={!!currentLog}
                   >
-                    <option value="" disabled>-- Pilih Kamera CCTV --</option>
+                    <option value="" disabled>Pilih CCTV</option>
                     {assets.map((asset) => (
                       <option key={asset.id} value={asset.id}>
                         {asset.name} ({asset.serial_number})
@@ -540,12 +547,12 @@ export default function MaintenanceLogsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tindakan Pemeliharaan *</label>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tindakan yang Dilakukan *</label>
                   <textarea
                     rows={3}
                     value={formData.action_taken}
                     onChange={(e) => setFormData({...formData, action_taken: e.target.value})}
-                    placeholder="Deskripsikan tindakan yang dilakukan... (contoh: pembersihan lensa, pengganti konektor RJ45)"
+                    placeholder="Contoh: pembersihan lensa dan penggantian konektor RJ45"
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                     required
                   />
@@ -557,7 +564,7 @@ export default function MaintenanceLogsPage() {
                     rows={2}
                     value={formData.notes}
                     onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                    placeholder="Tuliskan catatan teknis tambahan..."
+                    placeholder="Tambahkan hasil pemeriksaan atau temuan teknis"
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                   />
                 </div>
@@ -570,15 +577,15 @@ export default function MaintenanceLogsPage() {
                       onChange={(e) => setFormData({...formData, status: e.target.value})}
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                     >
-                      <option value="completed">Selesai (Completed)</option>
-                      <option value="scheduled">Terjadwal (Scheduled)</option>
-                      <option value="ongoing">Dalam Proses (Ongoing)</option>
-                      <option value="failed">Gagal (Failed)</option>
+                      <option value="completed">Selesai</option>
+                      <option value="scheduled">Terjadwal</option>
+                      <option value="ongoing">Dalam proses</option>
+                      <option value="failed">Gagal</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Waktu Selesai / Jadwal *</label>
+                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{formData.status === 'scheduled' ? 'Waktu Terjadwal *' : 'Waktu Pencatatan *'}</label>
                     <input
                       type="text"
                       value={formData.completed_at || formData.scheduled_date}
@@ -619,7 +626,7 @@ export default function MaintenanceLogsPage() {
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/10 active:scale-[0.98] transition-all cursor-pointer text-sm disabled:cursor-wait disabled:opacity-65"
                   >
                     {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                    {actionLoading === 'save' ? 'Menyimpan...' : currentLog ? 'Simpan Perubahan' : 'Simpan Catatan'}
+                    {actionLoading === 'save' ? 'Menyimpan catatan…' : currentLog ? 'Simpan Perubahan' : 'Simpan Catatan'}
                   </button>
                 </div>
               </form>
@@ -633,7 +640,7 @@ export default function MaintenanceLogsPage() {
             <div className="z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
               <div className="mb-5 flex items-center justify-between">
                 <h3 className="text-xl font-bold">Detail Pemeliharaan</h3>
-                <button onClick={() => setDetailLog(null)} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button>
+                <button type="button" aria-label="Tutup detail pemeliharaan" onClick={() => setDetailLog(null)} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button>
               </div>
               <dl className="grid gap-4 sm:grid-cols-2">
                 {Object.entries({
