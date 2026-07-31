@@ -14,13 +14,9 @@ import {
   MapPin, 
   Upload, 
   Scan, 
+  MoreHorizontal,
   X, 
   AlertTriangle, 
-  Activity, 
-  ShieldCheck,
-  Wrench,
-  Cpu, 
-  Minimize2, 
   Eye, 
   Printer,
   LoaderCircle
@@ -52,8 +48,6 @@ export default function CCTVPage() {
   const isAdmin = user?.role === 'admin';
 
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
-  const [allCCTVs, setAllCCTVs] = useState<CCTV[]>([]);
-  const [maintenanceTotal, setMaintenanceTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
@@ -68,6 +62,7 @@ export default function CCTVPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [ioFilter, setIoFilter] = useState('');
+  const [sortMode, setSortMode] = useState<'newest' | 'name-asc' | 'name-desc'>('newest');
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -109,6 +104,7 @@ export default function CCTVPage() {
   
   // Bulk Actions State
   const [selectedIDs, setSelectedIDs] = useState<string[]>([]);
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
 
   // File Import State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -124,6 +120,8 @@ export default function CCTVPage() {
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+      if (sortMode === 'name-asc') queryParams.push('sort_by=nama', 'order=asc');
+      if (sortMode === 'name-desc') queryParams.push('sort_by=nama', 'order=desc');
       
       const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`);
       
@@ -143,33 +141,10 @@ export default function CCTVPage() {
     }
   };
 
-  const fetchCCTVSummary = async () => {
-    try {
-      const [response, maintenanceResponse] = await Promise.all([
-        apiRequest<any>('/cctv?page=1&limit=100'),
-        apiRequest<any>('/maintenance-logs?page=1&limit=1'),
-      ]);
-      if (response.status === 'success' && response.data) {
-        setAllCCTVs(response.data.rows || []);
-      }
-      if (maintenanceResponse.status === 'success' && maintenanceResponse.data) {
-        setMaintenanceTotal(maintenanceResponse.data.pagination?.total_rows || 0);
-      }
-    } catch {
-      setAllCCTVs([]);
-      setMaintenanceTotal(0);
-    }
-  };
-
   useEffect(() => {
     fetchCCTVs();
-  }, [page, search, statusFilter, ioFilter]);
+  }, [page, search, statusFilter, ioFilter, sortMode]);
 
-  useEffect(() => {
-    fetchCCTVSummary();
-  }, []);
-
-  // Stats
   const normalizedStatus = (status: string) => status.trim().toUpperCase();
   const isStatus = (status: string, values: string[]) => values.includes(normalizedStatus(status));
   const statusLabel = (status: string) => {
@@ -180,21 +155,6 @@ export default function CCTVPage() {
     if (['BROKEN', 'RUSAK'].includes(normalized)) return 'Nonaktif';
     return status;
   };
-  const totalCount = allCCTVs.length;
-  const activeCount = allCCTVs.filter(c => isStatus(c.status, ['ACTIVE', 'AKTIF'])).length;
-  const inactiveCount = allCCTVs.filter(c => isStatus(c.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'])).length;
-  const maintenanceCount = maintenanceTotal;
-  const selectableCCTVs = allCCTVs.filter((cctv) => {
-    if (statusFilter && normalizedStatus(cctv.status) !== statusFilter) return false;
-    if (ioFilter && cctv.indoor_outdoor.trim().toUpperCase() !== ioFilter) return false;
-
-    const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) return true;
-
-    return [cctv.nama, cctv.kode_cctv, cctv.id_channel, cctv.lokasi_area]
-      .some((value) => (value || '').toLowerCase().includes(normalizedSearch));
-  });
-
   // Handlers
   const handleOpenDetail = async (id: string) => {
     setActionLoading(`detail-${id}`);
@@ -269,7 +229,6 @@ export default function CCTVPage() {
       if (response.status === 'success') {
         setIsFormModalOpen(false);
         fetchCCTVs();
-        fetchCCTVSummary();
       }
     } catch (err: any) {
       alert(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
@@ -288,7 +247,6 @@ export default function CCTVPage() {
       if (response.status === 'success') {
         setSelectedIDs(prev => prev.filter(item => item !== cctv.id));
         fetchCCTVs();
-        fetchCCTVSummary();
       }
     } catch (err: any) {
       alert(err.message || 'CCTV belum dapat dihapus. Coba lagi.');
@@ -298,11 +256,31 @@ export default function CCTVPage() {
   };
 
   // Bulk Selection Handlers
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedIDs(selectableCCTVs.map(c => c.id));
-    } else {
+  const handleSelectAll = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const shouldSelectAll = e.target.checked;
+
+    if (!shouldSelectAll) {
       setSelectedIDs([]);
+      return;
+    }
+
+    setIsSelectingAll(true);
+    try {
+      const queryParams = [
+        'page=1',
+        `limit=${Math.max(pagination.total_rows, 1)}`,
+      ];
+      if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+      if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
+      if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+
+      const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`);
+      setSelectedIDs(response.data?.rows.map((cctv) => cctv.id) ?? []);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
+      setSelectedIDs([]);
+    } finally {
+      setIsSelectingAll(false);
     }
   };
 
@@ -346,7 +324,6 @@ export default function CCTVPage() {
 
       setSelectedIDs([]);
       fetchCCTVs();
-      fetchCCTVSummary();
       alert(resJson.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
     } catch (err: any) {
       alert(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
@@ -420,7 +397,6 @@ export default function CCTVPage() {
       setImportSuccess(resJson.message || 'Data CCTV berhasil diimpor.');
       setSelectedFile(null);
       fetchCCTVs();
-      fetchCCTVSummary();
     } catch (err: any) {
       setImportError(err.message || 'Berkas Excel belum dapat diimpor. Periksa format lalu coba lagi.');
     } finally {
@@ -678,129 +654,98 @@ export default function CCTVPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 animate-fadeIn">
-        {/* Header */}
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className={`space-y-8 ${selectedIDs.length > 0 && isAdmin ? 'pb-24' : ''}`}>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="shrink-0 whitespace-nowrap text-3xl font-bold tracking-tight">Aset CCTV</h1>
-            <p className="mt-1 text-sm text-muted">Kelola identitas, koneksi, lokasi, dan status CCTV kawasan IKN.</p>
+            <h1 className="text-3xl font-bold tracking-[-0.025em]">Aset CCTV</h1>
+            <p className="mt-1 text-sm text-muted">Cari, identifikasi, dan kelola perangkat CCTV.</p>
           </div>
-          <div className="flex flex-wrap gap-2 xl:justify-end">
+          <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={() => setIsScanModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary"
             >
-              <Scan className="h-4.5 w-4.5 text-primary" />
+              <Scan className="h-4 w-4 text-primary" />
               <span>Pindai QR</span>
             </button>
             {isAdmin && (
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-background text-foreground font-semibold active:scale-[0.98] transition-all cursor-pointer text-sm shadow-sm"
-              >
-                <Upload className="h-4.5 w-4.5 text-primary" />
-                <span>Impor Excel</span>
-              </button>
-            )}
-            {isAdmin && cctvs.length > 0 && (
-              <button
-                onClick={() => handleBulkDelete(true)}
-                disabled={actionLoading === 'delete-all'}
-                className="order-4 flex items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-500/10 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 dark:text-red-400"
-                title="Hapus semua CCTV"
-              >
-                {actionLoading === 'delete-all' ? <LoaderCircle className="h-4.5 w-4.5 animate-spin" /> : <Trash2 className="h-4.5 w-4.5" />}
-                <span>{actionLoading === 'delete-all' ? 'Menghapus semua CCTV…' : 'Hapus Semua CCTV'}</span>
-              </button>
+              <details className="group relative">
+                <summary
+                  aria-label="Buka tindakan lainnya"
+                  className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border border-border bg-card text-muted transition-colors hover:border-primary hover:text-foreground [&::-webkit-details-marker]:hidden"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </summary>
+                <div className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-[0_12px_28px_rgba(32,63,37,0.14)]">
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold hover:bg-background"
+                  >
+                    <Upload className="h-4 w-4 text-primary" />
+                    Impor Excel
+                  </button>
+                  {cctvs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBulkDelete(true)}
+                      disabled={actionLoading === 'delete-all'}
+                      className="flex w-full items-center gap-3 border-t border-border px-4 py-3 text-left text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {actionLoading === 'delete-all' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      {actionLoading === 'delete-all' ? 'Menghapus…' : 'Hapus semua CCTV'}
+                    </button>
+                  )}
+                </div>
+              </details>
             )}
             {isAdmin && (
               <button
+                type="button"
                 onClick={() => handleOpenForm()}
-                className="order-3 flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98]"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(70,114,53,0.2)] transition-colors hover:bg-primary-hover"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
                 <span>Tambah CCTV</span>
               </button>
             )}
           </div>
-        </div>
+        </header>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: 'Total CCTV',
-              value: totalCount,
-              icon: Camera,
-              border: 'border-t-blue-500',
-              tone: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-            },
-            {
-              label: 'Aktif',
-              value: activeCount,
-              icon: ShieldCheck,
-              border: 'border-t-success',
-              tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-            },
-            {
-              label: 'Nonaktif',
-              value: inactiveCount,
-              icon: Activity,
-              border: 'border-t-error',
-              tone: 'bg-red-500/10 text-red-600 dark:text-red-400',
-            },
-            {
-              label: 'Pemeliharaan',
-              value: maintenanceCount,
-              icon: Wrench,
-              border: 'border-t-warning',
-              tone: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-            },
-          ].map(({ label, value, icon: Icon, tone, border }) => (
-            <div key={label} className={`rounded-2xl border border-t-4 border-border bg-card p-5 shadow-sm ${border}`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-muted">{label}</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.025em]">{value}</p>
-                </div>
-                <div className={`rounded-xl p-2.5 ${tone}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-              </div>
+        <section aria-labelledby="cctv-list-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="flex flex-col gap-1 border-b border-border px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 id="cctv-list-heading" className="text-lg font-bold">Daftar CCTV</h2>
+              <p className="mt-0.5 text-xs text-muted">{pagination.total_rows} perangkat</p>
             </div>
-          ))}
-        </div>
-
-        {/* Filter & Search Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-2xl bg-card border border-border bg-card/60 backdrop-blur-md">
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-gray-400">
-              <Search className="h-5 w-5" />
-            </div>
-            <input
-              type="text"
-              placeholder="Cari nama, kode, channel, atau lokasi"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setSelectedIDs([]);
-                setPage(1);
-              }}
-              className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary text-sm transition-all"
-            />
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-2.5">
+          <div className="grid gap-3 border-b border-border px-5 py-4 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                type="search"
+                aria-label="Cari CCTV"
+                placeholder="Cari nama, kode, channel, atau lokasi"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setSelectedIDs([]);
+                  setPage(1);
+                }}
+                className="w-full rounded-xl border border-input-border bg-input py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
             <select
+              aria-label="Filter status CCTV"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setSelectedIDs([]);
                 setPage(1);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
+              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
             >
               <option value="">Semua status</option>
               <option value="ACTIVE">Aktif</option>
@@ -808,45 +753,72 @@ export default function CCTVPage() {
             </select>
 
             <select
+              aria-label="Filter lokasi pemasangan"
               value={ioFilter}
               onChange={(e) => {
                 setIoFilter(e.target.value);
                 setSelectedIDs([]);
                 setPage(1);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-semibold border border-border bg-background text-gray-500 hover:text-foreground dark:text-gray-400 focus:outline-none cursor-pointer"
+              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
             >
               <option value="">Semua lokasi pemasangan</option>
               <option value="INDOOR">Indoor</option>
               <option value="OUTDOOR">Outdoor</option>
             </select>
-          </div>
-        </div>
 
-        {selectedIDs.length > 0 && isAdmin && (
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-semibold">
-              <span className="text-primary">{selectedIDs.length}</span> CCTV terpilih
-            </p>
-            <button
-              onClick={() => handleBulkDelete(false)}
-              disabled={actionLoading === 'delete-selected'}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-600 disabled:cursor-wait disabled:opacity-60"
+            <select
+              aria-label="Urutkan daftar CCTV"
+              value={sortMode}
+              onChange={(e) => {
+                setSortMode(e.target.value as 'newest' | 'name-asc' | 'name-desc');
+                setPage(1);
+              }}
+              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
-              {actionLoading === 'delete-selected' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {actionLoading === 'delete-selected' ? 'Menghapus CCTV…' : `Hapus ${selectedIDs.length} CCTV`}
-            </button>
+              <option value="newest">Urutan: Terbaru</option>
+              <option value="name-asc">Nama: A–Z</option>
+              <option value="name-desc">Nama: Z–A</option>
+            </select>
           </div>
-        )}
 
-        {/* CCTV Master List Table */}
-        {loading ? (
-          <div className="flex justify-center items-center gap-3 py-20 bg-card rounded-2xl border border-border" role="status">
+          {selectedIDs.length > 0 && isAdmin && (
+            <div
+              role="region"
+              aria-label="Tindakan untuk CCTV terpilih"
+              className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-2 rounded-2xl bg-card p-3 shadow-[0_14px_36px_rgba(32,63,37,0.24)]"
+            >
+              <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold" aria-live="polite">
+                {selectedIDs.length} CCTV terpilih
+              </p>
+              <button
+                type="button"
+                onClick={() => setSelectedIDs([])}
+                aria-label="Batalkan semua pilihan CCTV"
+                title="Batalkan pilihan"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkDelete(false)}
+                disabled={actionLoading === 'delete-selected'}
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-error px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-error/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-wait disabled:opacity-60"
+              >
+                {actionLoading === 'delete-selected' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {actionLoading === 'delete-selected' ? 'Menghapus…' : `Hapus ${selectedIDs.length} CCTV`}
+              </button>
+            </div>
+          )}
+
+          {loading ? (
+          <div className="flex items-center justify-center gap-3 py-20" role="status">
             <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
             <span className="text-sm text-muted">Memuat data CCTV…</span>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-error/25 bg-card px-6 py-16 text-center">
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <AlertTriangle className="h-11 w-11 text-error" />
             <h3 className="mt-3 text-base font-semibold">Data CCTV belum dapat dimuat</h3>
             <p className="mt-1 max-w-md text-xs text-muted">{error}</p>
@@ -855,43 +827,46 @@ export default function CCTVPage() {
             </button>
           </div>
         ) : cctvs.length === 0 ? (
-          <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
-            <Camera className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-3" />
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <Camera className="mb-3 h-10 w-10 text-muted/45" />
             <h3 className="text-base font-semibold">{search || statusFilter || ioFilter ? 'Tidak ada CCTV yang cocok' : 'Belum ada data CCTV'}</h3>
             <p className="mt-1 max-w-sm text-xs text-muted">
               {search || statusFilter || ioFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol “Tambah CCTV” atau “Impor Excel” untuk menambahkan data.'}
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-border bg-background/50 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
                     {isAdmin && (
-                      <th className="py-4 px-6 w-12 text-center">
-                        <input
-                          type="checkbox"
-                          onChange={handleSelectAll}
-                          checked={selectableCCTVs.length > 0 && selectableCCTVs.every((cctv) => selectedIDs.includes(cctv.id))}
-                          aria-label={`Pilih semua ${selectableCCTVs.length} CCTV hasil filter`}
-                          className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                        />
+                      <th className="w-12 px-5 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5" aria-busy={isSelectingAll}>
+                          <input
+                            type="checkbox"
+                            onChange={handleSelectAll}
+                            checked={pagination.total_rows > 0 && selectedIDs.length === pagination.total_rows}
+                            disabled={isSelectingAll}
+                            aria-label={`Pilih semua ${pagination.total_rows} CCTV pada seluruh halaman`}
+                            className="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-wait"
+                          />
+                          {isSelectingAll && <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden="true" />}
+                        </div>
                       </th>
                     )}
-                    <th className="py-4 px-6">Identitas CCTV</th>
-                    <th className="py-4 px-6">Spesifikasi Koneksi</th>
-                    <th className="py-4 px-6">Pemasangan</th>
-                    <th className="py-4 px-6">Sumber Daya & Lokasi</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6 text-right">Tindakan</th>
+                    <th className="px-5 py-3.5">Identitas</th>
+                    <th className="px-5 py-3.5">Koneksi</th>
+                    <th className="px-5 py-3.5">Lokasi</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
                   {cctvs.map((cctv) => (
-                    <tr key={cctv.id} className={`hover:bg-background/35 transition-colors ${selectedIDs.includes(cctv.id) ? 'bg-primary/8' : ''}`}>
+                    <tr key={cctv.id} className={`transition-colors hover:bg-background/35 ${selectedIDs.includes(cctv.id) ? 'bg-primary/8' : ''}`}>
                       {isAdmin && (
-                        <td className="py-4.5 px-6 w-12 text-center">
+                        <td className="w-12 px-5 py-4 text-center">
                           <input
                             type="checkbox"
                             onChange={(e) => handleSelectRow(cctv.id, e.target.checked)}
@@ -901,63 +876,66 @@ export default function CCTVPage() {
                           />
                         </td>
                       )}
-                      <td className="py-4.5 px-6">
+                      <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              setCurrentCCTV(cctv);
-                              setIsQrModalOpen(true);
-                            }}
-                            className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/15 bg-white p-1.5 shadow-sm transition hover:border-primary/35"
-                            title="Tampilkan kode QR"
-                            aria-label={`Tampilkan kode QR ${cctv.nama}`}
-                          >
-                            {cctv.qr_payload ? (
+                          {cctv.qr_payload ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentCCTV(cctv);
+                                setIsQrModalOpen(true);
+                              }}
+                              className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-1.5 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                              aria-label={`Buka label QR ${cctv.nama}`}
+                              title="Buka label QR"
+                            >
+                              <Scan className="absolute h-5 w-5 text-muted/35" aria-hidden="true" />
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(cctv.qr_payload)}`}
-                                alt={`QR Code ${cctv.kode_cctv}`}
-                                className="h-full w-full object-contain"
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(cctv.qr_payload)}`}
+                                alt=""
+                                width={48}
+                                height={48}
                                 loading="lazy"
+                                decoding="async"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = 'none';
+                                }}
+                                className="relative h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.04]"
                               />
-                            ) : (
-                              <span className="text-[9px] font-bold text-muted">QR</span>
-                            )}
-                          </button>
-                          <div>
-                            <h4 className="font-semibold">{cctv.nama}</h4>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent/20 text-[#775800] dark:text-accent uppercase tracking-wider font-mono">{cctv.kode_cctv}</span>
-                              {cctv.id_channel && <span className="text-xs text-gray-400">Channel: {cctv.id_channel}</span>}
+                            </button>
+                          ) : (
+                            <div
+                              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/50"
+                              aria-label={`Kode QR ${cctv.nama} belum tersedia`}
+                              title="QR belum tersedia"
+                            >
+                              <Scan className="h-5 w-5" aria-hidden="true" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h3 className="max-w-[260px] truncate font-semibold" title={cctv.nama}>{cctv.nama}</h3>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="font-mono text-xs font-semibold text-primary">{cctv.kode_cctv}</span>
+                              {cctv.id_channel && <span className="text-xs text-muted">Channel {cctv.id_channel}</span>}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-4.5 px-6 font-mono text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                        <div><span className="text-[10px] text-gray-400">IP kamera:</span> {cctv.ip_camera || '-'}</div>
-                        {cctv.ip_nvr && <div><span className="text-[10px] text-gray-400">IP NVR:</span> {cctv.ip_nvr}</div>}
+                      <td className="space-y-1 px-5 py-4 font-mono text-xs text-muted">
+                        <div>{cctv.ip_camera || 'IP kamera belum dicatat'}</div>
+                        {cctv.ip_nvr && <div>{cctv.ip_nvr} <span className="font-sans">NVR</span></div>}
                       </td>
-                      <td className="py-4.5 px-6">
-                        <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded border capitalize ${
-                          cctv.indoor_outdoor.toLowerCase() === 'indoor'
-                            ? 'bg-purple-500/5 text-purple-500 border-purple-500/10'
-                            : 'bg-orange-500/5 text-orange-500 border-orange-500/10'
-                        }`}>
-                          {cctv.indoor_outdoor}
-                        </span>
-                      </td>
-                      <td className="py-4.5 px-6 space-y-1">
-                        <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                          <span className="truncate max-w-[170px]" title={cctv.lokasi_area}>{cctv.lokasi_area || '-'}</span>
-                        </div>
-                        {cctv.sumber_listrik && (
-                          <div className="text-[11px] text-gray-400 flex items-center gap-1">
-                            <Cpu className="h-3 w-3" />
-                            <span>Listrik: {cctv.sumber_listrik}</span>
+                      <td className="px-5 py-4">
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
+                          <div>
+                            <p className="max-w-[220px] truncate" title={cctv.lokasi_area}>{cctv.lokasi_area || 'Lokasi belum dicatat'}</p>
+                            <p className="mt-0.5 text-xs capitalize text-muted">{cctv.indoor_outdoor || '-'}</p>
                           </div>
-                        )}
+                        </div>
                       </td>
-                      <td className="py-4.5 px-6">
+                      <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
                           isStatus(cctv.status, ['ACTIVE', 'AKTIF'])
                             ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
@@ -973,12 +951,13 @@ export default function CCTVPage() {
                           {statusLabel(cctv.status)}
                         </span>
                       </td>
-                      <td className="py-4.5 px-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
+                            type="button"
                             onClick={() => handleOpenDetail(cctv.id)}
                             disabled={actionLoading === `detail-${cctv.id}`}
-                            className="p-2 rounded-lg border border-border bg-card hover:border-gray-500/20 hover:bg-gray-500/5 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                            className="rounded-lg p-2 text-muted transition-colors hover:bg-background hover:text-foreground"
                             title="Lihat detail CCTV"
                             aria-label={`Lihat detail CCTV ${cctv.nama}`}
                           >
@@ -987,17 +966,19 @@ export default function CCTVPage() {
                           {isAdmin && (
                             <>
                               <button
+                                type="button"
                                 onClick={() => handleOpenForm(cctv)}
-                                className="p-2 rounded-lg border border-border bg-card hover:border-primary/25 hover:bg-primary/8 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                                className="rounded-lg p-2 text-muted transition-colors hover:bg-primary/10 hover:text-primary"
                                 title="Ubah data CCTV"
                                 aria-label={`Ubah data CCTV ${cctv.nama}`}
                               >
                                 <Edit2 className="h-4 w-4" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleDeleteCCTV(cctv)}
                                 disabled={actionLoading === `delete-${cctv.id}`}
-                                className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                                className="rounded-lg p-2 text-muted transition-colors hover:bg-error/10 hover:text-error"
                                 title="Hapus CCTV"
                                 aria-label={`Hapus CCTV ${cctv.nama}`}
                               >
@@ -1022,8 +1003,9 @@ export default function CCTVPage() {
               }}
               itemLabel="CCTV"
             />
-          </div>
+          </>
         )}
+        </section>
 
         {/* CCTV Form Modal (Create/Edit) */}
         {isFormModalOpen && (
@@ -1038,163 +1020,49 @@ export default function CCTVPage() {
               
               <form onSubmit={handleSaveCCTV} className="space-y-4">
                 <p className="text-xs text-muted">Kolom bertanda * wajib diisi.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <CCTVTextField label="Kode CCTV *" required value={formData.kode_cctv} onChange={(value) => setFormData({ ...formData, kode_cctv: value })} placeholder="Contoh: IKN-THD-01" />
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Kode CCTV *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.kode_cctv}
-                      onChange={(e) => setFormData({...formData, kode_cctv: e.target.value})}
-                      placeholder="Contoh: IKN-THD-01"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">ID Channel</label>
-                    <input
-                      type="text"
-                      value={formData.id_channel}
-                      onChange={(e) => setFormData({...formData, id_channel: e.target.value})}
-                      placeholder="Contoh: 1"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-gray-400">Nama CCTV *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.nama}
-                      onChange={(e) => setFormData({...formData, nama: e.target.value})}
-                      placeholder="Contoh: CCTV Sumbu Kebangsaan Utama"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-gray-400">Lokasi Area</label>
-                    <input
-                      type="text"
-                      value={formData.lokasi_area}
-                      onChange={(e) => setFormData({...formData, lokasi_area: e.target.value})}
-                      placeholder="Contoh: Kawasan Inti Pusat Pemerintahan"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Longitude</label>
-                    <input
-                      type="text"
-                      value={formData.longitude}
-                      onChange={(e) => setFormData({...formData, longitude: e.target.value})}
-                      placeholder="Contoh: 106.8231"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Latitude</label>
-                    <input
-                      type="text"
-                      value={formData.latitude}
-                      onChange={(e) => setFormData({...formData, latitude: e.target.value})}
-                      placeholder="Contoh: -6.1949"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Jenis CCTV</label>
-                    <input
-                      type="text"
-                      value={formData.jenis_cctv}
-                      onChange={(e) => setFormData({...formData, jenis_cctv: e.target.value})}
-                      placeholder="Contoh: PTZ Dome"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Sumber Listrik</label>
-                    <input
-                      type="text"
-                      value={formData.sumber_listrik}
-                      onChange={(e) => setFormData({...formData, sumber_listrik: e.target.value})}
-                      placeholder="Contoh: Solar Panel / PLN"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Tipe Koneksi</label>
-                    <input
-                      type="text"
-                      value={formData.tipe_koneksi}
-                      onChange={(e) => setFormData({...formData, tipe_koneksi: e.target.value})}
-                      placeholder="Contoh: FO / 4G LTE"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Indoor / Outdoor</label>
-                    <select
-                      value={formData.indoor_outdoor}
-                      onChange={(e) => setFormData({...formData, indoor_outdoor: e.target.value})}
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-                    >
-                      <option value="INDOOR">Indoor</option>
-                      <option value="OUTDOOR">Outdoor</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Pemilik / Pengelola</label>
-                    <input
-                      type="text"
-                      value={formData.pemilik}
-                      onChange={(e) => setFormData({...formData, pemilik: e.target.value})}
-                      placeholder="Contoh: Otorita IKN / Dishub"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Status Alat *</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({...formData, status: e.target.value})}
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-                    >
+                    <label className="text-xs font-semibold text-muted">Status *</label>
+                    <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
                       <option value="ACTIVE">Aktif</option>
                       <option value="INACTIVE">Nonaktif</option>
                       <option value="MAINTENANCE">Pemeliharaan</option>
                     </select>
                   </div>
+                  <CCTVTextField className="md:col-span-2" label="Nama CCTV *" required value={formData.nama} onChange={(value) => setFormData({ ...formData, nama: value })} placeholder="Contoh: CCTV Sumbu Kebangsaan Utama" />
+                  <CCTVTextField className="md:col-span-2" label="Lokasi" value={formData.lokasi_area} onChange={(value) => setFormData({ ...formData, lokasi_area: value })} placeholder="Contoh: Kawasan Inti Pusat Pemerintahan" />
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">IP NVR</label>
-                    <input
-                      type="text"
-                      value={formData.ip_nvr}
-                      onChange={(e) => setFormData({...formData, ip_nvr: e.target.value})}
-                      placeholder="Contoh: 192.168.1.100"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-400">IP Camera</label>
-                    <input
-                      type="text"
-                      value={formData.ip_camera}
-                      onChange={(e) => setFormData({...formData, ip_camera: e.target.value})}
-                      placeholder="Contoh: 192.168.1.101"
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-gray-400">Keterangan Tambahan</label>
-                    <textarea
-                      value={formData.keterangan}
-                      onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
-                      placeholder="Tambahkan kondisi atau informasi teknis CCTV"
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-lg border border-input-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                    />
+                    <label className="text-xs font-semibold text-muted">Pemasangan</label>
+                    <select value={formData.indoor_outdoor} onChange={(e) => setFormData({ ...formData, indoor_outdoor: e.target.value })} className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                      <option value="INDOOR">Indoor</option>
+                      <option value="OUTDOOR">Outdoor</option>
+                    </select>
                   </div>
                 </div>
+
+                <details className="group rounded-xl border border-border" open={currentCCTV ? true : undefined}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                    Informasi teknis
+                    <span className="text-xs font-normal text-muted group-open:hidden">Tampilkan</span>
+                    <span className="hidden text-xs font-normal text-muted group-open:inline">Sembunyikan</span>
+                  </summary>
+                  <div className="grid gap-4 border-t border-border p-4 md:grid-cols-2">
+                    <CCTVTextField label="ID Channel" value={formData.id_channel} onChange={(value) => setFormData({ ...formData, id_channel: value })} placeholder="Contoh: 1" />
+                    <CCTVTextField label="Jenis CCTV" value={formData.jenis_cctv} onChange={(value) => setFormData({ ...formData, jenis_cctv: value })} placeholder="Contoh: PTZ Dome" />
+                    <CCTVTextField label="IP kamera" value={formData.ip_camera} onChange={(value) => setFormData({ ...formData, ip_camera: value })} placeholder="Contoh: 192.168.1.101" />
+                    <CCTVTextField label="IP NVR" value={formData.ip_nvr} onChange={(value) => setFormData({ ...formData, ip_nvr: value })} placeholder="Contoh: 192.168.1.100" />
+                    <CCTVTextField label="Tipe koneksi" value={formData.tipe_koneksi} onChange={(value) => setFormData({ ...formData, tipe_koneksi: value })} placeholder="Contoh: FO / 4G LTE" />
+                    <CCTVTextField label="Sumber listrik" value={formData.sumber_listrik} onChange={(value) => setFormData({ ...formData, sumber_listrik: value })} placeholder="Contoh: Panel surya / PLN" />
+                    <CCTVTextField label="Latitude" value={formData.latitude} onChange={(value) => setFormData({ ...formData, latitude: value })} placeholder="Contoh: -6.1949" />
+                    <CCTVTextField label="Longitude" value={formData.longitude} onChange={(value) => setFormData({ ...formData, longitude: value })} placeholder="Contoh: 106.8231" />
+                    <CCTVTextField className="md:col-span-2" label="Pemilik / pengelola" value={formData.pemilik} onChange={(value) => setFormData({ ...formData, pemilik: value })} placeholder="Contoh: Otorita IKN / Dishub" />
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-xs font-semibold text-muted">Keterangan</label>
+                      <textarea value={formData.keterangan} onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Tambahkan kondisi atau informasi teknis CCTV" rows={3} className="w-full resize-none rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                    </div>
+                  </div>
+                </details>
 
                 <div className="flex justify-end gap-2 border-t border-border pt-4 mt-2">
                   <button
@@ -1532,96 +1400,56 @@ export default function CCTVPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="flex justify-between items-start border-b border-border pb-3">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h4 className="font-bold text-lg text-foreground">{currentCCTV.nama}</h4>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 uppercase tracking-wider font-mono">{currentCCTV.kode_cctv}</span>
-                      {currentCCTV.id_channel && <span className="text-xs text-gray-400">Channel ID: {currentCCTV.id_channel}</span>}
-                    </div>
+                    <h4 className="text-lg font-bold">{currentCCTV.nama}</h4>
+                    <p className="mt-1 font-mono text-xs font-semibold text-primary">
+                      {currentCCTV.kode_cctv}{currentCCTV.id_channel ? ` · Channel ${currentCCTV.id_channel}` : ''}
+                    </p>
                   </div>
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                    currentCCTV.status === 'aktif' 
-                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                      : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                    isStatus(currentCCTV.status, ['ACTIVE', 'AKTIF'])
+                      ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : isStatus(currentCCTV.status, ['MAINTENANCE', 'PEMELIHARAAN'])
+                        ? 'border border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                        : 'border border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400'
                   }`}>
-                    {currentCCTV.status}
+                    {statusLabel(currentCCTV.status)}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Lokasi Area</span>
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <MapPin className="h-4 w-4 text-red-500" />
-                      {currentCCTV.lokasi_area || '-'}
-                    </span>
+                <dl className="grid overflow-hidden rounded-xl border border-border text-sm sm:grid-cols-2">
+                  {[
+                    { label: 'Lokasi', value: currentCCTV.lokasi_area || '—' },
+                    { label: 'Pemasangan', value: currentCCTV.indoor_outdoor || '—' },
+                    { label: 'IP kamera', value: currentCCTV.ip_camera || '—', technical: true },
+                    { label: 'IP NVR', value: currentCCTV.ip_nvr || '—', technical: true },
+                    { label: 'Koordinat', value: `${currentCCTV.latitude || '—'}, ${currentCCTV.longitude || '—'}`, technical: true },
+                    { label: 'Jenis CCTV', value: currentCCTV.jenis_cctv || '—' },
+                    { label: 'Koneksi', value: currentCCTV.tipe_koneksi || '—' },
+                    { label: 'Sumber listrik', value: currentCCTV.sumber_listrik || '—' },
+                    { label: 'Pengelola', value: currentCCTV.pemilik || '—' },
+                    { label: 'Ditambahkan', value: new Date(currentCCTV.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }) },
+                  ].map((item) => (
+                    <div key={item.label} className="border-b border-border px-4 py-3 sm:odd:border-r">
+                      <dt className="text-xs text-muted">{item.label}</dt>
+                      <dd className={`mt-1 font-semibold ${item.technical ? 'font-mono text-xs' : ''}`}>{item.value}</dd>
+                    </div>
+                  ))}
+                  <div className="px-4 py-3 sm:col-span-2">
+                    <dt className="text-xs text-muted">Keterangan</dt>
+                    <dd className="mt-1 whitespace-pre-wrap text-sm">{currentCCTV.keterangan || 'Tidak ada keterangan tambahan.'}</dd>
                   </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Koordinat GPS</span>
-                    <span className="font-semibold text-foreground font-mono text-xs">
-                      Lat: {currentCCTV.latitude || '-'}, Lon: {currentCCTV.longitude || '-'}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">IP Camera</span>
-                    <span className="font-semibold text-foreground font-mono">{currentCCTV.ip_camera || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">IP NVR</span>
-                    <span className="font-semibold text-foreground font-mono">{currentCCTV.ip_nvr || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Jenis CCTV</span>
-                    <span className="font-semibold text-foreground capitalize">{currentCCTV.jenis_cctv || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Sumber Listrik</span>
-                    <span className="font-semibold text-foreground">{currentCCTV.sumber_listrik || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Tipe Koneksi</span>
-                    <span className="font-semibold text-foreground">{currentCCTV.tipe_koneksi || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Indoor / Outdoor</span>
-                    <span className="font-semibold text-foreground capitalize">{currentCCTV.indoor_outdoor || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Pemilik / Pengelola</span>
-                    <span className="font-semibold text-foreground">{currentCCTV.pemilik || '-'}</span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Tanggal Ditambahkan</span>
-                    <span className="font-semibold text-foreground">
-                      {new Date(currentCCTV.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-background border border-border md:col-span-2">
-                    <span className="text-xs text-gray-400 block font-medium mb-1">Keterangan Alat</span>
-                    <p className="text-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                      {currentCCTV.keterangan || 'Tidak ada keterangan tambahan.'}
-                    </p>
-                  </div>
-                </div>
+                </dl>
               </div>
 
               <div className="flex gap-2 pt-4 border-t border-border justify-end">
                 <button
+                  type="button"
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15"
+                  className="rounded-lg border border-border px-5 py-2 text-sm font-semibold hover:bg-background"
                 >
-                  Selesai
+                  Tutup
                 </button>
               </div>
             </div>
@@ -1629,5 +1457,35 @@ export default function CCTVPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function CCTVTextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  className = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={`block space-y-1.5 ${className}`}>
+      <span className="text-xs font-semibold text-muted">{label}</span>
+      <input
+        type="text"
+        required={required}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+      />
+    </label>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { API_BASE_URL, apiRequest, downloadApiFile } from '@/lib/api';
@@ -9,20 +9,14 @@ import {
   Plus, 
   Trash2, 
   Wrench, 
-  Camera, 
-  User as UserIcon, 
-  Calendar, 
-  Info,
-  CheckCircle,
   AlertTriangle,
   Settings,
   X,
-  FileText,
-  Clock,
   Download,
   Eye,
   Image as ImageIcon,
-  LoaderCircle
+  LoaderCircle,
+  ChevronDown
 } from 'lucide-react';
 
 interface Asset {
@@ -55,6 +49,16 @@ interface MaintenanceLog {
   completed_at: string | null;
   image_url?: string;
   created_at: string;
+}
+
+interface MaintenanceLogsResponse {
+  rows: MaintenanceLog[];
+  pagination: {
+    total_rows: number;
+    total_pages: number;
+    page: number;
+    limit: number;
+  };
 }
 
 export default function MaintenanceLogsPage() {
@@ -96,7 +100,7 @@ export default function MaintenanceLogsPage() {
     image_url: ''
   });
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -104,7 +108,7 @@ export default function MaintenanceLogsPage() {
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (assetFilter) queryParams.push(`asset_id=${encodeURIComponent(assetFilter)}`);
       
-      const response = await apiRequest<any>(`/maintenance-logs?${queryParams.join('&')}`);
+      const response = await apiRequest<MaintenanceLogsResponse>(`/maintenance-logs?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
         setLogs(response.data.rows || []);
         setPagination(response.data.pagination || {
@@ -114,18 +118,17 @@ export default function MaintenanceLogsPage() {
           limit: 10,
         });
       }
-    } catch (err: any) {
-      setError(err.message || 'Catatan pemeliharaan belum dapat dimuat. Coba lagi.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dimuat. Coba lagi.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [assetFilter, page, statusFilter]);
 
-  const fetchAssetsList = async () => {
+  const fetchAssetsList = useCallback(async () => {
     setAssetsError('');
-    setActionLoading('save');
     try {
-      const response = await apiRequest<any>('/cctv?page=1&limit=100');
+      const response = await apiRequest<MasterCCTV[] | { rows?: MasterCCTV[] }>('/cctv?page=1&limit=100');
       if (response.status === 'success' && response.data) {
         const rows: MasterCCTV[] = Array.isArray(response.data)
           ? response.data
@@ -144,15 +147,54 @@ export default function MaintenanceLogsPage() {
           : 'Daftar CCTV belum dapat dimuat. Muat ulang sebelum mencatat pemeliharaan.'
       );
     }
-  };
-
-  useEffect(() => {
-    fetchLogs();
-  }, [page, statusFilter, assetFilter]);
-
-  useEffect(() => {
-    fetchAssetsList();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLogs = async () => {
+      await Promise.resolve();
+      if (!cancelled) await fetchLogs();
+    };
+
+    void loadLogs();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAssets = async () => {
+      await Promise.resolve();
+      if (!cancelled) await fetchAssetsList();
+    };
+
+    void loadAssets();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchAssetsList]);
+
+  useEffect(() => {
+    if (!isModalOpen && !detailLog) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || actionLoading === 'save') return;
+      setIsModalOpen(false);
+      setDetailLog(null);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [actionLoading, detailLog, isModalOpen]);
 
   const handleOpenModal = (log: MaintenanceLog | null = null) => {
     if (log) {
@@ -189,6 +231,7 @@ export default function MaintenanceLogsPage() {
       return;
     }
 
+    setActionLoading('save');
     try {
       let imageUrl = formData.image_url;
       if (evidenceFile) {
@@ -212,8 +255,8 @@ export default function MaintenanceLogsPage() {
         setIsModalOpen(false);
         fetchLogs();
       }
-    } catch (err: any) {
-      alert(err.message || 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -257,8 +300,8 @@ export default function MaintenanceLogsPage() {
       if (response.status === 'success') {
         fetchLogs();
       }
-    } catch (err: any) {
-      alert(err.message || 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -267,56 +310,74 @@ export default function MaintenanceLogsPage() {
   // Helper date formatter
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (e) {
-      return dateStr;
-    }
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+
+    return date.toLocaleString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusLabel = (status: MaintenanceLog['status']) => {
+    if (status === 'completed') return 'Selesai';
+    if (status === 'failed') return 'Gagal';
+    if (status === 'ongoing') return 'Dalam proses';
+    return 'Terjadwal';
+  };
+
+  const closeFormModal = () => {
+    if (actionLoading === 'save') return;
+    setIsModalOpen(false);
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 animate-fadeIn">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Pemeliharaan CCTV</h1>
-            <p className="mt-1 text-sm text-muted">Pantau riwayat pekerjaan dan catat tindakan pemeliharaan CCTV.</p>
+            <h1 className="text-3xl font-bold tracking-[-0.025em]">Pemeliharaan CCTV</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted">Catat dan telusuri pekerjaan pemeliharaan CCTV.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button disabled={actionLoading === 'export'} onClick={handleExport} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold hover:border-primary disabled:cursor-wait disabled:opacity-60">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button type="button" disabled={actionLoading !== null} onClick={handleExport} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
               {actionLoading === 'export' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {actionLoading === 'export' ? 'Menyiapkan ekspor…' : 'Ekspor CSV'}
             </button>
             <button
+              type="button"
               onClick={() => handleOpenModal()}
-              className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/15 active:scale-[0.98] transition-all cursor-pointer text-sm"
+              disabled={actionLoading !== null}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.18)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Plus className="h-5 w-5" />
-              <span>Catat Pemeliharaan</span>
+              <Plus className="h-4 w-4" />
+              Catat Pemeliharaan
             </button>
           </div>
         </div>
 
-        {/* Filter Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-card border border-border bg-card/60 backdrop-blur-md">
-          {/* Asset Select Filter */}
+        <section aria-labelledby="maintenance-list-heading" aria-busy={loading} className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+            <div>
+              <h2 id="maintenance-list-heading" className="font-semibold">Riwayat Pemeliharaan</h2>
+              <p className="mt-0.5 text-xs text-muted">{pagination.total_rows} catatan</p>
+            </div>
+          </div>
+
+        <div className="grid grid-cols-1 gap-3 border-b border-border px-5 py-4 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">CCTV</label>
+            <label htmlFor="maintenance-cctv-filter" className="mb-1.5 block text-xs font-semibold text-muted">CCTV</label>
             <select
+              id="maintenance-cctv-filter"
               value={assetFilter}
               onChange={(e) => {
                 setAssetFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+              className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="">Semua CCTV</option>
               {assets.map((asset) => (
@@ -325,16 +386,16 @@ export default function MaintenanceLogsPage() {
             </select>
           </div>
 
-          {/* Status Select Filter */}
           <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Status</label>
+            <label htmlFor="maintenance-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
             <select
+              id="maintenance-status-filter"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+              className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="">Semua status</option>
               <option value="completed">Selesai</option>
@@ -348,7 +409,7 @@ export default function MaintenanceLogsPage() {
         {assetsError && (
           <div
             role="alert"
-            className="flex flex-col gap-3 rounded-2xl border border-warning/25 bg-warning/10 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+            className="m-4 flex flex-col gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
@@ -360,136 +421,111 @@ export default function MaintenanceLogsPage() {
             <button
               type="button"
               onClick={fetchAssetsList}
-              className="shrink-0 rounded-lg border border-warning/30 bg-card px-3 py-2 text-xs font-bold text-foreground transition-colors hover:border-warning"
+              className="shrink-0 rounded-lg border border-warning/30 bg-card px-3 py-2 text-xs font-bold text-foreground transition-colors hover:border-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/40"
             >
               Coba lagi
             </button>
           </div>
         )}
 
-        {/* Logs Table */}
         {loading ? (
-          <div className="flex justify-center items-center gap-3 py-20 bg-card rounded-2xl border border-border" role="status">
-            <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+          <div className="flex items-center justify-center gap-3 py-20" role="status">
+            <LoaderCircle className="h-6 w-6 animate-spin text-primary" />
             <span className="text-sm text-muted">Memuat catatan pemeliharaan…</span>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-error/25 bg-card px-6 py-16 text-center">
-            <AlertTriangle className="h-11 w-11 text-error" />
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <AlertTriangle className="h-10 w-10 text-error" />
             <h3 className="mt-3 text-base font-semibold">Data pemeliharaan belum dapat dimuat</h3>
             <p className="mt-1 max-w-md text-xs text-muted">{error}</p>
             <button
               type="button"
               onClick={fetchLogs}
-              className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-hover"
+              className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             >
               Coba lagi
             </button>
           </div>
         ) : logs.length === 0 ? (
-          <div className="text-center py-16 bg-card rounded-2xl border border-border flex flex-col items-center justify-center">
-            <Wrench className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-3" />
-            <h3 className="text-base font-semibold">{statusFilter || assetFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
-            <p className="text-xs text-gray-400 mt-1 max-w-sm">
-              {statusFilter || assetFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan tombol “Catat Pemeliharaan” untuk membuat catatan pertama.'}
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <Wrench className="h-10 w-10 text-muted/45" />
+            <h3 className="mt-3 text-base font-semibold">{statusFilter || assetFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
+            <p className="mt-1 max-w-sm text-xs text-muted">
+              {statusFilter || assetFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan “Catat Pemeliharaan” untuk membuat catatan pertama.'}
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-border bg-background/50 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    <th className="py-4 px-6">Nama CCTV</th>
-                    <th className="py-4 px-6">Tindakan Pemeliharaan</th>
-                    <th className="py-4 px-6">Teknisi</th>
-                    <th className="py-4 px-6">Tanggal Selesai</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6 text-right">Tindakan</th>
+                  <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
+                    <th className="px-5 py-3.5">CCTV</th>
+                    <th className="px-5 py-3.5">Pekerjaan</th>
+                    <th className="px-5 py-3.5">Teknisi</th>
+                    <th className="px-5 py-3.5">Waktu</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
                   {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-background/25 transition-colors">
-                      {/* CCTV Info */}
-                      <td className="py-4.5 px-6">
-                        <div className="flex items-center gap-2.5">
-                          <Camera className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span className="font-semibold text-gray-700 dark:text-gray-200">
-                            {log.asset?.name || 'CCTV tidak tersedia'}
-                          </span>
-                        </div>
+                    <tr key={log.id} className="transition-colors hover:bg-background/40">
+                      <td className="px-5 py-4">
+                        <p className="font-semibold">{log.asset?.name || 'CCTV tidak tersedia'}</p>
+                        {log.asset?.serial_number && <p className="mt-0.5 font-mono text-xs text-muted">{log.asset.serial_number}</p>}
                       </td>
                       
-                      {/* Action & Notes */}
-                      <td className="py-4.5 px-6 max-w-xs">
-                        <div>
-                          <p className="font-medium text-gray-800 dark:text-gray-100 line-clamp-1" title={log.action_taken}>
-                            {log.action_taken}
-                          </p>
-                          {log.notes && (
-                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1" title={log.notes}>
-                              Catatan: {log.notes}
-                            </p>
-                          )}
-                        </div>
+                      <td className="max-w-xs px-5 py-4">
+                        <p className="line-clamp-1 font-medium" title={log.action_taken}>{log.action_taken}</p>
+                        {log.notes && <p className="mt-0.5 line-clamp-1 text-xs text-muted" title={log.notes}>{log.notes}</p>}
                       </td>
 
-                      {/* Technician */}
-                      <td className="py-4.5 px-6">
-                        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                          <UserIcon className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span>{log.technician?.full_name || 'Teknisi Sistem'}</span>
-                        </div>
-                      </td>
+                      <td className="px-5 py-4 text-muted">{log.technician?.full_name || 'Teknisi Sistem'}</td>
 
-                      {/* Date */}
-                      <td className="py-4.5 px-6 text-gray-500 dark:text-gray-400 text-xs">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-3.5 w-3.5 text-gray-400" />
-                          <span>{formatDate(log.completed_at || log.scheduled_date)}</span>
-                        </div>
-                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-xs text-muted">{formatDate(log.completed_at || log.scheduled_date)}</td>
 
-                      {/* Status */}
-                      <td className="py-4.5 px-6">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-                          log.status === 'completed' 
-                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                            log.status === 'completed'
+                            ? 'border-success/25 bg-success/10 text-success'
                             : log.status === 'failed'
-                            ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                            ? 'border-error/25 bg-error/10 text-error'
                             : log.status === 'ongoing'
-                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                            : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
+                            ? 'border-warning/25 bg-warning/10 text-warning'
+                            : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
                         }`}>
-                          {log.status === 'completed' ? 'Selesai' : log.status === 'failed' ? 'Gagal' : log.status === 'ongoing' ? 'Dalam proses' : 'Terjadwal'}
+                          {getStatusLabel(log.status)}
                         </span>
                       </td>
 
-                      <td className="py-4.5 px-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
                             <button
+                              type="button"
                               onClick={() => handleViewLog(log.id)}
-                              disabled={actionLoading === `detail-${log.id}`}
-                              className="p-2 rounded-lg border border-border bg-card hover:border-primary/20 hover:bg-primary/5 hover:text-primary text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                              disabled={actionLoading !== null}
+                              className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-wait disabled:opacity-60"
                               title="Lihat detail pemeliharaan"
                               aria-label={`Lihat detail pemeliharaan ${log.asset?.name || 'CCTV'}`}
                             >
                               {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleOpenModal(log)}
                               disabled={actionLoading !== null}
-                              className="p-2 rounded-lg border border-border bg-card hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                              className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                               title="Ubah catatan pemeliharaan"
                               aria-label={`Ubah catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
                             >
                               <Settings className="h-4 w-4" />
                             </button>
                             {isAdmin && <button
+                                type="button"
                                 onClick={() => handleDeleteLog(log.id)}
-                                disabled={actionLoading === `delete-${log.id}`}
-                                className="p-2 rounded-lg border border-border bg-card hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-500 text-gray-500 dark:text-gray-400 transition-all cursor-pointer"
+                                disabled={actionLoading !== null}
+                                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40 disabled:cursor-wait disabled:opacity-60"
                                 title="Hapus catatan pemeliharaan"
                                 aria-label={`Hapus catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
                               >
@@ -512,16 +548,28 @@ export default function MaintenanceLogsPage() {
             />
           </div>
         )}
+        </section>
 
         {/* MODAL FORM TAMBAH/EDIT LOG PEMELIHARAAN */}
         {isModalOpen && (
           <div className="fixed inset-0 flex items-center justify-center z-50 px-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeFormModal}></div>
             
-            <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl p-6 z-10 animate-scaleIn">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">{currentLog ? 'Ubah Catatan Pemeliharaan' : 'Catat Pemeliharaan Baru'}</h3>
-                <button type="button" aria-label="Tutup formulir pemeliharaan" onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-lg border border-border bg-background hover:bg-border text-gray-500 transition-colors">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="maintenance-form-title"
+              aria-describedby="maintenance-form-description"
+              className="z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="maintenance-form-title" className="text-xl font-bold tracking-[-0.015em]">{currentLog ? 'Ubah Catatan Pemeliharaan' : 'Catat Pemeliharaan Baru'}</h3>
+                  <p id="maintenance-form-description" className="mt-1 text-sm text-muted">
+                    {currentLog ? 'Perbarui hasil pekerjaan dan status pemeliharaan.' : 'Pilih CCTV, catat pekerjaan, lalu tetapkan statusnya.'}
+                  </p>
+                </div>
+                <button type="button" aria-label="Tutup formulir pemeliharaan" onClick={closeFormModal} disabled={actionLoading === 'save'} className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -529,8 +577,9 @@ export default function MaintenanceLogsPage() {
               <form onSubmit={handleSaveLog} className="space-y-4">
                 {/* Select Asset */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">CCTV *</label>
+                  <label htmlFor="maintenance-asset" className="mb-1.5 block text-xs font-semibold text-muted">CCTV *</label>
                   <select
+                    id="maintenance-asset"
                     value={formData.asset_id}
                     onChange={(e) => setFormData({...formData, asset_id: e.target.value})}
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
@@ -547,8 +596,10 @@ export default function MaintenanceLogsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tindakan yang Dilakukan *</label>
+                  <label htmlFor="maintenance-action" className="mb-1.5 block text-xs font-semibold text-muted">Tindakan yang dilakukan *</label>
                   <textarea
+                    id="maintenance-action"
+                    autoFocus
                     rows={3}
                     value={formData.action_taken}
                     onChange={(e) => setFormData({...formData, action_taken: e.target.value})}
@@ -558,23 +609,25 @@ export default function MaintenanceLogsPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Catatan Tambahan</label>
-                  <textarea
-                    rows={2}
-                    value={formData.notes}
-                    onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                    placeholder="Tambahkan hasil pemeriksaan atau temuan teknis"
-                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
-                  />
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Status Pemeliharaan *</label>
+                    <label htmlFor="maintenance-status" className="mb-1.5 block text-xs font-semibold text-muted">Status pemeliharaan *</label>
                     <select
+                      id="maintenance-status"
                       value={formData.status}
-                      onChange={(e) => setFormData({...formData, status: e.target.value})}
+                      onChange={(e) => {
+                        const nextStatus = e.target.value;
+                        setFormData((current) => ({
+                          ...current,
+                          status: nextStatus,
+                          scheduled_date: nextStatus === 'scheduled'
+                            ? (current.scheduled_date || current.completed_at)
+                            : '',
+                          completed_at: nextStatus === 'scheduled'
+                            ? ''
+                            : (current.completed_at || current.scheduled_date || new Date().toISOString().slice(0, 19).replace('T', ' ')),
+                        }));
+                      }}
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                     >
                       <option value="completed">Selesai</option>
@@ -585,8 +638,9 @@ export default function MaintenanceLogsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{formData.status === 'scheduled' ? 'Waktu Terjadwal *' : 'Waktu Pencatatan *'}</label>
+                    <label htmlFor="maintenance-time" className="mb-1.5 block text-xs font-semibold text-muted">{formData.status === 'scheduled' ? 'Waktu terjadwal *' : 'Waktu pencatatan *'}</label>
                     <input
+                      id="maintenance-time"
                       type="text"
                       value={formData.completed_at || formData.scheduled_date}
                       onChange={(e) => {
@@ -603,27 +657,50 @@ export default function MaintenanceLogsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Foto Bukti</label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input-border bg-input px-4 py-3 text-sm text-muted hover:border-primary">
-                    <ImageIcon className="h-5 w-5" />
-                    <span>{evidenceFile?.name || (formData.image_url ? 'Ganti foto bukti' : 'Pilih JPEG, PNG, atau WebP (maks. 2 MB)')}</span>
-                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)} />
-                  </label>
-                </div>
+                <details className="group rounded-xl border border-border" open={currentLog ? true : undefined}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-4 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                    <span>
+                      Catatan dan bukti
+                      <span className="ml-2 text-xs font-normal text-muted">Opsional</span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-muted transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-4 border-t border-border px-4 py-4">
+                    <div>
+                      <label htmlFor="maintenance-notes" className="mb-1.5 block text-xs font-semibold text-muted">Catatan tambahan</label>
+                      <textarea
+                        id="maintenance-notes"
+                        rows={2}
+                        value={formData.notes}
+                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                        placeholder="Tambahkan hasil pemeriksaan atau temuan teknis"
+                        className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold text-muted">Foto bukti</p>
+                      <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input-border bg-input px-4 py-3 text-sm text-muted transition-colors hover:border-primary focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
+                        <ImageIcon className="h-5 w-5 shrink-0" />
+                        <span className="min-w-0 truncate">{evidenceFile?.name || (formData.image_url ? 'Ganti foto bukti' : 'Pilih JPEG, PNG, atau WebP (maks. 2 MB)')}</span>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)} />
+                      </label>
+                    </div>
+                  </div>
+                </details>
 
                 <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-5 py-2.5 rounded-xl border border-border hover:bg-background text-sm font-semibold transition-colors cursor-pointer"
+                    onClick={closeFormModal}
+                    disabled={actionLoading === 'save'}
+                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
                     disabled={actionLoading === 'save'}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold shadow-lg shadow-primary/10 active:scale-[0.98] transition-all cursor-pointer text-sm disabled:cursor-wait disabled:opacity-65"
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-wait disabled:opacity-65"
                   >
                     {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
                     {actionLoading === 'save' ? 'Menyimpan catatan…' : currentLog ? 'Simpan Perubahan' : 'Simpan Catatan'}
@@ -637,26 +714,63 @@ export default function MaintenanceLogsPage() {
         {detailLog && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetailLog(null)} />
-            <div className="z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="text-xl font-bold">Detail Pemeliharaan</h3>
-                <button type="button" aria-label="Tutup detail pemeliharaan" onClick={() => setDetailLog(null)} className="rounded-lg border border-border p-2"><X className="h-4 w-4" /></button>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="maintenance-detail-title"
+              className="z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 id="maintenance-detail-title" className="text-xl font-bold tracking-[-0.015em]">Detail Pemeliharaan</h3>
+                  <p className="mt-1 truncate font-mono text-xs font-semibold text-primary">
+                    {detailLog.asset?.serial_number || detailLog.asset?.name || 'CCTV tidak tersedia'}
+                  </p>
+                </div>
+                <button type="button" autoFocus aria-label="Tutup detail pemeliharaan" onClick={() => setDetailLog(null)} className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"><X className="h-4 w-4" /></button>
               </div>
-              <dl className="grid gap-4 sm:grid-cols-2">
-                {Object.entries({
-                  CCTV: detailLog.asset?.name || '—',
-                  Teknisi: detailLog.technician?.full_name || '—',
-                  Status: detailLog.status,
-                  Tanggal: formatDate(detailLog.completed_at || detailLog.scheduled_date),
-                  Tindakan: detailLog.action_taken,
-                  Catatan: detailLog.notes || '—',
-                }).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 text-sm font-medium">{value}</dd></div>)}
+
+              <div className="mb-4 flex items-start justify-between gap-4 rounded-xl bg-background px-4 py-3">
+                <div>
+                  <p className="font-semibold">{detailLog.asset?.name || 'CCTV tidak tersedia'}</p>
+                  <p className="mt-0.5 text-xs text-muted">{detailLog.technician?.full_name || 'Teknisi Sistem'}</p>
+                </div>
+                <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  detailLog.status === 'completed'
+                    ? 'border-success/25 bg-success/10 text-success'
+                    : detailLog.status === 'failed'
+                    ? 'border-error/25 bg-error/10 text-error'
+                    : detailLog.status === 'ongoing'
+                    ? 'border-warning/25 bg-warning/10 text-warning'
+                    : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                }`}>
+                  {getStatusLabel(detailLog.status)}
+                </span>
+              </div>
+
+              <dl className="grid overflow-hidden rounded-xl border border-border text-sm sm:grid-cols-2">
+                <div className="border-b border-border px-4 py-3 sm:border-r">
+                  <dt className="text-xs font-semibold text-muted">Waktu</dt>
+                  <dd className="mt-1 font-medium">{formatDate(detailLog.completed_at || detailLog.scheduled_date)}</dd>
+                </div>
+                <div className="border-b border-border px-4 py-3">
+                  <dt className="text-xs font-semibold text-muted">Teknisi</dt>
+                  <dd className="mt-1 font-medium">{detailLog.technician?.full_name || 'Teknisi Sistem'}</dd>
+                </div>
+                <div className="border-b border-border px-4 py-3 sm:col-span-2">
+                  <dt className="text-xs font-semibold text-muted">Tindakan yang dilakukan</dt>
+                  <dd className="mt-1 whitespace-pre-wrap font-medium">{detailLog.action_taken}</dd>
+                </div>
+                <div className="px-4 py-3 sm:col-span-2">
+                  <dt className="text-xs font-semibold text-muted">Catatan tambahan</dt>
+                  <dd className="mt-1 whitespace-pre-wrap text-muted">{detailLog.notes || 'Tidak ada catatan tambahan.'}</dd>
+                </div>
               </dl>
               {detailLog.image_url && (
                 <div className="mt-5">
-                  <p className="mb-2 text-xs font-semibold uppercase text-muted">Foto Bukti</p>
+                  <p className="mb-2 text-xs font-semibold text-muted">Foto bukti</p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`${uploadBaseUrl}${detailLog.image_url}`} alt="Bukti pemeliharaan" className="max-h-72 w-full rounded-xl border border-border object-contain" />
+                  <img src={`${uploadBaseUrl}${detailLog.image_url}`} alt={`Bukti pemeliharaan ${detailLog.asset?.name || 'CCTV'}`} className="max-h-72 w-full rounded-xl border border-border bg-background object-contain" />
                 </div>
               )}
             </div>
