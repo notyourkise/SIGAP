@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import Pagination from '@/components/Pagination';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
 
 interface CCTV {
   id: string;
   status: string;
+  nama: string;
+  kode_cctv: string;
+  lokasi_area: string;
 }
+
+type CCTVFilter = 'all' | 'active' | 'inactive';
+const CCTV_PAGE_SIZE = 6;
 
 interface MaintenanceLog {
   id: string;
@@ -29,6 +36,13 @@ interface PaginationPayload<T> {
 }
 
 const normalizeStatus = (status: string) => status.trim().toUpperCase();
+const isActiveCCTV = (status: string) => ['ACTIVE', 'AKTIF'].includes(normalizeStatus(status));
+const isInactiveCCTV = (status: string) => ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'].includes(normalizeStatus(status));
+const cctvStatusLabel = (status: string) => {
+  if (isActiveCCTV(status)) return 'Aktif';
+  if (isInactiveCCTV(status)) return 'Nonaktif';
+  return status || 'Belum ditentukan';
+};
 const statusLabel = (status: MaintenanceLog['status']) => ({
   scheduled: 'Terjadwal',
   ongoing: 'Dalam proses',
@@ -43,6 +57,8 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
   const [totalCctv, setTotalCctv] = useState(0);
   const [totalLogs, setTotalLogs] = useState(0);
+  const [selectedCctvFilter, setSelectedCctvFilter] = useState<CCTVFilter | null>(null);
+  const [selectedCctvPage, setSelectedCctvPage] = useState(1);
   const [selectedStatus, setSelectedStatus] = useState<MaintenanceLog['status'] | null>(null);
   const [health, setHealth] = useState<'Memeriksa' | 'Terhubung' | 'Tidak terhubung'>('Memeriksa');
   const [loading, setLoading] = useState(true);
@@ -54,7 +70,7 @@ export default function DashboardPage() {
     setHealth('Memeriksa');
     try {
       const [cctvResult, maintenanceResult, healthResult] = await Promise.allSettled([
-        apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=100'),
+        apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000&sort_by=nama&order=asc'),
         apiRequest<PaginationPayload<MaintenanceLog>>('/maintenance-logs?page=1&limit=100'),
         apiRequest<Record<string, unknown>>('/health'),
       ]);
@@ -88,19 +104,31 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [loadDashboard]);
 
-  const active = cctvs.filter((item) => ['ACTIVE', 'AKTIF'].includes(normalizeStatus(item.status))).length;
-  const inactive = cctvs.filter((item) => ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'].includes(normalizeStatus(item.status))).length;
+  const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
+  const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
   const scheduled = logs.filter((item) => item.status === 'scheduled').length;
   const ongoing = logs.filter((item) => item.status === 'ongoing').length;
   const completed = logs.filter((item) => item.status === 'completed').length;
   const failed = logs.filter((item) => item.status === 'failed').length;
   const selectedLogs = selectedStatus ? logs.filter((item) => item.status === selectedStatus) : [];
 
-  const summary = [
-    { label: 'Total CCTV', value: totalCctv, tone: 'bg-blue-500' },
-    { label: 'Aktif', value: active, tone: 'bg-success' },
-    { label: 'Nonaktif', value: inactive, tone: 'bg-error' },
+  const summary: Array<{ key: CCTVFilter; label: string; value: number; tone: string }> = [
+    { key: 'all', label: 'Total CCTV', value: totalCctv, tone: 'bg-blue-500' },
+    { key: 'active', label: 'Aktif', value: active, tone: 'bg-success' },
+    { key: 'inactive', label: 'Nonaktif', value: inactive, tone: 'bg-error' },
   ];
+  const selectedCctvs = selectedCctvFilter === 'active'
+    ? cctvs.filter((item) => isActiveCCTV(item.status))
+    : selectedCctvFilter === 'inactive'
+      ? cctvs.filter((item) => isInactiveCCTV(item.status))
+      : selectedCctvFilter === 'all'
+        ? cctvs
+        : [];
+  const selectedSummary = summary.find((item) => item.key === selectedCctvFilter);
+  const selectedCctvTotalPages = Math.max(1, Math.ceil(selectedCctvs.length / CCTV_PAGE_SIZE));
+  const safeSelectedCctvPage = Math.min(selectedCctvPage, selectedCctvTotalPages);
+  const selectedCctvStart = (safeSelectedCctvPage - 1) * CCTV_PAGE_SIZE;
+  const visibleCctvs = selectedCctvs.slice(selectedCctvStart, selectedCctvStart + CCTV_PAGE_SIZE);
 
   return (
     <DashboardLayout>
@@ -141,17 +169,106 @@ export default function DashboardPage() {
           <>
             <section aria-label="Ringkasan CCTV" className="overflow-hidden rounded-2xl border border-border bg-card">
               <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-                {summary.map(({ label, value, tone }) => (
-                  <div key={label} className="flex items-center justify-between gap-6 px-5 py-5">
+                {summary.map(({ key, label, value, tone }) => {
+                  const isSelected = selectedCctvFilter === key;
+                  return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={isSelected}
+                    aria-expanded={isSelected}
+                    aria-controls="cctv-summary-details"
+                    onClick={() => {
+                      setSelectedCctvFilter((current) => current === key ? null : key);
+                      setSelectedCctvPage(1);
+                    }}
+                    className={`flex min-h-20 items-center justify-between gap-6 px-5 py-5 text-left transition-colors hover:bg-background focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                      isSelected ? 'bg-primary/10 text-foreground' : 'bg-card'
+                    }`}
+                  >
                     <div className="flex items-center gap-2.5">
                       <span className={`h-2.5 w-2.5 rounded-full ${tone}`} />
-                      <p className="text-sm font-medium text-muted">{label}</p>
+                      <span className={`text-sm font-medium ${isSelected ? 'text-foreground' : 'text-muted'}`}>{label}</span>
                     </div>
-                    <p className="text-2xl font-bold tabular-nums">{value}</p>
-                  </div>
-                ))}
+                    <strong className="text-2xl font-bold tabular-nums">{value}</strong>
+                  </button>
+                  );
+                })}
               </div>
             </section>
+
+            {selectedCctvFilter && (
+              <section
+                id="cctv-summary-details"
+                aria-labelledby="cctv-summary-details-heading"
+                className="overflow-hidden rounded-2xl border border-border bg-card"
+              >
+                <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+                  <div>
+                    <h2 id="cctv-summary-details-heading" className="text-base font-bold">
+                      {selectedCctvFilter === 'all' ? 'Rincian seluruh CCTV' : `Rincian CCTV ${selectedSummary?.label.toLowerCase()}`}
+                    </h2>
+                    <p className="mt-0.5 text-xs text-muted">Informasi perangkat yang perlu dipantau.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCctvFilter(null);
+                      setSelectedCctvPage(1);
+                    }}
+                    className="rounded-lg px-2.5 py-2 text-xs font-semibold text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    Tutup
+                  </button>
+                </div>
+
+                {visibleCctvs.length === 0 ? (
+                  <p className="px-5 py-6 text-sm text-muted">
+                    Tidak ada CCTV dalam kategori ini.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {visibleCctvs.map((cctv) => {
+                      const isActive = isActiveCCTV(cctv.status);
+                      const isInactive = isInactiveCCTV(cctv.status);
+                      return (
+                        <div
+                          key={cctv.id}
+                          className="grid gap-2 px-5 py-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.7fr)_auto] sm:items-center sm:gap-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold" title={cctv.nama}>{cctv.nama}</p>
+                            <p className="mt-0.5 font-mono text-xs font-semibold text-primary">{cctv.kode_cctv}</p>
+                          </div>
+                          <p className="truncate text-xs text-muted" title={cctv.lokasi_area || undefined}>
+                            {cctv.lokasi_area || 'Lokasi belum dicatat'}
+                          </p>
+                          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                            isActive
+                              ? 'border-success/25 bg-success/10 text-success'
+                              : isInactive
+                                ? 'border-error/25 bg-error/10 text-error'
+                                : 'border-warning/25 bg-warning/10 text-warning'
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-success' : isInactive ? 'bg-error' : 'bg-warning'}`} />
+                            {cctvStatusLabel(cctv.status)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <Pagination
+                  page={safeSelectedCctvPage}
+                  limit={CCTV_PAGE_SIZE}
+                  totalRows={selectedCctvs.length}
+                  totalPages={selectedCctvTotalPages}
+                  onPageChange={setSelectedCctvPage}
+                  itemLabel="CCTV"
+                />
+              </section>
+            )}
 
             <section aria-labelledby="maintenance-heading">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

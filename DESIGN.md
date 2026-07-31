@@ -11,7 +11,7 @@ colors:
   paper-card: "#fffef8"
   forest-ink: "#203f25"
   field-muted: "#62705a"
-  sand-border: "#e4d6a7"
+  sand-border: "#e4d6a7"           
   input-border: "#d4c58f"
   action-on-primary: "#ffffff"
   status-blue: "#3b82f6"
