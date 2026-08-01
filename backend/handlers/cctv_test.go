@@ -318,3 +318,39 @@ func TestDeleteCCTV_NotFound(t *testing.T) {
 	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestUpdateCCTV_Success(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	rows, id := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Put("/cctv/:id", UpdateCCTV)
+	req := httptest.NewRequest("PUT", "/cctv/"+id.String(), strings.NewReader(`{"nama":"Kamera Diperbarui","status":"rusak"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, "Kamera Diperbarui", data["nama"])
+	assert.Equal(t, "rusak", data["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteCCTV_Success(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	rows, id := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET "deleted_at"`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Delete("/cctv/:id", DeleteCCTV)
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/cctv/"+id.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
