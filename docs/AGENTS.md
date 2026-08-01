@@ -210,7 +210,8 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
   ```
 
 ## 10. Changelog
-- **SETIAP PERUBAHAN** pada kode backend **HARUS** dicatat dengan rapi di dalam dokumen `backend/changelog.md`.
+- **SETIAP PERUBAHAN** pada kode backend **HARUS** dicatat dengan rapi di dalam dokumen
+  `../backend/changelog.md`.
 - Ikuti standar format berikut ketika mencatat _changelog_:
   - Perubahan spesifik yang dilakukan.
   - Perbandingan status _Before_ dan _After_.

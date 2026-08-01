@@ -21,25 +21,33 @@
 Proyek ini menggunakan strategi distribusi file dokumentasi untuk memisahkan konteks antara pekerjaan Frontend dan Backend, serta menjaga fokus Codex AI:
 
 - **Aturan AI (`agent.md`):**
+  - `/docs/agent.md` -> Aturan kerja agent tingkat monorepo.
   - `/backend/agent.md` -> Berisi aturan spesifik untuk Go Fiber, struktur database, dan logika backend.
   - `/frontend/agent.md` -> Berisi aturan spesifik untuk Next.js, komponen UI, dan Tailwind CSS.
-- **Buku Harian Proyek (`CHANGELOG.md`):**
-  - `/CHANGELOG.md` (Utama) -> Mencatat pencapaian besar ekosistem monorepo.
-  - `/backend/CHANGELOG.md` -> Mencatat pembaruan teknis terkait API dan database.
-  - `/frontend/CHANGELOG.md` -> Mencatat pembaruan teknis terkait antarmuka dan komponen UI.
+- **Buku Harian Proyek (`changelog.md`):**
+  - `/docs/changelog.md` (Utama) -> Mencatat pencapaian besar ekosistem monorepo.
+  - `/backend/changelog.md` -> Mencatat pembaruan teknis terkait API dan database.
+  - `/frontend/changelog.md` -> Mencatat pembaruan teknis terkait antarmuka dan komponen UI.
 
 ## 5. Peta Struktur Direktori Standar
 ```text
 sigap-monorepo/
 ├── Makefile
-├── CHANGELOG.md
 ├── README.md
-├── plan.md
 ├── .gitignore
+│
+├── docs/
+│   ├── agent.md
+│   ├── changelog.md
+│   ├── plan.md
+│   ├── ROADMAP.md
+│   ├── SECURITY-AUDIT.md
+│   ├── PRODUCT.md
+│   └── DESIGN.md
 │
 ├── backend/
 │   ├── agent.md
-│   ├── CHANGELOG.md
+│   ├── changelog.md
 │   ├── main.go
 │   ├── go.mod
 │   ├── go.sum
@@ -50,7 +58,7 @@ sigap-monorepo/
 │
 └── frontend/
     ├── agent.md
-    ├── CHANGELOG.md
+    ├── changelog.md
     ├── package.json
     ├── tailwind.config.ts
     └── src/
