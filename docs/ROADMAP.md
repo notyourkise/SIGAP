@@ -25,9 +25,9 @@ kapabilitas**. Prinsip:
 | 1 | Kritis (Prioritas Tertinggi) | 6/6 | ✅ Selesai |
 | 2 | Penguatan (Hardening) | 9/9 | ✅ Selesai |
 | 3 | Fitur (Kapabilitas) | 9/9 | ✅ Selesai |
-| 4 | Infrastruktur & Kualitas | 0/8 | ⬜ Belum |
+| 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | 🚧 Berjalan |
 
-> **Urutan pengerjaan:** Fase 1 ✅ → **Fase 2** ✅ → **Fase 3** ✅ → **Fase 4** (prioritas berikutnya, mulai task 4.1).
+> **Urutan pengerjaan:** Fase 1 ✅ → **Fase 2** ✅ → **Fase 3** ✅ → **Fase 4** (4.1–4.2 dan 4.8 berjalan/selesai; berikutnya 4.3).
 > Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -124,7 +124,7 @@ kapabilitas**. Prinsip:
 
 | # | Task | Keterangan | Status |
 |---|------|-----------|--------|
-| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Berjalan (handler edge case, models, config DSN, route auth, dan handshake tanpa token sudah tersedia; valid path penuh dan migrasi data tersisa) |
+| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Sebagian besar (jalur CRUD, import boundary, WebSocket valid/tanpa token, routes, models, DSN, dan resolusi migration sudah diuji; valid import transaksi penuh dan migration update penuh ditunda) |
 | 4.2 | Tambah `npm run lint` + `golangci-lint` di CI | `.github/workflows/ci.yml` | ✅ Selesai |
 | 4.3 | Migrasi DB versioned (golang-migrate/Atlas) | ganti `AutoMigrate` bertahap | ⬜ Belum |
 | 4.4 | Redis untuk rate-limit & blacklist (multi-instance) | `backend/config`, `backend/middleware/limiter.go`, `backend/utils/blacklist.go` | ⬜ Belum |

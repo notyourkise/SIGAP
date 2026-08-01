@@ -63,14 +63,14 @@ SIGAP/
 
 ### 2.2 Alur Utama
 
-- **Autentikasi:** Login (username/email + bcrypt) → JWT 24 jam → tersimpan di `localStorage` →
-  `Protected()` + `RequireRole("admin")` di backend. Idle-timer memicu logout + revoke token.
+- **Autentikasi:** Login (username/email + bcrypt) → JWT 24 jam → cookie `sigap_session` httpOnly
+  dengan CSRF double-submit → `Protected()` + `RequireRole("admin")` di backend. Idle-timer memicu
+  logout + revoke token.
 - **Master CCTV:** UUID perangkat dienkripsi AES-256-GCM menjadi `QrPayload`. Scan QR → dekripsi →
   cocokkan ID → tampilkan detail. Dukung import Excel, template, bulk-delete, cetak label QR.
-- **Pemeliharaan:** Log CRUD + upload foto bukti. `resolveMaintenanceAsset` mematerialisasi CCTV ke
-  tabel `assets` saat pertama kali dipakai untuk maintenance.
-- **Realtime:** WSHub broadcast event (`CCTV_UPDATED`, `MAINTENANCE_CREATED/UPDATED`) → frontend auto-refetch.
-- **Audit trail:** `LogAudit` async mencatat seluruh aksi penting (AUTH/CCTV/ASSET/MAINTENANCE/USER).
+- **Pemeliharaan:** Log CRUD + upload foto bukti yang langsung merujuk ke CCTV melalui `cctv_id`.
+- **Realtime:** WSHub broadcast event (`CCTV_UPDATED`, `MAINTENANCE_CREATED/UPDATED`, `AUDIT_LOG_ADDED`) → frontend auto-refetch.
+- **Audit trail:** `LogAudit` async mencatat seluruh aksi penting dengan retry terbatas dan broadcast setelah tersimpan.
 
 ---
 
