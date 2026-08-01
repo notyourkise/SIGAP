@@ -35,6 +35,13 @@ interface AuditLog {
   created_at: string;
 }
 
+interface Pagination {
+  total_rows: number;
+  total_pages: number;
+  page: number;
+  limit: number;
+}
+
 export default function AuditLogsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -43,7 +50,7 @@ export default function AuditLogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<Pagination>({
     total_rows: 0,
     total_pages: 1,
     page: 1,
@@ -60,6 +67,11 @@ export default function AuditLogsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const fetchAuditLogs = useCallback(async () => {
+    if (!user || !isAdmin) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -69,7 +81,7 @@ export default function AuditLogsPage() {
       if (startDate) queryParams.push(`start_date=${encodeURIComponent(startDate)}`);
       if (endDate) queryParams.push(`end_date=${encodeURIComponent(endDate)}`);
 
-      const response = await apiRequest<{ rows: AuditLog[]; pagination: any }>(`/audit-logs?${queryParams.join('&')}`);
+      const response = await apiRequest<{ rows: AuditLog[]; pagination: Pagination }>(`/audit-logs?${queryParams.join('&')}`);
 
       if (response.status === 'success' && response.data) {
         setLogs(response.data.rows || []);
@@ -80,15 +92,16 @@ export default function AuditLogsPage() {
           limit: 10,
         });
       }
-    } catch (err: any) {
-      setError(err.message || 'Data audit log belum dapat dimuat. Coba lagi.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Data audit log belum dapat dimuat. Coba lagi.';
+      setError(message);
     } finally {
       setLoading(false);
     }
-  }, [page, search, moduleFilter, startDate, endDate]);
+  }, [user, isAdmin, page, search, moduleFilter, startDate, endDate]);
 
   useEffect(() => {
-    fetchAuditLogs();
+    void fetchAuditLogs();
   }, [fetchAuditLogs]);
 
   // WebSocket Live Listener
@@ -107,8 +120,9 @@ export default function AuditLogsPage() {
       if (startDate) params.set('start_date', startDate);
       if (endDate) params.set('end_date', endDate);
       await downloadApiFile(`/audit-logs/export?${params.toString()}`, 'audit-log.csv');
-    } catch (err: any) {
-      setError(err.message || 'Audit log belum dapat diekspor. Coba lagi.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Audit log belum dapat diekspor. Coba lagi.';
+      setError(message);
     } finally {
       setExporting(false);
     }

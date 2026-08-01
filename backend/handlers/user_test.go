@@ -128,6 +128,23 @@ func TestUpdateUser_InvalidUUID(t *testing.T) {
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
 
+func TestUpdateUser_InvalidRole(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	row := sampleUserRow()
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(newUserMockRows([]modelsUserRow{row}))
+
+	app := newTestApp()
+	app.Put("/users/:id", UpdateUser)
+
+	req := httptest.NewRequest("PUT", "/users/"+row.ID.String(), strings.NewReader(`{"role":"operator"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDeleteUser_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	row := sampleUserRow()

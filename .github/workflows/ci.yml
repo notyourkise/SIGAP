@@ -64,6 +64,12 @@ jobs:
         run: go test -v ./...
         working-directory: ./backend
 
+      - name: Run Go Linter
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+          working-directory: ./backend
+
   # Job untuk validasi dan pembuatan Frontend Next.js
   frontend-ci:
     name: Frontend CI (Next.js)
@@ -90,3 +96,7 @@ jobs:
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: http://localhost:3000/api
+
+      - name: Run Lint
+        run: npm run lint
+        working-directory: ./frontend

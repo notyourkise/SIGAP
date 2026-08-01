@@ -624,7 +624,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 			"message": "Gagal membuka file yang diunggah",
 		})
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Baca dengan excelize
 	f, err := excelize.OpenReader(file)

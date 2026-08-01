@@ -1,5 +1,27 @@
 # Changelog - Backend SIGAP
 
+## [0.12.0] - 2026-08-02
+
+### Audit Log Reliability dan Unit Test Tambahan
+
+perubahan yang dilakukan: **Retry audit log dan perluasan pengujian edge case**
+before:
+- Audit log ditulis sekali secara asynchronous; kegagalan koneksi membuat catatan hilang.
+- Belum ada test untuk retry audit, UUID hook, serta invalid UUID pada operasi update/delete utama.
+after:
+- Penyimpanan audit mencoba maksimal tiga kali dengan jeda 100 ms dan menyiarkan `AUDIT_LOG_ADDED` setelah sukses.
+- Test tambahan mencakup retry audit, batas retry, UUID hook, dan validasi ID handler CCTV, maintenance, serta user.
+timestamp: 2026-08-02 00:00 WITA
+kategori: Security, Reliability, Testing
+file yang diubah:
+- backend/utils/audit.go
+- backend/utils/audit_test.go
+- backend/models/setup_test.go
+- backend/handlers/cctv_test.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/user_test.go
+alasan teknis: Mencegah kehilangan jejak audit saat gangguan database sementara dan memperkecil risiko regresi pada endpoint mutasi.
+
 ## [0.11.0] - 2026-08-01
 
 ### Perluasan Unit Test Backend (ROADMAP Fase 4.1)

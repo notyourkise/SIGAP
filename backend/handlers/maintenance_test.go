@@ -183,3 +183,21 @@ func TestUpdateMaintenanceLog_OwnershipDenied(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "error", result["status"])
 }
+
+func TestUpdateMaintenanceLog_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id", UpdateMaintenanceLog)
+
+	resp, err := app.Test(httptest.NewRequest("PUT", "/maintenance-logs/not-a-uuid", strings.NewReader(`{"notes":"ubah"}`)))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestDeleteMaintenanceLog_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Delete("/maintenance-logs/:id", DeleteMaintenanceLog)
+
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/maintenance-logs/not-a-uuid", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}

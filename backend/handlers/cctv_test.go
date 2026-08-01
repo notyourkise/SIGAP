@@ -212,7 +212,7 @@ func TestDownloadTemplateCCTV(t *testing.T) {
 	// File harus valid sebagai .xlsx dan memuat header kolom yang benar
 	f, err := excelize.OpenReader(resp.Body)
 	assert.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sheets := f.GetSheetList()
 	assert.NotEmpty(t, sheets)
@@ -229,6 +229,24 @@ func TestGetCCTVQRCode_InvalidUUID(t *testing.T) {
 	app.Get("/cctv/:id/qrcode", GetCCTVQRCode)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/cctv/not-a-uuid/qrcode", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestUpdateCCTV_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Put("/cctv/:id", UpdateCCTV)
+
+	resp, err := app.Test(httptest.NewRequest("PUT", "/cctv/not-a-uuid", strings.NewReader(`{"nama":"Kamera"}`)))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestDeleteCCTV_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Delete("/cctv/:id", DeleteCCTV)
+
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/cctv/not-a-uuid", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }

@@ -28,7 +28,7 @@ PostgreSQL 15 — diorkestrasi dengan Docker Compose + Cloudflare quick tunnel.
 **Status perbaikan (diperbarui):**
 - 🔴 Kritis: **5/5 ✅ Selesai** (Fase 1 roadmap).
 - 🟠 Tinggi: **7/7 ✅ Selesai** (Fase 2 roadmap).
-- 🟡 Sedang/Rendah: **5/8 ✅ Selesai** (temuan 13, 14, 15, 18, 20); tersisa 16, 17, 19.
+- 🟡 Sedang/Rendah: **8/8 ✅ Selesai** (temuan 13, 14, 15, 16, 17, 18, 19, 20).
 - Rencana bertahap & to-do per item: lihat `ROADMAP.md` dan bagian **3.4**.
 
 ---
@@ -98,17 +98,17 @@ SIGAP/
 | 11 | CORS default `*` jika env tidak diset | `backend/main.go:82-85` | Akses lintas-origin terbuka | Fail-fast atau default ke daftar origin eksplisit; wajib set `CORS_ALLOWED_ORIGINS` di produksi | ✅ Selesai (2.5) |
 | 12 | Docker Compose: password DB hardcoded + port DB publik + quick tunnel | `docker-compose.yml:13,19,77` | Kredensial bocor di repo; DB terekspos ke host; layanan terekspos ke URL publik tanpa auth | Hapus quick tunnel untuk produksi; pakai reverse proxy + TLS; secret management; jangan publish 5432 ke host | ✅ Selesai (2.6) |
 
-### 3.3 🟡 Sedang / Catatan — 5/8 Selesai
+### 3.3 🟡 Sedang / Catatan — 8/8 Selesai
 
 | # | Temuan | Lokasi | Perbaikan | Status |
 |---|--------|--------|-----------|--------|
 | 13 | Password minimum 6 karakter | `handlers/auth.go:26`, `handlers/user.go:22` | Naikkan ke 8+ dengan kebijakan kompleksitas | ✅ Selesai (2.9) |
 | 14 | Teknisi bisa update maintenance log milik orang lain | `handlers/maintenance.go:317` | Tambahkan ownership check (teknisi hanya log miliknya) | ✅ Selesai (2.8) |
 | 15 | CSP & HSTS masih dikomentari | `backend/middleware/security.go:22-32` | Aktifkan untuk produksi (CSP ketat + HSTS) | ✅ Selesai (2.7) |
-| 16 | Role check frontend murni client-side; `/audit-logs` tetap memicu request saat teknisi buka halaman | `frontend/src/app/audit-logs/page.tsx:83-85` | Tambah Next.js middleware (server-side route guard) + hindari request tak perlu | ⬜ Belum (Fase 3/berkelanjutan) |
-| 17 | Audit log async tanpa retry | `backend/utils/audit.go:65-86` | Tambah retry/queue atau minimal log error lebih jelas | ⬜ Belum (Fase 4.1/berkelanjutan) |
+| 16 | Role check frontend murni client-side; `/audit-logs` tetap memicu request saat teknisi buka halaman | `frontend/src/proxy.ts`, `frontend/src/app/audit-logs/page.tsx` | Proxy memvalidasi sesi dan role melalui endpoint backend; halaman tidak request sebelum admin terkonfirmasi | ✅ Selesai (Fase 4 quick wins) |
+| 17 | Audit log async tanpa retry | `backend/utils/audit.go` | Retry terbatas 3 kali dengan backoff 100 ms dan pencatatan error akhir | ✅ Selesai (Fase 4 quick wins) |
 | 18 | Export CSV terbuka untuk semua user | `handlers/maintenance.go`, `handlers/report.go` | Batasi role (teknisi hanya data relevan) | ✅ Selesai (3.9) |
-| 19 | Frontend subscribe `AUDIT_LOG_ADDED` tapi backend tidak pernah broadcast | `frontend/src/app/audit-logs/page.tsx:90` | Sinkronkan: broadcast event dari `LogAudit` atau hapus subskripsi | ⬜ Belum (Fase 3/berkelanjutan) |
+| 19 | Frontend subscribe `AUDIT_LOG_ADDED` tapi backend tidak pernah broadcast | `backend/utils/audit.go`, `frontend/src/app/audit-logs/page.tsx` | Broadcast event setelah audit log berhasil disimpan | ✅ Selesai (Fase 4 quick wins) |
 | 20 | Fetch raw di `cctv/page.tsx` (bulk-delete, template, import) tidak menangani 401 | `cctv/page.tsx:318, 351, 394` | Gunakan `apiRequest` atau tambahkan penanganan 401 | ✅ Selesai (2.1) |
 
 ---
@@ -141,10 +141,10 @@ Tandai `[x]` saat selesai; nomor di dalam kurung menunjuk task pada `ROADMAP.md`
 **✅ Selesai (Fase 3 — Fitur):**
 - [x] Temuan 18 — Batasi ekspor per role (3.9)
 
-**🔜 Nanti (Fase 3/4 — berkelanjutan):**
-- [ ] Temuan 16 — Next.js middleware server-side route guard (Fase 3/berkelanjutan)
-- [ ] Temuan 19 — Sinkronkan broadcast `AUDIT_LOG_ADDED` (Fase 3/berkelanjutan)
-- [ ] Temuan 17 — Audit log async retry/queue (Fase 4.1 / berkelanjutan)
+**✅ Selesai (Fase 4 quick wins):**
+- [x] Temuan 16 — Next.js middleware server-side route guard
+- [x] Temuan 19 — Sinkronkan broadcast `AUDIT_LOG_ADDED`
+- [x] Temuan 17 — Audit log async retry terbatas
 
 ---
 

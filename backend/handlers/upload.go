@@ -83,7 +83,7 @@ func UploadFile(c *fiber.Ctx) error {
 			"message": "Gagal membaca file yang diunggah",
 		})
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// Baca 512 byte pertama untuk deteksi MIME yang akurat via magic bytes
 	sniff := make([]byte, 512)
