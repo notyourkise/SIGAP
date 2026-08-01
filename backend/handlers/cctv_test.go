@@ -232,3 +232,21 @@ func TestGetCCTVQRCode_InvalidUUID(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
+
+func TestUpdateCCTV_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Put("/cctv/:id", UpdateCCTV)
+
+	resp, err := app.Test(httptest.NewRequest("PUT", "/cctv/not-a-uuid", strings.NewReader(`{"nama":"Kamera"}`)))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestDeleteCCTV_InvalidUUID(t *testing.T) {
+	app := newTestApp()
+	app.Delete("/cctv/:id", DeleteCCTV)
+
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/cctv/not-a-uuid", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}

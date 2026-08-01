@@ -1,5 +1,24 @@
 # Changelog - Frontend SIGAP
 
+## [1.0.0] - 2026-08-02
+
+### Server-side Route Guard dan Audit Log
+
+perubahan yang dilakukan: **Middleware route guard dan pencegahan request audit yang tidak perlu**
+before:
+- Akses `/audit-logs` dan `/users` hanya mengandalkan pemeriksaan role di client.
+- Halaman audit dapat memulai request sebelum status user admin diketahui.
+after:
+- Proxy Next.js memeriksa cookie sesi dan role admin melalui `/api/auth/me` sebelum route admin diproses.
+- Halaman audit hanya mengambil data setelah user terautentikasi sebagai admin.
+timestamp: 2026-08-02 00:00 WITA
+kategori: Security, Quality
+file yang diubah:
+- frontend/src/proxy.ts
+- frontend/src/app/audit-logs/page.tsx
+- frontend/eslint.config.mjs
+alasan teknis: Mengurangi ketergantungan pada guard client-side dan menghindari request API yang tidak perlu dari role teknisi.
+
 ## [0.9.0] - 2026-08-01
 
 ### Fitur Kapabilitas Fase 3 (ROADMAP 3.1 - 3.9)

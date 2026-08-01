@@ -1,11 +1,18 @@
 package utils
 
 import (
+	"fmt"
 	"sigap-backend/models"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+)
+
+const (
+	auditWriteAttempts = 3
+	auditRetryDelay    = 100 * time.Millisecond
 )
 
 // ExtractClientIP mengembalikan IP address klien (proxy-aware).
@@ -54,7 +61,8 @@ func LogAudit(db *gorm.DB, c *fiber.Ctx, action string, module string, descripti
 		UserAgent:   userAgent,
 	}
 
-	// Eksekusi penulisan di goroutine non-blocking
+	// Eksekusi penulisan di goroutine non-blocking. Retry terbatas menangani
+	// gangguan koneksi singkat tanpa membuat request operasional ikut menunggu.
 	go func(logData models.AuditLog, database *gorm.DB) {
 		// Lookup username dari DB jika belum terisi namun userID ada
 		if logData.Username == "" && logData.UserID != nil {
@@ -73,8 +81,28 @@ func LogAudit(db *gorm.DB, c *fiber.Ctx, action string, module string, descripti
 			logData.UserRole = "guest"
 		}
 
-		if err := database.Create(&logData).Error; err != nil {
-			Log.Errorf("❌ Gagal menyimpan AuditLog [%s]: %v", logData.Action, err)
+		if err := persistAuditLog(database, &logData); err != nil {
+			Log.Errorf("❌ Gagal menyimpan AuditLog [%s] setelah %d percobaan: %v", logData.Action, auditWriteAttempts, err)
+			return
 		}
+
+		BroadcastEvent("AUDIT_LOG_ADDED", logData)
 	}(audit, db)
+}
+
+func persistAuditLog(database *gorm.DB, logData *models.AuditLog) error {
+	var lastErr error
+	for attempt := 1; attempt <= auditWriteAttempts; attempt++ {
+		if err := database.Create(logData).Error; err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt < auditWriteAttempts {
+			time.Sleep(auditRetryDelay)
+		}
+	}
+
+	return fmt.Errorf("audit log write failed: %w", lastErr)
 }

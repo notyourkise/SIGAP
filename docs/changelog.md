@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.4.0] — 2026-08-02 — Fase 4: Quick Wins Keamanan & Kualitas
+
+### Keamanan, Pengujian, dan CI
+
+- Proxy server-side Next.js untuk route `/audit-logs` dan `/users`, termasuk validasi sesi melalui backend dan pengecekan role admin.
+- Audit log memiliki retry terbatas dan broadcast `AUDIT_LOG_ADDED` setelah penyimpanan berhasil.
+- Unit test tambahan untuk edge case CCTV, maintenance, user, audit retry, dan UUID model hook.
+- CI menjalankan `npm run lint` dan `golangci-lint` selain build serta unit test.
+
+kategori: Security, Testing, CI, Quality
+file terkait (root/infra): `docs/ROADMAP.md`, `docs/SECURITY-AUDIT.md`, `.github/workflows/ci.yml`
+verifikasi: `go test ./... -count=1`, `go build ./...`, `npm run lint`, `npm run build`.
+alasan perubahan: Menutup temuan keamanan tersisa dan menjadikan pemeriksaan kualitas otomatis pada setiap pull request.
+
+---
+
 ## [1.3.0] — 2026-08-01 — Fase 3: Fitur (Kapabilitas)
 
 ### Fitur Kapabilitas (ROADMAP 3.1 – 3.9)

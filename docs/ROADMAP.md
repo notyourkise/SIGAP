@@ -119,19 +119,19 @@ kapabilitas**. Prinsip:
 
 ## Fase 4 — Infrastruktur & Kualitas (Berkelanjutan)
 
-> **Status: 🚧 BERJALAN.** Fase 4.1 sebagian selesai; lanjut dari task berikutnya.
+> **Status: 🚧 BERJALAN.** Quick wins keamanan, pengujian, dan CI sedang dituntaskan.
 > Referensi lengkap cakupan test & gotchas: `docs/TESTING.md`.
 
 | # | Task | Keterangan | Status |
 |---|------|-----------|--------|
-| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Sebagian (utils, middleware, handlers inti selesai; tersisa import/export CCTV, update/delete maintenance, websocket, routes, models, config) |
-| 4.2 | Tambah `npm run lint` + `golangci-lint` di CI | `.github/workflows/ci.yml` | ⬜ Belum |
+| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Berjalan (cakupan inti + validasi edge case tersedia; test integrasi route/WebSocket lanjutan tersisa) |
+| 4.2 | Tambah `npm run lint` + `golangci-lint` di CI | `.github/workflows/ci.yml` | ✅ Selesai |
 | 4.3 | Migrasi DB versioned (golang-migrate/Atlas) | ganti `AutoMigrate` bertahap | ⬜ Belum |
 | 4.4 | Redis untuk rate-limit & blacklist (multi-instance) | `backend/config`, `backend/middleware/limiter.go`, `backend/utils/blacklist.go` | ⬜ Belum |
 | 4.5 | Backup DB (`pg_dump` cron) + backup uploads + restore script | `scripts/` baru | ⬜ Belum |
 | 4.6 | Monitoring: endpoint metrics (Prometheus) | `backend/handlers/metrics.go` (baru) | ⬜ Belum |
 | 4.7 | Container non-root, resource limits, secret management | `backend/Dockerfile`, `docker-compose.yml` | ⬜ Belum |
-| 4.8 | Isi `docs/changelog.md` (milestone monorepo) | `docs/changelog.md` | ⬜ Belum |
+| 4.8 | Isi `docs/changelog.md` (milestone monorepo) | `docs/changelog.md` | ✅ Selesai |
 
 ---
 
