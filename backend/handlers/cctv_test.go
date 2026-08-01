@@ -212,7 +212,7 @@ func TestDownloadTemplateCCTV(t *testing.T) {
 	// File harus valid sebagai .xlsx dan memuat header kolom yang benar
 	f, err := excelize.OpenReader(resp.Body)
 	assert.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sheets := f.GetSheetList()
 	assert.NotEmpty(t, sheets)
