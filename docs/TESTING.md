@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-02 (penambahan test config, models, routes, dan edge case handler).
+> Diperbarui: 2026-08-02 (Fase 4.1: jalur sukses handler, WebSocket valid, route bootstrap, dan resolusi migration).
 
 ---
 
@@ -38,8 +38,8 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout, CreateUser (validasi, duplikat, sukses) |
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
-| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete not-found & invalid UUID |
-| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete not-found & invalid UUID, kepemilikan teknisi → 403 |
+| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID |
+| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403 |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong) |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
 | `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
@@ -47,7 +47,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `health_test.go` | HealthCheck Connected |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
-| `routes` | `routes_test.go`, `websocket_test.go` | Route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token ditolak |
+| `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
 **Total: 29 file test** (6 utils, 4 middleware, 11 handlers, 2 models, 2 config, 2 routes, termasuk helper).
@@ -86,14 +86,13 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 
 ---
 
-## 4. Hal yang Belum Ditutup (Lanjutan Sesi Berikutnya)
+## 4. Hal yang Ditunda (Tahap Berikutnya)
 
 Prioritas lanjutan:
 
-1. **Cakupan lanjutan handler:** valid import/update/delete sukses dan event WebSocket dengan DB mock penuh.
-2. **Routes:** smoke test jalur registrasi seluruh modul melalui bootstrap aplikasi.
-3. **WebSocket:** handshake token valid dan token-version mismatch pada server WebSocket.
-4. **Config migration:** test full `MigrateMaintenanceToCCTV` dengan skenario legacy asset dan update record.
+1. **Import CCTV transaksi penuh:** test file valid yang mengeksekusi insert, commit, duplicate, dan rollback dengan sqlmock.
+2. **WebSocket revocation:** test token version mismatch saat handshake.
+3. **Migration data penuh:** test `MigrateMaintenanceToCCTV` sampai update `maintenance_logs.cctv_id`.
 
 Referensi perencanaan: `docs/ROADMAP.md` Fase 4 (task 4.1–4.8). Catat setiap penambahan di
 `backend/changelog.md` dengan format before/after + timestamp WITA.

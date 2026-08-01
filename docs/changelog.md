@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.4.1] — 2026-08-02 — Fase 4.1: Penyelesaian Coverage Test
+
+### Testing Backend
+
+- Test jalur sukses update/delete CCTV dan maintenance.
+- Test handshake WebSocket dengan token valid dan bootstrap route terlindungi.
+- Test resolusi legacy asset ke CCTV dan pembaruan matriks coverage.
+- Sisa yang ditunda: import transaksi penuh, token version mismatch WebSocket, dan migration update penuh.
+
+kategori: Testing, Quality, Migration
+file terkait (root/infra): `docs/ROADMAP.md`, `docs/TESTING.md`, `docs/changelog.md`
+verifikasi: `go test ./... -count=1`, `go vet ./...`, `golangci-lint v2.12.2`, `npm run lint`, `npm run build`.
+alasan perubahan: Menyelaraskan dokumentasi dengan hasil implementasi Fase 4.1 sebelum melanjutkan ke versioned database migration.
+
+---
+
 ## [1.4.0] — 2026-08-02 — Fase 4: Quick Wins Keamanan & Kualitas
 
 ### Keamanan, Pengujian, dan CI
