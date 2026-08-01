@@ -1,5 +1,438 @@
 # Changelog - Backend SIGAP
 
+## [0.11.0] - 2026-08-01
+
+### Perluasan Unit Test Backend (ROADMAP Fase 4.1)
+
+perubahan yang dilakukan: **Unit test komprehensif untuk `utils`, `middleware`, dan `handlers` (sqlmock tanpa PostgreSQL fisik)**
+before:
+- Cakupan unit test hanya ada di `utils/jwt_test.go`, `utils/validator_test.go`, dan `handlers/auth_test.go` (test Login).
+- Fungsi penting (pagination, enkripsi AES, blacklist, CSRF, middleware keamanan, handler user/CCTV/maintenance/dashboard/audit/upload/report/health) tidak memiliki pengujian otomatis sehingga rawan regresi.
+after:
+- **utils (5 file test baru):** `pagination_test.go` (default limit/page/sort, batas atas limit 100 & page 1.000.000, whitelist sort vs SQL injection, `CalculatePagination`, `ParseDateRangeParams`), `encryption_test.go` (round-trip AES-256-GCM, nonce unik, hex invalid, input kosong), `blacklist_test.go` (revoke/check, cleanup token kadaluarsa), `csrf_test.go` (`GenerateCSRFToken` 64 hex unik, `ExtractTokenString` prioritas cookie → Bearer → kosong).
+- **middleware (4 file test baru):** `auth_test.go` (`Protected` tanpa token 401, revoked 401, invalid, valid, token-version mismatch → `Sesi telah dicabut. Silakan login kembali.`; `RequireRole` none/wrong/allowed), `csrf_test.go` (metode aman & Bearer dilewati, tanpa cookie sesi dilewati, mismatch/missing 403, matching lolos), `limiter_test.go` (batas bawah lolos, > 100/menit → 429), `security_test.go` (header dasar selalu ada; CSP/HSTS hanya saat `APP_ENV=production`).
+- **handlers (9 file test baru):** `auth_extra_test.go` (ChangePassword sukses/password lama salah/validasi, GetMyProfile, UpdateMyProfile, Logout, CreateUser validasi/duplikat/sukses), `user_test.go` (GetAllUsers, GetUserByID, UpdateUser, DeleteUser + self-delete forbidden, ResetUserPassword), `cctv_test.go` (GetCCTVByID, CreateCCTV + `qr_payload` terisi, ScanCCTV, DownloadTemplateCCTV via `excelize.OpenReader`, GetCCTVQRCode invalid UUID), `maintenance_test.go` (Create sukses/reload/CCTV not found, GetById, GetAll, kepemilikan teknisi → 403), `dashboard_test.go` (DashboardTasks tanpa identitas 401/teknisi ter-scope/admin, DashboardSummary distribusi status & tren 6 bulan), `audit_test.go` (GetAuditLogs sukses/filter modul, ExportAuditLogs CSV), `upload_test.go` (tanpa file 400, tipe invalid, JPEG valid magic bytes, path traversal 400, ekstensi salah 400, not found 404), `report_test.go` (PDF valid prefix `%PDF`, scope teknisi), `health_test.go` (HealthCheck Connected).
+- **helper bersama:** `handlers/helpers_test.go` (`withUserLocals`, `setupMockGORM` inject ke `config.DB`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow`).
+- **Fix penting:** `SetupTestDB` di `auth_test.go` memakai `gorm.Config{SkipDefaultTransaction: true}` — tanpa ini GORM memanggil `BEGIN` tak terduga sehingga sqlmock gagal pada operasi tulis.
+timestamp: 2026-08-01 16:00 WITA
+kategori: Testing, Quality, UnitTest
+file yang diubah:
+- backend/utils/pagination_test.go (baru)
+- backend/utils/encryption_test.go (baru)
+- backend/utils/blacklist_test.go (baru)
+- backend/utils/csrf_test.go (baru)
+- backend/middleware/auth_test.go (baru)
+- backend/middleware/csrf_test.go (baru)
+- backend/middleware/limiter_test.go (baru)
+- backend/middleware/security_test.go (baru)
+- backend/handlers/auth_extra_test.go (baru)
+- backend/handlers/user_test.go (baru)
+- backend/handlers/cctv_test.go (baru)
+- backend/handlers/maintenance_test.go (baru)
+- backend/handlers/dashboard_test.go (baru)
+- backend/handlers/audit_test.go (baru)
+- backend/handlers/upload_test.go (baru)
+- backend/handlers/report_test.go (baru)
+- backend/handlers/health_test.go (baru)
+- backend/handlers/helpers_test.go (baru)
+- backend/handlers/auth_test.go
+- backend/changelog.md
+alasan perubahan: Menutup Fase 4.1 ROADMAP (perluas unit test backend) untuk mencegah regresi pada fungsi keamanan dan bisnis inti, serta menyediakan fondasi pengujian terisolasi (sqlmock) yang dapat diperluas ke package lain.
+
+---
+
+## [0.10.0] - 2026-08-01
+
+### Fitur Kapabilitas Fase 3 (ROADMAP 3.1 - 3.9)
+
+perubahan yang dilakukan: **Self-service password, sliding session, dashboard analitik, notifikasi tugas, profil pengguna, unifikasi aset→CCTV, laporan PDF & filter tanggal, privasi upload, pembatasan ekspor per role**
+before:
+- Teknisi/admin tidak bisa mengganti password sendiri; tidak ada paksa ganti password saat login pertama.
+- Sesi JWT statis tanpa perpanjangan; token tidak di-refresh sehingga user logout saat masa berlaku habis.
+- Tidak ada dashboard analitik, notifikasi tugas teknisi, maupun halaman profil.
+- Model `assets` terpisah dari `cctv` (dua sumber data) sehingga log pemeliharaan bergantung pada tabel `assets`.
+- Belum ada laporan PDF, ekspor audit-log, atau filter rentang tanggal pada list/ekspor.
+- File upload menyimpan metadata EXIF (termasuk lokasi GPS) dan file yatim tidak pernah dibersihkan.
+- Ekspor CSV/PDF maintenance terbuka untuk semua role.
+after:
+- **3.1 Change password:** `POST /auth/change-password` self-service + flag `must_change_password` saat login pertama.
+- **3.2 Sliding session:** klaim `exp` diperpanjang pada akses aktif (refresh otomatis di `AuthContext`), blacklist token tetap jalan.
+- **3.3 Dashboard analitik:** `GET /dashboard/overview`, `GET /dashboard/analytics`, `GET /dashboard/overdue`, `GET /dashboard/activity` + `DashboardAnalytics`/`DashboardStats` di frontend.
+- **3.4 Notifikasi tugas:** `GET /dashboard/tasks` — teknisi melihat tugasnya sendiri (`technician_id`), admin semua; limit 20, `pending_count` & `overdue_count` + `days_overdue`.
+- **3.5 Profil:** `PUT /auth/profile` (nama tampilan) + halaman `/profile`; kartu user di sidebar jadi link.
+- **3.6 Unifikasi aset→CCTV:** `MaintenanceLog` kini memakai `cctv_id` (UUID FK ke `cctvs`, relasi `CCTV`); model `Asset`, `SeedAssets`, `handlers/asset.go`, `routes/asset.go` dihapus; `config.MigrateMaintenanceToCCTV` memetakan data legacy `asset_id` → `cctv_id` (ID/IP/kode/nama) sekali saat startup; JSON API kini `cctv`/`cctv_name`/`cctv_location`.
+- **3.7 Laporan & filter tanggal:** `GET /maintenance-logs/report-pdf` (PDF via `go-pdf/fpdf`), `GET /audit-logs/export` (CSV), filter `start_date`/`end_date` (helper `ParseDateRangeParams`) pada list & ekspor maintenance dan audit-log.
+- **3.8 Privasi & kebersihan upload:** seluruh upload di-decode ulang & dinormalisasi ke JPEG sehingga metadata EXIF/GPS terhapus; goroutine `StartUploadCleanup` (tiap 1 jam) menghapus file yatim berumur >24 jam yang tidak direferensikan `image_url`.
+- **3.9 Pembatasan ekspor per role:** `ExportMaintenanceLogs` & `GenerateMaintenanceReportPDF` membatasi teknisi hanya pada log miliknya sendiri (`technician_id = uid`); admin penuh; ekspor audit-log sudah admin-only.
+timestamp: 2026-08-01 14:30 WITA
+kategori: Feature, Security, API, Dashboard, PDF, Upload
+file yang diubah:
+- backend/handlers/auth.go (3.1, 3.5)
+- backend/handlers/dashboard.go (baru, 3.3, 3.4)
+- backend/handlers/upload.go (3.8)
+- backend/handlers/report.go (baru, 3.7)
+- backend/handlers/audit.go (3.7)
+- backend/handlers/maintenance.go (3.6, 3.7, 3.9)
+- backend/handlers/asset.go (dihapus, 3.6)
+- backend/routes/dashboard.go (baru, 3.3, 3.4)
+- backend/routes/asset.go (dihapus, 3.6)
+- backend/routes/maintenance.go (3.7, 3.9)
+- backend/routes/audit.go (3.7)
+- backend/routes/auth.go (3.5)
+- backend/config/migrate.go (baru, 3.6)
+- backend/models/setup.go (3.6)
+- backend/models/seeder.go (3.6)
+- backend/utils/pagination.go (3.7)
+- backend/main.go (3.6, 3.8)
+- backend/docs/ (regenerated via swag)
+- backend/changelog.md
+alasan perubahan: Meningkatkan nilai operasional sistem (ROADMAP Fase 3) dan menutup temuan keamanan 18 (ekspor terbuka semua role) dari docs/SECURITY-AUDIT.md.
+
+---
+
+## [0.9.0] - 2026-08-01
+
+### Hardening Keamanan Fase 2 (Security Audit & Roadmap)
+
+perubahan yang dilakukan: **Penerapan Perbaikan Berisiko Tinggi & Menengah dari Hasil Audit Keamanan (Fase 2)**
+before:
+- Token JWT disimpan di `localStorage` dan dikirim via header `Authorization` sehingga rentan terhadap XSS token theft; mutasi terautentikasi tidak dilindungi CSRF.
+- Password di-reset atau role diubah tanpa mencabut token JWT lama yang masih beredar.
+- Rate limiter & audit log mempercayai header `X-Forwarded-For`/`X-Real-IP` dari siapa pun (risiko spoofing IP untuk mem-bypass rate limit).
+- Impor Excel CCTV tanpa batas ukuran file maupun jumlah baris (risiko memori/DB overload).
+- CORS memakai wildcard `*` dengan credentials; Docker mempublish port DB 5432, memakai Cloudflare quick tunnel, dan meng-hardcode kredensial DB di `docker-compose.yml`.
+- Header CSP & HSTS belum aktif di produksi; teknisi dapat mengubah log pemeliharaan milik teknisi lain; kebijakan password hanya `min=6` tanpa kompleksitas.
+after:
+- **Token di cookie httpOnly + CSRF:** JWT dipindah ke cookie `sigap_session` (HttpOnly, Secure di produksi, SameSite=Lax) + pola double-submit CSRF (`sigap_csrf` cookie + header `X-CSRF-Token`); backend tetap mendukung header Bearer untuk client API/Swagger. WebSocket membaca cookie (fallback `?token=`). CORS `AllowCredentials: true` tanpa wildcard, default aman `http://localhost:3001`.
+- **Revoke token (token version):** klaim `tv` ditambahkan pada JWT; versi token dinaikkan saat `UpdateUser` (role berubah) dan `ResetUserPassword`, sehingga seluruh token lama langsung dicabut (`ValidateTokenVersion` di `Protected()` & handshake WebSocket).
+- **Trusted proxy:** header proxy hanya dipercaya dari IP yang terdaftar di env `TRUSTED_PROXY_IPS` (konfigurasi Fiber `TrustedProxies`); `getClientIP` (limiter) & `ExtractClientIP` (audit) kini memakai `c.IP()`.
+- **Batas impor Excel:** maksimum 4 MB per file dan 1000 baris data di `ImportCCTV`.
+- **Docker hardening:** quick tunnel dihapus; tambah reverse proxy Nginx + TLS (`nginx/nginx.conf`, sertifikat di `nginx/certs`); port DB/API/frontend tidak lagi dipublish ke host; kredensial DB dibaca dari root `.env` (secret management); `TRUSTED_PROXY_IPS` merujuk IP statis nginx `172.28.0.10`.
+- **CSP & HSTS produksi:** header `Content-Security-Policy` (strict) dan `Strict-Transport-Security` aktif hanya saat `APP_ENV=production`.
+- **Ownership check:** teknisi hanya dapat mengubah log pemeliharaan miliknya sendiri (`UpdateMaintenanceLog`); admin tetap penuh.
+- **Kebijakan password:** minimal 8 karakter + kompleksitas (huruf besar, huruf kecil, angka, karakter khusus) lewat validator custom `strongpassword` pada `CreateUserRequest` & `ResetUserPasswordRequest`.
+timestamp: 2026-08-01 13:45 WITA
+kategori: Security, Hardening, API, Docker, Infra
+file yang diubah:
+- backend/utils/csrf.go (baru)
+- backend/middleware/csrf.go (baru)
+- backend/middleware/auth.go
+- backend/middleware/security.go
+- backend/middleware/limiter.go
+- backend/utils/jwt.go
+- backend/utils/jwt_test.go
+- backend/utils/validator.go
+- backend/utils/validator_test.go (baru)
+- backend/utils/audit.go
+- backend/models/setup.go
+- backend/handlers/auth.go
+- backend/handlers/user.go
+- backend/handlers/cctv.go
+- backend/handlers/maintenance.go
+- backend/handlers/auth_test.go
+- backend/routes/websocket.go
+- backend/main.go
+- backend/.env.example
+- backend/.env.docker.example
+- docker-compose.yml
+- nginx/nginx.conf (baru)
+- nginx/certs/README.md (baru)
+- .env.example (baru, root)
+- frontend/src/lib/api.ts
+- frontend/src/context/AuthContext.tsx
+- frontend/src/context/WebSocketContext.tsx
+- frontend/src/app/login/page.tsx
+- frontend/src/app/users/page.tsx
+- frontend/src/components/AuthenticatedImage.tsx
+- frontend/src/app/cctv/page.tsx
+- backend/changelog.md
+alasan perubahan: Menutup temuan Fase 2 (docs/SECURITY-AUDIT.md temuan 7-20) untuk mencegah pencurian token via XSS, CSRF, token lama yang masih valid, spoofing IP pada rate limit, overload impor Excel, eksposur DB/layanan via Docker, dan pelanggaran ownership/password lemah.
+
+---
+
+## [0.8.0] - 2026-08-01
+
+### Hardening Keamanan Fase 1 (Security Audit & Roadmap)
+
+perubahan yang dilakukan: **Penerapan Perbaikan Kritis dari Hasil Audit Keamanan (Temuan Kritis/Tinggi)**
+before:
+- `getJWTSecret()` memiliki fallback secret hardcoded `super_secret_sigap_jwt_key_ikn_2026_secure` yang dipakai bila env `JWT_SECRET` kosong (risiko pemalsuan token JWT).
+- `SeedAdmin` mereset kata sandi admin default setiap kali server dimulai (risiko pengambilalihan akun bila env default bocor).
+- Endpoint `GET /api/ws` dapat diakses tanpa autentikasi (risiko injeksi/pemalsuan event ke client lain).
+- Cetak QR Code CCTV mengandalkan API pihak ketiga `api.qrserver.com` dan mengirim `QrPayload` mentah ke layanan eksternal (kebocoran data terenkripsi + dependensi layanan luar).
+- Pagination `limit` dan `page` tidak dibatasi sehingga dapat memicu beban berlebih pada basis data.
+after:
+- `getJWTSecret()` kini selalu membaca dari env `JWT_SECRET` tanpa fallback; nilai secret kosong akan memicu kegagalan cepat (fail-fast) sehingga server tidak berjalan dengan secret lemah.
+- `SeedAdmin` hanya membuat akun admin jika belum ada dan tidak mengubah kata sandi pada startup berikutnya; validasi fail-fast bila `ADMIN_DEFAULT_PASSWORD` kosong/lemah (< 8 karakter).
+- Rute `GET /api/ws` divalidasi melalui token JWT pada query parameter `?token=`; koneksi tanpa token valid ditolak, identitas pengguna (user id & role) dimasukkan ke konteks koneksi.
+- Ditambahkan endpoint `GET /api/cctv/:id/qrcode` yang menghasilkan gambar QR PNG server-side (pustaka `github.com/skip2/go-qrcode`) berisi `QrPayload` terenkripsi; menggantikan dependensi API QR pihak ketiga.
+- Pagination dibatasi: `limit` maksimum 100 dan `page` maksimum 1.000.000; nilai di luar batas dijepit ke batas aman.
+timestamp: 2026-08-01 15:30 WITA
+kategori: Security, Hardening, API
+file yang diubah:
+- backend/utils/jwt.go
+- backend/utils/jwt_test.go
+- backend/models/seeder.go
+- backend/utils/pagination.go
+- backend/routes/websocket.go
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/.env.example
+- backend/.env.docker.example
+- backend/changelog.md
+alasan perubahan: Menutup temuan kritis dan berisiko tinggi hasil audit keamanan (docs/SECURITY-AUDIT.md) untuk mencegah pemalsuan token, pengambilalihan akun, akses WebSocket tak terautentikasi, kebocoran data ke layanan eksternal, dan eksploitasi pagination.
+
+---
+
+## [0.7.0] - 2026-08-01
+
+### Penyempurnaan Dokumentasi API Swagger UI (OpenAPI 3.0)
+
+perubahan yang dilakukan: **Penyelarasan Seluruh Anotasi Swag & Regenerasi Swagger Docs**
+before:
+- Endpoint baru seperti `/api/audit-logs`, `/api/ws`, `/api/upload`, dan `/api/uploads/{filename}` belum sepenuhnya terdaftar pada skema OpenAPI Swagger UI.
+after:
+- Menambahkan anotasi OpenAPI 3.0 Swag lengkap pada rute `/api/audit-logs`, `/api/upload`, `/api/uploads/{filename}`, dan `/api/ws`.
+- Mengonfigurasi `swag CLI` v1.16.4 dan melakukan regenerasi berkas `docs/docs.go`, `docs/swagger.json`, dan `docs/swagger.yaml`.
+- Dokumentasi API interaktif kini 100% selaras dan dapat diuji langsung di `http://localhost:3000/swagger/index.html`.
+timestamp: 2026-08-01 01:43 WITA
+kategori: Feature, Documentation, Swagger, API
+file yang diubah:
+- backend/routes/websocket.go
+- backend/handlers/audit.go
+- backend/handlers/upload.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Menyediakan dokumen API interaktif standar OpenAPI 3.0 yang lengkap bagi tim teknis dan pengembang integrasi sistem SIGAP IKN.
+
+---
+
+## [0.6.0] - 2026-08-01
+
+### Real-time WebSocket Broadcast Engine
+
+perubahan yang dilakukan: **Integrasi WSHub Terpusat, Endpoint GET /api/ws, dan Penyiaran Event Real-time**
+before:
+- Tidak ada dukungan WebSocket di backend; pembaruan data di frontend memerlukan refresh manual atau polling berulang.
+after:
+- Mengintegrasikan pustaka `github.com/gofiber/websocket/v2`.
+- Dibuat utilitas `WSHub` di `utils/websocket.go` untuk mengelola koneksi client aktif secara *thread-safe* (`sync.RWMutex`) dan fungsi `BroadcastEvent`.
+- Dibuat rute `GET /api/ws` di `routes/websocket.go` dengan middleware pengecekan upgrade protokol WebSocket.
+- Diintegrasikan panggilan `utils.BroadcastEvent` pada event penting:
+  - `cctv.go`: Event `CCTV_UPDATED` pada `CreateCCTV`, `UpdateCCTV`, dan `DeleteCCTV`.
+  - `maintenance.go`: Event `MAINTENANCE_CREATED` dan `MAINTENANCE_UPDATED` pada `CreateMaintenanceLog` dan `UpdateMaintenanceLog`.
+timestamp: 2026-08-01 01:35 WITA
+kategori: Feature, Real-time, WebSocket
+file yang diubah:
+- backend/utils/websocket.go (baru)
+- backend/routes/websocket.go (baru)
+- backend/handlers/cctv.go
+- backend/handlers/maintenance.go
+- backend/main.go
+- backend/changelog.md
+alasan perubahan: Memungkinkan pemantauan operasional CCTV dan pekerjaan pemeliharaan di kawasan IKN secara langsung (*real-time live update*) tanpa latensi refresh.
+
+---
+
+## [0.5.1] - 2026-08-01
+
+### Fix Auto-Logout Mismatch & Environment Loading Order
+
+perubahan yang dilakukan: **Perbaikan Inisialisasi Environment godotenv & Pembaruan getJWTSecret**
+before:
+- `godotenv.Load()` baru dipanggil di dalam `config.ConnectDB()`, yang berjalan setelah `requireEnv("JWT_SECRET")`.
+- Utilitas `getJWTSecret()` menyimpan byte slice `jwtSecret` secara permanen pada memori; jika dipanggil saat nilai environment belum siap atau berubah, token JWT yang dibuat tidak konsisten sehingga memicu error 401 (Auto-Logout).
+after:
+- Mengubah `godotenv.Load()` agar dieksekusi di baris pertama `main()` pada `main.go`.
+- Memperbarui `getJWTSecret()` di `utils/jwt.go` agar selalu mengembalikan `[]byte(os.Getenv("JWT_SECRET"))` secara langsung tanpa menyimpan cache slice yang usang.
+timestamp: 2026-08-01 01:25 WITA
+kategori: Bugfix, Auth, Security
+file yang diubah:
+- backend/main.go
+- backend/utils/jwt.go
+- backend/changelog.md
+alasan perubahan: Memastikan validasi token JWT di backend berjalan konsisten dan tidak memicu penolakan otentikasi (401) yang menyebabkan pengguna terkeluar (auto-logout) saat navigasi antar halaman.
+
+---
+
+## [0.5.0] - 2026-08-01
+
+### Modul Audit Logging Terpusat (Audit Trail)
+
+perubahan yang dilakukan: **Implementasi Modul Audit Logging Terpusat & Rute GET /api/audit-logs**
+before:
+- Tidak ada pencatatan histori aktivitas penting pengguna (siapa yang mengubah data CCTV, menambah aset, menghapus log pemeliharaan, atau mereset password).
+- Tidak ada entitas `AuditLog` di database PostgreSQL.
+- Tidak ada rute API untuk melihat log riwayat aktivitas operasional sistem.
+after:
+- Dibuat model `AuditLog` di `models/audit_log.go` dan didaftarkan ke `AutoMigrate` di `main.go`.
+- Dibuat utilitas `LogAudit` (non-blocking async via Goroutine) di `utils/audit.go` dengan fitur *Smart User Resolution* dan penanganan client IP proxy-aware (`X-Real-IP`, `X-Forwarded-For`).
+- Dibuat handler `GetAuditLogs` di `handlers/audit.go` dan rute `GET /api/audit-logs` terproteksi JWT Admin di `routes/audit.go`.
+- Diintegrasikan pencatatan audit log pada seluruh handler penting:
+  - Auth (`handlers/auth.go`): `LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `CREATE_USER`
+  - CCTV (`handlers/cctv.go`): `CREATE_CCTV`, `UPDATE_CCTV`, `DELETE_CCTV`, `IMPORT_CCTV`, `BULK_DELETE_CCTV`
+  - Aset (`handlers/asset.go`): `CREATE_ASSET`, `UPDATE_ASSET`, `DELETE_ASSET`
+  - Pemeliharaan (`handlers/maintenance.go`): `CREATE_MAINTENANCE`, `UPDATE_MAINTENANCE`, `DELETE_MAINTENANCE`
+  - Manajemen User (`handlers/user.go`): `UPDATE_USER`, `DELETE_USER`, `RESET_PASSWORD`
+- Melepas ketergantungan import package `utils` dari `models/seeder.go` untuk memutus import cycle.
+timestamp: 2026-08-01 00:38 WITA
+kategori: besar
+file yang diubah:
+- backend/models/audit_log.go (baru)
+- backend/utils/audit.go (baru)
+- backend/handlers/audit.go (baru)
+- backend/routes/audit.go (baru)
+- backend/models/seeder.go
+- backend/main.go
+- backend/handlers/auth.go
+- backend/handlers/cctv.go
+- backend/handlers/asset.go
+- backend/handlers/maintenance.go
+- backend/handlers/user.go
+alasan perubahan: Memenuhi kebutuhan auditability operasional infrastruktur IKN dengan mencatat seluruh aktivitas administratif penting ke dalam database secara otomatis, presisi, dan non-blocking.
+
+---
+
+## [0.4.0] - 2026-07-31
+
+### Security Hardening (Critical Fixes)
+
+perubahan yang dilakukan: **Penghapusan Fallback Ekstensi pada File Upload & Proteksi Akses File via JWT**
+before:
+- `handlers/upload.go` menggunakan fallback ke ekstensi nama file jika deteksi MIME magic bytes gagal, rentan terhadap upload file berbahaya.
+- `handlers/upload.go` memiliki bug variabel `contentType` tidak terdefinisi (runtime error).
+- File gambar yang diunggah dapat diakses publik via `app.Static("/uploads")` tanpa autentikasi apapun.
+after:
+- Fallback ekstensi dihapus sepenuhnya — hanya magic bytes yang dipercaya; file ditolak jika tipe tidak terdeteksi.
+- Bug `contentType` diperbaiki menggunakan `detectedType` yang sudah ada.
+- Ditambahkan handler `ServeUploadedFile` dan rute `GET /api/uploads/:filename` (dilindungi JWT + validasi path traversal).
+- `app.Static("/uploads")` dihapus dari `main.go`.
+- URL yang dikembalikan upload handler diubah dari `/uploads/...` menjadi `/api/uploads/...`.
+timestamp: 2026-07-31 23:06 WITA
+kategori: kritis
+file yang diubah:
+- backend/handlers/upload.go
+- backend/routes/upload.go
+- backend/main.go
+alasan perubahan: Mencegah bypass validasi tipe file berbahaya dan melindungi file gambar dari akses tidak terautentikasi.
+
+---
+
+perubahan yang dilakukan: **Fix Rate Limiter — Proxy-Aware IP Detection**
+before:
+- `middleware/limiter.go` menggunakan `c.IP()` sebagai key rate limiting, yang mengembalikan IP proxy di balik Nginx/Load Balancer sehingga seluruh user terhitung sebagai satu IP.
+after:
+- Ditambahkan fungsi `getClientIP()` yang memprioritaskan `X-Real-IP` → `X-Forwarded-For` → `c.IP()` sebagai fallback.
+- Digunakan di `GlobalLimiter()` dan `AuthLimiter()`.
+timestamp: 2026-07-31 23:07 WITA
+kategori: kritis
+file yang diubah:
+- backend/middleware/limiter.go
+alasan perubahan: Memastikan rate limiting bekerja benar per IP user asli, bukan per IP proxy.
+
+---
+
+perubahan yang dilakukan: **Hapus Hardcoded Password Admin dari Seeder**
+before:
+- `models/seeder.go` meng-hardcode password `adminpassword` langsung di source code.
+after:
+- Password admin dibaca dari environment variable `ADMIN_DEFAULT_PASSWORD`.
+- Jika tidak diset, password fallback otomatis dibuat dari prefix JWT_SECRET dengan peringatan eksplisit di log.
+- Log menggunakan Zap Logger (konsisten dengan sistem).
+timestamp: 2026-07-31 23:07 WITA
+kategori: kritis
+file yang diubah:
+- backend/models/seeder.go
+- backend/.env.example
+- backend/.env.docker.example
+alasan perubahan: Mencegah kredensial default yang mudah ditebak ada di source code yang bisa diakses publik di repositori.
+
+---
+
+perubahan yang dilakukan: **Implementasi JWT Token Blacklist & Endpoint Logout**
+before:
+- Tidak ada endpoint logout di backend; logout hanya terjadi di sisi client (hapus localStorage).
+- Token JWT yang sudah di-logout masih valid selama 24 jam penuh di server.
+after:
+- Dibuat `utils/blacklist.go` berisi in-memory token blacklist dengan `sync.RWMutex` untuk thread safety.
+- Fungsi `RevokeToken`, `IsTokenRevoked`, dan `StartBlacklistCleanup` (goroutine cleanup otomatis setiap 30 menit).
+- Middleware `Protected()` di `middleware/auth.go` sekarang memeriksa blacklist sebelum memvalidasi token.
+- Ditambahkan handler `Logout` di `handlers/auth.go` dan rute `POST /api/auth/logout`.
+- Goroutine cleanup diaktifkan di `main.go` saat server startup.
+timestamp: 2026-07-31 23:08 WITA
+kategori: tinggi
+file yang diubah:
+- backend/utils/blacklist.go (baru)
+- backend/middleware/auth.go
+- backend/handlers/auth.go
+- backend/routes/auth.go
+- backend/main.go
+alasan perubahan: Memastikan token yang sudah di-logout tidak dapat disalahgunakan; mencegah session hijacking pasca logout.
+
+---
+
+perubahan yang dilakukan: **Tambah Endpoint GET /api/auth/me & Handler GetMyProfile**
+before:
+- Tidak ada endpoint untuk mengambil profil user yang sedang login secara langsung dari server.
+- Data user hanya tersedia dari respons login yang disimpan di localStorage (rawan manipulasi sisi client).
+after:
+- Ditambahkan handler `GetMyProfile` di `handlers/auth.go` dan rute `GET /api/auth/me`.
+- Endpoint membaca `user_id` dari JWT claims dan mengembalikan data profil terkini dari database.
+timestamp: 2026-07-31 23:08 WITA
+kategori: sedang
+file yang diubah:
+- backend/handlers/auth.go
+- backend/routes/auth.go
+alasan perubahan: Menyediakan sumber data profil yang terpercaya dari server, bukan hanya dari localStorage client.
+
+---
+
+perubahan yang dilakukan: **Pembatasan Swagger UI ke Non-Production & Endpoint test-panic**
+before:
+- Swagger UI selalu aktif di semua environment termasuk production, mengekspos seluruh detail API.
+- Endpoint `GET /api/test-panic` selalu aktif tanpa pembatasan environment.
+after:
+- Swagger UI hanya aktif jika `APP_ENV != "production"`.
+- Endpoint `test-panic` hanya aktif jika `APP_ENV != "production"`.
+- Variabel `APP_ENV` ditambahkan ke `.env.example` dan `.env.docker.example`.
+timestamp: 2026-07-31 23:08 WITA
+kategori: sedang
+file yang diubah:
+- backend/main.go
+- backend/.env.example
+- backend/.env.docker.example
+alasan perubahan: Mencegah disclosure informasi struktur API di production dan menutup endpoint uji coba dari akses luar.
+
+---
+
+perubahan yang dilakukan: **Tambah Security Headers Middleware**
+before:
+- Tidak ada security headers HTTP pada response (X-Frame-Options, X-Content-Type-Options, dll).
+after:
+- Dibuat `middleware/security.go` berisi `SecurityHeaders()` yang memasang header: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Server: SIGAP`.
+- Dipasang setelah ZapLogger di `main.go`.
+timestamp: 2026-07-31 23:09 WITA
+kategori: sedang
+file yang diubah:
+- backend/middleware/security.go (baru)
+- backend/main.go
+alasan perubahan: Melindungi dari serangan MIME sniffing, clickjacking, dan mengurangi information disclosure.
+
+---
+
+perubahan yang dilakukan: **Cache AES Key dengan sync.Once**
+before:
+- `utils/encryption.go` fungsi `deriveKey()` memanggil `os.Getenv()` dan `sha256.Sum256()` setiap kali dipanggil.
+after:
+- Ditambahkan `aesKey` dan `aesKeyOnce` package-level variable; `deriveKey()` menggunakan `sync.Once` untuk menjamin key hanya diderivasi satu kali.
+timestamp: 2026-07-31 23:09 WITA
+kategori: rendah
+file yang diubah:
+- backend/utils/encryption.go
+alasan perubahan: Efisiensi dan konsistensi — menghindari overhead SHA-256 berulang setiap enkripsi/dekripsi QR payload.
+
 ## [0.2.0] - 2026-07-22
 
 ### Added

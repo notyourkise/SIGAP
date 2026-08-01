@@ -15,6 +15,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	cctvGroup.Get("/", handlers.GetAllCCTV)
 	cctvGroup.Get("/template", handlers.DownloadTemplateCCTV)
 	cctvGroup.Post("/scan", handlers.ScanCCTV)
+	cctvGroup.Get("/:id/qrcode", handlers.GetCCTVQRCode)
 	cctvGroup.Get("/:id", handlers.GetCCTVByID)
 
 	// Rute yang hanya dapat diakses oleh Admin

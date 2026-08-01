@@ -7,12 +7,33 @@ import (
 	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/skip2/go-qrcode"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
+
+// normalizeCCTVStatus mengubah input status menjadi enum huruf kecil standar
+// (aktif/rusak/pemeliharaan/nonaktif) agar penyimpanan & filter konsisten.
+// Input huruf besar (mis. "ACTIVE" dari antarmuka/impor lama) diterima dan
+// dinormalisasi sebelum validasi.
+func normalizeCCTVStatus(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "aktif":
+		return "aktif"
+	case "rusak":
+		return "rusak"
+	case "pemeliharaan":
+		return "pemeliharaan"
+	case "nonaktif":
+		return "nonaktif"
+	default:
+		return s
+	}
+}
 
 // Request body untuk pembuatan CCTV baru
 type CreateCCTVRequest struct {
@@ -52,6 +73,14 @@ type UpdateCCTVRequest struct {
 	Keterangan    string `json:"keterangan" validate:"omitempty"`
 }
 
+// Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
+// default 4 MB) dan jumlah baris data maksimum per file agar proses impor
+// massal tidak membebani memori server & database.
+const (
+	maxImportFileSize = 4 << 20 // 4 MB
+	maxImportRows     = 1000    // maksimal 1000 baris data per file
+)
+
 // Request body untuk scanner QR Payload
 type ScanCCTVRequest struct {
 	QrPayload string `json:"qr_payload" validate:"required"`
@@ -79,6 +108,9 @@ func CreateCCTV(c *fiber.Ctx) error {
 			"message": "Format input tidak valid",
 		})
 	}
+
+	// Normalisasi status ke enum huruf kecil sebelum validasi & penyimpanan
+	req.Status = normalizeCCTVStatus(req.Status)
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -143,6 +175,9 @@ func CreateCCTV(c *fiber.Ctx) error {
 			"message": "Gagal menyimpan data CCTV ke database",
 		})
 	}
+
+	utils.LogAudit(config.DB, c, "CREATE_CCTV", "CCTV", "Membuat data CCTV baru: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
+	utils.BroadcastEvent("CCTV_UPDATED", cctv)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -296,6 +331,9 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// Normalisasi status ke enum huruf kecil sebelum validasi & penyimpanan
+	req.Status = normalizeCCTVStatus(req.Status)
+
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -367,6 +405,9 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	utils.LogAudit(config.DB, c, "UPDATE_CCTV", "CCTV", "Memperbarui data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
+	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   cctv,
@@ -411,6 +452,9 @@ func DeleteCCTV(c *fiber.Ctx) error {
 			"message": "Gagal menghapus data CCTV",
 		})
 	}
+
+	utils.LogAudit(config.DB, c, "DELETE_CCTV", "CCTV", "Menghapus data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
+	utils.BroadcastEvent("CCTV_UPDATED", cctv)
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
@@ -503,12 +547,12 @@ func DownloadTemplateCCTV(c *fiber.Ctx) error {
 
 	// Set nama sheet default
 	sheetName := "Sheet1"
-	
+
 	// Daftar header kolom template
 	headers := []string{
-		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area", 
-		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik", 
-		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status", 
+		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area",
+		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik",
+		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status",
 		"IP NVR", "IP Camera", "Keterangan",
 	}
 
@@ -536,7 +580,7 @@ func DownloadTemplateCCTV(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Set("Content-Disposition", "attachment; filename=template_import_cctv.xlsx")
-	
+
 	return c.Send(buf.Bytes())
 }
 
@@ -561,6 +605,14 @@ func ImportCCTV(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "File tidak ditemukan. Pastikan key form-data bernama 'file'.",
+		})
+	}
+
+	// Batasi ukuran file agar tidak membebani memori server
+	if fileHeader.Size > maxImportFileSize {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": fmt.Sprintf("Ukuran file terlalu besar (maksimal %d MB)", maxImportFileSize/(1<<20)),
 		})
 	}
 
@@ -610,6 +662,14 @@ func ImportCCTV(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "File Excel tidak berisi data untuk diimpor",
+		})
+	}
+
+	// Batasi jumlah baris data agar proses impor massal tetap aman & cepat
+	if len(rows)-1 > maxImportRows {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": fmt.Sprintf("File Excel melebihi batas maksimal %d baris data (file berisi %d baris)", maxImportRows, len(rows)-1),
 		})
 	}
 
@@ -679,6 +739,18 @@ func ImportCCTV(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"status":  "error",
 				"message": fmt.Sprintf("Baris %d: Status wajib diisi", rowNum),
+			})
+		}
+
+		// Normalisasi & validasi enum status agar data impor konsisten
+		status = normalizeCCTVStatus(status)
+		switch status {
+		case "aktif", "rusak", "pemeliharaan", "nonaktif":
+		default:
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": fmt.Sprintf("Baris %d: Status '%s' tidak valid. Gunakan: aktif, rusak, pemeliharaan, atau nonaktif", rowNum, getCell(11)),
 			})
 		}
 
@@ -753,10 +825,62 @@ func ImportCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	utils.LogAudit(config.DB, c, "IMPORT_CCTV", "CCTV", fmt.Sprintf("Impor massal Excel berhasil: %d data CCTV ditambahkan", importedCount), nil, "", "")
+
 	return c.JSON(fiber.Map{
-		"status": "success",
+		"status":  "success",
 		"message": fmt.Sprintf("Berhasil mengimpor %d data CCTV secara massal", importedCount),
 	})
+}
+
+// GetCCTVQRCode menghasilkan QR Code PNG berisi QrPayload terenkripsi CCTV (Admin & Teknisi)
+// @Summary      Unduh QR Code CCTV
+// @Description  Membuat QR Code dalam format PNG berisi payload QR terenkripsi (AES-256) milik perangkat CCTV. Hasil pindaian QR ini dapat diidentifikasi melalui endpoint /cctv/scan.
+// @Tags         Master CCTV
+// @Produce      image/png
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {string} string "Gambar QR Code dalam format raw PNG"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal memproses QR Code"
+// @Router       /cctv/{id}/qrcode [get]
+func GetCCTVQRCode(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	// Konten QR adalah QrPayload terenkripsi AES-256 sehingga identitas perangkat
+	// tidak terekspos langsung saat label dipindai.
+	qrContent := cctv.QrPayload
+
+	// Generate QR Code bytes menggunakan library skip2/go-qrcode
+	// 256px x 256px, Level error correction Medium
+	qrBytes, err := qrcode.Encode(qrContent, qrcode.Medium, 256)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membuat gambar QR Code",
+		})
+	}
+
+	c.Set("Content-Type", "image/png")
+	c.Set("Content-Disposition", fmt.Sprintf("inline; filename=%s-qr.png", cctv.KodeCCTV))
+	return c.Send(qrBytes)
 }
 
 // BulkDeleteCCTV menghapus beberapa data CCTV sekaligus atau mengosongkan seluruh tabel (Admin saja)
@@ -844,13 +968,16 @@ func BulkDeleteCCTV(c *fiber.Ctx) error {
 	}
 
 	message := "Berhasil menghapus data CCTV terpilih"
+	auditDesc := fmt.Sprintf("Hapus massal CCTV terpilih: %d data dihapus", len(req.IDs))
 	if req.All {
 		message = "Berhasil mengosongkan seluruh data CCTV"
+		auditDesc = "Mengosongkan (truncate) seluruh data CCTV"
 	}
+
+	utils.LogAudit(config.DB, c, "BULK_DELETE_CCTV", "CCTV", auditDesc, nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
 		"message": message,
 	})
 }
-

@@ -14,10 +14,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type CreateMaintenanceLogRequest struct {
-	AssetID       string `json:"asset_id" validate:"required,uuid4"`
+	CCTVID        string `json:"cctv_id" validate:"required,uuid4"`
 	ActionTaken   string `json:"action_taken" validate:"required,min=5"`
 	Notes         string `json:"notes" validate:"omitempty"`
 	Status        string `json:"status" validate:"required,oneof=scheduled ongoing completed failed"`
@@ -27,43 +28,13 @@ type CreateMaintenanceLogRequest struct {
 }
 
 type UpdateMaintenanceLogRequest struct {
-	AssetID       string `json:"asset_id" validate:"omitempty,uuid4"`
+	CCTVID        string `json:"cctv_id" validate:"omitempty,uuid4"`
 	ActionTaken   string `json:"action_taken" validate:"omitempty,min=5"`
 	Notes         string `json:"notes" validate:"omitempty"`
 	Status        string `json:"status" validate:"omitempty,oneof=scheduled ongoing completed failed"`
 	ScheduledDate string `json:"scheduled_date" validate:"omitempty"` // YYYY-MM-DD HH:MM:SS or RFC3339
 	CompletedAt   string `json:"completed_at" validate:"omitempty"`   // YYYY-MM-DD HH:MM:SS or RFC3339
 	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL baru dari /api/upload (opsional)
-}
-
-// resolveMaintenanceAsset keeps maintenance logs compatible with the CCTV master
-// list. Imported CCTV records are materialized into the legacy assets table only
-// when they are first used for maintenance.
-func resolveMaintenanceAsset(assetID uuid.UUID) (models.Asset, error) {
-	var asset models.Asset
-	if err := config.DB.First(&asset, "id = ?", assetID).Error; err == nil {
-		return asset, nil
-	}
-
-	var cctv models.CCTV
-	if err := config.DB.First(&cctv, "id = ?", assetID).Error; err != nil {
-		return asset, err
-	}
-
-	asset = models.Asset{
-		Base:         models.Base{ID: cctv.ID},
-		Name:         cctv.Nama,
-		SerialNumber: cctv.KodeCCTV,
-		IPAddress:    cctv.IPCamera,
-		LocationName: cctv.LokasiArea,
-		Status:       strings.ToLower(cctv.Status),
-		Vendor:       cctv.Pemilik,
-	}
-	if err := config.DB.Create(&asset).Error; err != nil {
-		return asset, err
-	}
-
-	return asset, nil
 }
 
 // CreateMaintenanceLog membuat log pemeliharaan baru (Admin & Teknisi)
@@ -95,19 +66,20 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Cek apakah asset_id valid
-	assetUUID, err := uuid.Parse(req.AssetID)
+	// Cek apakah cctv_id valid — CCTV adalah satu-satunya sumber kebenaran aset
+	cctvUUID, err := uuid.Parse(req.CCTVID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Asset ID tidak valid",
+			"message": "CCTV ID tidak valid",
 		})
 	}
 
-	if _, err := resolveMaintenanceAsset(assetUUID); err != nil {
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", cctvUUID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Aset CCTV tidak ditemukan",
+			"message": "CCTV tidak ditemukan",
 		})
 	}
 
@@ -166,14 +138,14 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	logEntry := models.MaintenanceLog{
-		AssetID:       assetUUID,
-		TechnicianID:  techUUID,
-		ActionTaken:   req.ActionTaken,
-		Notes:         req.Notes,
-		Status:        req.Status,
+		CCTVID:       cctvUUID,
+		TechnicianID: techUUID,
+		ActionTaken:  req.ActionTaken,
+		Notes:        req.Notes,
+		Status:       req.Status,
 		ScheduledDate: schedDate,
-		CompletedAt:   compDate,
-		ImageUrl:      req.ImageUrl,
+		CompletedAt:  compDate,
+		ImageUrl:     req.ImageUrl,
 	}
 
 	if err := config.DB.Create(&logEntry).Error; err != nil {
@@ -183,8 +155,11 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Muat ulang dengan data relasi (Asset & User) untuk respon JSON
-	config.DB.Preload("Asset").Preload("User").First(&logEntry, logEntry.ID)
+	utils.LogAudit(config.DB, c, "CREATE_MAINTENANCE", "MAINTENANCE", "Mencatat pemeliharaan baru: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
+
+	// Muat ulang dengan data relasi (CCTV & User) untuk respon JSON
+	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	utils.BroadcastEvent("MAINTENANCE_CREATED", logEntry)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -194,13 +169,15 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 
 // GetAllMaintenanceLogs mengambil semua log pemeliharaan (Admin & Teknisi)
 // @Summary      Ambil Semua Log Pemeliharaan
-// @Description  Mendapatkan list riwayat pemeliharaan CCTV terpaginasi dengan filter asset_id, status, pencarian, dan sorting.
+// @Description  Mendapatkan list riwayat pemeliharaan CCTV terpaginasi dengan filter cctv_id, status, pencarian, dan sorting.
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        asset_id query string false "Filter berdasarkan UUID Aset"
+// @Param        cctv_id query string false "Filter berdasarkan UUID CCTV"
 // @Param        status query string false "Filter berdasarkan status log"
+// @Param        start_date query string false "Filter rentang awal (YYYY-MM-DD)"
+// @Param        end_date query string false "Filter rentang akhir (YYYY-MM-DD)"
 // @Param        search query string false "Cari tindakan (action_taken) atau catatan (notes)"
 // @Param        page query integer false "Nomor Halaman (default: 1)"
 // @Param        limit query integer false "Jumlah data per halaman (default: 10)"
@@ -211,13 +188,18 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 // @Router       /maintenance-logs [get]
 func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
-	query := config.DB.Model(&models.MaintenanceLog{}).Preload("Asset").Preload("User")
+	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
 
-	// Filter berdasarkan asset_id
-	if assetID := c.Query("asset_id"); assetID != "" {
+	// Filter berdasarkan cctv_id (dukung alias legacy asset_id dari QR lama)
+	if cctvID := c.Query("cctv_id"); cctvID != "" {
+		cctvUUID, err := uuid.Parse(cctvID)
+		if err == nil {
+			query = query.Where("cctv_id = ?", cctvUUID)
+		}
+	} else if assetID := c.Query("asset_id"); assetID != "" {
 		assetUUID, err := uuid.Parse(assetID)
 		if err == nil {
-			query = query.Where("asset_id = ?", assetUUID)
+			query = query.Where("cctv_id = ?", assetUUID)
 		}
 	}
 
@@ -226,13 +208,23 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 
+	// Filter rentang tanggal (created_at)
+	if start, end := utils.ParseDateRangeParams(c); start != nil || end != nil {
+		if start != nil {
+			query = query.Where("created_at >= ?", *start)
+		}
+		if end != nil {
+			query = query.Where("created_at < ?", *end)
+		}
+	}
+
 	// Pencarian teks (berdasarkan tindakan atau catatan)
 	if search := c.Query("search"); search != "" {
 		query = query.Where("action_taken ILIKE ? OR notes ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
 	// Ambil parameter paginasi & sorting (dengan whitelist keamanan)
-	allowedSort := []string{"id", "asset_id", "technician_id", "action_taken", "notes", "status", "scheduled_date", "completed_at", "created_at", "updated_at"}
+	allowedSort := []string{"id", "cctv_id", "technician_id", "action_taken", "notes", "status", "scheduled_date", "completed_at", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
 
 	var totalRows int64
@@ -284,7 +276,7 @@ func GetMaintenanceLogByID(c *fiber.Ctx) error {
 	}
 
 	var logEntry models.MaintenanceLog
-	if err := config.DB.Preload("Asset").Preload("User").First(&logEntry, "id = ?", id).Error; err != nil {
+	if err := config.DB.Preload("CCTV").Preload("User").First(&logEntry, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Log pemeliharaan tidak ditemukan",
@@ -329,6 +321,25 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
+	// SECURITY: Ownership check — Teknisi hanya boleh mengubah log miliknya
+	// sendiri. Admin diperbolehkan mengubah semua log.
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		techIDStr, ok := c.Locals("user_id").(string)
+		if !ok || techIDStr == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Sesi tidak valid, Teknisi tidak ditemukan",
+			})
+		}
+		if techIDStr != logEntry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat mengubah log pemeliharaan milik Anda sendiri",
+			})
+		}
+	}
+
 	var req UpdateMaintenanceLogRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -346,11 +357,12 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	// Update field jika disediakan
-	if req.AssetID != "" {
-		assetUUID, err := uuid.Parse(req.AssetID)
+	if req.CCTVID != "" {
+		cctvUUID, err := uuid.Parse(req.CCTVID)
 		if err == nil {
-			if _, resolveErr := resolveMaintenanceAsset(assetUUID); resolveErr == nil {
-				logEntry.AssetID = assetUUID
+			var cctv models.CCTV
+			if err := config.DB.First(&cctv, "id = ?", cctvUUID).Error; err == nil {
+				logEntry.CCTVID = cctvUUID
 			}
 		}
 	}
@@ -404,7 +416,10 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	config.DB.Preload("Asset").Preload("User").First(&logEntry, logEntry.ID)
+	utils.LogAudit(config.DB, c, "UPDATE_MAINTENANCE", "MAINTENANCE", "Memperbarui log pemeliharaan: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
+
+	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -466,6 +481,8 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
+	utils.LogAudit(config.DB, c, "DELETE_MAINTENANCE", "MAINTENANCE", "Menghapus log pemeliharaan: "+logEntry.ActionTaken, nil, "", "")
+
 	return c.JSON(fiber.Map{
 		"status":  "success",
 		"message": "Log pemeliharaan beserta lampiran foto berhasil dihapus",
@@ -478,8 +495,10 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 // @Tags         Log Pemeliharaan
 // @Produce      text/csv
 // @Security     BearerAuth
-// @Param        asset_id query string false "Filter berdasarkan UUID Aset"
+// @Param        cctv_id query string false "Filter berdasarkan UUID CCTV"
 // @Param        status query string false "Filter berdasarkan status log"
+// @Param        start_date query string false "Filter rentang awal (YYYY-MM-DD)"
+// @Param        end_date query string false "Filter rentang akhir (YYYY-MM-DD)"
 // @Param        search query string false "Cari tindakan (action_taken) atau catatan (notes)"
 // @Success      200 {file} string "File CSV Log Pemeliharaan"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
@@ -487,19 +506,38 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 // @Router       /maintenance-logs/export [get]
 func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
-	query := config.DB.Model(&models.MaintenanceLog{}).Preload("Asset").Preload("User")
+	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
 
-	// Filter berdasarkan asset_id
-	if assetID := c.Query("asset_id"); assetID != "" {
+	// SECURITY (Fase 3.9): Teknisi hanya boleh mengekspor data yang relevan
+	// untuk dirinya sendiri; admin berhak mengekspor seluruh data.
+	query = applyRoleScope(c, query)
+
+	// Filter berdasarkan cctv_id (dukung alias legacy asset_id)
+	if cctvID := c.Query("cctv_id"); cctvID != "" {
+		cctvUUID, err := uuid.Parse(cctvID)
+		if err == nil {
+			query = query.Where("cctv_id = ?", cctvUUID)
+		}
+	} else if assetID := c.Query("asset_id"); assetID != "" {
 		assetUUID, err := uuid.Parse(assetID)
 		if err == nil {
-			query = query.Where("asset_id = ?", assetUUID)
+			query = query.Where("cctv_id = ?", assetUUID)
 		}
 	}
 
 	// Filter berdasarkan status
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
+	}
+
+	// Filter rentang tanggal (created_at)
+	if start, end := utils.ParseDateRangeParams(c); start != nil || end != nil {
+		if start != nil {
+			query = query.Where("created_at >= ?", *start)
+		}
+		if end != nil {
+			query = query.Where("created_at < ?", *end)
+		}
 	}
 
 	// Pencarian teks
@@ -521,7 +559,7 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	writer.Comma = ','
 
 	// Header
-	header := []string{"ID", "Asset ID", "Nama Aset", "Serial Number Aset", "Technician ID", "Nama Teknisi", "Tindakan", "Catatan", "Status", "Tanggal Dijadwalkan", "Tanggal Selesai", "Tanggal Pembuatan"}
+	header := []string{"ID", "CCTV ID", "Nama CCTV", "Kode CCTV", "Technician ID", "Nama Teknisi", "Tindakan", "Catatan", "Status", "Tanggal Dijadwalkan", "Tanggal Selesai", "Tanggal Pembuatan"}
 	if err := writer.Write(header); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -542,9 +580,9 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 
 		row := []string{
 			logEntry.ID.String(),
-			logEntry.AssetID.String(),
-			logEntry.Asset.Name,
-			logEntry.Asset.SerialNumber,
+			logEntry.CCTVID.String(),
+			logEntry.CCTV.Nama,
+			logEntry.CCTV.KodeCCTV,
 			logEntry.TechnicianID.String(),
 			logEntry.User.FullName,
 			logEntry.ActionTaken,
@@ -576,4 +614,19 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	return c.Send(buf.Bytes())
+}
+
+// applyRoleScope membatasi query berdasarkan peran pengguna dari JWT.
+// Admin dapat melihat/mengekspor seluruh data; selain admin (teknisi) hanya
+// melihat/mengekspor log pemeliharaan miliknya sendiri.
+func applyRoleScope(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
+	if role, _ := c.Locals("role").(string); role == "admin" {
+		return query
+	}
+	techIDStr, _ := c.Locals("user_id").(string)
+	techUUID, err := uuid.Parse(techIDStr)
+	if err != nil {
+		return query.Where("1 = 0")
+	}
+	return query.Where("technician_id = ?", techUUID)
 }

@@ -30,31 +30,27 @@ type User struct {
 	FullName     string `gorm:"type:varchar(100);not null" json:"full_name"`
 	Email        string `gorm:"type:varchar(100);uniqueIndex;not null" json:"email"`
 	Role         string `gorm:"type:varchar(20);not null" json:"role"`
-}
-
-type Asset struct {
-	Base
-	Name             string    `gorm:"type:varchar(100);not null" json:"name"`
-	SerialNumber     string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"serial_number"`
-	IPAddress        string    `gorm:"type:varchar(45)" json:"ip_address"`
-	LocationName     string    `gorm:"type:varchar(255)" json:"location_name"`
-	Latitude         float64   `gorm:"type:decimal(10,8)" json:"latitude"`
-	Longitude        float64   `gorm:"type:decimal(11,8)" json:"longitude"`
-	Status           string    `gorm:"type:varchar(20);not null" json:"status"`
-	Vendor           string    `gorm:"type:varchar(100)" json:"vendor"`
-	InstallationDate time.Time `gorm:"type:date" json:"installation_date"`
+	// TokenVersion dipakai untuk mencabut semua token lama saat password
+	// di-reset atau role diubah oleh Admin (disematkan dalam klaim JWT "tv").
+	TokenVersion int64 `gorm:"type:integer;not null;default:1" json:"-"`
+	// MustChangePassword memaksa pengguna mengganti password saat login pertama
+	// (setelah akun dibuat / password di-reset oleh Admin). Ditandai false otomatis
+	// setelah pengguna berhasil mengganti password lewat /auth/change-password.
+	MustChangePassword bool `gorm:"type:boolean;not null;default:false" json:"must_change_password"`
 }
 
 type MaintenanceLog struct {
 	Base
-	AssetID       uuid.UUID  `gorm:"type:uuid;not null" json:"asset_id"`
-	Asset         Asset      `gorm:"foreignKey:AssetID" json:"asset"`
-	TechnicianID  uuid.UUID  `gorm:"type:uuid;not null" json:"technician_id"`
-	User          User       `gorm:"foreignKey:TechnicianID" json:"technician"`
-	ActionTaken   string     `gorm:"type:text;not null" json:"action_taken"`
-	Notes         string     `gorm:"type:text" json:"notes"`
-	Status        string     `gorm:"type:varchar(20);not null" json:"status"`
+	// CCTVID menunjuk langsung ke tabel cctvs — CCTV adalah satu-satunya sumber
+	// kebenaran aset (unifikasi model assets ↔ cctv, Fase 3.6).
+	CCTVID       uuid.UUID  `gorm:"type:uuid;index" json:"cctv_id"`
+	CCTV         CCTV       `gorm:"foreignKey:CCTVID" json:"cctv"`
+	TechnicianID uuid.UUID  `gorm:"type:uuid;not null" json:"technician_id"`
+	User         User       `gorm:"foreignKey:TechnicianID" json:"technician"`
+	ActionTaken  string     `gorm:"type:text;not null" json:"action_taken"`
+	Notes        string     `gorm:"type:text" json:"notes"`
+	Status       string     `gorm:"type:varchar(20);not null" json:"status"`
 	ScheduledDate *time.Time `json:"scheduled_date"`
-	CompletedAt   *time.Time `json:"completed_at"`
-	ImageUrl      string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at"`
+	ImageUrl     string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
 }

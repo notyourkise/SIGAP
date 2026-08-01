@@ -9,6 +9,7 @@ import (
 )
 
 func TestGenerateAndValidateToken_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
 	userID := "12345-abcde"
 	role := "admin"
 
@@ -27,9 +28,24 @@ func TestGenerateAndValidateToken_Success(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, userID, claims["user_id"])
 	assert.Equal(t, role, claims["role"])
+	// Versi token default adalah 1
+	assert.Equal(t, float64(1), claims["tv"])
+}
+
+func TestGenerateToken_WithTokenVersion(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	tokenString, err := GenerateToken("user-1", "teknisi", 5)
+	assert.NoError(t, err)
+
+	token, err := ValidateToken(tokenString)
+	assert.NoError(t, err)
+	claims, ok := token.Claims.(jwt.MapClaims)
+	assert.True(t, ok)
+	assert.Equal(t, float64(5), claims["tv"])
 }
 
 func TestValidateToken_InvalidSignature(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
 	// Token buatan manual dengan secret key yang salah
 	claims := jwt.MapClaims{
 		"user_id": "test-user",
@@ -47,6 +63,7 @@ func TestValidateToken_InvalidSignature(t *testing.T) {
 }
 
 func TestValidateToken_Expired(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
 	// Token yang sudah kadaluarsa (exp set di masa lalu)
 	claims := jwt.MapClaims{
 		"user_id": "test-user",

@@ -7,13 +7,22 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
-// GlobalLimiter membatasi maksimal 100 request per menit per IP
+// getClientIP mengembalikan IP klien yang sebenarnya.
+// Hanya membaca header proxy (X-Real-IP / X-Forwarded-For) bila koneksi datang
+// dari trusted proxy yang dikonfigurasi di main.go (app.SetTrustedProxies).
+// Tanpa trusted proxy, c.IP() mengembalikan IP peer langsung sehingga header
+// yang dipalsukan klien tidak berpengaruh (anti-spoofing).
+func getClientIP(c *fiber.Ctx) string {
+	return c.IP()
+}
+
+// GlobalLimiter membatasi maksimal 100 request per menit per IP (termasuk IP proxy)
 func GlobalLimiter() fiber.Handler {
 	return limiter.New(limiter.Config{
 		Max:        100,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			return c.IP()
+			return getClientIP(c)
 		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
@@ -25,12 +34,13 @@ func GlobalLimiter() fiber.Handler {
 }
 
 // AuthLimiter membatasi maksimal 5 request per menit per IP khusus rute login
+// Melindungi dari serangan brute force percobaan kata sandi
 func AuthLimiter() fiber.Handler {
 	return limiter.New(limiter.Config{
 		Max:        5,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			return c.IP()
+			return getClientIP(c)
 		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
