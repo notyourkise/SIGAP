@@ -19,7 +19,7 @@ type UpdateUserRequest struct {
 
 // ResetUserPasswordRequest mendefinisikan skema validasi untuk reset password paksa oleh Admin
 type ResetUserPasswordRequest struct {
-	NewPassword string `json:"new_password" validate:"required,min=6,max=100"`
+	NewPassword string `json:"new_password" validate:"required,min=8,max=100,strongpassword"`
 }
 
 // GetAllUsers mendapatkan daftar seluruh pengguna dengan paginasi, pencarian, dan penyaringan
@@ -167,6 +167,7 @@ func UpdateUser(c *fiber.Ctx) error {
 	}
 
 	// Update bidang-bidang jika diisi
+	roleChanged := false
 	if req.FullName != "" {
 		user.FullName = req.FullName
 	}
@@ -181,8 +182,15 @@ func UpdateUser(c *fiber.Ctx) error {
 		}
 		user.Email = req.Email
 	}
-	if req.Role != "" {
+	if req.Role != "" && req.Role != user.Role {
 		user.Role = req.Role
+		roleChanged = true
+	}
+
+	// SECURITY: Jika role diubah, naikkan versi token agar seluruh sesi lama
+	// (token JWT yang beredar) langsung dicabut dan user wajib login ulang.
+	if roleChanged {
+		user.TokenVersion++
 	}
 
 	if err := config.DB.Save(&user).Error; err != nil {
@@ -191,6 +199,8 @@ func UpdateUser(c *fiber.Ctx) error {
 			"message": "Gagal memperbarui pengguna",
 		})
 	}
+
+	utils.LogAudit(config.DB, c, "UPDATE_USER", "USER", "Memperbarui profil pengguna: "+user.Username+" ("+user.Role+")", nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
@@ -246,6 +256,8 @@ func DeleteUser(c *fiber.Ctx) error {
 			"message": "Gagal menghapus pengguna",
 		})
 	}
+
+	utils.LogAudit(config.DB, c, "DELETE_USER", "USER", "Menghapus akun pengguna: "+user.Username+" ("+user.Role+")", nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
@@ -313,12 +325,22 @@ func ResetUserPassword(c *fiber.Ctx) error {
 	}
 
 	user.PasswordHash = string(hashedPassword)
+
+	// SECURITY: Naikkan versi token agar seluruh sesi lama pengguna langsung
+	// dicabut setelah password di-reset.
+	user.TokenVersion++
+
+	// Paksa pengguna mengganti password pada login berikutnya.
+	user.MustChangePassword = true
+
 	if err := config.DB.Save(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menyimpan password baru ke database",
 		})
 	}
+
+	utils.LogAudit(config.DB, c, "RESET_PASSWORD", "USER", "Admin melakukan reset password paksa untuk pengguna: "+user.Username, nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",

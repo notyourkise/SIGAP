@@ -3,8 +3,10 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { API_BASE_URL, apiRequest, downloadApiFile } from '@/lib/api';
+import { apiRequest, downloadApiFile } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useWebSocket } from '@/context/WebSocketContext';
+import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { 
   Plus, 
   Trash2, 
@@ -13,22 +15,18 @@ import {
   Settings,
   X,
   Download,
+  FileText,
   Eye,
   Image as ImageIcon,
   LoaderCircle,
   ChevronDown
 } from 'lucide-react';
 
-interface Asset {
-  id: string;
-  name: string;
-  serial_number: string;
-}
-
 interface MasterCCTV {
   id: string;
   nama: string;
   kode_cctv: string;
+  lokasi_area?: string;
 }
 
 interface User {
@@ -38,8 +36,8 @@ interface User {
 
 interface MaintenanceLog {
   id: string;
-  asset_id: string;
-  asset: Asset;
+  cctv_id: string;
+  cctv: (MasterCCTV & { lokasi_area?: string }) | null;
   technician_id: string;
   technician: User; // mapped by GORM Preload("User") via json:"technician"
   action_taken: string;
@@ -66,10 +64,10 @@ export default function MaintenanceLogsPage() {
   const isAdmin = user?.role === 'admin';
 
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [cctvs, setCctvs] = useState<MasterCCTV[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [assetsError, setAssetsError] = useState('');
+  const [cctvsError, setCctvsError] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
     total_rows: 0,
@@ -80,7 +78,9 @@ export default function MaintenanceLogsPage() {
 
   // Filter State
   const [statusFilter, setStatusFilter] = useState('');
-  const [assetFilter, setAssetFilter] = useState('');
+  const [cctvFilter, setCctvFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -91,7 +91,7 @@ export default function MaintenanceLogsPage() {
 
   // Form State
   const [formData, setFormData] = useState({
-    asset_id: '',
+    cctv_id: '',
     action_taken: '',
     notes: '',
     status: 'completed',
@@ -106,7 +106,9 @@ export default function MaintenanceLogsPage() {
     try {
       const queryParams = [`page=${page}`, 'limit=10'];
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
-      if (assetFilter) queryParams.push(`asset_id=${encodeURIComponent(assetFilter)}`);
+      if (cctvFilter) queryParams.push(`cctv_id=${encodeURIComponent(cctvFilter)}`);
+      if (startDate) queryParams.push(`start_date=${encodeURIComponent(startDate)}`);
+      if (endDate) queryParams.push(`end_date=${encodeURIComponent(endDate)}`);
       
       const response = await apiRequest<MaintenanceLogsResponse>(`/maintenance-logs?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
@@ -123,25 +125,21 @@ export default function MaintenanceLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [assetFilter, page, statusFilter]);
+  }, [cctvFilter, page, statusFilter, startDate, endDate]);
 
-  const fetchAssetsList = useCallback(async () => {
-    setAssetsError('');
+  const fetchCCTVsList = useCallback(async () => {
+    setCctvsError('');
     try {
       const response = await apiRequest<MasterCCTV[] | { rows?: MasterCCTV[] }>('/cctv?page=1&limit=100');
       if (response.status === 'success' && response.data) {
         const rows: MasterCCTV[] = Array.isArray(response.data)
           ? response.data
           : (response.data.rows || []);
-        setAssets(rows.map((cctv) => ({
-          id: cctv.id,
-          name: cctv.nama,
-          serial_number: cctv.kode_cctv,
-        })));
+        setCctvs(rows);
       }
     } catch (err: unknown) {
-      setAssets([]);
-      setAssetsError(
+      setCctvs([]);
+      setCctvsError(
         err instanceof Error
           ? err.message
           : 'Daftar CCTV belum dapat dimuat. Muat ulang sebelum mencatat pemeliharaan.'
@@ -168,14 +166,26 @@ export default function MaintenanceLogsPage() {
 
     const loadAssets = async () => {
       await Promise.resolve();
-      if (!cancelled) await fetchAssetsList();
+      if (!cancelled) await fetchCCTVsList();
     };
 
     void loadAssets();
     return () => {
       cancelled = true;
     };
-  }, [fetchAssetsList]);
+  }, [fetchCCTVsList]);
+
+  const { subscribe } = useWebSocket();
+
+  useEffect(() => {
+    const unsubCreated = subscribe('MAINTENANCE_CREATED', () => fetchLogs());
+    const unsubUpdated = subscribe('MAINTENANCE_UPDATED', () => fetchLogs());
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+    };
+  }, [subscribe, fetchLogs]);
 
   useEffect(() => {
     if (!isModalOpen && !detailLog) return;
@@ -200,7 +210,7 @@ export default function MaintenanceLogsPage() {
     if (log) {
       setCurrentLog(log);
       setFormData({
-        asset_id: log.asset_id,
+        cctv_id: log.cctv_id,
         action_taken: log.action_taken,
         notes: log.notes || '',
         status: log.status,
@@ -211,7 +221,7 @@ export default function MaintenanceLogsPage() {
     } else {
       setCurrentLog(null);
       setFormData({
-        asset_id: assets.length > 0 ? assets[0].id : '',
+        cctv_id: cctvs.length > 0 ? cctvs[0].id : '',
         action_taken: '',
         notes: '',
         status: 'completed',
@@ -226,7 +236,7 @@ export default function MaintenanceLogsPage() {
 
   const handleSaveLog = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.asset_id) {
+    if (!formData.cctv_id) {
       alert('Pilih CCTV yang dipelihara.');
       return;
     }
@@ -277,7 +287,9 @@ export default function MaintenanceLogsPage() {
   const handleExport = async () => {
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
-    if (assetFilter) params.set('asset_id', assetFilter);
+    if (cctvFilter) params.set('cctv_id', cctvFilter);
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
     setActionLoading('export');
     try {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
@@ -288,7 +300,20 @@ export default function MaintenanceLogsPage() {
     }
   };
 
-  const uploadBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+  const handleReportPDF = async () => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set('status', statusFilter);
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    setActionLoading('pdf');
+    try {
+      await downloadApiFile(`/maintenance-logs/report-pdf?${params}`, 'laporan-pemeliharaan.pdf');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Laporan PDF belum dapat dibuat. Coba lagi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleDeleteLog = async (id: string) => {
     if (!confirm('Hapus catatan pemeliharaan ini? Catatan tidak akan ditampilkan lagi.')) return;
@@ -343,6 +368,10 @@ export default function MaintenanceLogsPage() {
             <p className="mt-1 max-w-2xl text-sm text-muted">Catat dan telusuri pekerjaan pemeliharaan CCTV.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button type="button" disabled={actionLoading !== null} onClick={handleReportPDF} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
+              {actionLoading === 'pdf' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              {actionLoading === 'pdf' ? 'Menyiapkan laporan…' : 'Laporan PDF'}
+            </button>
             <button type="button" disabled={actionLoading !== null} onClick={handleExport} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
               {actionLoading === 'export' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {actionLoading === 'export' ? 'Menyiapkan ekspor…' : 'Ekspor CSV'}
@@ -372,16 +401,16 @@ export default function MaintenanceLogsPage() {
             <label htmlFor="maintenance-cctv-filter" className="mb-1.5 block text-xs font-semibold text-muted">CCTV</label>
             <select
               id="maintenance-cctv-filter"
-              value={assetFilter}
+              value={cctvFilter}
               onChange={(e) => {
-                setAssetFilter(e.target.value);
+                setCctvFilter(e.target.value);
                 setPage(1);
               }}
               className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="">Semua CCTV</option>
-              {assets.map((asset) => (
-                <option key={asset.id} value={asset.id}>{asset.name}</option>
+              {cctvs.map((cctv) => (
+                <option key={cctv.id} value={cctv.id}>{cctv.nama}</option>
               ))}
             </select>
           </div>
@@ -404,9 +433,37 @@ export default function MaintenanceLogsPage() {
               <option value="failed">Gagal</option>
             </select>
           </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="maintenance-date-filter" className="mb-1.5 block text-xs font-semibold text-muted">Rentang tanggal pencatatan</label>
+            <div className="flex items-center gap-2">
+              <input
+                id="maintenance-date-filter"
+                type="date"
+                aria-label="Rentang tanggal mulai"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setPage(1);
+                }}
+                className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-xs text-muted">s.d.</span>
+              <input
+                type="date"
+                aria-label="Rentang tanggal akhir"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setPage(1);
+                }}
+                className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
         </div>
 
-        {assetsError && (
+        {cctvsError && (
           <div
             role="alert"
             className="m-4 flex flex-col gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
@@ -415,12 +472,12 @@ export default function MaintenanceLogsPage() {
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
               <div>
                 <p className="font-semibold text-foreground">Daftar CCTV belum tersedia</p>
-                <p className="mt-0.5 text-xs text-muted">{assetsError}</p>
+                <p className="mt-0.5 text-xs text-muted">{cctvsError}</p>
               </div>
             </div>
             <button
               type="button"
-              onClick={fetchAssetsList}
+              onClick={fetchCCTVsList}
               className="shrink-0 rounded-lg border border-warning/30 bg-card px-3 py-2 text-xs font-bold text-foreground transition-colors hover:border-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/40"
             >
               Coba lagi
@@ -449,9 +506,9 @@ export default function MaintenanceLogsPage() {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <Wrench className="h-10 w-10 text-muted/45" />
-            <h3 className="mt-3 text-base font-semibold">{statusFilter || assetFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
+            <h3 className="mt-3 text-base font-semibold">{statusFilter || cctvFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
             <p className="mt-1 max-w-sm text-xs text-muted">
-              {statusFilter || assetFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan “Catat Pemeliharaan” untuk membuat catatan pertama.'}
+              {statusFilter || cctvFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan “Catat Pemeliharaan” untuk membuat catatan pertama.'}
             </p>
           </div>
         ) : (
@@ -472,8 +529,8 @@ export default function MaintenanceLogsPage() {
                   {logs.map((log) => (
                     <tr key={log.id} className="transition-colors hover:bg-background/40">
                       <td className="px-5 py-4">
-                        <p className="font-semibold">{log.asset?.name || 'CCTV tidak tersedia'}</p>
-                        {log.asset?.serial_number && <p className="mt-0.5 font-mono text-xs text-muted">{log.asset.serial_number}</p>}
+                        <p className="font-semibold">{log.cctv?.nama || 'CCTV tidak tersedia'}</p>
+                        {log.cctv?.kode_cctv && <p className="mt-0.5 font-mono text-xs text-muted">{log.cctv.kode_cctv}</p>}
                       </td>
                       
                       <td className="max-w-xs px-5 py-4">
@@ -507,7 +564,7 @@ export default function MaintenanceLogsPage() {
                               disabled={actionLoading !== null}
                               className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-wait disabled:opacity-60"
                               title="Lihat detail pemeliharaan"
-                              aria-label={`Lihat detail pemeliharaan ${log.asset?.name || 'CCTV'}`}
+                              aria-label={`Lihat detail pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
                             >
                               {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
@@ -517,7 +574,7 @@ export default function MaintenanceLogsPage() {
                               disabled={actionLoading !== null}
                               className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                               title="Ubah catatan pemeliharaan"
-                              aria-label={`Ubah catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
+                              aria-label={`Ubah catatan pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
                             >
                               <Settings className="h-4 w-4" />
                             </button>
@@ -527,7 +584,7 @@ export default function MaintenanceLogsPage() {
                                 disabled={actionLoading !== null}
                                 className="rounded-lg p-2.5 text-muted transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40 disabled:cursor-wait disabled:opacity-60"
                                 title="Hapus catatan pemeliharaan"
-                                aria-label={`Hapus catatan pemeliharaan ${log.asset?.name || 'CCTV'}`}
+                                aria-label={`Hapus catatan pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
                               >
                                 {actionLoading === `delete-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>}
@@ -575,21 +632,21 @@ export default function MaintenanceLogsPage() {
               </div>
 
               <form onSubmit={handleSaveLog} className="space-y-4">
-                {/* Select Asset */}
+                {/* Select CCTV */}
                 <div>
-                  <label htmlFor="maintenance-asset" className="mb-1.5 block text-xs font-semibold text-muted">CCTV *</label>
+                  <label htmlFor="maintenance-cctv" className="mb-1.5 block text-xs font-semibold text-muted">CCTV *</label>
                   <select
-                    id="maintenance-asset"
-                    value={formData.asset_id}
-                    onChange={(e) => setFormData({...formData, asset_id: e.target.value})}
+                    id="maintenance-cctv"
+                    value={formData.cctv_id}
+                    onChange={(e) => setFormData({...formData, cctv_id: e.target.value})}
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                     required
                     disabled={!!currentLog}
                   >
                     <option value="" disabled>Pilih CCTV</option>
-                    {assets.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name} ({asset.serial_number})
+                    {cctvs.map((cctv) => (
+                      <option key={cctv.id} value={cctv.id}>
+                        {cctv.nama} ({cctv.kode_cctv})
                       </option>
                     ))}
                   </select>
@@ -724,7 +781,7 @@ export default function MaintenanceLogsPage() {
                 <div className="min-w-0">
                   <h3 id="maintenance-detail-title" className="text-xl font-bold tracking-[-0.015em]">Detail Pemeliharaan</h3>
                   <p className="mt-1 truncate font-mono text-xs font-semibold text-primary">
-                    {detailLog.asset?.serial_number || detailLog.asset?.name || 'CCTV tidak tersedia'}
+                    {detailLog.cctv?.kode_cctv || detailLog.cctv?.nama || 'CCTV tidak tersedia'}
                   </p>
                 </div>
                 <button type="button" autoFocus aria-label="Tutup detail pemeliharaan" onClick={() => setDetailLog(null)} className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"><X className="h-4 w-4" /></button>
@@ -732,7 +789,7 @@ export default function MaintenanceLogsPage() {
 
               <div className="mb-4 flex items-start justify-between gap-4 rounded-xl bg-background px-4 py-3">
                 <div>
-                  <p className="font-semibold">{detailLog.asset?.name || 'CCTV tidak tersedia'}</p>
+                  <p className="font-semibold">{detailLog.cctv?.nama || 'CCTV tidak tersedia'}</p>
                   <p className="mt-0.5 text-xs text-muted">{detailLog.technician?.full_name || 'Teknisi Sistem'}</p>
                 </div>
                 <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
@@ -769,8 +826,11 @@ export default function MaintenanceLogsPage() {
               {detailLog.image_url && (
                 <div className="mt-5">
                   <p className="mb-2 text-xs font-semibold text-muted">Foto bukti</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`${uploadBaseUrl}${detailLog.image_url}`} alt={`Bukti pemeliharaan ${detailLog.asset?.name || 'CCTV'}`} className="max-h-72 w-full rounded-xl border border-border bg-background object-contain" />
+                  <AuthenticatedImage
+                    imageUrl={detailLog.image_url}
+                    alt={`Bukti pemeliharaan ${detailLog.cctv?.nama || 'CCTV'}`}
+                    className="max-h-72 w-full rounded-xl border border-border bg-background object-contain"
+                  />
                 </div>
               )}
             </div>

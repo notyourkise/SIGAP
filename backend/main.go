@@ -10,12 +10,14 @@ import (
 	"sigap-backend/models"
 	"sigap-backend/routes"
 	"sigap-backend/utils"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/swagger"
+	"github.com/joho/godotenv"
 )
 
 // @title                      SIGAP API
@@ -28,11 +30,18 @@ import (
 // @name                       Authorization
 // @description                Format token JWT: Bearer <token_anda>
 func main() {
+	// Memuat environment variables dari file .env (jika ada)
+	_ = godotenv.Load(".env", "../.env")
+
 	// Inisialisasi Logger Terstruktur
 	utils.InitLogger()
 	defer func() {
 		_ = utils.Log.Sync() // Flush buffer log ke file
 	}()
+
+	// Validasi secret wajib sebelum server berjalan (tanpa fallback hardcoded)
+	requireEnv("JWT_SECRET")
+	requireEnv("AES_SECRET_KEY")
 
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
@@ -45,66 +54,118 @@ func main() {
 	// 2. Jalankan Auto-Migrate (Mencetak tabel otomatis ke PostgreSQL)
 	err := config.DB.AutoMigrate(
 		&models.User{},
-		&models.Asset{},
 		&models.MaintenanceLog{},
 		&models.CCTV{},
+		&models.AuditLog{},
 	)
 	if err != nil {
 		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
 	}
 	utils.Log.Info("✅ Migrasi tabel database berhasil!")
 
-	// Jalankan Seeder untuk Admin Default & Aset CCTV pertama kali
-	models.SeedAdmin(config.DB)
-	models.SeedAssets(config.DB)
+	// Migrasi data legacy: maintenance_logs.asset_id → cctv_id (Fase 3.6)
+	config.MigrateMaintenanceToCCTV(config.DB)
 
-	// 3. Inisialisasi Aplikasi Fiber
-	app := fiber.New()
+	// Jalankan Seeder untuk Admin Default pertama kali
+	models.SeedAdmin(config.DB)
+
+	// Jalankan goroutine cleanup JWT blacklist setiap 30 menit
+	// Membersihkan token expired agar tidak terjadi memory leak
+	utils.StartBlacklistCleanup(30 * time.Minute)
+	utils.Log.Info("🧹 JWT Blacklist cleanup goroutine diaktifkan (interval: 30 menit)")
+
+	// Jalankan goroutine cleanup file upload yatim (tidak direferensikan log) tiap 1 jam
+	handlers.StartUploadCleanup(config.DB, 1*time.Hour)
+	utils.Log.Info("🗂️ Upload orphan file cleanup goroutine diaktifkan (interval: 1 jam)")
+
+	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
+	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
+	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
+	// header proxy diabaikan (aman dari spoofing).
+	trustedProxies := []string{}
+	if trustedIPs := os.Getenv("TRUSTED_PROXY_IPS"); trustedIPs != "" {
+		for _, p := range strings.Split(trustedIPs, ",") {
+			if t := strings.TrimSpace(p); t != "" {
+				trustedProxies = append(trustedProxies, t)
+			}
+		}
+	}
+	app := fiber.New(fiber.Config{
+		EnableTrustedProxyCheck: len(trustedProxies) > 0,
+		TrustedProxies:          trustedProxies,
+	})
+	if len(trustedProxies) > 0 {
+		utils.Log.Info("🛡️ Trusted proxy aktif: " + strings.Join(trustedProxies, ", "))
+	} else {
+		utils.Log.Warn("⚠️ TRUSTED_PROXY_IPS tidak diset — header X-Forwarded-For/X-Real-IP TIDAK dipercaya. Set variabel ini bila aplikasi di belakang proxy (frontend Next.js/Nginx).")
+	}
 
 	// Pasang Custom Recovery Middleware paling awal untuk melindung server dari crash/panic
 	app.Use(middleware.Recovery())
 
-	// Pasang Middleware CORS untuk membolehkan request dari Frontend (misal port 3001 atau domain local)
+	// Pasang Middleware CORS: whitelist origin dari env (tanpa wildcard karena
+	// memakai cookie credentials). Default aman ke localhost:3001 bila tidak diset.
+	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3001"
+		utils.Log.Warn("⚠️ CORS_ALLOWED_ORIGINS tidak diset — menggunakan default http://localhost:3001. Set variabel ini untuk origin produksi.")
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		AllowOrigins:     allowedOrigins,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-CSRF-Token",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		AllowCredentials: true,
 	}))
 
 	// Pasang Custom Structured Logger menggunakan Zap
 	app.Use(middleware.ZapLogger())
 
-	// Rute Dokumentasi Swagger UI
-	app.Get("/swagger/*", swagger.HandlerDefault)
+	// Pasang Security Headers (X-Content-Type-Options, X-Frame-Options, dll)
+	app.Use(middleware.SecurityHeaders())
 
-	// Sajikan folder uploads sebagai direktori statis (untuk akses gambar lampiran foto)
-	app.Static("/uploads", "./uploads")
+	// SECURITY: Swagger UI hanya tersedia di environment non-production.
+	// Set APP_ENV=production di .env untuk menonaktifkan Swagger di production.
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv != "production" {
+		app.Get("/swagger/*", swagger.HandlerDefault)
+		utils.Log.Info("📖 Swagger UI aktif di /swagger/index.html (environment: " + appEnv + ")")
+	} else {
+		utils.Log.Info("🔒 Swagger UI dinonaktifkan di environment production")
+	}
+
+	// SECURITY: File uploads tidak lagi disajikan sebagai direktori statis publik.
+	// Akses ke file gambar sekarang melalui endpoint /api/uploads/:filename yang dilindungi JWT.
+	// app.Static("/uploads", "./uploads") <-- DIHAPUS demi keamanan
 
 	// 4. Setup Routes dengan Global Rate Limiting
-	api := app.Group("/api", middleware.GlobalLimiter())
+	// CSRFProtection melindungi permintaan mutasi yang terautentikasi via cookie.
+	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
 	routes.SetupAuthRoutes(api)
-	routes.SetupAssetRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
 	routes.SetupUserRoutes(api)
 	routes.SetupCCTVRoutes(api)
 	routes.SetupUploadRoutes(api)
+	routes.SetupAuditRoutes(api)
+	routes.SetupWebSocketRoutes(api)
+	routes.SetupDashboardRoutes(api)
 
-	// Rute Health Check
+	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)
 
-	// Rute Statistik Dashboard (membutuhkan autentikasi)
-	api.Get("/dashboard/stats", middleware.Protected(), handlers.GetDashboardStats)
-
-	// Rute Tes Panic Sementara untuk memvalidasi Auto-Recovery
-	api.Get("/test-panic", TestPanic)
-
-	// Rute Tes API Perdana
+	// Rute root API
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status":  "success",
 			"message": "Sistem SIGAP API Berjalan Lancar!",
 		})
 	})
+
+	// SECURITY: Endpoint test-panic HANYA tersedia di development environment
+	// Tidak pernah aktif di production untuk mencegah penyalahgunaan
+	if appEnv != "production" {
+		api.Get("/test-panic", TestPanic)
+		utils.Log.Warn("⚠️  Endpoint /api/test-panic aktif (hanya untuk development)")
+	}
 
 	// 5. Nyalakan Server di Goroutine agar tidak memblokir main thread
 	go func() {
@@ -140,13 +201,20 @@ func main() {
 	utils.Log.Info("👋 Server SIGAP berhasil dimatikan secara bersih.")
 }
 
-// TestPanic pemicu panic buatan untuk pengujian
-// @Summary      Pemicu Panic Buatan
-// @Description  Meminta server untuk melakukan panic sengaja demi menguji kinerja Auto-Recovery.
-// @Tags         Pengujian
+// requireEnv memastikan environment variable wajib tersedia; fatal jika kosong.
+func requireEnv(name string) {
+	if os.Getenv(name) == "" {
+		utils.Log.Fatalf("❌ Environment variable wajib tidak terisi: %s", name)
+	}
+}
+
+// TestPanic adalah handler pengujian sementara untuk memverifikasi fungsionalitas auto-recovery
+// @Summary      Tes Panic Recovery
+// @Description  Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).
+// @Tags         Utilitas
 // @Produce      json
-// @Success      500 {object} map[string]interface{} "Kembalian error internal seragam"
+// @Success      200 {object} map[string]interface{}
 // @Router       /test-panic [get]
 func TestPanic(c *fiber.Ctx) error {
-	panic("⚠️ Pemicu Panic Sengaja untuk Pengujian Auto-Recovery!")
+	panic("🔥 Ini adalah panic buatan untuk pengujian recovery middleware")
 }

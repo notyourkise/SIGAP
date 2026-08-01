@@ -5,27 +5,31 @@ import (
 	"os"
 	"time"
 
+	"sigap-backend/models"
+
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
-var jwtSecret []byte
-
+// getJWTSecret mengembalikan kunci JWT dari environment variable.
+// Tidak ada fallback hardcoded: kunci wajib disediakan via env (divalidasi di startup oleh requireEnv).
+// Mengembalikan slice kosong jika tidak diset agar signing/validasi gagal alih-alih memakai kunci publik yang diketahui.
 func getJWTSecret() []byte {
-	if len(jwtSecret) == 0 {
-		secret := os.Getenv("JWT_SECRET")
-		if secret == "" {
-			secret = "sigap_super_secret_key_default" // fallback
-		}
-		jwtSecret = []byte(secret)
-	}
-	return jwtSecret
+	return []byte(os.Getenv("JWT_SECRET"))
 }
 
-// GenerateToken membuat token JWT baru berisi user_id dan role
-func GenerateToken(userID string, role string) (string, error) {
+// GenerateToken membuat token JWT baru berisi user_id, role, dan versi token.
+// tokenVersion bersifat opsional; bila tidak diberikan, default 1.
+func GenerateToken(userID string, role string, tokenVersion ...int64) (string, error) {
+	version := int64(1)
+	if len(tokenVersion) > 0 {
+		version = tokenVersion[0]
+	}
+
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
+		"tv":      version,
 		"exp":     time.Now().Add(time.Hour * 24).Unix(), // Berlaku 24 jam
 	}
 
@@ -42,4 +46,32 @@ func ValidateToken(tokenString string) (*jwt.Token, error) {
 		}
 		return getJWTSecret(), nil
 	})
+}
+
+// ValidateTokenVersion memastikan versi token pada klaim ("tv") cocok dengan
+// versi token pengguna di database. Jika tidak cocok, token dianggap dicabut
+// (mis. saat password di-reset atau role diubah oleh Admin).
+func ValidateTokenVersion(db *gorm.DB, token *jwt.Token) error {
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return errors.New("klaim token tidak valid")
+	}
+
+	userID, ok := claims["user_id"].(string)
+	if !ok || userID == "" {
+		return errors.New("user_id tidak ditemukan dalam token")
+	}
+
+	tokenVersion, _ := claims["tv"].(float64)
+
+	var user models.User
+	if err := db.Select("token_version").First(&user, "id = ?", userID).Error; err != nil {
+		return errors.New("pengguna tidak ditemukan")
+	}
+
+	if int64(tokenVersion) != user.TokenVersion {
+		return errors.New("token telah dicabut")
+	}
+
+	return nil
 }

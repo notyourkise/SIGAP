@@ -1,10 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import DashboardAnalytics, { type DashboardSummary } from '@/components/DashboardAnalytics';
 import { useAuth } from '@/context/AuthContext';
+import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
+
+const CCTVMap = dynamic(() => import('@/components/CCTVMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[460px] w-full items-center justify-center rounded-3xl border border-border bg-card">
+      <div className="flex items-center gap-3">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="text-sm font-semibold text-muted">Memuat peta GIS IKN…</span>
+      </div>
+    </div>
+  ),
+});
 
 interface CCTV {
   id: string;
@@ -22,9 +37,9 @@ interface MaintenanceLog {
   status: 'scheduled' | 'ongoing' | 'completed' | 'failed';
   action_taken: string;
   created_at: string;
-  asset?: {
-    name?: string;
-    location_name?: string;
+  cctv?: {
+    nama?: string;
+    lokasi_area?: string;
   };
 }
 
@@ -33,6 +48,22 @@ interface PaginationPayload<T> {
   pagination: {
     total_rows: number;
   };
+}
+
+interface DashboardTask {
+  id: string;
+  cctv_name: string;
+  cctv_location: string;
+  status: 'scheduled' | 'ongoing';
+  action_taken: string;
+  scheduled_date: string;
+  days_overdue: number;
+}
+
+interface DashboardTasksResponse {
+  tasks: DashboardTask[];
+  pending_count: number;
+  overdue_count: number;
 }
 
 const normalizeStatus = (status: string) => status.trim().toUpperCase();
@@ -61,6 +92,8 @@ export default function DashboardPage() {
   const [selectedCctvPage, setSelectedCctvPage] = useState(1);
   const [selectedStatus, setSelectedStatus] = useState<MaintenanceLog['status'] | null>(null);
   const [health, setHealth] = useState<'Memeriksa' | 'Terhubung' | 'Tidak terhubung'>('Memeriksa');
+  const [analytics, setAnalytics] = useState<DashboardSummary | null>(null);
+  const [tasks, setTasks] = useState<DashboardTasksResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -69,10 +102,12 @@ export default function DashboardPage() {
     setError('');
     setHealth('Memeriksa');
     try {
-      const [cctvResult, maintenanceResult, healthResult] = await Promise.allSettled([
+      const [cctvResult, maintenanceResult, healthResult, summaryResult, tasksResult] = await Promise.allSettled([
         apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000&sort_by=nama&order=asc'),
         apiRequest<PaginationPayload<MaintenanceLog>>('/maintenance-logs?page=1&limit=100'),
         apiRequest<Record<string, unknown>>('/health'),
+        apiRequest<DashboardSummary>('/dashboard/summary'),
+        apiRequest<DashboardTasksResponse>('/dashboard/tasks'),
       ]);
 
       if (cctvResult.status === 'fulfilled') {
@@ -93,6 +128,14 @@ export default function DashboardPage() {
         setError((current) => current || (maintenanceResult.reason instanceof Error ? maintenanceResult.reason.message : 'Data pemeliharaan belum dapat dimuat. Muat ulang dashboard.'));
       }
 
+      if (summaryResult.status === 'fulfilled') {
+        setAnalytics(summaryResult.value.data ?? null);
+      }
+
+      if (tasksResult.status === 'fulfilled') {
+        setTasks(tasksResult.value.data ?? null);
+      }
+
       setHealth(healthResult.status === 'fulfilled' ? 'Terhubung' : 'Tidak terhubung');
     } finally {
       setLoading(false);
@@ -103,6 +146,20 @@ export default function DashboardPage() {
     const timer = setTimeout(loadDashboard, 0);
     return () => clearTimeout(timer);
   }, [loadDashboard]);
+
+  const { subscribe } = useWebSocket();
+
+  useEffect(() => {
+    const unsubCCTV = subscribe('CCTV_UPDATED', () => loadDashboard());
+    const unsubMaintCreated = subscribe('MAINTENANCE_CREATED', () => loadDashboard());
+    const unsubMaintUpdated = subscribe('MAINTENANCE_UPDATED', () => loadDashboard());
+
+    return () => {
+      unsubCCTV();
+      unsubMaintCreated();
+      unsubMaintUpdated();
+    };
+  }, [subscribe, loadDashboard]);
 
   const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
   const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
@@ -195,6 +252,86 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+            </section>
+
+            {/* Peta GIS Interaktif IKN */}
+            <section aria-label="Peta GIS Sebaran CCTV IKN">
+              <CCTVMap cctvs={cctvs} />
+            </section>
+
+            {/* Analitik: tren pemeliharaan, distribusi status, peringatan overdue */}
+            <DashboardAnalytics summary={analytics} loading={loading} />
+
+            {/* Tugas & Notifikasi: pekerjaan terjadwal/berjalan untuk teknisi */}
+            <section aria-labelledby="tasks-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 id="tasks-heading" className="text-base font-bold">
+                    {isAdmin ? 'Tugas Berjalan Semua Teknisi' : 'Tugas Saya'}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {isAdmin
+                      ? 'Pekerjaan terjadwal dan dalam proses di seluruh teknisi.'
+                      : 'Pekerjaan yang dijadwalkan untuk Anda, beserta prioritas yang melewati jadwal.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    {tasks?.pending_count ?? 0} tugas aktif
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-error/25 bg-error/10 px-3 py-1.5 text-error">
+                    <span className="h-2 w-2 rounded-full bg-error" />
+                    {tasks?.overdue_count ?? 0} terlambat
+                  </span>
+                </div>
+              </div>
+
+              {!tasks || tasks.tasks.length === 0 ? (
+                <p className="px-5 py-8 text-sm text-muted">
+                  Tidak ada tugas aktif saat ini.{isAdmin ? '' : ' Pekerjaan baru yang dijadwalkan untuk Anda akan tampil di sini.'}
+                </p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {tasks.tasks.map((task) => {
+                    const isOverdue = task.days_overdue > 0;
+                    return (
+                      <div key={task.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold" title={task.cctv_name}>
+                            {task.cctv_name || 'CCTV tidak tersedia'}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted" title={task.cctv_location || undefined}>
+                            {task.cctv_location || 'Lokasi belum dicatat'}
+                          </p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs text-muted" title={task.action_taken}>
+                            {task.action_taken || '—'}
+                          </p>
+                          <p className="mt-0.5 font-mono text-[11px] text-muted">
+                            {task.scheduled_date ? `Jadwal: ${task.scheduled_date}` : 'Belum ada jadwal'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isOverdue && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-error/25 bg-error/10 px-2.5 py-1 text-[11px] font-bold text-error">
+                              Terlambat {task.days_overdue} hari
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                            task.status === 'ongoing'
+                              ? 'border-warning/25 bg-warning/10 text-warning'
+                              : 'border-blue-500/25 bg-blue-500/10 text-blue-500'
+                          }`}>
+                            {statusLabel(task.status)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             {selectedCctvFilter && (
@@ -303,8 +440,8 @@ export default function DashboardPage() {
                       {selectedLogs.map((log) => (
                         <div key={log.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                           <div>
-                            <p className="text-sm font-semibold">{log.asset?.name || 'CCTV tidak tersedia'}</p>
-                            <p className="mt-0.5 text-xs text-muted">{log.asset?.location_name || 'Lokasi belum dicatat'}</p>
+                            <p className="text-sm font-semibold">{log.cctv?.nama || 'CCTV tidak tersedia'}</p>
+                            <p className="mt-0.5 text-xs text-muted">{log.cctv?.lokasi_area || 'Lokasi belum dicatat'}</p>
                           </div>
                           <p className="text-sm text-muted sm:text-right">{log.action_taken}</p>
                         </div>

@@ -26,3 +26,8 @@ Thumbs.db
 
 # Logs
 /backend/logs/
+
+# TLS Certificates (private keys jangan pernah di-commit)
+/nginx/certs/*.crt
+/nginx/certs/*.key
+/nginx/certs/*.pem

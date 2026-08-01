@@ -9,17 +9,26 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 )
 
-// deriveKey menghasilkan kunci 32-byte (AES-256) menggunakan SHA-256 dari AES_SECRET_KEY env
+// aesKey menyimpan kunci AES-256 yang sudah diderivasi.
+// Dihitung sekali saat pertama kali dibutuhkan, bukan setiap kali fungsi dipanggil.
+var (
+	aesKey     []byte
+	aesKeyOnce sync.Once
+)
+
+// deriveKey menghasilkan kunci 32-byte (AES-256) menggunakan SHA-256 dari AES_SECRET_KEY env.
+// Secret wajib disediakan via environment (divalidasi di startup oleh requireEnv).
+// Hasil derivasi di-cache menggunakan sync.Once untuk efisiensi.
 func deriveKey() []byte {
-	secret := os.Getenv("AES_SECRET_KEY")
-	if secret == "" {
-		// Fallback kunci default jika variabel lingkungan belum terdefinisi
-		secret = "sigap_super_secret_aes_key_fallback_32_bytes_cctv"
-	}
-	hash := sha256.Sum256([]byte(secret))
-	return hash[:]
+	aesKeyOnce.Do(func() {
+		secret := os.Getenv("AES_SECRET_KEY")
+		hash := sha256.Sum256([]byte(secret))
+		aesKey = hash[:]
+	})
+	return aesKey
 }
 
 // EncryptAES256 mengenkripsi string teks menjadi format hex terenkripsi (AES-256-GCM)

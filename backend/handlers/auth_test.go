@@ -27,7 +27,12 @@ func SetupTestDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
 		Conn: db,
-	}), &gorm.Config{})
+	}), &gorm.Config{
+		// SkipDefaultTransaction menghindari BEGIN/COMMIT otomatis GORM pada
+		// operasi tulis sehingga ekspektasi sqlmock hanya berisi query yang
+		// dipanggil handler (lebih sederhana & deterministik untuk diuji).
+		SkipDefaultTransaction: true,
+	})
 	if err != nil {
 		t.Fatalf("Gagal membuka koneksi database GORM: %s", err)
 	}
@@ -74,12 +79,30 @@ func TestLogin_Success(t *testing.T) {
 	assert.Equal(t, "success", result["status"])
 	data, ok := result["data"].(map[string]interface{})
 	assert.True(t, ok)
-	assert.NotEmpty(t, data["token"])
+	// Token JWT tidak lagi dikembalikan di body — digantikan cookie httpOnly + csrf_token
+	assert.Empty(t, data["token"])
+	assert.NotEmpty(t, data["csrf_token"])
 
 	userMap, ok := data["user"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, "admin", userMap["username"])
 	assert.Equal(t, "admin", userMap["role"])
+
+	// Verifikasi cookie sesi httpOnly & cookie CSRF diset pada respons login
+	cookies := resp.Cookies()
+	foundSession := false
+	foundCSRF := false
+	for _, ck := range cookies {
+		if ck.Name == "sigap_session" {
+			foundSession = true
+			assert.True(t, ck.HttpOnly, "cookie sesi wajib HttpOnly")
+		}
+		if ck.Name == "sigap_csrf" {
+			foundCSRF = true
+		}
+	}
+	assert.True(t, foundSession, "cookie sesi sigap_session harus diset")
+	assert.True(t, foundCSRF, "cookie CSRF sigap_csrf harus diset")
 
 	// Memastikan semua ekspektasi query mock terpenuhi
 	assert.NoError(t, mock.ExpectationsWereMet())

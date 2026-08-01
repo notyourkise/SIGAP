@@ -9,43 +9,22 @@
     "host": "localhost:3000",
     "basePath": "/api",
     "paths": {
-        "/assets": {
+        "/audit-logs": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan list seluruh aset CCTV terpaginasi dengan filter status, vendor, pencarian, dan sorting.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Mengembalikan daftar riwayat aktivitas sistem berdasarkan filter modul, rentang tanggal, pencarian, pengurutan, dan paginasi. Hanya bisa diakses oleh Admin.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Aset CCTV"
+                    "Audit Log"
                 ],
-                "summary": "Ambil Semua Aset CCTV",
+                "summary": "Mendapatkan Daftar Audit Log",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Filter Status (aktif, rusak, pemeliharaan, nonaktif)",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter Vendor",
-                        "name": "vendor",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cari nama, serial number, atau lokasi",
-                        "name": "search",
-                        "in": "query"
-                    },
                     {
                         "type": "integer",
                         "description": "Nomor Halaman (default: 1)",
@@ -54,92 +33,71 @@
                     },
                     {
                         "type": "integer",
-                        "description": "Jumlah data per halaman (default: 10)",
+                        "description": "Jumlah Data per Halaman (default: 10)",
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Kolom pengurutan (default: created_at)",
+                        "description": "Kolom Pengurutan (created_at, action, module, username)",
                         "name": "sort_by",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Arah pengurutan: asc, desc (default: desc)",
+                        "description": "Arah Pengurutan (asc, desc)",
                         "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan nama modul (AUTH, CCTV, ASSET, MAINTENANCE, USER)",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari berdasarkan username, action, description, atau ip_address",
+                        "name": "search",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Daftar aset terpaginasi",
+                        "description": "Sukses mendapatkan daftar audit log",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Membuat record aset CCTV baru. Hanya dapat diakses oleh Admin.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Aset CCTV"
-                ],
-                "summary": "Tambah Aset CCTV",
-                "parameters": [
-                    {
-                        "description": "Data Aset Baru",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.CreateAssetRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Aset berhasil dibuat",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Data kurang, serial number duplikat, status tidak valid",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "description": "Sesi tidak valid",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "403": {
-                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil data",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -148,50 +106,63 @@
                 }
             }
         },
-        "/assets/export": {
+        "/audit-logs/export": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengunduh seluruh aset CCTV terfilter (tanpa limit halaman) dalam format file CSV.",
+                "description": "Mengunduh seluruh riwayat aktivitas sistem terfilter (tanpa limit halaman) dalam format file CSV. Hanya bisa diakses oleh Admin.",
                 "produces": [
                     "text/csv"
                 ],
                 "tags": [
-                    "Aset CCTV"
+                    "Audit Log"
                 ],
-                "summary": "Ekspor Daftar Aset ke CSV",
+                "summary": "Ekspor Audit Log ke CSV",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter Status (aktif, rusak, pemeliharaan, nonaktif)",
-                        "name": "status",
+                        "description": "Filter berdasarkan nama modul",
+                        "name": "module",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter Vendor",
-                        "name": "vendor",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Cari nama, serial number, atau lokasi",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari berdasarkan username, action, description, atau ip_address",
                         "name": "search",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "File CSV Daftar Aset",
+                        "description": "File CSV Audit Log",
                         "schema": {
                             "type": "file"
                         }
                     },
                     "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -207,14 +178,14 @@
                 }
             }
         },
-        "/assets/{id}": {
-            "get": {
+        "/auth/change-password": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan detail satu aset CCTV berdasarkan UUID-nya.",
+                "description": "Mengganti password akun sendiri (self-service). Wajib menyertakan password lama.",
                 "consumes": [
                     "application/json"
                 ],
@@ -222,220 +193,30 @@
                     "application/json"
                 ],
                 "tags": [
-                    "Aset CCTV"
+                    "Autentikasi"
                 ],
-                "summary": "Ambil Aset CCTV Detail",
+                "summary": "Ganti Password Sendiri",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Asset UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Data aset ditemukan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "UUID tidak valid",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Aset tidak ditemukan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Memperbarui data aset CCTV tertentu. Hanya dapat diakses oleh Admin.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Aset CCTV"
-                ],
-                "summary": "Update Aset CCTV",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Asset UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Data Update Aset",
+                        "description": "Password lama \u0026 baru",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.UpdateAssetRequest"
+                            "$ref": "#/definitions/handlers.ChangePasswordRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Aset berhasil diperbarui",
+                        "description": "Password berhasil diubah, sesi baru diterbitkan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "UUID tidak valid, format body salah, atau serial number duplikat",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Aset tidak ditemukan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Menghapus aset CCTV (soft-delete). Hanya dapat diakses oleh Admin.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Aset CCTV"
-                ],
-                "summary": "Hapus Aset CCTV",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Asset UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Aset berhasil dihapus secara soft-delete",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "UUID tidak valid",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Aset tidak ditemukan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/assets/{id}/qrcode": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Membuat QR Code dalam format PNG berisi URL detail pemeliharaan aset CCTV tersebut untuk dipindai secara fisik oleh teknisi.",
-                "produces": [
-                    "image/png"
-                ],
-                "tags": [
-                    "Aset CCTV"
-                ],
-                "summary": "Unduh QR Code Aset CCTV",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Asset UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Gambar QR Code dalam format raw PNG",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "UUID tidak valid",
+                        "description": "Validasi input gagal / password lama salah / password baru sama",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -448,15 +229,8 @@
                             "additionalProperties": true
                         }
                     },
-                    "404": {
-                        "description": "Aset tidak ditemukan",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
                     "500": {
-                        "description": "Gagal memproses QR Code",
+                        "description": "Gagal menyimpan password baru",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -506,6 +280,133 @@
                     },
                     "401": {
                         "description": "Username atau password salah",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Merevoke token JWT aktif dan menambahkannya ke blacklist server. Token tidak dapat digunakan lagi setelah logout.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Autentikasi"
+                ],
+                "summary": "Logout Pengguna",
+                "responses": {
+                    "200": {
+                        "description": "Logout berhasil, token diinvalidasi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Token tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan data profil lengkap pengguna yang sedang terautentikasi berdasarkan token JWT.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Autentikasi"
+                ],
+                "summary": "Profil Pengguna Saat Ini",
+                "responses": {
+                    "200": {
+                        "description": "Data profil pengguna",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/profile": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah nama tampilan (full_name) dari pengguna yang sedang login.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Autentikasi"
+                ],
+                "summary": "Perbarui Profil Sendiri",
+                "parameters": [
+                    {
+                        "description": "Data Profil yang diperbarui",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateMyProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Profil berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format/validasi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Pengguna tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1096,37 +997,140 @@
                 }
             }
         },
-        "/dashboard/stats": {
+        "/cctv/{id}/qrcode": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan ringkasan data agregat: total aset, jumlah per status, total log pemeliharaan, aktivitas bulan ini, dan jumlah pengguna.",
+                "description": "Membuat QR Code dalam format PNG berisi payload QR terenkripsi (AES-256) milik perangkat CCTV. Hasil pindaian QR ini dapat diidentifikasi melalui endpoint /cctv/scan.",
                 "produces": [
-                    "application/json"
+                    "image/png"
                 ],
                 "tags": [
-                    "Dashboard"
+                    "Master CCTV"
                 ],
-                "summary": "Statistik Dashboard",
+                "summary": "Unduh QR Code CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Statistik berhasil diambil",
+                        "description": "Gambar QR Code dalam format raw PNG",
                         "schema": {
-                            "$ref": "#/definitions/handlers.DashboardStatsResponse"
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "401": {
-                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "500": {
-                        "description": "Gagal mengambil statistik",
+                        "description": "Gagal memproses QR Code",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/dashboard/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan distribusi status CCTV, tren pemeliharaan 6 bulan terakhir,",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Ringkasan Analitik Dashboard",
+                "responses": {
+                    "200": {
+                        "description": "Ringkasan analitik dashboard",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat data dashboard",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/dashboard/tasks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan tugas pemeliharaan berstatus terjadwal/berjalan milik teknisi",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Tugas \u0026 Notifikasi Teknisi",
+                "responses": {
+                    "200": {
+                        "description": "Daftar tugas aktif + ringkasan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat tugas",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1170,7 +1174,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan list riwayat pemeliharaan CCTV terpaginasi dengan filter asset_id, status, pencarian, dan sorting.",
+                "description": "Mendapatkan list riwayat pemeliharaan CCTV terpaginasi dengan filter cctv_id, status, pencarian, dan sorting.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1184,14 +1188,26 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter berdasarkan UUID Aset",
-                        "name": "asset_id",
+                        "description": "Filter berdasarkan UUID CCTV",
+                        "name": "cctv_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
                         "description": "Filter berdasarkan status log",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     },
                     {
@@ -1313,14 +1329,26 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter berdasarkan UUID Aset",
-                        "name": "asset_id",
+                        "description": "Filter berdasarkan UUID CCTV",
+                        "name": "cctv_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
                         "description": "Filter berdasarkan status log",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     },
                     {
@@ -1346,6 +1374,65 @@
                     },
                     "500": {
                         "description": "Gagal mengekspor data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/maintenance-logs/report-pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter status dan rentang tanggal.",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Log Pemeliharaan"
+                ],
+                "summary": "Laporan Pemeliharaan CCTV (PDF)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan status log",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File PDF Laporan Pemeliharaan",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membuat laporan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1545,17 +1632,17 @@
         },
         "/test-panic": {
             "get": {
-                "description": "Meminta server untuk melakukan panic sengaja demi menguji kinerja Auto-Recovery.",
+                "description": "Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Pengujian"
+                    "Utilitas"
                 ],
-                "summary": "Pemicu Panic Buatan",
+                "summary": "Tes Panic Recovery",
                 "responses": {
-                    "500": {
-                        "description": "Kembalian error internal seragam",
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1571,7 +1658,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti pemeliharaan CCTV. Mengembalikan URL path file yang bisa disimpan ke field image_url pada log pemeliharaan.",
+                "description": "Mengunggah file gambar (JPEG/PNG/WebP, maks 2MB) sebagai bukti pemeliharaan CCTV. Gambar di-decode ulang dan dinormalisasi ke JPEG sehingga seluruh metadata EXIF (termasuk lokasi GPS) ikut terhapus demi privasi. Mengembalikan URL path file yang bisa disimpan ke field image_url pada log pemeliharaan.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -1600,7 +1687,7 @@
                         }
                     },
                     "400": {
-                        "description": "Tidak ada file / tipe tidak valid / ukuran melebihi batas",
+                        "description": "Tidak ada file / tipe tidak valid / ukuran melebihi batas / gagal decode",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1615,6 +1702,63 @@
                     },
                     "500": {
                         "description": "Gagal menyimpan file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/uploads/{filename}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengambil file gambar yang sudah diunggah berdasarkan nama file. Memerlukan autentikasi JWT.",
+                "produces": [
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp"
+                ],
+                "tags": [
+                    "Upload"
+                ],
+                "summary": "Ambil File Foto Pemeliharaan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nama file gambar (UUID.ext)",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File gambar",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Nama file tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1994,55 +2138,66 @@
                     }
                 }
             }
+        },
+        "/ws": {
+            "get": {
+                "description": "Membuka koneksi bi-directional WebSocket real-time untuk menerima siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED, AUDIT_LOG_ADDED). Autentikasi wajib: sertakan token JWT sebagai query parameter `token`.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebSocket"
+                ],
+                "summary": "Koneksi Real-time WebSocket Broadcast",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token JWT (Bearer) untuk autentikasi",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols ke WebSocket",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Header Upgrade: websocket wajib dikirimkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Token tidak valid / tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "handlers.CreateAssetRequest": {
+        "handlers.ChangePasswordRequest": {
             "type": "object",
             "required": [
-                "name",
-                "serial_number",
-                "status"
+                "new_password",
+                "old_password"
             ],
             "properties": {
-                "installation_date": {
-                    "description": "format: YYYY-MM-DD",
-                    "type": "string"
-                },
-                "ip_address": {
-                    "type": "string"
-                },
-                "latitude": {
-                    "type": "number"
-                },
-                "location_name": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "longitude": {
-                    "type": "number"
-                },
-                "name": {
+                "new_password": {
                     "type": "string",
                     "maxLength": 100,
-                    "minLength": 3
+                    "minLength": 8
                 },
-                "serial_number": {
-                    "type": "string",
-                    "maxLength": 100
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "aktif",
-                        "rusak",
-                        "pemeliharaan",
-                        "nonaktif"
-                    ]
-                },
-                "vendor": {
-                    "type": "string",
-                    "maxLength": 100
+                "old_password": {
+                    "type": "string"
                 }
             }
         },
@@ -2129,7 +2284,7 @@
             "type": "object",
             "required": [
                 "action_taken",
-                "asset_id",
+                "cctv_id",
                 "status"
             ],
             "properties": {
@@ -2137,7 +2292,7 @@
                     "type": "string",
                     "minLength": 5
                 },
-                "asset_id": {
+                "cctv_id": {
                     "type": "string"
                 },
                 "completed_at": {
@@ -2184,7 +2339,8 @@
                 },
                 "password": {
                     "type": "string",
-                    "minLength": 6
+                    "maxLength": 100,
+                    "minLength": 8
                 },
                 "role": {
                     "type": "string",
@@ -2197,38 +2353,6 @@
                     "type": "string",
                     "maxLength": 50,
                     "minLength": 4
-                }
-            }
-        },
-        "handlers.DashboardStatsResponse": {
-            "type": "object",
-            "properties": {
-                "assets_by_status": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handlers.StatusCount"
-                    }
-                },
-                "logs_completed_this_month": {
-                    "type": "integer"
-                },
-                "logs_pending_this_month": {
-                    "type": "integer"
-                },
-                "logs_this_month": {
-                    "type": "integer"
-                },
-                "timestamp": {
-                    "type": "string"
-                },
-                "total_assets": {
-                    "type": "integer"
-                },
-                "total_maintenance_logs": {
-                    "type": "integer"
-                },
-                "total_users": {
-                    "type": "integer"
                 }
             }
         },
@@ -2256,7 +2380,7 @@
                 "new_password": {
                     "type": "string",
                     "maxLength": 100,
-                    "minLength": 6
+                    "minLength": 8
                 }
             }
         },
@@ -2268,61 +2392,6 @@
             "properties": {
                 "qr_payload": {
                     "type": "string"
-                }
-            }
-        },
-        "handlers.StatusCount": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.UpdateAssetRequest": {
-            "type": "object",
-            "properties": {
-                "installation_date": {
-                    "description": "format: YYYY-MM-DD",
-                    "type": "string"
-                },
-                "ip_address": {
-                    "type": "string"
-                },
-                "latitude": {
-                    "type": "number"
-                },
-                "location_name": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "longitude": {
-                    "type": "number"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 3
-                },
-                "serial_number": {
-                    "type": "string",
-                    "maxLength": 100
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "aktif",
-                        "rusak",
-                        "pemeliharaan",
-                        "nonaktif"
-                    ]
-                },
-                "vendor": {
-                    "type": "string",
-                    "maxLength": 100
                 }
             }
         },
@@ -2407,7 +2476,7 @@
                     "type": "string",
                     "minLength": 5
                 },
-                "asset_id": {
+                "cctv_id": {
                     "type": "string"
                 },
                 "completed_at": {
@@ -2433,6 +2502,19 @@
                         "completed",
                         "failed"
                     ]
+                }
+            }
+        },
+        "handlers.UpdateMyProfileRequest": {
+            "type": "object",
+            "required": [
+                "full_name"
+            ],
+            "properties": {
+                "full_name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 2
                 }
             }
         },

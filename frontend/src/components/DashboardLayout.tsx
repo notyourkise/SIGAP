@@ -17,7 +17,8 @@ import {
   LayoutDashboard,
   Users,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -71,7 +72,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
     { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
     ...(user?.role === 'admin'
-      ? [{ name: 'Manajemen Pengguna', href: '/users', icon: Users }]
+      ? [
+          { name: 'Manajemen Pengguna', href: '/users', icon: Users },
+          { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
+        ]
       : []),
   ];
 
@@ -194,9 +198,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* User Profile Card */}
             {user && (
-              <div
+              <Link
+                href="/profile"
                 title={isSidebarCollapsed ? `${user.full_name} · ${user.role}` : undefined}
-                className={`flex items-center gap-3 rounded-2xl border border-border bg-background ${isSidebarCollapsed ? 'md:justify-center md:p-2.5' : 'p-3'}`}
+                className={`flex items-center gap-3 rounded-2xl border border-border bg-background transition-colors hover:border-primary/30 ${isSidebarCollapsed ? 'md:justify-center md:p-2.5' : 'p-3'}`}
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/20 text-[#775800] dark:text-accent">
                   <UserIcon className="h-5 w-5" />
@@ -211,7 +216,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {user.role}
                   </span>
                 </div>
-              </div>
+              </Link>
             )}
 
             {/* Navigation links */}

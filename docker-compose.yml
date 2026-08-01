@@ -1,4 +1,17 @@
-version: "3.9"
+# ==========================================
+# SIGAP — Docker Compose (Hardened, lihat docs/SECURITY-AUDIT.md temuan 12)
+# ==========================================
+# Perubahan keamanan (Fase 2.6):
+#   - Quick tunnel (cloudflared) DIHAPUS  -> diganti reverse proxy Nginx + TLS
+#   - Port database 5432 TIDAK dipublish  -> hanya diakses dari dalam network
+#   - Port backend 3000 / frontend 3000 TIDAK dipublish -> hanya lewat Nginx
+#   - Kredensial DB dibaca dari root .env (secret management), TIDAK di-hardcode
+#
+# Cara pakai:
+#   1. cp backend/.env.docker.example backend/.env.docker  lalu isi secret
+#   2. cp .env.example .env  lalu isi POSTGRES_PASSWORD (wajib, :? memaksa)
+#   3. Buat sertifikat TLS di nginx/certs (lihat nginx/certs/README.md)
+#   4. docker compose up -d --build
 
 services:
   # ==========================================
@@ -9,16 +22,17 @@ services:
     container_name: sigap_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: sigap_user
-      POSTGRES_PASSWORD: sigap_password_aman
-      POSTGRES_DB: sigap_db
+      POSTGRES_USER: ${POSTGRES_USER:-sigap_user}
+      # :? memaksa nilai harus terisi di root .env (mencegah kredensial default bocor)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di root .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sigap_db}
     volumes:
       # Named Volume untuk menyimpan data PostgreSQL agar persisten
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # SECURITY: port 5432 TIDAK dipublish ke host — database hanya dapat
+    # diakses dari dalam jaringan Docker (oleh service api).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sigap_user -d sigap_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sigap_user} -d ${POSTGRES_DB:-sigap_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,8 +51,7 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env.docker
-    ports:
-      - "3000:3000"
+    # SECURITY: port 3000 TIDAK dipublish — hanya diakses via reverse proxy (Nginx).
     depends_on:
       db:
         condition: service_healthy
@@ -57,15 +70,39 @@ services:
       dockerfile: Dockerfile
     container_name: sigap_frontend
     restart: unless-stopped
-    ports:
-      - "3001:3000"
     environment:
-      # URL API Backend yang diakses oleh browser client
-      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+      # URL backend internal untuk Next.js rewrites (fallback; di produksi
+      # reverse proxy Nginx yang menangani /api langsung ke service api).
+      - INTERNAL_BACKEND_URL=http://api:3000
     depends_on:
       - api
     networks:
       - sigap_network
+
+  # ==========================================
+  # Service 4: Reverse Proxy Nginx (TLS)
+  # ==========================================
+  # Menggantikan Cloudflare quick tunnel. Terminasi TLS, security headers,
+  # dan routing: /api/* (termasuk /api/ws WebSocket) -> api, sisanya -> frontend.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sigap_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      sigap_network:
+        # IP statis untuk daftar trusted proxy backend (lihat .env.docker →
+        # TRUSTED_PROXY_IPS=172.28.0.10) agar header X-Forwarded-For tidak bisa
+        # dipalsukan oleh container lain.
+        ipv4_address: 172.28.0.10
 
 # ==========================================
 # Named Volumes
@@ -77,6 +114,10 @@ volumes:
 # ==========================================
 # Networks
 # ==========================================
+# Subnet ditentukan secara eksplisit agar IP statis nginx valid.
 networks:
   sigap_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

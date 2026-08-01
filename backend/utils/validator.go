@@ -7,6 +7,29 @@ import (
 // Global validator instance
 var Validate = validator.New()
 
+// init mendaftarkan validasi custom kebijakan password (Fase 2.9):
+// password harus mengandung minimal 1 huruf besar, 1 huruf kecil,
+// 1 angka, dan 1 karakter khusus.
+func init() {
+	_ = Validate.RegisterValidation("strongpassword", func(fl validator.FieldLevel) bool {
+		pw := fl.Field().String()
+		var hasUpper, hasLower, hasDigit, hasSpecial bool
+		for _, r := range pw {
+			switch {
+			case r >= 'A' && r <= 'Z':
+				hasUpper = true
+			case r >= 'a' && r <= 'z':
+				hasLower = true
+			case r >= '0' && r <= '9':
+				hasDigit = true
+			default:
+				hasSpecial = true
+			}
+		}
+		return hasUpper && hasLower && hasDigit && hasSpecial
+	})
+}
+
 // ValidationError mendefinisikan format error validasi per field
 type ValidationError struct {
 	Field string `json:"field"`

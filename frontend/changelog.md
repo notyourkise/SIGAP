@@ -1,5 +1,234 @@
 # Changelog - Frontend SIGAP
 
+## [0.9.0] - 2026-08-01
+
+### Fitur Kapabilitas Fase 3 (ROADMAP 3.1 - 3.9)
+
+perubahan yang dilakukan: **Dashboard analitik, notifikasi tugas teknisi, halaman profil, filter rentang tanggal, ekspor CSV/PDF**
+before:
+- Belum ada dashboard analitik; halaman utama setelah login belum menampilkan statistik/tren/peringatan.
+- Teknisi tidak mendapat ringkasan tugas; belum ada halaman profil.
+- List & ekspor maintenance/audit-log tanpa filter rentang tanggal.
+- Belum ada tombol unduh laporan PDF maupun ekspor audit-log.
+after:
+- **Dashboard analitik (3.3):** halaman `/dashboard` menampilkan statistik (total CCTV, log, selesai, terlambat), tren pemeliharaan, distribusi status, dan daftar CCTV overdue via `DashboardStats`/`DashboardAnalytics`.
+- **Notifikasi tugas (3.4):** section "Tugas Anda" di dashboard dengan badge tugas aktif/terlambat, memakai `GET /dashboard/tasks`.
+- **Halaman profil (3.5):** `/profile` untuk mengubah nama tampilan (`PUT /auth/profile`); kartu profil di sidebar menjadi link.
+- **Unifikasi CCTV (3.6):** seluruh tampilan maintenance memakai `cctv_id`/`cctv` (nama, kode, lokasi) menggantikan `asset`; filter CCTV pada form & list.
+- **Filter rentang tanggal & ekspor (3.7):** input `start_date`/`end_date` pada halaman maintenance & audit-logs; tombol "Laporan PDF" dan "Ekspor CSV" (via `downloadApiFile`).
+- **Upload foto (3.8):** server kini menormalkan semua upload ke JPEG dan menghapus metadata GPS; UX tampilan lampiran tetap memakai `AuthenticatedImage`.
+- **Ekspor per role (3.9):** tombol ekspor/laporan pada maintenance mengikuti scope data backend sesuai role (teknisi = data miliknya).
+timestamp: 2026-08-01 14:30 WITA
+kategori: Feature, Dashboard, UI/UX, PDF, Export
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx (3.3, 3.4)
+- frontend/src/components/DashboardAnalytics.tsx (3.3)
+- frontend/src/components/DashboardStats.tsx (3.3)
+- frontend/src/app/profile/page.tsx (baru, 3.5)
+- frontend/src/context/AuthContext.tsx (3.5)
+- frontend/src/components/DashboardLayout.tsx (3.5)
+- frontend/src/app/maintenance/page.tsx (3.6, 3.7, 3.8)
+- frontend/src/app/audit-logs/page.tsx (3.7)
+- frontend/changelog.md
+alasan perubahan: Menyelesaikan ROADMAP Fase 3 (fitur kapabilitas) dan menyesuaikan tampilan dengan unifikasi model CCTV.
+
+---
+
+## [0.8.0] - 2026-08-01
+
+### Hardening Keamanan Fase 2 (Security Audit & Roadmap)
+
+perubahan yang dilakukan: **Migrasi Auth ke Cookie httpOnly + CSRF, Pengetatan Kebijakan Password**
+before:
+- Token JWT disimpan di `localStorage` (`sigap_token`/`sigap_user`) dan dikirim via header `Authorization` sehingga rentan terhadap XSS token theft.
+- Mutasi terautentikasi (POST/PUT/DELETE) tidak mengirimkan token CSRF, dan beberapa fetch mentah (QR, import, download template) memakai `localStorage` token secara langsung.
+- Form kata sandi (buat/reset user) hanya membatasi `minLength=6`.
+after:
+- **Auth berbasis cookie httpOnly:** seluruh request API memakai `credentials:'include'`; token JWT otomatis dikirim via cookie `sigap_session` oleh browser (tidak lagi di `localStorage`).
+- **CSRF double-submit:** `apiRequest` otomatis membaca cookie `sigap_csrf` dan mengirim header `X-CSRF-Token` untuk semua mutasi (`POST/PUT/PATCH/DELETE`).
+- **Sesi terkelola via backend:** bootstrap sesi lewat `GET /auth/me`; event `sigap:auth-expired` di-dispatch saat 401 untuk reset state & redirect `/login`; helper `getCookie`, `clearAuthCookies`, `downloadApiFile` (dengan credentials) ditambahkan.
+- `AuthContextType` tidak lagi mengekspos `token`; `WebSocketContext` tidak lagi mengirim `?token=` (browser mengirim cookie), `AuthenticatedImage` & seluruh fetch mentah di `cctv/page.tsx` memakai `credentials:'include'`.
+- **Kebijakan password:** form buat/reset pengguna kini `minLength=8` (backend menerapkan kompleksitas minimal).
+timestamp: 2026-08-01 13:45 WITA
+kategori: Security, Auth, Hardening, API
+file yang diubah:
+- frontend/src/lib/api.ts
+- frontend/src/context/AuthContext.tsx
+- frontend/src/context/WebSocketContext.tsx
+- frontend/src/app/login/page.tsx
+- frontend/src/app/users/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/components/AuthenticatedImage.tsx
+- frontend/changelog.md
+alasan perubahan: Menutup temuan Fase 2 (docs/SECURITY-AUDIT.md) terkait penyimpanan token di localStorage, ketiadaan CSRF protection, dan kebijakan password lemah.
+
+---
+
+## [0.7.0] - 2026-08-01
+
+### Hardening Keamanan Fase 1 (Security Audit & Roadmap)
+
+perubahan yang dilakukan: **Perbaikan Stored XSS pada Cetak Label QR & Migrasi QR ke Server-side**
+before:
+- Cetak label QR (tunggal & batch) memakai `window.open().document.write()` dengan interpolasi mentah `nama`, `kode_cctv`, dan `lokasi_area` dari database (risiko Stored XSS — eksekusi skrip berbahaya saat mencetak).
+- Gambar QR dibuat via API pihak ketiga `api.qrserver.com` dengan mengirim `QrPayload` terenkripsi ke server eksternal (kebocoran data & dependensi layanan luar yang tidak terautentikasi).
+- Koneksi WebSocket tidak mengirimkan token sehingga backend tidak dapat mengautentikasi client.
+after:
+- Cetak label QR dirender ulang sebagai elemen React (bukan `document.write`); seluruh teks (nama, kode, lokasi) di-*escape* otomatis oleh React sehingga Stored XSS tertutup.
+- Area cetak dirender via portal ke `document.body` (`#sigap-print-area`) dan hanya ditampilkan saat mencetak (`@media print`), dengan ukuran halaman `100mm × 38mm` (label tunggal) atau A4 (batch).
+- Gambar QR ditampilkan dari endpoint server `GET /api/cctv/:id/qrcode` (dengan header `Authorization`), di-cache per perangkat, menggantikan `api.qrserver.com`.
+- Koneksi WebSocket kini mengirim `?token=` dari `AuthContext` saat handshake.
+timestamp: 2026-08-01 15:30 WITA
+kategori: Security, Bugfix, UI/UX, API
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/globals.css
+- frontend/src/context/WebSocketContext.tsx
+- frontend/changelog.md
+alasan perubahan: Menutup temuan kritis Stored XSS (docs/SECURITY-AUDIT.md) dan menghilangkan ketergantungan pada layanan QR eksternal, sekaligus mengamankan handshake WebSocket.
+
+---
+
+## [0.6.0] - 2026-08-01
+
+### Dashboard Peta Interaktif GIS (Leaflet.js)
+
+perubahan yang dilakukan: **Integrasi Komponen CCTVMap.tsx Berbasis Leaflet.js & OpenStreetMap IKN**
+before:
+- Halaman dashboard tidak memiliki visualisasi peta geografis sebaran perangkat CCTV di kawasan IKN.
+after:
+- Mengintegrasikan pustaka `leaflet` & `react-leaflet` dengan *dynamic import SSR-safe* (`next/dynamic` dengan `{ ssr: false }`).
+- Dibuat komponen `CCTVMap.tsx` di `src/components/CCTVMap.tsx` yang memvisualisasikan seluruh perangkat CCTV terpusat di kawasan **IKN Nusantara** (`-0.9723, 116.7083`).
+- Menyiapkan SVG DivIcon kustom ber-kode warna status: 🟢 **Aktif**, 🔴 **Nonaktif/Rusak**, 🟡 **Pemeliharaan**.
+- Menambahkan **Interactive Popup Card** dan **Tooltip** yang menyajikan Nama CCTV, Kode, Lokasi, IP Kamera, Status, dan tombol pintas ke Master CCTV.
+- Diintegrasikan ke halaman `src/app/dashboard/page.tsx`.
+timestamp: 2026-08-01 01:44 WITA
+kategori: Feature, GIS, UI/UX, Map
+file yang diubah:
+- frontend/package.json
+- frontend/src/components/CCTVMap.tsx (baru)
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+alasan perubahan: Menyajikan pemantauan visual spasial berbasis GIS untuk membantu pengelola sistem melihat sebaran posisi dan kondisi operasional perangkat CCTV di kawasan IKN secara cepat.
+
+---
+
+## [0.5.0] - 2026-08-01
+
+### Audit Log Viewer UI (Admin Trail Exploration)
+
+perubahan yang dilakukan: **Pembuatan Halaman Master Audit Log Trail & Navigasi Sidebar**
+before:
+- Tidak ada halaman antarmuka frontend untuk melihat rekam jejak audit trail aktivitas sistem yang dikumpulkan oleh backend.
+after:
+- Dibuat halaman master `src/app/audit-logs/page.tsx` khusus untuk peran Admin dengan proteksi RBAC.
+- Diintegrasikan ke endpoint `GET /api/audit-logs` dengan dukungan paginasi, pencarian kata kunci (*search*), dan penyaringan berdasarkan modul (`AUTH`, `CCTV`, `ASSET`, `MAINTENANCE`, `USER`).
+- Menambahkan **Modal Detail Audit Log** untuk menampilkan detail teknis lengkap (User ID, User Agent browser, Client IP proxy-aware, dan Timestamp presisi).
+- Menambahkan menu navigasi **"Audit Log"** dengan ikon `ShieldCheck` pada sidebar `DashboardLayout.tsx` untuk Admin.
+- Mengintegrasikan listener real-time WebSocket (`AUDIT_LOG_ADDED`) untuk otomatis memuat ulang log saat ada aktivitas baru.
+timestamp: 2026-08-01 01:36 WITA
+kategori: Feature, Admin, Security, UI/UX
+file yang diubah:
+- frontend/src/app/audit-logs/page.tsx (baru)
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+alasan perubahan: Memberikan kapabilitas auditabilitas penuh kepada Admin untuk memantau keamanan dan riwayat operasional infrastruktur IKN.
+
+---
+
+## [0.4.0] - 2026-08-01
+
+### Real-time WebSocket Client Integration & Live Auto-Refetch
+
+perubahan yang dilakukan: **Integrasi WebSocketProvider & Subskripsi Event Real-time pada Halaman Utama**
+before:
+- Antarmuka tidak secara otomatis memperbarui tabel atau statistik saat ada perubahan data di server oleh pengguna lain.
+after:
+- Dibuat `WebSocketContext.tsx` di `src/context/WebSocketContext.tsx` dengan fitur otomatisasi *auto-reconnect* (exponential backoff).
+- Dibungkus `WebSocketProvider` di `src/app/layout.tsx`.
+- Diintegrasikan *hook subscription* `useWebSocket` pada halaman utama:
+  - `src/app/dashboard/page.tsx`: Mendengarkan `CCTV_UPDATED`, `MAINTENANCE_CREATED`, dan `MAINTENANCE_UPDATED` untuk memuat ulang statistik & daftar CCTV/log secara otomatis.
+  - `src/app/cctv/page.tsx`: Mendengarkan `CCTV_UPDATED` untuk memuat ulang tabel master CCTV secara otomatis.
+  - `src/app/maintenance/page.tsx`: Mendengarkan `MAINTENANCE_CREATED` dan `MAINTENANCE_UPDATED` untuk memuat ulang tabel riwayat pemeliharaan secara otomatis.
+timestamp: 2026-08-01 01:35 WITA
+kategori: Feature, Real-time, UI/UX
+file yang diubah:
+- frontend/src/context/WebSocketContext.tsx (baru)
+- frontend/src/app/layout.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/maintenance/page.tsx
+- frontend/changelog.md
+alasan perubahan: Menyajikan pengalaman pengguna yang sangat responsif di mana setiap perubahan data CCTV atau log pemeliharaan langsung memicu pembaruan antarmuka secara instan tanpa perlu refresh.
+
+---
+
+## [0.3.0] - 2026-08-01
+
+### Inactivity Auto-Logout & Idle Timer Security
+
+perubahan yang dilakukan: **Integrasi Pelacak Keaktifan Pengguna, Warning Modal (14 Menit), dan Auto-Logout (15 Menit)**
+before:
+- Sesi pengguna di frontend tetap aktif di localStorage tanpa batas waktu pasif/inaktivitas selama browser terbuka.
+- Tidak ada mekanisme otomatis untuk mencabut token JWT jika pengguna meninggalkan komputer dalam kondisi ter-login.
+after:
+- Diimplementasikan pelacak keaktifan pengguna global (`mousemove`, `keydown`, `click`, `scroll`, `touchstart`) pada `AuthContext.tsx`.
+- Menambahkan modal peringatan `IdleWarningModal` yang muncul di menit ke-14 dengan countdown detik dan opsi **"Tetap Masuk"** untuk memperpanjang sesi.
+- Otomatisasi pemanggilan `logout('inactivity')` yang mengirimkan request `POST /api/auth/logout` (mencabut token ke blacklist backend) dan mengosongkan sesi lokal setelah 15 menit pasif.
+- Menambahkan alert banner pemberitahuan keamanan inaktivitas pada `src/app/login/page.tsx`.
+timestamp: 2026-08-01 01:30 WITA
+kategori: Feature, Security, Auth
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/src/app/login/page.tsx
+- frontend/changelog.md
+alasan perubahan: Meningkatkan standar keamanan infrastruktur kritis IKN dengan memastikan sesi pengguna pasif diakhiri secara otomatis dan token dicabut dari server.
+
+---
+
+## [0.2.1] - 2026-08-01
+
+### Fix Session Storage Restoration & Direct Route Navigation
+
+perubahan yang dilakukan: **Penguatan Sesi AuthContext & Direct Navigation /dashboard**
+before:
+- Pemulihan sesi pada `useEffect` `AuthContext.tsx` tidak memiliki penanganan `try...catch` dan pemeriksaan string invalid (`undefined`/`null`), sehingga potensi error `JSON.parse` membatalkan proses pembacaan sesi.
+- Fungsi `login` melakukan navigasi ke `/` yang kemudian di-redirect ke `/dashboard`.
+after:
+- Menambahkan penanganan `try...catch...finally` dan pembersihan token invalid pada `useEffect` `AuthContext.tsx`.
+- Mengubah alur navigasi `login` agar langsung mengarah ke `/dashboard`.
+timestamp: 2026-08-01 01:25 WITA
+kategori: Bugfix, Auth, Session
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+alasan perubahan: Memastikan sesi pengguna pulih secara stabil saat berpindah halaman dan mencegah pemutusan sesi tak terduga.
+
+---
+
+## [0.2.0] - 2026-08-01
+
+### Cetak QR Code Massal (Batch PDF / Print Label Export)
+
+perubahan yang dilakukan: **Integrasi Fitur Cetak QR Code Massal & Floating Bulk Bar Action**
+before:
+- Pencetakan label QR Code hanya dapat dilakukan satu per satu via modal detail CCTV (`handlePrintQR`).
+- Floating Bulk Action Bar hanya menyediakan tombol hapus massal ("Hapus [N] CCTV").
+- Tidak ada opsi untuk mencetak seluruh stiker QR Code sekaligus dari daftar master CCTV.
+after:
+- Diimplementasikan fungsi `handleBatchPrintQR(targetIDs?: string[])` di `src/app/cctv/page.tsx` yang mendukung pencetakan batch multiple CCTV terpilih maupun seluruh CCTV.
+- Ditambahkan tombol **"Cetak [N] QR"** (dengan ikon Printer) pada *Floating Bulk Action Bar* ketika 1 atau lebih CCTV dicentang pada tabel.
+- Ditambahkan opsi **"Cetak Semua QR Code"** pada menu dropdown tindakan di header tabel CCTV.
+- Tata letak cetak (*Print Layout*) dirancang menggunakan grid stiker label berukuran **92mm x 35mm** (proporsional untuk kertas A4 / stiker label 100x38mm) lengkap dengan Logo Nusantara, QR Code terenkripsi, Kode CCTV, Nama CCTV, dan Lokasi Area dengan proteksi `@media print` & `break-inside: avoid`.
+timestamp: 2026-08-01 00:44 WITA
+kategori: Feature, UI/UX, Batch Processing
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Memudahkan Admin dan Teknisi menyebarkan stiker QR Code fisik di lapangan IKN dengan mencetak puluhan label QR Code secara sekaligus atau menyimpannya langsung sebagai PDF melalui dialog print browser.
+
+---
+
 ## [0.1.0] - 2026-07-22
 
 ### Added New
