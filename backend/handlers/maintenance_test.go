@@ -201,3 +201,29 @@ func TestDeleteMaintenanceLog_InvalidUUID(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
+
+func TestUpdateMaintenanceLog_NotFound(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).WillReturnError(gorm.ErrRecordNotFound)
+
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id", UpdateMaintenanceLog)
+	resp, err := app.Test(httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"notes":"ubah"}`)))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteMaintenanceLog_NotFound(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).WillReturnError(gorm.ErrRecordNotFound)
+
+	app := newTestApp()
+	app.Delete("/maintenance-logs/:id", DeleteMaintenanceLog)
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/maintenance-logs/"+id.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

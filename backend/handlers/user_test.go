@@ -145,6 +145,27 @@ func TestUpdateUser_InvalidRole(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpdateUser_RoleChangeBumpsTokenVersion(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	row := sampleUserRow()
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).WillReturnRows(newUserMockRows([]modelsUserRow{row}))
+	mock.ExpectExec(`^UPDATE "users" SET`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Put("/users/:id", UpdateUser)
+	req := httptest.NewRequest("PUT", "/users/"+row.ID.String(), strings.NewReader(`{"role":"teknisi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, "teknisi", data["role"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDeleteUser_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	row := sampleUserRow()

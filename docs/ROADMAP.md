@@ -124,7 +124,7 @@ kapabilitas**. Prinsip:
 
 | # | Task | Keterangan | Status |
 |---|------|-----------|--------|
-| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Berjalan (cakupan inti + validasi edge case tersedia; test integrasi route/WebSocket lanjutan tersisa) |
+| 4.1 | Perluas unit test backend (cctv, upload, websocket, pagination, rate limit) | `backend/**/*_test.go` | 🚧 Berjalan (handler edge case, models, config DSN, route auth, dan handshake tanpa token sudah tersedia; valid path penuh dan migrasi data tersisa) |
 | 4.2 | Tambah `npm run lint` + `golangci-lint` di CI | `.github/workflows/ci.yml` | ✅ Selesai |
 | 4.3 | Migrasi DB versioned (golang-migrate/Atlas) | ganti `AutoMigrate` bertahap | ⬜ Belum |
 | 4.4 | Redis untuk rate-limit & blacklist (multi-instance) | `backend/config`, `backend/middleware/limiter.go`, `backend/utils/blacklist.go` | ⬜ Belum |

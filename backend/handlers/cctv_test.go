@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -249,4 +252,69 @@ func TestDeleteCCTV_InvalidUUID(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("DELETE", "/cctv/not-a-uuid", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestImportCCTV_NoFile(t *testing.T) {
+	app := newTestApp()
+	app.Post("/cctv/import", ImportCCTV)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/cctv/import", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestImportCCTV_RejectsTooManyRows(t *testing.T) {
+	// Keep the multipart construction close to the handler contract while
+	// avoiding a database transaction because the row limit is checked first.
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	for i := 1; i <= maxImportRows+1; i++ {
+		row := i + 1
+		assert.NoError(t, f.SetCellValue("Sheet1", "A"+strconv.Itoa(row), "CCTV-"+strconv.Itoa(i)))
+		assert.NoError(t, f.SetCellValue("Sheet1", "C"+strconv.Itoa(row), "Kamera"))
+		assert.NoError(t, f.SetCellValue("Sheet1", "L"+strconv.Itoa(row), "aktif"))
+	}
+	var file bytes.Buffer
+	assert.NoError(t, f.Write(&file))
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.xlsx")
+	assert.NoError(t, err)
+	_, err = part.Write(file.Bytes())
+	assert.NoError(t, err)
+	assert.NoError(t, writer.Close())
+
+	app := newTestApp()
+	app.Post("/cctv/import", ImportCCTV)
+	req := httptest.NewRequest("POST", "/cctv/import", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestUpdateCCTV_NotFound(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnError(gorm.ErrRecordNotFound)
+
+	app := newTestApp()
+	app.Put("/cctv/:id", UpdateCCTV)
+	resp, err := app.Test(httptest.NewRequest("PUT", "/cctv/"+id.String(), strings.NewReader(`{"nama":"Kamera"}`)))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteCCTV_NotFound(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnError(gorm.ErrRecordNotFound)
+
+	app := newTestApp()
+	app.Delete("/cctv/:id", DeleteCCTV)
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/cctv/"+id.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }

@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
-> Status pengujian backend untuk dilanjutkan pada sesi berikutnya.
-> Diperbarui: 2026-08-01 (sesi perluasan unit test, changelog backend 0.11.0, ROADMAP Fase 4.1).
+> Status pengujian backend dan cakupan lanjutan Fase 4.1.
+> Diperbarui: 2026-08-02 (penambahan test config, models, routes, dan edge case handler).
 
 ---
 
@@ -37,17 +37,20 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `middleware` | `security_test.go` | header dasar selalu ada; CSP/HSTS hanya saat `APP_ENV=production` |
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout, CreateUser (validasi, duplikat, sukses) |
-| `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser, DeleteUser (+ self-delete forbidden), ResetUserPassword |
-| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode invalid UUID |
-| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, kepemilikan teknisi → 403 |
+| `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
+| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete not-found & invalid UUID |
+| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete not-found & invalid UUID, kepemilikan teknisi → 403 |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong) |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
 | `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
 | `handlers` | `health_test.go` | HealthCheck Connected |
+| `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
+| `config` | `database_test.go` | DSN PostgreSQL dibentuk dari environment variable |
+| `routes` | `routes_test.go`, `websocket_test.go` | Route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token ditolak |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 21 file test** (6 utils, 4 middleware, 11 handlers).
+**Total: 28 file test** (6 utils, 4 middleware, 11 handlers, 2 models, 1 config, 3 routes, termasuk helper).
 
 ---
 
@@ -87,16 +90,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 
 Prioritas lanjutan:
 
-1. **Handler lain yang belum di-test:**
-   - `ImportCCTV` & `ExportCCTV` (`handlers/cctv.go`) — import Excel batch, batas 4 MB & 1000 baris.
-   - `UpdateCCTV` & `DeleteCCTV` + event WebSocket.
-   - `UpdateMaintenanceLog` & `DeleteMaintenanceLog` (ownership check sudah di cover di create, perlu update/delete).
-   - `UpdateUser` bila ada percabangan role/token-version.
-2. **Routes** — smoke test registrasi rute `routes/*.go` (jalur `setupRoutes`).
-3. **Models** — test hook `BeforeCreate` (`models/setup.go`, nil UUID check), seeder `SeedAdmin`/`SeedCCTVs`.
-4. **WebSocket** — handshake auth di `routes/websocket.go` (token valid → accept, tanpa token → reject).
-5. **Config** — `config/database.go` (DSN parsing), `config/migrate.go` (MigrateMaintenanceToCCTV).
-6. **CI** — ROADMAP 4.2: pasang `go test ./...` di `.github/workflows/ci.yml`.
+1. **Cakupan lanjutan handler:** valid import/update/delete sukses dan event WebSocket dengan DB mock penuh.
+2. **Routes:** smoke test jalur registrasi seluruh modul melalui bootstrap aplikasi.
+3. **WebSocket:** handshake token valid dan token-version mismatch pada server WebSocket.
+4. **Config migration:** test `MigrateMaintenanceToCCTV` dengan skenario legacy asset.
 
 Referensi perencanaan: `docs/ROADMAP.md` Fase 4 (task 4.1–4.8). Catat setiap penambahan di
 `backend/changelog.md` dengan format before/after + timestamp WITA.
