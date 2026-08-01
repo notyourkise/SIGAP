@@ -180,7 +180,7 @@ export default function UsersPage() {
             {modal === 'create' && <Field label="Username" value={form.username} onChange={(value) => setForm({ ...form, username: value })} minLength={4} />}
             <Field label="Nama lengkap" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} minLength={3} />
             <Field label="Email" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
-            {modal === 'create' && <Field label="Kata sandi" type="password" value={form.password} onChange={(value) => setForm({ ...form, password: value })} minLength={6} />}
+            {modal === 'create' && <Field label="Kata sandi" type="password" value={form.password} onChange={(value) => setForm({ ...form, password: value })} minLength={8} />}
             <label className="block space-y-1.5 text-xs font-semibold text-muted">Peran
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as 'admin' | 'teknisi' })} className="w-full rounded-xl border border-input-border bg-input px-3 py-2.5 text-sm text-foreground">
                 <option value="teknisi">Teknisi</option><option value="admin">Admin</option>
@@ -205,7 +205,7 @@ export default function UsersPage() {
       {modal === 'password' && selected && (
         <Modal title={`Atur Ulang Kata Sandi — ${selected.full_name}`} onClose={() => setModal(null)}>
           <form onSubmit={resetPassword} className="space-y-4">
-            <Field label="Kata sandi baru" type="password" value={newPassword} onChange={setNewPassword} minLength={6} />
+            <Field label="Kata sandi baru" type="password" value={newPassword} onChange={setNewPassword} minLength={8} />
             <SubmitRow onCancel={() => setModal(null)} label="Perbarui Kata Sandi" />
           </form>
         </Modal>

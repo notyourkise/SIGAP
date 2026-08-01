@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, downloadApiFile, API_BASE_URL } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useWebSocket } from '@/context/WebSocketContext';
 import { 
   Plus, 
   Search, 
@@ -41,6 +43,11 @@ interface CCTV {
   keterangan: string;
   qr_payload: string;
   created_at: string;
+}
+
+interface QRPrintItem {
+  cctv: CCTV;
+  qrDataUrl: string;
 }
 
 export default function CCTVPage() {
@@ -112,6 +119,94 @@ export default function CCTVPage() {
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
 
+  // QR Code State — gambar QR di-generate server-side (tidak bergantung API pihak ketiga)
+  const qrCacheRef = useRef<Record<string, string>>({});
+
+  const [printQueue, setPrintQueue] = useState<QRPrintItem[] | null>(null);
+  const [printMode, setPrintMode] = useState<'single' | 'batch'>('single');
+
+  const printLogoUrl = typeof window !== 'undefined' ? `${window.location.origin}/nusantara-logo.png` : '/nusantara-logo.png';
+
+  // Ambil gambar QR PNG (dengan autentikasi cookie httpOnly) lalu konversi ke data URL untuk <img>
+  const fetchQRDataUrl = useCallback(async (cctv: CCTV): Promise<string> => {
+    if (qrCacheRef.current[cctv.id]) {
+      return qrCacheRef.current[cctv.id];
+    }
+    const response = await fetch(`${API_BASE_URL}/cctv/${cctv.id}/qrcode`, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Gagal mengambil QR Code dari server');
+    }
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Gagal membaca QR Code'));
+      reader.readAsDataURL(blob);
+    });
+    qrCacheRef.current[cctv.id] = dataUrl;
+    return dataUrl;
+  }, []);
+
+  // Siapkan antrian cetak label QR (React-rendered agar semua teks ter-escape otomatis)
+  const openQRPrint = useCallback(
+    async (items: CCTV[], mode: 'single' | 'batch') => {
+      if (items.length === 0) {
+        alert('Tidak ada data QR Code CCTV yang dapat dicetak.');
+        return;
+      }
+      try {
+        const qrItems: QRPrintItem[] = [];
+        for (const cctv of items) {
+          const qrDataUrl = await fetchQRDataUrl(cctv);
+          qrItems.push({ cctv, qrDataUrl });
+        }
+        setPrintMode(mode);
+        setPrintQueue(qrItems);
+      } catch (err: any) {
+        alert(err?.message || 'Gagal menyiapkan QR Code untuk dicetak. Coba lagi.');
+      }
+    },
+    [fetchQRDataUrl]
+  );
+
+  // Memicu dialog print ketika antrian cetak tersedia, lalu bersihkan setelahnya
+  useEffect(() => {
+    if (!printQueue || printQueue.length === 0) return;
+
+    // Ukuran halaman sesuai mode cetak: label tunggal 100x38mm, batch A4
+    const styleId = 'sigap-print-page-size';
+    let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent =
+      printMode === 'single'
+        ? '@page { size: 100mm 38mm; margin: 0; }'
+        : '@page { size: A4; margin: 10mm; }';
+
+    document.body.classList.add('sigap-printing');
+
+    const timer = setTimeout(() => {
+      window.print();
+    }, 200);
+
+    const handleAfterPrint = () => {
+      setPrintQueue(null);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      clearTimeout(timer);
+      document.body.classList.remove('sigap-printing');
+      styleEl?.remove();
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [printQueue, printMode]);
+
   const fetchCCTVs = async () => {
     setLoading(true);
     setError('');
@@ -144,6 +239,15 @@ export default function CCTVPage() {
   useEffect(() => {
     fetchCCTVs();
   }, [page, search, statusFilter, ioFilter, sortMode]);
+
+  const { subscribe } = useWebSocket();
+
+  useEffect(() => {
+    const unsub = subscribe('CCTV_UPDATED', () => {
+      fetchCCTVs();
+    });
+    return unsub;
+  }, [subscribe]);
 
   const normalizedStatus = (status: string) => status.trim().toUpperCase();
   const isStatus = (status: string, values: string[]) => values.includes(normalizedStatus(status));
@@ -302,29 +406,17 @@ export default function CCTVPage() {
 
     setActionLoading(deleteAll ? 'delete-all' : 'delete-selected');
     try {
-      const token = localStorage.getItem('sigap_token');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
-      
-      const response = await fetch(`${API_BASE_URL}/cctv/bulk-delete`, {
+      const response = await apiRequest<any>('/cctv/bulk-delete', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
           ids: deleteAll ? [] : selectedIDs,
           all: deleteAll
         })
       });
 
-      const resJson = await response.json();
-      if (!response.ok) {
-        throw new Error(resJson.message || 'Data CCTV terpilih belum dapat dihapus.');
-      }
-
       setSelectedIDs([]);
       fetchCCTVs();
-      alert(resJson.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
+      alert(response.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
     } catch (err: any) {
       alert(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
     } finally {
@@ -335,28 +427,7 @@ export default function CCTVPage() {
   // Download Template CCTV
   const handleDownloadTemplate = async () => {
     try {
-      const token = localStorage.getItem('sigap_token');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
-      
-      const response = await fetch(`${API_BASE_URL}/cctv/template`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Template impor belum dapat diunduh.');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_import_cctv.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadApiFile('/cctv/template', 'template_import_cctv.xlsx');
     } catch (err: any) {
       alert(err.message || 'Template impor belum dapat diunduh. Coba lagi.');
     }
@@ -375,26 +446,15 @@ export default function CCTVPage() {
     setImportSuccess('');
 
     try {
-      const token = localStorage.getItem('sigap_token');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
-      
       const dataPayload = new FormData();
       dataPayload.append('file', selectedFile);
 
-      const response = await fetch(`${API_BASE_URL}/cctv/import`, {
+      const response = await apiRequest<any>('/cctv/import', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
         body: dataPayload
       });
 
-      const resJson = await response.json();
-      if (!response.ok) {
-        throw new Error(resJson.message || 'Berkas Excel belum dapat diimpor. Periksa format lalu coba lagi.');
-      }
-
-      setImportSuccess(resJson.message || 'Data CCTV berhasil diimpor.');
+      setImportSuccess(response.message || 'Data CCTV berhasil diimpor.');
       setSelectedFile(null);
       fetchCCTVs();
     } catch (err: any) {
@@ -549,107 +609,34 @@ export default function CCTVPage() {
     }
   };
 
-  // Print QR Code
+  // Print QR Code (single label)
   const handlePrintQR = () => {
     if (!currentCCTV) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    openQRPrint([currentCCTV], 'single');
+  };
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentCCTV.qr_payload)}`;
-    const logoUrl = `${window.location.origin}/nusantara-logo.png`;
+  // Batch Print QR Code (Multiple / All)
+  const handleBatchPrintQR = async (targetIDs?: string[]) => {
+    let itemsToPrint: CCTV[] = [];
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Cetak QR Code - ${currentCCTV.kode_cctv}</title>
-          <style>
-            @page { size: 100mm 38mm; margin: 0; }
-            * { box-sizing: border-box; }
-            body {
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              width: 100mm;
-              height: 38mm;
-              margin: 0;
-              background-color: white;
-              color: #203f25;
-            }
-            .label {
-              display: grid;
-              grid-template-columns: 29mm 35mm 1fr;
-              align-items: center;
-              width: 100mm;
-              height: 38mm;
-              padding: 2.5mm;
-              border: 0.4mm solid #d7aa63;
-              border-radius: 2mm;
-              background: white;
-              overflow: hidden;
-            }
-            .brand {
-              height: 31mm;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              padding-right: 2mm;
-              border-right: 0.3mm solid #467235;
-            }
-            .brand img {
-              width: 25mm;
-              height: 30mm;
-              object-fit: contain;
-            }
-            .qr {
-              width: 31mm;
-              height: 31mm;
-              margin: 0 auto;
-            }
-            .details {
-              min-width: 0;
-              padding-left: 1mm;
-              line-height: 1.25;
-            }
-            .name {
-              margin: 0 0 1.5mm;
-              font-size: 9pt;
-              font-weight: 700;
-            }
-            .meta {
-              margin: 0.7mm 0;
-              font-size: 7pt;
-              color: #62705a;
-              word-break: break-word;
-            }
-            .code {
-              color: #467235;
-              font-weight: 700;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="label">
-            <div class="brand">
-              <img src="${logoUrl}" alt="Nusantara" />
-            </div>
-            <img class="qr" src="${qrUrl}" alt="QR Code" />
-            <div class="details">
-              <p class="name">${currentCCTV.nama}</p>
-              <p class="meta code">${currentCCTV.kode_cctv}</p>
-              <p class="meta">${currentCCTV.lokasi_area || '-'}</p>
-            </div>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    if (targetIDs && targetIDs.length > 0) {
+      itemsToPrint = cctvs.filter((cctv) => targetIDs.includes(cctv.id));
+
+      if (itemsToPrint.length < targetIDs.length) {
+        try {
+          const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?page=1&limit=${Math.max(pagination.total_rows, 1000)}`);
+          if (response.status === 'success' && response.data) {
+            itemsToPrint = response.data.rows.filter((cctv) => targetIDs.includes(cctv.id));
+          }
+        } catch (err) {
+          console.error("Gagal mengambil data lengkap untuk cetak batch:", err);
+        }
+      }
+    } else {
+      itemsToPrint = cctvs;
+    }
+
+    await openQRPrint(itemsToPrint, 'batch');
   };
 
   return (
@@ -686,6 +673,16 @@ export default function CCTVPage() {
                     <Upload className="h-4 w-4 text-primary" />
                     Impor Excel
                   </button>
+                  {cctvs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBatchPrintQR()}
+                      className="flex w-full items-center gap-3 border-t border-border px-4 py-3 text-left text-sm font-semibold hover:bg-background"
+                    >
+                      <Printer className="h-4 w-4 text-primary" />
+                      Cetak Semua QR Code
+                    </button>
+                  )}
                   {cctvs.length > 0 && (
                     <button
                       type="button"
@@ -750,6 +747,7 @@ export default function CCTVPage() {
               <option value="">Semua status</option>
               <option value="ACTIVE">Aktif</option>
               <option value="INACTIVE">Nonaktif</option>
+              <option value="MAINTENANCE">Pemeliharaan</option>
             </select>
 
             <select
@@ -762,7 +760,7 @@ export default function CCTVPage() {
               }}
               className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
             >
-              <option value="">Semua lokasi pemasangan</option>
+              <option value="">Semua lokasi (indoor/outdoor)</option>
               <option value="INDOOR">Indoor</option>
               <option value="OUTDOOR">Outdoor</option>
             </select>
@@ -776,29 +774,33 @@ export default function CCTVPage() {
               }}
               className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
-              <option value="newest">Urutan: Terbaru</option>
-              <option value="name-asc">Nama: A–Z</option>
-              <option value="name-desc">Nama: Z–A</option>
+              <option value="newest">Terbaru</option>
+              <option value="name-asc">Nama A-Z</option>
+              <option value="name-desc">Nama Z-A</option>
             </select>
           </div>
 
+          {/* Floating Bulk Actions Bar */}
           {selectedIDs.length > 0 && isAdmin && (
-            <div
-              role="region"
-              aria-label="Tindakan untuk CCTV terpilih"
-              className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-2 rounded-2xl bg-card p-3 shadow-[0_14px_36px_rgba(32,63,37,0.24)]"
-            >
-              <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold" aria-live="polite">
-                {selectedIDs.length} CCTV terpilih
-              </p>
+            <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.25)] backdrop-blur-md">
+              <span className="text-xs font-bold text-foreground">
+                {selectedIDs.length} terpilih
+              </span>
               <button
                 type="button"
                 onClick={() => setSelectedIDs([])}
-                aria-label="Batalkan semua pilihan CCTV"
-                title="Batalkan pilihan"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="rounded-lg p-1 text-muted hover:bg-background hover:text-foreground"
+                title="Batal seleksi"
               >
                 <X className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBatchPrintQR(selectedIDs)}
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+              >
+                <Printer className="h-4 w-4" />
+                Cetak {selectedIDs.length} QR
               </button>
               <button
                 type="button"
@@ -890,17 +892,10 @@ export default function CCTVPage() {
                               title="Buka label QR"
                             >
                               <Scan className="absolute h-5 w-5 text-muted/35" aria-hidden="true" />
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(cctv.qr_payload)}`}
+                              <CCTVQRImage
+                                cctv={cctv}
                                 alt=""
-                                width={48}
-                                height={48}
-                                loading="lazy"
-                                decoding="async"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = 'none';
-                                }}
+                                fetchQRDataUrl={fetchQRDataUrl}
                                 className="relative h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.04]"
                               />
                             </button>
@@ -1355,9 +1350,10 @@ export default function CCTVPage() {
                     className="h-full max-h-32 w-full object-contain"
                   />
                 </div>
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentCCTV.qr_payload)}`}
+                <CCTVQRImage
+                  cctv={currentCCTV}
                   alt={`QR Code CCTV - ${currentCCTV.kode_cctv}`}
+                  fetchQRDataUrl={fetchQRDataUrl}
                   className="mx-auto h-20 w-20 object-contain sm:h-32 sm:w-32"
                 />
                 <div className="min-w-0 pl-1.5 sm:pl-3">
@@ -1456,6 +1452,20 @@ export default function CCTVPage() {
           </div>
         )}
       </div>
+
+      {/* Area cetak label QR — dirender via portal ke document.body, hanya tampil saat print */}
+      {printQueue &&
+        printQueue.length > 0 &&
+        createPortal(
+          <div id="sigap-print-area" className="sigap-print-area">
+            {printMode === 'single' ? (
+              <CCTVPrintSingleLabel item={printQueue[0]} logoUrl={printLogoUrl} />
+            ) : (
+              <CCTVPrintBatchLabels items={printQueue} logoUrl={printLogoUrl} />
+            )}
+          </div>,
+          document.body
+        )}
     </DashboardLayout>
   );
 }
@@ -1487,5 +1497,95 @@ function CCTVTextField({
         className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
       />
     </label>
+  );
+}
+
+// Menampilkan gambar QR yang di-generate server-side; mengambil gambar saat pertama kali dirender
+function CCTVQRImage({
+  cctv,
+  className,
+  alt = '',
+  fetchQRDataUrl,
+}: {
+  cctv: CCTV;
+  className?: string;
+  alt?: string;
+  fetchQRDataUrl: (cctv: CCTV) => Promise<string>;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setSrc(null);
+    setFailed(false);
+    fetchQRDataUrl(cctv)
+      .then((dataUrl) => {
+        if (active) setSrc(dataUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [cctv, fetchQRDataUrl]);
+
+  if (failed || !src) return null;
+  return <img src={src} alt={alt} className={className} />;
+}
+
+// Label QR tunggal (100 x 38 mm) untuk printer label thermal
+function CCTVPrintSingleLabel({ item, logoUrl }: { item: QRPrintItem; logoUrl: string }) {
+  return (
+    <div className="sigap-label sigap-label-single">
+      <div className="sigap-brand">
+        <img src={logoUrl} alt="Nusantara" />
+      </div>
+      <img className="sigap-qr" src={item.qrDataUrl} alt="QR Code" />
+      <div className="sigap-details">
+        <p className="sigap-name">{item.cctv.nama}</p>
+        <p className="sigap-meta sigap-code">{item.cctv.kode_cctv}</p>
+        <p className="sigap-meta">{item.cctv.lokasi_area || '-'}</p>
+      </div>
+    </div>
+  );
+}
+
+// Label QR dalam grid A4 untuk cetak batch (banyak perangkat)
+function CCTVPrintBatchLabels({ items, logoUrl }: { items: QRPrintItem[]; logoUrl: string }) {
+  const formattedDate = new Date().toLocaleDateString('id-ID', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <div className="sigap-batch">
+      <div className="sigap-batch-header">
+        <div>
+          <h1>SIGAP — Label QR Code Perangkat CCTV</h1>
+          <p>Dicetak pada {formattedDate} • Total: {items.length} Perangkat CCTV</p>
+        </div>
+        <img src={logoUrl} alt="Logo Nusantara" className="sigap-batch-logo" />
+      </div>
+      <div className="sigap-batch-grid">
+        {items.map((item) => (
+          <div className="sigap-label sigap-label-batch" key={item.cctv.id}>
+            <div className="sigap-brand">
+              <img src={logoUrl} alt="Nusantara" />
+            </div>
+            <img className="sigap-qr" src={item.qrDataUrl} alt="QR Code" />
+            <div className="sigap-details">
+              <p className="sigap-name">{item.cctv.nama}</p>
+              <p className="sigap-meta sigap-code">{item.cctv.kode_cctv}</p>
+              <p className="sigap-meta">{item.cctv.lokasi_area || '-'}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

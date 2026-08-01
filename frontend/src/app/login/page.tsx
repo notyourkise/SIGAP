@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User, Clock } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
@@ -16,10 +16,21 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inactivityNotice, setInactivityNotice] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) router.push('/');
   }, [isAuthenticated, authLoading, router]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const reason = localStorage.getItem('sigap_logout_reason');
+      if (reason === 'inactivity') {
+        setInactivityNotice(true);
+        localStorage.removeItem('sigap_logout_reason');
+      }
+    }
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -31,12 +42,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const response = await apiRequest<{ token: string; user: AuthUser }>('/auth/login', {
+      const response = await apiRequest<{ user: AuthUser }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
       if (response.status === 'success' && response.data) {
-        login(response.data.token, response.data.user);
+        login(response.data.user);
       } else {
         setError(response.message || 'Akun atau kata sandi tidak sesuai.');
       }
@@ -77,6 +88,13 @@ export default function LoginPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-primary">SIGAP</h1>
           <p className="mt-2 text-sm text-muted">Sistem internal pengelolaan CCTV kawasan IKN.</p>
         </header>
+
+        {inactivityNotice && (
+          <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>Sesi Anda telah berakhir secara otomatis demi keamanan karena tidak ada aktivitas selama 15 menit.</span>
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl border border-error/20 bg-error/10 p-3.5 text-sm text-error">
