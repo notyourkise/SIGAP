@@ -1,5 +1,28 @@
 # Changelog - Backend SIGAP
 
+## [0.13.0] - 2026-08-02
+
+### Penyelesaian Coverage Fase 4.1
+
+perubahan yang dilakukan: **Perluasan test handler, model, konfigurasi, dan route**
+before:
+- Coverage belum mencakup import Excel CCTV, jalur not-found update/delete, seeder admin existing, DSN database, route auth, dan handshake WebSocket tanpa token.
+after:
+- Test tambahan mencakup batas baris import, invalid/not-found CCTV dan maintenance, perubahan role user, UUID/config, seeder idempotent, route smoke, dan penolakan handshake WebSocket tanpa token.
+- Seluruh test backend lulus dengan `go test ./... -count=1`; `golangci-lint v2.12.2` menghasilkan 0 issue.
+timestamp: 2026-08-02 00:00 WITA
+kategori: Testing, Quality
+file yang diubah:
+- backend/config/database.go
+- backend/config/database_test.go
+- backend/handlers/cctv_test.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/user_test.go
+- backend/models/seeder_test.go
+- backend/routes/routes_test.go
+- backend/routes/websocket_test.go
+alasan teknis: Menutup celah coverage pada jalur validasi dan boundary yang paling berisiko mengalami regresi.
+
 ## [0.12.0] - 2026-08-02
 
 ### Audit Log Reliability dan Unit Test Tambahan
