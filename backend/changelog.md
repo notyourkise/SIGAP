@@ -1,5 +1,25 @@
 # Changelog - Backend SIGAP
 
+## [0.14.0] - 2026-08-02
+
+### Penyelesaian Sisa Coverage Fase 4.1
+
+perubahan yang dilakukan: **Test jalur sukses handler, WebSocket valid, bootstrap route, dan migrasi legacy**
+before:
+- Jalur sukses update/delete CCTV dan maintenance, handshake WebSocket valid, serta resolusi migration legacy belum diuji.
+after:
+- Test mencakup jalur sukses CRUD, handshake WebSocket dengan token valid, registrasi route terlindungi, dan resolusi asset legacy melalui ID CCTV.
+- Lint `golangci-lint v2.12.2` tetap menghasilkan 0 issue.
+timestamp: 2026-08-02 00:00 WITA
+kategori: Testing, Quality, Migration
+file yang diubah:
+- backend/config/migrate_test.go
+- backend/handlers/cctv_test.go
+- backend/handlers/maintenance_test.go
+- backend/routes/routes_test.go
+- backend/routes/websocket_test.go
+alasan teknis: Menutup coverage boundary dan jalur sukses yang tersisa sebelum masuk ke versioned database migration.
+
 ## [0.13.0] - 2026-08-02
 
 ### Penyelesaian Coverage Fase 4.1

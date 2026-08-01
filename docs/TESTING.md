@@ -46,11 +46,11 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
 | `handlers` | `health_test.go` | HealthCheck Connected |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
-| `config` | `database_test.go` | DSN PostgreSQL dibentuk dari environment variable |
+| `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
 | `routes` | `routes_test.go`, `websocket_test.go` | Route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token ditolak |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 28 file test** (6 utils, 4 middleware, 11 handlers, 2 models, 1 config, 3 routes, termasuk helper).
+**Total: 29 file test** (6 utils, 4 middleware, 11 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 
@@ -93,7 +93,7 @@ Prioritas lanjutan:
 1. **Cakupan lanjutan handler:** valid import/update/delete sukses dan event WebSocket dengan DB mock penuh.
 2. **Routes:** smoke test jalur registrasi seluruh modul melalui bootstrap aplikasi.
 3. **WebSocket:** handshake token valid dan token-version mismatch pada server WebSocket.
-4. **Config migration:** test `MigrateMaintenanceToCCTV` dengan skenario legacy asset.
+4. **Config migration:** test full `MigrateMaintenanceToCCTV` dengan skenario legacy asset dan update record.
 
 Referensi perencanaan: `docs/ROADMAP.md` Fase 4 (task 4.1–4.8). Catat setiap penambahan di
 `backend/changelog.md` dengan format before/after + timestamp WITA.

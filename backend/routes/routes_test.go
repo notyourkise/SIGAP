@@ -4,6 +4,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"sigap-backend/middleware"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,6 +24,23 @@ func TestMaintenanceRoutesRequireAuthentication(t *testing.T) {
 	SetupMaintenanceRoutes(app)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/maintenance-logs/", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
+	app := fiber.New()
+	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
+	SetupAuthRoutes(api)
+	SetupMaintenanceRoutes(api)
+	SetupUserRoutes(api)
+	SetupCCTVRoutes(api)
+	SetupUploadRoutes(api)
+	SetupAuditRoutes(api)
+	SetupWebSocketRoutes(api)
+	SetupDashboardRoutes(api)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/api/dashboard/summary", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }

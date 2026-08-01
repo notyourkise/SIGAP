@@ -227,3 +227,41 @@ func TestDeleteMaintenanceLog_NotFound(t *testing.T) {
 	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+func knownMaintenanceRows(id, technicianID, cctvID uuid.UUID) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, technicianID, "Bersihkan lensa kamera", "Debu", "ongoing", nil, nil, "")
+}
+
+func TestUpdateMaintenanceLog_Success(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, technicianID, cctvID := uuid.New(), uuid.New(), uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).WillReturnRows(knownMaintenanceRows(id, technicianID, cctvID))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id", withUserLocals(technicianID.String(), "teknisi"), UpdateMaintenanceLog)
+	req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"notes":"Selesai dibersihkan","status":"completed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteMaintenanceLog_Success(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, technicianID, cctvID := uuid.New(), uuid.New(), uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).WillReturnRows(knownMaintenanceRows(id, technicianID, cctvID))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET "deleted_at"`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Delete("/maintenance-logs/:id", DeleteMaintenanceLog)
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/maintenance-logs/"+id.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
