@@ -1,5 +1,25 @@
 # Changelog - Frontend SIGAP
 
+## [1.1.0] - 2026-08-02
+
+### Halaman 404 Kustom dengan Animasi Lottie
+
+perubahan yang dilakukan: **Menambahkan halaman `not-found` kustom yang dirender untuk seluruh URL yang tidak cocok**
+before:
+- URL yang tidak dikenal menampilkan halaman 404 bawaan Next.js tanpa identitas SIGAP.
+after:
+- Halaman `/not-found` baru menampilkan animasi Lottie T-rex "PAGE NOT FOUND" berukuran besar (hingga 560px) dari `public/assets/animasi/404 Error.json` di atas latar putih polos.
+- Animasi dimuat saat runtime via fetch (aset statis publik) melalui komponen client `Lottie404`; ada placeholder netral saat memuat agar layout tidak melompat.
+- Desain minimalis: background putih murni tanpa elemen warna, heading, tombol, maupun footer — hanya animasi yang tampil.
+timestamp: 2026-08-02 WITA
+kategori: UI/UX, Feature
+file yang diubah:
+- frontend/src/app/not-found.tsx (baru)
+- frontend/src/components/Lottie404.tsx (baru)
+- frontend/package.json (tambah dependency `lottie-react`)
+- frontend/changelog.md
+alasan teknis: Memberikan pengalaman 404 yang konsisten dengan identitas produk SIGAP dan memanfaatkan aset animasi yang telah tersedia.
+
 ## [1.0.0] - 2026-08-02
 
 ### Server-side Route Guard dan Audit Log
