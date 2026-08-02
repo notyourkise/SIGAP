@@ -8,9 +8,9 @@ perubahan yang dilakukan: **Menambahkan halaman `not-found` kustom yang dirender
 before:
 - URL yang tidak dikenal menampilkan halaman 404 bawaan Next.js tanpa identitas SIGAP.
 after:
-- Halaman `/not-found` baru menampilkan animasi Lottie T-rex "PAGE NOT FOUND" berukuran besar (hingga 560px) dari `public/assets/animasi/404 Error.json`, heading "Halaman tidak ditemukan", deskripsi dalam bahasa Indonesia, tombol "Kembali ke Dashboard" & "Ke Halaman Login", serta footer identitas SIGAP.
-- Animasi dimuat saat runtime via fetch (aset statis publik) melalui komponen client `Lottie404`; ada placeholder saat memuat agar layout tidak melompat.
-- Mengikuti design system SIGAP (token warna terang/gelap, elemen dekoratif blur, border & radius konsisten).
+- Halaman `/not-found` baru menampilkan animasi Lottie T-rex "PAGE NOT FOUND" berukuran besar (hingga 560px) dari `public/assets/animasi/404 Error.json` di atas latar putih polos.
+- Animasi dimuat saat runtime via fetch (aset statis publik) melalui komponen client `Lottie404`; ada placeholder netral saat memuat agar layout tidak melompat.
+- Desain minimalis: background putih murni tanpa elemen warna, heading, tombol, maupun footer — hanya animasi yang tampil.
 timestamp: 2026-08-02 WITA
 kategori: UI/UX, Feature
 file yang diubah:

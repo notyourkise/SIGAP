@@ -35,10 +35,10 @@ export default function Lottie404() {
     return (
       <div
         aria-hidden="true"
-        className="mx-auto flex items-center justify-center rounded-3xl border border-border bg-card/40"
+        className="mx-auto flex items-center justify-center"
         style={{ ...containerStyle, aspectRatio: '1 / 1' }}
       >
-        <div className="h-12 w-12 animate-pulse rounded-full bg-accent/70" />
+        <div className="h-12 w-12 animate-pulse rounded-full bg-neutral-200" />
       </div>
     );
   }
