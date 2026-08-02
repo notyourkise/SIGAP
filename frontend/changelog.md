@@ -1,5 +1,61 @@
 # Changelog - Frontend SIGAP
 
+## [1.4.0] - 2026-08-02
+
+### Hapus Cookie CSRF Saat Logout
+
+perubahan yang dilakukan: **Memanggil clearAuthCookies setelah proses logout**
+before:
+- Logout hanya mengandalkan backend menghapus cookie via Set-Cookie; cookie CSRF (non-httpOnly) dapat tertinggal di klien.
+after:
+- Setelah permintaan logout, frontend juga memanggil `clearAuthCookies` untuk membersihkan cookie CSRF di sisi klien (cookie sesi httpOnly tetap hanya dapat dihapus server).
+timestamp: 2026-08-02 WITA
+kategori: Bugfix
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+alasan teknis: Memastikan state autentikasi benar-benar bersih setelah logout dan mencegah cookie CSRF sisa mengganggu login berikutnya.
+
+## [1.3.0] - 2026-08-02
+
+### Hapus Auto-Logout Idle
+
+perubahan yang dilakukan: **Menghapus timer auto-logout 15 menit dan modal peringatan inaktivitas**
+before:
+- Pengguna otomatis keluar setelah 15 menit tanpa aktivitas (idle timer) dan melihat modal peringatan "Sesi Hampir Berakhir".
+- Sesi dapat terputus mendadak meski token masih valid.
+after:
+- Auto-logout idle dihapus total: pengguna tetap login sampai menekan logout atau token kedaluwarsa (5 jam).
+- `AuthContext` tidak lagi memakai idle timer, listener aktivitas, `extendSession`, maupun modal peringatan inaktivitas.
+- Logout manual tetap merevoke token & mengarahkan ke halaman login; sesi mati saat browser ditutup (session cookie).
+timestamp: 2026-08-02 WITA
+kategori: UI/UX, Refactor
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+alasan teknis: Menghilangkan logout mendadak yang mengganggu; model sesi disederhanakan sesuai permintaan pengguna (login → token, logout → langsung mati).
+
+## [1.2.0] - 2026-08-02
+
+### Redesign Halaman Login Split-Screen
+
+perubahan yang dilakukan: **Mengganti layout login glassmorphism menjadi split-screen 50:50 dengan foto malam IKN dan panel krem**
+before:
+- Halaman login memakai kartu sentral glassmorphism di atas latar abstrak (blur elemen dekoratif) tanpa foto kawasan.
+- Branding hanya berupa teks "SIGAP" tanpa logo Pohon Hayat NUSANTARA.
+after:
+- Layout responsif split 50:50: kiri adalah foto full-bleed malam Kompleks Kemenko I (Garuda Palace) IKN dari `public/assets/foto/ikn-kemenko.webp` (mobile: banner atas, desktop: setengah layar penuh); kanan adalah panel krem lembut.
+- Panel kanan menampilkan logo Pohon Hayat NUSANTARA (`public/nusantara-logo.png`) dengan teks "NUSANTARA Ibu Kota Negara Indonesia", judul "SIGAP" font serif hijau tua, dan deskripsi "Sistem internal pengelolaan CCTV kawasan IKN."
+- Form login dipertahankan lengkap: label & input "Username atau email" (ikon user) dan "Kata sandi" (ikon gembok + toggle mata), tombol "Masuk" hijau tua dengan teks putih.
+- Ikon status (lonceng + toggle tema matahari/bulan) di pojok kanan atas panel krem.
+- Seluruh warna memakai token tema (`bg-background`, `text-foreground`, `bg-primary`, `border-input-border`, dsb.) sehingga toggle mode gelap/terang berfungsi: mode terang = krem + hijau tua, mode gelap = hijau tua + krem.
+timestamp: 2026-08-02 WITA
+kategori: UI/UX, Feature
+file yang diubah:
+- frontend/src/app/login/page.tsx
+- frontend/changelog.md
+alasan teknis: Meningkatkan identitas visual kawasan IKN pada halaman masuk serta menghadirkan tipografi & palet hijau tua-krem yang modern dan tegas.
+
 ## [1.1.0] - 2026-08-02
 
 ### Halaman 404 Kustom dengan Animasi Lottie

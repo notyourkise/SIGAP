@@ -23,6 +23,13 @@ func CSRFProtection() fiber.Handler {
 			return c.Next()
 		}
 
+		// Endpoint login bersifat publik — tidak ada resource terautentikasi
+		// yang dilindungi. Sisa cookie sesi lama dari sesi sebelumnya TIDAK
+		// boleh memicu pengecekan CSRF pada percobaan login.
+		if c.Path() == "/api/auth/login" {
+			return c.Next()
+		}
+
 		// Client API memakai Bearer token — tidak rentan CSRF.
 		if authHeader := c.Get("Authorization"); authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			return c.Next()
