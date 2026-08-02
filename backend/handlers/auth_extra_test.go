@@ -218,6 +218,25 @@ func TestLogout_InvalidToken(t *testing.T) {
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "success", result["status"])
+
+	// Cookie sesi & CSRF harus dikedaluwarsakan dengan Path "/" agar browser
+	// benar-benar menghapus cookie aslinya (bukan sekadar menimpa di path lain).
+	foundExpiredSession := false
+	foundExpiredCSRF := false
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "sigap_session" {
+			foundExpiredSession = true
+			assert.Equal(t, "/", ck.Path, "cookie sesi harus dikedaluwarsakan dengan Path=/")
+			assert.True(t, ck.MaxAge < 0, "cookie sesi harus MaxAge negatif (kedaluwarsa)")
+		}
+		if ck.Name == "sigap_csrf" {
+			foundExpiredCSRF = true
+			assert.Equal(t, "/", ck.Path, "cookie CSRF harus dikedaluwarsakan dengan Path=/")
+			assert.True(t, ck.MaxAge < 0, "cookie CSRF harus MaxAge negatif (kedaluwarsa)")
+		}
+	}
+	assert.True(t, foundExpiredSession, "logout harus mengembalikan cookie sesi kedaluwarsa")
+	assert.True(t, foundExpiredCSRF, "logout harus mengembalikan cookie CSRF kedaluwarsa")
 }
 
 func TestCreateUser_ValidationError(t *testing.T) {

@@ -21,6 +21,9 @@ func csrfTestApp() *fiber.App {
 	app.Post("/mutate", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
+	app.Post("/api/auth/login", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
 	app.Get("/read", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -59,6 +62,20 @@ func TestCSRF_NoSessionCookiePass(t *testing.T) {
 	// Request publik (belum login) tanpa cookie sesi → tidak perlu token CSRF
 	req := httptest.NewRequest("POST", "/mutate", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func TestCSRF_LoginEndpointPassWithStaleSessionCookie(t *testing.T) {
+	app := csrfTestApp()
+
+	// Login bersifat publik: sisa cookie sesi lama dari sesi sebelumnya
+	// TIDAK boleh memicu pengecekan CSRF pada percobaan login.
+	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: "stale-session"})
 
 	resp, err := app.Test(req)
 	assert.NoError(t, err)

@@ -1,5 +1,64 @@
 # Changelog - Backend SIGAP
 
+## [0.17.0] - 2026-08-02
+
+### Perbaikan Cookie Sesi Tidak Terhapus Saat Logout
+
+perubahan yang dilakukan: **Penghapusan cookie sesi/CSRF kini menyetel Path, SameSite, dan Secure yang cocok**
+before:
+- `ClearSessionCookies` memakai `c.ClearCookie()` yang tidak menyetel atribut `Path`/`SameSite`/`Secure`; browser mencocokkan cookie berdasarkan nama+domain+path sehingga cookie asli (`Path=/`) tidak terhapus.
+- Akibatnya setelah logout, cookie sesi masih dikirim saat refresh → `/auth/me` sukses → pengguna kembali ke dashboard.
+after:
+- `ClearSessionCookies` menuliskan cookie kosong ber-`Expires` masa lalu dan `MaxAge=-1` dengan `Path=/`, `SameSite=Lax`, `Secure` yang sama persis saat pembuatan → cookie sesi & CSRF benar-benar dihapus browser.
+- Setelah logout, refresh tetap diarahkan ke halaman login.
+timestamp: 2026-08-02 WITA
+kategori: Bugfix, Security
+file yang diubah:
+- backend/utils/session.go
+- backend/handlers/auth_extra_test.go
+- backend/changelog.md
+alasan teknis: Cookie hanya dapat dihapus bila atribut penghapusan identik dengan atribut pembuatan; ketidakcocokan path membuat sesi bocor setelah logout.
+
+## [0.16.0] - 2026-08-02
+
+### Penyederhanaan Sesi: Token 5 Jam, Session Cookie, Tanpa Sliding Session
+
+perubahan yang dilakukan: **Token berlaku 5 jam, cookie sesi non-persisten, hapus perpanjangan otomatis**
+before:
+- Token JWT berlaku 24 jam; cookie sesi & CSRF bertahan 24 jam (`MaxAge`).
+- Middleware `Protected()` memperpanjang otomatis (sliding session) token yang sisa umurnya < 1 jam → rotasi cookie sering terjadi dan refresh tampak memutus sesi.
+- Auto-logout idle 15 menit di sisi frontend memutus sesi mendadak.
+after:
+- Token JWT berlaku **5 jam** (satu hari kerja); tidak ada perpanjangan otomatis.
+- Cookie sesi & CSRF menjadi **session cookie** (tanpa `MaxAge`) → otomatis terhapus saat browser ditutup; tidak ada sesi tersimpan permanen.
+- Logout tetap me-revoke token (blacklist) & menghapus cookie → token langsung mati, akses dashboard ditolak sampai login ulang.
+timestamp: 2026-08-02 WITA
+kategori: Security, Refactor, Bugfix
+file yang diubah:
+- backend/utils/jwt.go
+- backend/utils/session.go
+- backend/middleware/auth.go
+- backend/changelog.md
+alasan teknis: Menghilangkan kompleksitas sliding session dan sesi persisten yang menyebabkan logout tak terduga saat refresh, sesuai model autentikasi sederhana yang diminta pengguna.
+
+## [0.15.0] - 2026-08-02
+
+### Perbaikan Login Gagal Akibat Sisa Cookie Sesi
+
+perubahan yang dilakukan: **Endpoint login publik dikecualikan dari proteksi CSRF**
+before:
+- `CSRFProtection` menolak `POST /api/auth/login` dengan status 403 "Permintaan tidak sah (CSRF token tidak cocok)" bila browser masih membawa cookie `sigap_session` lama dari sesi sebelumnya (mis. token kedaluwarsa namun cookie 24 jam belum dibersihkan).
+after:
+- `POST /api/auth/login` selalu dilewati CSRF karena bersifat publik (tanpa `Protected()`); sisa cookie sesi tidak lagi memicu pengecekan token CSRF saat login.
+- CSRF tetap berlaku penuh untuk seluruh endpoint mutasi terautentikasi lainnya.
+timestamp: 2026-08-02 WITA
+kategori: Bugfix, Security
+file yang diubah:
+- backend/middleware/csrf.go
+- backend/middleware/csrf_test.go
+- backend/changelog.md
+alasan teknis: CSRF hanya relevan untuk sesi yang valid & terautentikasi, bukan sekadar keberadaan cookie; login publik tidak memiliki resource terautentikasi yang perlu dilindungi.
+
 ## [0.14.0] - 2026-08-02
 
 ### Penyelesaian Sisa Coverage Fase 4.1

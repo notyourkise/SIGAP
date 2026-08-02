@@ -30,7 +30,7 @@ func GenerateToken(userID string, role string, tokenVersion ...int64) (string, e
 		"user_id": userID,
 		"role":    role,
 		"tv":      version,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(), // Berlaku 24 jam
+		"exp":     time.Now().Add(time.Hour * 5).Unix(), // Berlaku 5 jam kerja
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

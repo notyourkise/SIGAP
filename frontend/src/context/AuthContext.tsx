@@ -1,9 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiRequest } from '@/lib/api';
-import { Clock } from 'lucide-react';
+import { apiRequest, clearAuthCookies } from '@/lib/api';
 
 export interface User {
   id: string;
@@ -21,25 +20,14 @@ interface AuthContextType {
   loading: boolean;
   login: (user: User) => void;
   logout: (reason?: string) => void;
-  extendSession: () => void;
   updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Konfigurasi Durasi Idle Timer (15 menit = 900.000 ms, Peringatan pada 14 menit = 840.000 ms)
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
-const WARNING_TIMEOUT_MS = 14 * 60 * 1000;
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Idle Timer State
-  const [showIdleWarning, setShowIdleWarning] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(60);
-  const lastActivityRef = useRef<number>(Date.now());
-  const lastThrottleRef = useRef<number>(0);
 
   const router = useRouter();
 
@@ -80,43 +68,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const onAuthExpired = () => {
       setUser(null);
-      setShowIdleWarning(false);
     };
     window.addEventListener('sigap:auth-expired', onAuthExpired);
     return () => window.removeEventListener('sigap:auth-expired', onAuthExpired);
   }, []);
-
-  // Update aktivitas pengguna saat ada aksi (mousemove, keydown, click, scroll, touchstart)
-  useEffect(() => {
-    if (!user) return;
-
-    const handleUserActivity = () => {
-      const now = Date.now();
-      // Throttling: Update timestamp maksimal 1 kali setiap 2 detik
-      if (now - lastThrottleRef.current > 2000) {
-        lastThrottleRef.current = now;
-        lastActivityRef.current = now;
-      }
-    };
-
-    const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-    activityEvents.forEach((event) => {
-      window.addEventListener(event, handleUserActivity, { passive: true });
-    });
-
-    return () => {
-      activityEvents.forEach((event) => {
-        window.removeEventListener(event, handleUserActivity);
-      });
-    };
-  }, [user]);
-
-  const extendSession = () => {
-    const now = Date.now();
-    lastActivityRef.current = now;
-    lastThrottleRef.current = now;
-    setShowIdleWarning(false);
-  };
 
   const logout = async (reason?: string) => {
     if (reason) {
@@ -130,41 +85,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Jika request gagal, tetap lanjutkan proses logout lokal.
     }
 
+    // Hapus cookie CSRF di sisi klien sebagai cadangan (cookie sesi httpOnly
+    // hanya bisa dihapus oleh server via Set-Cookie).
+    clearAuthCookies();
+
     setUser(null);
-    setShowIdleWarning(false);
     router.push('/login');
   };
 
-  // Interval checker untuk mengecek inaktivitas setiap 1 detik
-  useEffect(() => {
-    if (!user) {
-      setShowIdleWarning(false);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const idleTime = now - lastActivityRef.current;
-
-      if (idleTime >= IDLE_TIMEOUT_MS) {
-        // Waktu pasif sudah melebihi 15 menit -> Otomatis Logout
-        logout('inactivity');
-      } else if (idleTime >= WARNING_TIMEOUT_MS) {
-        // Waktu pasif sudah mencapai 14 menit -> Tampilkan Peringatan
-        setShowIdleWarning(true);
-        const secondsLeft = Math.max(0, Math.ceil((IDLE_TIMEOUT_MS - idleTime) / 1000));
-        setRemainingSeconds(secondsLeft);
-      } else {
-        setShowIdleWarning(false);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
   const login = (newUser: User) => {
-    lastActivityRef.current = Date.now();
     setUser(newUser);
     localStorage.removeItem('sigap_logout_reason');
     // Akun baru / password di-reset → wajib ganti password dulu.
@@ -180,54 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, extendSession, updateUser }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, updateUser }}>
       {children}
-
-      {/* Modal Peringatan Inaktivitas (Idle Warning Modal) */}
-      {showIdleWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-md bg-card border border-border rounded-3xl p-6 shadow-2xl space-y-5 text-foreground">
-            <div className="flex items-center gap-3 border-b border-border pb-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold">Sesi Hampir Berakhir</h3>
-                <p className="text-xs text-muted">Peringatan keamanan inaktivitas</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <p className="text-muted leading-relaxed">
-                Anda telah pasif (tidak ada aktivitas) selama hampir 15 menit. Sesi Anda akan otomatis diakhiri demi keamanan dalam:
-              </p>
-              <div className="flex items-center justify-center gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 py-3 text-center">
-                <span className="font-mono text-2xl font-black text-amber-600 dark:text-amber-400">
-                  00:{remainingSeconds < 10 ? `0${remainingSeconds}` : remainingSeconds}
-                </span>
-                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">detik</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-              <button
-                type="button"
-                onClick={() => logout('inactivity')}
-                className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold text-muted hover:bg-background hover:text-foreground transition-colors"
-              >
-                Keluar Sekarang
-              </button>
-              <button
-                type="button"
-                onClick={extendSession}
-                className="rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-primary/20 hover:bg-primary-hover transition-colors"
-              >
-                Tetap Masuk
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AuthContext.Provider>
   );
 }
