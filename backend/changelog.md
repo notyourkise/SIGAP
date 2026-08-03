@@ -1,5 +1,90 @@
 # Changelog - Backend SIGAP
 
+## [0.25.2] - 2026-08-03
+
+### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan, Nilai Internal Tetap `failed`)
+
+perubahan yang dilakukan: **Label tampilan status `failed` pada laporan PDF diubah dari "Gagal" menjadi "Perlu Tindak Lanjut" — hanya perubahan teks tampilan, nilai enum `failed` di database/API tetap sama sehingga tidak diperlukan migrasi data dan seluruh klien API tidak terpengaruh**
+before: `pdfStatusLabel("failed")` mengembalikan "Gagal"; ringkasan laporan PDF menampilkan "Gagal: N".
+after:
+- `handlers/report.go`: `pdfStatusLabel` mengembalikan "Perlu Tindak Lanjut"; key ringkasan PDF & baris statistik memakai "Perlu Tindak Lanjut".
+- CSV export tetap menulis nilai mentah `failed` (tidak diubah).
+timestamp: 2026-08-03 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/handlers/report.go
+- backend/changelog.md
+- frontend/changelog.md
+- docs/changelog.md
+
+## [0.25.1] - 2026-08-03
+
+### Bugfix: Cookie Sesi Duplikat (Stale di Path /api) Membuat Login "Langasung Ter-logout"
+
+perubahan yang dilakukan: **`ExtractTokenString` dan middleware CSRF kini memakai nilai cookie TERAKHIR (path terpendek "/"), bukan nilai pertama — browser yang masih menyimpan cookie `sigap_session`/`sigap_csrf` stale warisan versi lama di path `/api` atau `/api/` (token sudah revoked) akan mengirim dua cookie sekaligus, dan nilai stale (path terpanjang, dikirim lebih dulu) yang selama ini dipilih membuat setiap request dianggap sesi dicabut (401) — termasuk `/auth/me` tepat setelah login sukses → user dilempar kembali ke halaman login ("percobaan login langsung ter-logout")**
+before:
+- `utils.ExtractTokenString` dan `middleware/csrf.go` memakai `c.Cookies(nama)` yang mengembalikan nilai cookie PERTAMA di header `Cookie`. Sesuai RFC 6265 §5.4 browser mengirim cookie ber-Path terpanjang lebih dulu, sehingga cookie stale `sigap_session` di `/api` (token yang sudah direvoke saat logout) selalu menang atas cookie sesi aktif di `/` → `Protected`/WebSocket menjawab 401 "Token telah dicabut", padahal sesi baru valid.
+- `frontend/src/lib/api.ts` `getCookie()` juga mengambil kecocokan PERTAMA, sehingga header `X-CSRF-Token` bisa memakai token CSRF stale (path `/api`) sementara server membandingkannya dengan cookie aktif → mutasi berisiko ditolak 403.
+after:
+- `utils/csrf.go`: helper baru `ExtractCookieValues` (seluruh nilai cookie sesuai urutan header) & `ExtractLastCookieValue` (nilai terakhir); `ExtractTokenString` memakai nilai cookie sesi TERAKHIR — sesi aktif di "/" selalu menang atas stale di "/api" — berlaku otomatis untuk `Protected`, WebSocket `/api/ws`, dan `Logout` (tetap mencabut token yang benar).
+- `middleware/csrf.go`: pengecekan keberadaan sesi & perbandingan token CSRF memakai `ExtractLastCookieValue` — konsisten dengan sesi aktif.
+- `frontend/src/lib/api.ts`: `getCookie()` mengambil kemunculan TERAKHIR (cookie aktif di "/") agar header CSRF selalu sinkron dengan nilai yang dibandingkan server.
+- Cleanup cookie legacy (`ClearSessionCookies` pada login/logout) tetap dipertahankan sebagai lapisan pertahanan; dengan perbaikan ini cookie stale yang gagal dihapus browser tidak lagi merusak sesi.
+- Test baru: `TestExtractTokenString_DuplicateCookiesPrefersLast`, `TestExtractTokenString_NoSessionCookieUsesBearer` (utils/csrf_test.go), `TestCSRF_DuplicateCsrfCookiePrefersLast`, `TestCSRF_DuplicateCsrfCookieHeaderMatchesStaleOnlyForbidden` (middleware/csrf_test.go).
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Backend
+file yang diubah:
+- backend/utils/csrf.go
+- backend/utils/csrf_test.go
+- backend/middleware/csrf.go
+- backend/middleware/csrf_test.go
+- frontend/src/lib/api.ts
+- backend/changelog.md
+- frontend/changelog.md
+- docs/changelog.md
+
+## [0.25.0] - 2026-08-03
+
+### Alur Penugasan Pemeliharaan: Assign Teknisi & Penyelesaian Checklist 9 Tahap
+
+perubahan yang dilakukan: **Endpoint baru `PUT /maintenance-logs/:id/assign` (admin menugaskan log terjadwal ke teknisi) dan `POST /maintenance-logs/:id/complete` (teknisi menyelesaikan tugas lewat checklist 9 tahap), status tidak lagi bisa diubah manual — dikelola sistem mengikuti alur: dibuat → scheduled → ditugaskan → ongoing → selesai (completed 9/9 ok) / gagal (failed)**
+before:
+- `MaintenanceLog.TechnicianID` wajib terisi (not null) saat pembuatan; `POST /maintenance-logs` menerima status bebas (scheduled/ongoing/completed/failed) dan `PUT /:id` memungkinkan status diubah manual oleh siapa pun yang berhak — tidak ada alur penugasan ke teknisi maupun pelaporan penyelesaian checklist.
+- Teknisi hanya melihat log miliknya saat ekspor/CSV; halaman list (`GET /maintenance-logs`) menampilkan seluruh data untuk semua peran.
+- Log yang belum ditugaskan tidak ada; `technician_id`/`technician` selalu objek penuh dalam JSON.
+after:
+- Model `MaintenanceLog` (models/setup.go): `TechnicianID` menjadi opsional (`*uuid.UUID`) — log baru dibuat tanpa penugasan; relasi `User` menjadi pointer (`*User`) sehingga `"technician": null` saat belum ditugaskan; kolom baru `MaintenanceResultID *uuid.UUID` menautkan hasil pengecekan ke tugas.
+- Model `FieldMaintenance` (models/field_maintenance.go): kolom baru `MaintenanceLogID *uuid.UUID` (nil saat catatan spontan dari halaman field-maintenance, terisi saat berasal dari penyelesaian tugas).
+- `POST /maintenance-logs` (CreateMaintenanceLog): status hanya boleh "scheduled" (`oneof=scheduled`), `TechnicianID` selalu nil, `completed_at` tidak lagi diterima dari body; ID teknisi tidak lagi diambil dari JWT saat pembuatan.
+- `PUT /maintenance-logs/:id` (UpdateMaintenanceLog): field `status` dan `completed_at` dihapus dari request — status hanya berubah lewat assign/complete; ownership check diperbaiki agar aman saat `TechnicianID` nil.
+- Handler baru `AssignMaintenanceLog` (rute `PUT /:id/assign`, admin saja): hanya log berstatus `scheduled` yang bisa ditugaskan; user tujuan wajib berperan `teknisi`; status otomatis `ongoing`; audit `ASSIGN_MAINTENANCE`.
+- Handler baru `CompleteMaintenanceLog` (rute `POST /:id/complete`): teknisi wajib menyelesaikan tugasnya sendiri (ownership check; tanpa mekanisme penolakan), hanya tugas `ongoing`; body berupa 1–30 item checklist (name min 3, result ok/not_ok, note maks 500) + 1–5 foto (`/api/uploads/...`); status akhir `completed` hanya bila 9/9 item ok, selain itu `failed`; seluruh header+checks+images+update status disimpan dalam satu transaksi; `completed_at` diisi otomatis; audit `COMPLETE_MAINTENANCE`; broadcast `MAINTENANCE_UPDATED`.
+- `GET /maintenance-logs` & `GET /maintenance-logs/:id` kini menerapkan scope peran (teknisi hanya melihat/membuka log miliknya) + ownership check pada detail — konsisten dengan ekspor.
+- `GET /users` menerima filter query `role` (mis. `?role=teknisi` untuk dropdown penugasan).
+- `GET /dashboard/tasks` menambahkan `cctv_id` & `cctv_kode` pada setiap item tugas (dibutuhkan frontend untuk membuka wizard checklist).
+- Ekspor CSV & laporan PDF aman saat teknisi belum ditugaskan (nil-safe, kolom teknisi kosong).
+- `swag init` dijalankan ulang; test baru: assign sukses/tidak terjadwal/bukan teknisi/UUID invalid; complete sukses (completed 9/9), tidak semua ok (failed), ownership denied, tidak ongoing.
+timestamp: 2026-08-03 WITA
+kategori: Feature, Backend
+file yang diubah:
+- backend/models/setup.go
+- backend/models/field_maintenance.go
+- backend/handlers/maintenance.go
+- backend/routes/maintenance.go
+- backend/handlers/user.go
+- backend/handlers/dashboard.go
+- backend/handlers/report.go
+- backend/handlers/maintenance_test.go
+- backend/docs/* (regenerasi swag)
+- backend/changelog.md
+verifikasi:
+- `go build ./...` PASS.
+- `go vet ./...` PASS.
+- `go test ./... -count=1` PASS (semua package ok).
+alasan teknis: Alur bisnis menuntut status dikelola sistem (penugasan + penyelesaian), bukan diubah manual, agar riwayat terjaga dan teknisi tidak bisa menghindari tugas; checklist 9 tahap dipakai ulang dari modul field-maintenance sehingga hasil pengecekan tugas terdokumentasi lengkap dengan foto; scope list/detail mencegah teknisi melihat data pemeliharaan milik teknisi lain.
+
+---
+
 ## [0.24.0] - 2026-08-03
 
 ### API Pengecekan Lapangan (Field Maintenance) untuk Teknisi

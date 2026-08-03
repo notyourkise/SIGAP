@@ -114,7 +114,9 @@ func DashboardSummary(c *fiber.Ctx) error {
 // DashboardTaskItem mewakili satu tugas pemeliharaan (notifikasi untuk teknisi).
 type DashboardTaskItem struct {
 	ID             string  `json:"id"`
+	CCTVID         string  `json:"cctv_id"`
 	CCTVName       string  `json:"cctv_name"`
+	CCTVCode       string  `json:"cctv_kode"`
 	CCTVLocation   string  `json:"cctv_location"`
 	Status         string  `json:"status"`
 	ActionTaken    string  `json:"action_taken"`
@@ -181,7 +183,9 @@ func DashboardTasks(c *fiber.Ctx) error {
 		}
 		tasks = append(tasks, DashboardTaskItem{
 			ID:            log.ID.String(),
+			CCTVID:        log.CCTVID.String(),
 			CCTVName:      log.CCTV.Nama,
+			CCTVCode:      log.CCTV.KodeCCTV,
 			CCTVLocation:  log.CCTV.LokasiArea,
 			Status:        log.Status,
 			ActionTaken:   log.ActionTaken,

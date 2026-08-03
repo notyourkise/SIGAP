@@ -17,6 +17,10 @@ type FieldMaintenance struct {
 	CCTV         CCTV      `gorm:"foreignKey:CCTVID" json:"cctv"`
 	TechnicianID uuid.UUID `gorm:"type:uuid;not null" json:"technician_id"`
 	User         User      `gorm:"foreignKey:TechnicianID" json:"technician"`
+	// MaintenanceLogID menautkan hasil pengecekan ini ke tugas pemeliharaan
+	// terjadwal (MaintenanceLog) yang diselesaikan oleh teknisi. Nil saat
+	// catatan dibuat spontan dari halaman Field Maintenance (bukan dari tugas).
+	MaintenanceLogID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_log_id"`
 	// OverallStatus merupakan hasil ringkasan seluruh checklist: "ok" bila
 	// semua item berstatus ok, selain itu "attention" (perlu tindak lanjut).
 	OverallStatus string `gorm:"type:varchar(20);not null" json:"overall_status"`

@@ -21,7 +21,7 @@ const STATUS_LABEL: Record<string, { label: string; dot: string; bar: string }> 
   scheduled: { label: 'Terjadwal', dot: 'bg-blue-500', bar: 'bg-blue-500' },
   ongoing: { label: 'Dalam proses', dot: 'bg-warning', bar: 'bg-warning' },
   completed: { label: 'Selesai', dot: 'bg-success', bar: 'bg-success' },
-  failed: { label: 'Gagal', dot: 'bg-error', bar: 'bg-error' },
+  failed: { label: 'Perlu Tindak Lanjut', dot: 'bg-error', bar: 'bg-error' },
 };
 
 export default function DashboardAnalytics({

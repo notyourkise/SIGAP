@@ -230,7 +230,7 @@ export default function TrendChart({ data }: { data: TrendPoint[] }) {
           <p className="mt-1 space-y-0.5 leading-relaxed text-muted">
             Terjadwal {data[hoveredIndex].scheduled} · Dalam proses {data[hoveredIndex].ongoing}
             <br />
-            Selesai {data[hoveredIndex].completed} · Gagal {data[hoveredIndex].failed}
+            Selesai {data[hoveredIndex].completed} · Perlu Tindak Lanjut {data[hoveredIndex].failed}
           </p>
         </div>
       )}

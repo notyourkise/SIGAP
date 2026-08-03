@@ -3,6 +3,94 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.27.2] — 2026-08-03 — Label Status "Gagal" Menjadi "Perlu Tindak Lanjut"
+
+### Perubahan
+
+- **Frontend** (`maintenance/page.tsx`, `dashboard/page.tsx`, `DashboardAnalytics.tsx`, `TrendChart.tsx`):
+  label tampilan status `failed` diubah dari "Gagal" menjadi "Perlu Tindak Lanjut" (badge tabel,
+  filter dropdown, modal detail, kartu statistik, legenda analitik, tooltip grafik).
+- **Backend** (`handlers/report.go`): `pdfStatusLabel` & ringkasan laporan PDF memakai
+  "Perlu Tindak Lanjut".
+- Nilai internal `failed` di database/API **tidak berubah** — tanpa migrasi data; filter,
+  query parameter, dan seluruh klien API tetap kompatibel. CSV export tetap menulis nilai mentah.
+- Test backend & lint/build frontend lulus; container `sigap-api` & `sigap-frontend` di-rebuild.
+
+Timestamp: 2026-08-03 WITA | Kategori: Kecil | Detail: `backend/changelog.md` [0.25.2], `frontend/changelog.md` [1.24.2]
+
+## [1.27.1] — 2026-08-03 — Bugfix Sesi: Cookie Duplikat (Stale di Path /api) Menyebabkan Login "Langasung Ter-logout"
+
+### Penyebab
+
+Setelah logout, browser yang masih menyimpan cookie `sigap_session`/`sigap_csrf` stale
+(warisan versi lama di path `/api` atau `/api/`, token sudah direvoke) akan mengirimkan
+dua cookie bernama sama pada setiap request. Sesuai RFC 6265 §5.4 cookie ber-Path
+terpanjang dikirim lebih dulu, dan backend (`c.Cookies()`) selama ini mengambil nilai
+PERTAMA — cookie stale — sehingga `GET /auth/me` (dan seluruh endpoint terlindungi)
+menjawab 401 "Token telah dicabut" tepat setelah login sukses; frontend lalu mengarahkan
+kembali ke halaman login (gejala: "login langsung ter-logout", tidak bisa login setelah logout).
+
+### Perbaikan
+
+- **Backend** (`utils/csrf.go`, `middleware/csrf.go`): nilai cookie sesi & CSRF diambil dari
+  kemunculan TERAKHIR (sesi aktif di path "/" selalu menang) lewat helper baru
+  `ExtractCookieValues`/`ExtractLastCookieValue`; berlaku untuk `Protected`, WebSocket, dan Logout.
+- **Frontend** (`src/lib/api.ts`): `getCookie()` mengambil nilai terakhir agar header
+  `X-CSRF-Token` selalu sinkron dengan cookie aktif.
+- Cleanup cookie legacy saat login/logout tetap dipertahankan (defense in depth).
+- Test baru untuk skenario cookie duplikat (utils & middleware) — seluruh suite lulus.
+
+Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [0.25.1], `frontend/changelog.md` [1.24.1]
+
+## [1.27.0] — 2026-08-03 — Alur Penugasan Pemeliharaan (Assign Teknisi & Checklist 9 Tahap)
+
+### Frontend
+
+- Halaman Pemeliharaan CCTV: sub-menu status "Dalam Proses", "Selesai", "Gagal" pada
+  input status dihapus — status kini tampil read-only ("Terjadwal" untuk catatan baru)
+  dengan keterangan status diperbarui otomatis oleh sistem; field waktu pencatatan
+  (`completed_at`) dihapus dari form, hanya "Waktu terjadwal".
+- Log terjadwal dapat **ditugaskan ke teknisi** (admin): tombol ikon UserPlus pada baris
+  status Terjadwal → modal pilih teknisi (diambil dari `GET /users?role=teknisi`) →
+  `PUT /maintenance-logs/:id/assign`; setelah ditugaskan status otomatis "Dalam proses".
+- Baris log berstatus "Dalam proses" menampilkan tombol **Selesaikan** (ikon CheckCheck)
+  bagi teknisi yang ditugaskan (atau admin) → membuka wizard checklist 9 tahap dalam mode
+  `complete` (`POST /maintenance-logs/:id/complete`) — checklist + foto bukti yang sama
+  dengan pengecekan lapangan.
+- Dashboard teknisi: tugas berstatus "Dalam proses" punya tombol **Selesaikan** yang
+  membuka wizard yang sama; setelah selesai dashboard di-refresh (status jadi
+  Selesai/Gagal otomatis).
+- Teknisi tidak lagi melihat tombol "Catat Pemeliharaan"/"Ubah"; baris log menampilkan
+  "Belum ditugaskan" saat belum ada teknisi.
+
+### Backend
+
+- Model `MaintenanceLog`: `TechnicianID` menjadi opsional (`*uuid.UUID`, relasi `User`
+  pointer → `technician: null` saat belum ditugaskan), kolom baru `MaintenanceResultID`
+  menautkan hasil pengecekan; `FieldMaintenance` mendapat `MaintenanceLogID`.
+- `POST /maintenance-logs` hanya menerima status `scheduled` (tanpa teknisi,
+  `completed_at` tidak lagi diterima); `PUT /:id` tidak lagi menerima `status`/`completed_at`
+  — status dikelola sistem.
+- Endpoint baru: `PUT /maintenance-logs/:id/assign` (admin; hanya log terjadwal; user
+  tujuan wajib role teknisi; status → ongoing) dan `POST /maintenance-logs/:id/complete`
+  (ownership check; hanya ongoing; checklist 1–30 item + 1–5 foto; transaksi; status
+  `completed` bila 9/9 ok, selain itu `failed`; audit `ASSIGN_MAINTENANCE`/
+  `COMPLETE_MAINTENANCE`).
+- `GET /maintenance-logs` & `GET /maintenance-logs/:id` kini menerapkan scope peran
+  (teknisi hanya melihat log miliknya) + ownership check detail; ekspor CSV & PDF
+  nil-safe untuk log tanpa teknisi.
+- `GET /users` mendukung filter `role`; `GET /dashboard/tasks` menambahkan
+  `cctv_id`/`cctv_kode`; swagger di-regenerasi.
+
+### Rincian
+
+- Detail per bagian: `../frontend/changelog.md` versi [1.24.0],
+  `../backend/changelog.md` versi [0.25.0].
+- Uji: `go test ./...` PASS, `go vet ./...` PASS, `npm run lint` (0 errors, 46 warnings
+  existing) & `npm run build` PASS.
+
+---
+
 ## [1.26.0] — 2026-08-03 — Pengecekan Lapangan Teknisi via Scan QR
 
 ### Frontend

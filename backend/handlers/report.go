@@ -102,8 +102,8 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	summary := map[string]int{
 		"Terjadwal":   0,
 		"Dalam proses": 0,
-		"Selesai":     0,
-		"Gagal":       0,
+		"Selesai":              0,
+		"Perlu Tindak Lanjut": 0,
 	}
 	for _, l := range logs {
 		switch l.Status {
@@ -114,7 +114,7 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 		case statusSelesai:
 			summary["Selesai"]++
 		case statusGagal:
-			summary["Gagal"]++
+			summary["Perlu Tindak Lanjut"]++
 		}
 	}
 
@@ -123,8 +123,8 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	pdf.CellFormat(pdfContentW, 6, fmt.Sprintf("Ringkasan: %d catatan pemeliharaan", len(logs)), "", 1, "", false, 0, "")
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.CellFormat(pdfContentW, 5, fmt.Sprintf(
-		"Terjadwal: %d   |   Dalam proses: %d   |   Selesai: %d   |   Gagal: %d",
-		summary["Terjadwal"], summary["Dalam proses"], summary["Selesai"], summary["Gagal"],
+		"Terjadwal: %d   |   Dalam proses: %d   |   Selesai: %d   |   Perlu Tindak Lanjut: %d",
+		summary["Terjadwal"], summary["Dalam proses"], summary["Selesai"], summary["Perlu Tindak Lanjut"],
 	), "", 1, "", false, 0, "")
 	pdf.SetY(pdf.GetY() + 2)
 
@@ -289,7 +289,11 @@ func pdfTableRow(pdf *fpdf.Fpdf, no int, l models.MaintenanceLog) {
 	pdf.CellFormat(colWidths[4], 5, pdfStatusLabel(l.Status), "", 0, "C", false, 0, "")
 	// Teknisi
 	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2]+colWidths[3]+colWidths[4], textY)
-	pdf.CellFormat(colWidths[5], 5, pdfSafe(l.User.FullName, 16), "", 0, "L", false, 0, "")
+	techName := ""
+	if l.User != nil {
+		techName = l.User.FullName
+	}
+	pdf.CellFormat(colWidths[5], 5, pdfSafe(techName, 16), "", 0, "L", false, 0, "")
 	// Tanggal
 	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2]+colWidths[3]+colWidths[4]+colWidths[5], textY)
 	dateStr := ""
@@ -324,7 +328,7 @@ func pdfStatusLabel(status string) string {
 	case statusSelesai:
 		return "Selesai"
 	case statusGagal:
-		return "Gagal"
+		return "Perlu Tindak Lanjut"
 	default:
 		return status
 	}
