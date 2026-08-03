@@ -17,11 +17,14 @@ export function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-// Hapus cookie sesi & CSRF di sisi klien (dipanggil saat sesi berakhir/401).
+// Hapus cookie CSRF di sisi klien (dipanggil saat sesi berakhir/401).
+// PENTING: Cookie sesi (sigap_session) bersifat httpOnly dan TIDAK BISA
+// dihapus oleh JavaScript. Hanya server yang bisa menghapusnya melalui
+// header Set-Cookie. Jika JS mencoba menghapusnya, browser justru membuat
+// cookie KEDUA (non-httpOnly) dengan nama sama yang berkonflik.
 export function clearAuthCookies(): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
   document.cookie = `${CSRF_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
 }
 
@@ -40,24 +43,34 @@ function handleUnauthorized(): void {
   }
 }
 
+// Opsi tambahan di luar RequestInit standar.
+export interface ApiRequestOptions extends RequestInit {
+  // Jika true, respons 401 TIDAK akan memicu handleUnauthorized().
+  // Gunakan untuk panggilan yang wajar mengembalikan 401 tanpa berarti
+  // sesi expired, misalnya bootstrap (/auth/me) dan login (/auth/login).
+  skipAuthRedirect?: boolean;
+}
+
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<ApiResponse<T>> {
-  const headers = new Headers(options.headers);
-  if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+  const { skipAuthRedirect, ...fetchOptions } = options;
+
+  const headers = new Headers(fetchOptions.headers);
+  if (!(fetchOptions.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
   // Kirim token CSRF untuk permintaan mutasi (dibaca dari cookie non-httpOnly).
   const csrf = getCookie(CSRF_COOKIE);
-  if (csrf && isMutatingMethod(options.method)) {
+  if (csrf && isMutatingMethod(fetchOptions.method)) {
     headers.set(CSRF_HEADER, csrf);
   }
 
   // credentials: 'include' — cookie sesi httpOnly dikirim otomatis.
   const config: RequestInit = {
-    ...options,
+    ...fetchOptions,
     headers,
     credentials: 'include',
   };
@@ -71,7 +84,10 @@ export async function apiRequest<T>(
     );
   }
 
-  if (response.status === 401) {
+  // Hanya trigger handleUnauthorized untuk 401 yang memang berarti sesi expired.
+  // Panggilan bootstrap (/auth/me) dan login (/auth/login) menggunakan
+  // skipAuthRedirect=true agar 401 ditangani secara lokal.
+  if (response.status === 401 && !skipAuthRedirect) {
     handleUnauthorized();
   }
 

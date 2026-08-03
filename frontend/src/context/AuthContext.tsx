@@ -38,7 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        const response = await apiRequest<User>('/auth/me');
+        // skipAuthRedirect: true → 401 pada bootstrap adalah kondisi normal
+        // (belum login), BUKAN sesi expired. Tanpa flag ini, handleUnauthorized
+        // akan terpicu dan membuat phantom cookie yang merusak login berikutnya.
+        const response = await apiRequest<User>('/auth/me', { skipAuthRedirect: true });
         if (!cancelled && response.status === 'success' && response.data) {
           setUser(response.data);
           // Paksa ganti password saat login pertama (akun baru / password di-reset

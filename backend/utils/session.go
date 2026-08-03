@@ -13,8 +13,8 @@ func cookieSecure() bool {
 }
 
 // SetSessionCookie memasang cookie httpOnly yang menyimpan token JWT sesi.
-// Cookie bersifat session cookie (tanpa MaxAge) sehingga otomatis terhapus
-// saat browser ditutup — tidak ada sesi yang tersimpan permanen.
+// MaxAge diselaraskan dengan durasi kedaluwarsa JWT (5 jam) agar cookie
+// bertahan selama token masih valid, termasuk saat refresh halaman.
 func SetSessionCookie(c *fiber.Ctx, token string) {
 	c.Cookie(&fiber.Cookie{
 		Name:     SessionCookieName,
@@ -23,11 +23,12 @@ func SetSessionCookie(c *fiber.Ctx, token string) {
 		Secure:   cookieSecure(),
 		SameSite: "Lax",
 		Path:     "/",
+		MaxAge:   18000, // 5 jam, selaras dengan exp JWT di jwt.go
 	})
 }
 
 // SetCSRFCookie memasang cookie CSRF (non-httpOnly) untuk pola double-submit.
-// Cookie bersifat session cookie sehingga ikut terhapus saat browser ditutup.
+// MaxAge diselaraskan dengan cookie sesi agar keduanya tetap sinkron.
 func SetCSRFCookie(c *fiber.Ctx, token string) {
 	c.Cookie(&fiber.Cookie{
 		Name:     CSRFCookieName,
@@ -36,6 +37,7 @@ func SetCSRFCookie(c *fiber.Ctx, token string) {
 		Secure:   cookieSecure(),
 		SameSite: "Lax",
 		Path:     "/",
+		MaxAge:   18000, // 5 jam, selaras dengan cookie sesi
 	})
 }
 
