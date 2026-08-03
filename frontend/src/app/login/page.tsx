@@ -43,9 +43,13 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
+      // skipAuthRedirect: true → 401 pada login artinya "kredensial salah",
+      // bukan sesi expired. Tanpa flag ini, handleUnauthorized akan terpicu
+      // dan membuat phantom cookie yang merusak percobaan login berikutnya.
       const response = await apiRequest<{ user: AuthUser }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
+        skipAuthRedirect: true,
       });
       if (response.status === 'success' && response.data) {
         login(response.data.user);
