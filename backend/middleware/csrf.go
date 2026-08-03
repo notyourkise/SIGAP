@@ -38,11 +38,12 @@ func CSRFProtection() fiber.Handler {
 		}
 
 		// Tidak ada sesi cookie — tidak ada resource yang perlu dilindungi.
-		if c.Cookies(utils.SessionCookieName) == "" {
+		// Nilai cookie sesi terakhir yang digunakan (lihat ExtractLastCookieValue).
+		if utils.ExtractLastCookieValue(c, utils.SessionCookieName) == "" {
 			return c.Next()
 		}
 
-		cookieToken := c.Cookies(utils.CSRFCookieName)
+		cookieToken := utils.ExtractLastCookieValue(c, utils.CSRFCookieName)
 		headerToken := c.Get(utils.CSRFHeaderName)
 		if cookieToken == "" || headerToken == "" || cookieToken != headerToken {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{

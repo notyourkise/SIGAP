@@ -141,3 +141,33 @@ func TestCSRF_MatchingTokenPass(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
+
+func TestCSRF_DuplicateCsrfCookiePrefersLast(t *testing.T) {
+	app := csrfTestApp()
+
+	// Cookie CSRF duplikat (stale di /api + aktif di /): nilai TERAKHIR
+	// (sesi aktif) yang dibandingkan dengan header.
+	req := httptest.NewRequest("POST", "/mutate", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", "sigap_session=valid-session; sigap_csrf=stale-csrf; sigap_csrf=active-csrf")
+	req.Header.Set(utils.CSRFHeaderName, "active-csrf")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func TestCSRF_DuplicateCsrfCookieHeaderMatchesStaleOnlyForbidden(t *testing.T) {
+	app := csrfTestApp()
+
+	// Header yang hanya cocok dengan cookie stale (nilai pertama) tetap ditolak,
+	// karena yang dibandingkan adalah cookie aktif pada path "/" (nilai terakhir).
+	req := httptest.NewRequest("POST", "/mutate", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", "sigap_session=valid-session; sigap_csrf=stale-csrf; sigap_csrf=active-csrf")
+	req.Header.Set(utils.CSRFHeaderName, "stale-csrf")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}

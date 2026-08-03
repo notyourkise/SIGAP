@@ -11,10 +11,19 @@ const CSRF_COOKIE = 'sigap_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
 
 // Baca nilai sebuah cookie (pola double-submit CSRF).
+// Ambil kemunculan TERAKHIR: browser bisa menyimpan beberapa cookie dengan
+// nama sama namun Path berbeda (stale lama di /api + aktif di /). document.cookie
+// diurutkan sesuai RFC 6265 (Path terpanjang lebih dulu), jadi nilai pada path
+// terpendek ("/") — cookie sesi/CSRF aktif — selalu berada paling akhir.
 export function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-  return match ? decodeURIComponent(match[1]) : null;
+  const regex = new RegExp('(?:^|;\\s*)' + name + '=([^;]*)', 'g');
+  let match: RegExpExecArray | null;
+  let last: string | null = null;
+  while ((match = regex.exec(document.cookie)) !== null) {
+    last = decodeURIComponent(match[1]);
+  }
+  return last;
 }
 
 // Hapus cookie CSRF di sisi klien (dipanggil saat sesi berakhir/401).
