@@ -21,9 +21,11 @@ type CreateMaintenanceLogRequest struct {
 	CCTVID        string `json:"cctv_id" validate:"required,uuid4"`
 	ActionTaken   string `json:"action_taken" validate:"required,min=5"`
 	Notes         string `json:"notes" validate:"omitempty"`
-	Status        string `json:"status" validate:"required,oneof=scheduled ongoing completed failed"`
+	// Status hanya boleh bernilai "scheduled" saat pembuatan — alur status
+	// selanjutnya dikelola sistem: assign teknisi (-> ongoing) dan penyelesaian
+	// checklist (-> completed/failed), tidak bisa diubah manual lewat API.
+	Status        string `json:"status" validate:"omitempty,oneof=scheduled"`
 	ScheduledDate string `json:"scheduled_date" validate:"omitempty"` // YYYY-MM-DD HH:MM:SS or RFC3339
-	CompletedAt   string `json:"completed_at" validate:"omitempty"`   // YYYY-MM-DD HH:MM:SS or RFC3339
 	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL dari endpoint /api/upload
 }
 
@@ -31,10 +33,21 @@ type UpdateMaintenanceLogRequest struct {
 	CCTVID        string `json:"cctv_id" validate:"omitempty,uuid4"`
 	ActionTaken   string `json:"action_taken" validate:"omitempty,min=5"`
 	Notes         string `json:"notes" validate:"omitempty"`
-	Status        string `json:"status" validate:"omitempty,oneof=scheduled ongoing completed failed"`
 	ScheduledDate string `json:"scheduled_date" validate:"omitempty"` // YYYY-MM-DD HH:MM:SS or RFC3339
-	CompletedAt   string `json:"completed_at" validate:"omitempty"`   // YYYY-MM-DD HH:MM:SS or RFC3339
 	ImageUrl      string `json:"image_url" validate:"omitempty"`      // URL baru dari /api/upload (opsional)
+}
+
+// AssignMaintenanceLogRequest menugaskan log terjadwal ke seorang teknisi.
+type AssignMaintenanceLogRequest struct {
+	TechnicianID string `json:"technician_id" validate:"required,uuid4"`
+}
+
+// CompleteMaintenanceLogRequest berisi hasil penyelesaian tugas terjadwal.
+// FieldCheckItem & FieldImageItem dipakai ulang dari modul field-maintenance.
+type CompleteMaintenanceLogRequest struct {
+	Notes  string           `json:"notes" validate:"omitempty,max=1000"`
+	Checks []FieldCheckItem `json:"checks" validate:"required,min=1,dive"`
+	Images []FieldImageItem `json:"images" validate:"required,min=1,max=5,dive"`
 }
 
 // CreateMaintenanceLog membuat log pemeliharaan baru (Admin & Teknisi)
@@ -83,23 +96,6 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Ambil ID Teknisi dari Token JWT (c.Locals)
-	techIDStr, ok := c.Locals("user_id").(string)
-	if !ok || techIDStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Sesi tidak valid, Teknisi tidak ditemukan",
-		})
-	}
-
-	techUUID, err := uuid.Parse(techIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Gagal membaca ID teknisi",
-		})
-	}
-
 	// Parsing Waktu
 	var schedDate *time.Time
 	if req.ScheduledDate != "" {
@@ -119,33 +115,15 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		schedDate = &t
 	}
 
-	var compDate *time.Time
-	if req.CompletedAt != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", req.CompletedAt)
-		if err != nil {
-			t, err = time.Parse(time.RFC3339, req.CompletedAt)
-			if err != nil {
-				t, err = time.Parse("2006-01-02", req.CompletedAt)
-				if err != nil {
-					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-						"status":  "error",
-						"message": "Format completed_at tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
-					})
-				}
-			}
-		}
-		compDate = &t
-	}
-
+	// Log baru selalu dibuat tanpa penugasan (TechnicianID nil) dengan status
+	// "scheduled". Teknisi ditautkan kemudian melalui endpoint assign.
 	logEntry := models.MaintenanceLog{
-		CCTVID:       cctvUUID,
-		TechnicianID: techUUID,
-		ActionTaken:  req.ActionTaken,
-		Notes:        req.Notes,
-		Status:       req.Status,
+		CCTVID:        cctvUUID,
+		ActionTaken:   req.ActionTaken,
+		Notes:         req.Notes,
+		Status:        "scheduled",
 		ScheduledDate: schedDate,
-		CompletedAt:  compDate,
-		ImageUrl:     req.ImageUrl,
+		ImageUrl:      req.ImageUrl,
 	}
 
 	if err := config.DB.Create(&logEntry).Error; err != nil {
@@ -189,6 +167,9 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
 	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
+
+	// SECURITY: Teknisi hanya dapat melihat log miliknya (lewat penugasan)
+	query = applyRoleScope(c, query)
 
 	// Filter berdasarkan cctv_id (dukung alias legacy asset_id dari QR lama)
 	if cctvID := c.Query("cctv_id"); cctvID != "" {
@@ -283,6 +264,18 @@ func GetMaintenanceLogByID(c *fiber.Ctx) error {
 		})
 	}
 
+	// SECURITY: Teknisi hanya boleh melihat detail log miliknya sendiri
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		techIDStr, ok := c.Locals("user_id").(string)
+		if !ok || techIDStr == "" || logEntry.TechnicianID == nil || techIDStr != logEntry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat melihat log pemeliharaan milik Anda sendiri",
+			})
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   logEntry,
@@ -332,7 +325,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 				"message": "Sesi tidak valid, Teknisi tidak ditemukan",
 			})
 		}
-		if techIDStr != logEntry.TechnicianID.String() {
+		if logEntry.TechnicianID == nil || techIDStr != logEntry.TechnicianID.String() {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"status":  "error",
 				"message": "Akses ditolak: Anda hanya dapat mengubah log pemeliharaan milik Anda sendiri",
@@ -372,9 +365,6 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if req.Notes != "" {
 		logEntry.Notes = req.Notes
 	}
-	if req.Status != "" {
-		logEntry.Status = req.Status
-	}
 	if req.ScheduledDate != "" {
 		t, err := time.Parse("2006-01-02 15:04:05", req.ScheduledDate)
 		if err != nil {
@@ -385,18 +375,6 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		}
 		if err == nil {
 			logEntry.ScheduledDate = &t
-		}
-	}
-	if req.CompletedAt != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", req.CompletedAt)
-		if err != nil {
-			t, err = time.Parse(time.RFC3339, req.CompletedAt)
-			if err != nil {
-				t, err = time.Parse("2006-01-02", req.CompletedAt)
-			}
-		}
-		if err == nil {
-			logEntry.CompletedAt = &t
 		}
 	}
 
@@ -417,6 +395,278 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "UPDATE_MAINTENANCE", "MAINTENANCE", "Memperbarui log pemeliharaan: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
+
+	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   logEntry,
+	})
+}
+
+// maintenanceCheckTotal adalah jumlah item checklist wajib (9 tahap) yang harus
+// dilaporkan teknisi untuk menyelesaikan tugas. Status menjadi "completed"
+// hanya bila 9/9 item berstatus ok; selain itu "failed".
+const maintenanceCheckTotal = 9
+
+// AssignMaintenanceLog menugaskan log terjadwal ke seorang teknisi (Admin saja)
+// @Summary      Tugaskan Log ke Teknisi
+// @Description  Menugaskan log pemeliharaan berstatus "scheduled" ke teknisi berperan "teknisi". Status log otomatis berubah menjadi "ongoing".
+// @Tags         Log Pemeliharaan
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "Log UUID"
+// @Param        request body AssignMaintenanceLogRequest true "ID Teknisi Tujuan"
+// @Success      200 {object} map[string]interface{} "Log berhasil ditugaskan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid, log tidak terjadwal, atau format body salah"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "Log atau teknisi tidak ditemukan"
+// @Router       /maintenance-logs/{id}/assign [put]
+func AssignMaintenanceLog(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID log pemeliharaan tidak valid",
+		})
+	}
+
+	var logEntry models.MaintenanceLog
+	if err := config.DB.First(&logEntry, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Log pemeliharaan tidak ditemukan",
+		})
+	}
+
+	// Hanya log terjadwal (belum ditugaskan) yang dapat di-assign
+	if logEntry.Status != "scheduled" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Hanya log berstatus terjadwal yang dapat ditugaskan ke teknisi",
+		})
+	}
+
+	var req AssignMaintenanceLogRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Validasi input gagal",
+			"errors":  errs,
+		})
+	}
+
+	techUUID, err := uuid.Parse(req.TechnicianID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID teknisi tidak valid",
+		})
+	}
+
+	// Pastikan user tujuan benar-benar berperan teknisi
+	var techUser models.User
+	if err := config.DB.First(&techUser, "id = ?", techUUID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Teknisi tidak ditemukan",
+		})
+	}
+	if techUser.Role != "teknisi" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "User tujuan bukan berperan teknisi",
+		})
+	}
+
+	now := time.Now()
+	logEntry.TechnicianID = &techUUID
+	logEntry.Status = "ongoing"
+	logEntry.UpdatedAt = now
+
+	if err := config.DB.Save(&logEntry).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menugaskan log pemeliharaan",
+		})
+	}
+
+	utils.LogAudit(config.DB, c, "ASSIGN_MAINTENANCE", "MAINTENANCE", "Menugaskan log pemeliharaan ke teknisi: "+techUser.FullName+" ("+logEntry.ActionTaken+")", nil, "", "")
+
+	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   logEntry,
+	})
+}
+
+// CompleteMaintenanceLog menyelesaikan tugas terjadwal lewat checklist (Admin & Teknisi)
+// @Summary      Selesaikan Tugas Pemeliharaan
+// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.
+// @Tags         Log Pemeliharaan
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "Log UUID"
+// @Param        request body CompleteMaintenanceLogRequest true "Hasil Checklist & Foto Bukti"
+// @Success      200 {object} map[string]interface{} "Tugas berhasil diselesaikan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid, tugas bukan berstatus dalam proses, atau format body salah"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: bukan teknisi yang ditugaskan"
+// @Failure      404 {object} map[string]interface{} "Log tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal menyimpan hasil pengecekan"
+// @Router       /maintenance-logs/{id}/complete [post]
+func CompleteMaintenanceLog(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID log pemeliharaan tidak valid",
+		})
+	}
+
+	var logEntry models.MaintenanceLog
+	if err := config.DB.First(&logEntry, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Log pemeliharaan tidak ditemukan",
+		})
+	}
+
+	// SECURITY: Teknisi wajib menyelesaikan tugasnya sendiri; admin diperbolehkan
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		techIDStr, ok := c.Locals("user_id").(string)
+		if !ok || techIDStr == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Sesi tidak valid, Teknisi tidak ditemukan",
+			})
+		}
+		if logEntry.TechnicianID == nil || techIDStr != logEntry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat menyelesaikan tugas yang ditugaskan kepada Anda",
+			})
+		}
+	}
+
+	// Hanya tugas yang sedang dikerjakan (ongoing) yang dapat diselesaikan
+	if logEntry.Status != "ongoing" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Hanya tugas berstatus dalam proses yang dapat diselesaikan",
+		})
+	}
+
+	var req CompleteMaintenanceLogRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format input tidak valid",
+		})
+	}
+
+	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Validasi input gagal",
+			"errors":  errs,
+		})
+	}
+
+	// Status akhir: completed hanya bila 9/9 item checklist berstatus ok
+	allOk := true
+	for _, chk := range req.Checks {
+		if chk.Result != "ok" {
+			allOk = false
+			break
+		}
+	}
+	newStatus := "failed"
+	if allOk && len(req.Checks) == maintenanceCheckTotal {
+		newStatus = "completed"
+	}
+
+	now := time.Now()
+	overallStatus := "ok"
+	if !allOk {
+		overallStatus = "attention"
+	}
+
+	// Teknisi pelaksana: teknisi yang ditugaskan (atau admin sebagai pengganti)
+	techUUID := uuid.Nil
+	if logEntry.TechnicianID != nil {
+		techUUID = *logEntry.TechnicianID
+	} else if tidStr, ok := c.Locals("user_id").(string); ok {
+		if tid, err := uuid.Parse(tidStr); err == nil {
+			techUUID = tid
+		}
+	}
+
+	err = config.DB.Transaction(func(tx *gorm.DB) error {
+		field := models.FieldMaintenance{
+			CCTVID:          logEntry.CCTVID,
+			TechnicianID:    techUUID,
+			MaintenanceLogID: &id,
+			OverallStatus:   overallStatus,
+			Notes:           req.Notes,
+			CompletedAt:     &now,
+		}
+		if err := tx.Create(&field).Error; err != nil {
+			return err
+		}
+
+		for _, chk := range req.Checks {
+			item := models.FieldMaintenanceCheck{
+				FieldMaintenanceID: field.ID,
+				Name:               chk.Name,
+				Result:             chk.Result,
+				Note:               chk.Note,
+			}
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+		}
+
+		for _, img := range req.Images {
+			image := models.FieldMaintenanceImage{
+				FieldMaintenanceID: field.ID,
+				ImageUrl:           img.ImageUrl,
+			}
+			if err := tx.Create(&image).Error; err != nil {
+				return err
+			}
+		}
+
+		// Tautkan ID hasil pengecekan ke log & perbarui status tugas
+		logEntry.MaintenanceResultID = &field.ID
+		logEntry.Status = newStatus
+		logEntry.CompletedAt = &now
+		return tx.Save(&logEntry).Error
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan hasil pengecekan",
+		})
+	}
+
+	utils.LogAudit(config.DB, c, "COMPLETE_MAINTENANCE", "MAINTENANCE", "Menyelesaikan tugas pemeliharaan: "+logEntry.ActionTaken+" (Status: "+newStatus+")", nil, "", "")
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
@@ -577,14 +827,22 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 		if logEntry.CompletedAt != nil {
 			compStr = logEntry.CompletedAt.Format("2006-01-02 15:04:05")
 		}
+		techIDStr := ""
+		techName := ""
+		if logEntry.TechnicianID != nil {
+			techIDStr = logEntry.TechnicianID.String()
+		}
+		if logEntry.User != nil {
+			techName = logEntry.User.FullName
+		}
 
 		row := []string{
 			logEntry.ID.String(),
 			logEntry.CCTVID.String(),
 			logEntry.CCTV.Nama,
 			logEntry.CCTV.KodeCCTV,
-			logEntry.TechnicianID.String(),
-			logEntry.User.FullName,
+			techIDStr,
+			techName,
 			logEntry.ActionTaken,
 			logEntry.Notes,
 			logEntry.Status,

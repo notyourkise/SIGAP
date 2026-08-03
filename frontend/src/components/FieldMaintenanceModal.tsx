@@ -36,6 +36,11 @@ interface FieldMaintenanceModalProps {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  // mode "field" (default): catatan pengecekan spontan dari halaman Field Maintenance.
+  // mode "complete": penyelesaian tugas terjadwal — hasil checklist dikirim ke
+  // POST /maintenance-logs/:id/complete dan status tugas ditentukan sistem (9/9 ok -> completed).
+  mode?: 'field' | 'complete';
+  maintenanceLogId?: string;
 }
 
 // Daftar item checklist pengecekan lapangan (wajib diisi satu per satu oleh teknisi)
@@ -85,8 +90,11 @@ export default function FieldMaintenanceModal({
   open,
   onClose,
   onSaved,
+  mode = 'field',
+  maintenanceLogId,
 }: FieldMaintenanceModalProps) {
   const toast = useToast();
+  const isCompleteMode = mode === 'complete';
 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<FieldCheckAnswer[]>(
@@ -194,31 +202,59 @@ export default function FieldMaintenanceModal({
       toast.error('Minimal satu foto bukti wajib dilampirkan.');
       return;
     }
+    if (isCompleteMode && !maintenanceLogId) {
+      toast.error('Data tugas tidak ditemukan. Muat ulang halaman lalu coba lagi.');
+      return;
+    }
 
     setSubmitting(true);
     try {
-      const response = await apiRequest('/field-maintenance', {
-        method: 'POST',
-        body: JSON.stringify({
-          cctv_id: cctv.id,
-          notes,
-          checks: answers.map((a, i) => ({
-            name: FIELD_CHECKLIST[i].name,
-            result: a.result,
-            note: a.note,
-          })),
-          images: images.map((url) => ({ image_url: url })),
-        }),
-      });
+      const body = isCompleteMode
+        ? {
+            notes,
+            checks: answers.map((a, i) => ({
+              name: FIELD_CHECKLIST[i].name,
+              result: a.result,
+              note: a.note,
+            })),
+            images: images.map((url) => ({ image_url: url })),
+          }
+        : {
+            cctv_id: cctv.id,
+            notes,
+            checks: answers.map((a, i) => ({
+              name: FIELD_CHECKLIST[i].name,
+              result: a.result,
+              note: a.note,
+            })),
+            images: images.map((url) => ({ image_url: url })),
+          };
+
+      const response = await apiRequest(
+        isCompleteMode ? `/maintenance-logs/${maintenanceLogId}/complete` : '/field-maintenance',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      );
 
       if (response.status === 'success') {
-        toast.success(`Pengecekan lapangan CCTV "${cctv.nama}" berhasil disimpan.`);
+        toast.success(
+          isCompleteMode
+            ? `Tugas pemeliharaan CCTV "${cctv.nama}" berhasil diselesaikan.`
+            : `Pengecekan lapangan CCTV "${cctv.nama}" berhasil disimpan.`
+        );
         resetState();
         onSaved();
         onClose();
       }
     } catch (err: any) {
-      toast.error(err.message || 'Pengecekan lapangan belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(
+        err.message ||
+          (isCompleteMode
+            ? 'Tugas belum dapat diselesaikan. Periksa isian lalu coba lagi.'
+            : 'Pengecekan lapangan belum dapat disimpan. Periksa isian lalu coba lagi.')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -234,14 +270,16 @@ export default function FieldMaintenanceModal({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <h3 className="text-base font-bold">Pengecekan Lapangan</h3>
+            <h3 className="text-base font-bold">
+              {isCompleteMode ? 'Selesaikan Tugas Pemeliharaan' : 'Pengecekan Lapangan'}
+            </h3>
             <p className="mt-0.5 truncate text-xs text-muted">
               {cctv.kode_cctv} · {cctv.nama}
             </p>
           </div>
           <button
             type="button"
-            aria-label="Tutup pengecekan lapangan"
+            aria-label={isCompleteMode ? 'Tutup penyelesaian tugas' : 'Tutup pengecekan lapangan'}
             onClick={handleClose}
             disabled={submitting || uploading}
             className="rounded-lg border border-border p-1 text-muted transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
@@ -452,7 +490,7 @@ export default function FieldMaintenanceModal({
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(70,114,53,0.2)] transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-              {submitting ? 'Menyimpan…' : 'Selesaikan Pengecekan'}
+              {submitting ? 'Menyimpan…' : isCompleteMode ? 'Selesaikan Tugas' : 'Selesaikan Pengecekan'}
             </button>
           )}
         </div>

@@ -1,5 +1,76 @@
 # Changelog - Frontend SIGAP
 
+## [1.24.2] - 2026-08-03
+
+### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan)
+
+perubahan yang dilakukan: **Label tampilan status `failed` diubah dari "Gagal" menjadi "Perlu Tindak Lanjut" di seluruh antarmuka — hanya teks yang berubah, nilai status di API/database tetap `failed` sehingga filter, URL query, dan logika aplikasi tidak berubah**
+before: status bernilai `failed` tampil sebagai "Gagal" di badge tabel, filter dropdown, modal detail, kartu statistik dashboard, legenda analitik, dan tooltip grafik tren.
+after:
+- `src/app/maintenance/page.tsx`: `getStatusLabel` & opsi filter dropdown memakai "Perlu Tindak Lanjut" (badge tabel, modal catat/ubah, dan detail otomatis ikut karena memakai `getStatusLabel`).
+- `src/app/dashboard/page.tsx`: map label status & kartu statistik "Perlu Tindak Lanjut".
+- `src/components/DashboardAnalytics.tsx`: legenda "Perlu Tindak Lanjut".
+- `src/components/TrendChart.tsx`: tooltip "Perlu Tindak Lanjut".
+timestamp: 2026-08-03 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/components/DashboardAnalytics.tsx
+- frontend/src/components/TrendChart.tsx
+- backend/handlers/report.go
+- backend/changelog.md
+- frontend/changelog.md
+- docs/changelog.md
+
+## [1.24.1] - 2026-08-03
+
+### Bugfix: Header CSRF Mengambil Cookie Stale (Path /api) Setelah Login Ulang
+
+perubahan yang dilakukan: **`getCookie()` di `src/lib/api.ts` kini mengambil kemunculan cookie TERAKHIR, bukan yang pertama — bila browser masih menyimpan `sigap_csrf` stale warisan versi lama di path `/api`, `document.cookie` mengurutkannya lebih dulu (RFC 6265, path terpanjang pertama) sehingga header `X-CSRF-Token` memakai nilai stale sementara server membandingkan dengan cookie aktif di "/" → mutasi ditolak 403**
+before: `getCookie()` memakai `document.cookie.match(...)` yang mengembalikan kecocokan pertama — cookie stale di path lebih panjang menang.
+after: regex dengan flag `g` mengambil nilai kecocokan terakhir — cookie aktif di path "/" selalu dipakai untuk header `X-CSRF-Token`, sinkron dengan `ExtractLastCookieValue` di backend.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Frontend
+file yang diubah:
+- frontend/src/lib/api.ts
+- frontend/changelog.md
+- backend/changelog.md
+- docs/changelog.md
+
+## [1.24.0] - 2026-08-03
+
+### Alur Penugasan Pemeliharaan: Assign Teknisi & Selesaikan Tugas via Checklist 9 Tahap
+
+perubahan yang dilakukan: **Di halaman Pemeliharaan CCTV, sub-menu status "Dalam Proses", "Selesai", "Gagal" pada input status dihapus (status kini tampil read-only & dikelola sistem), log terjadwal dapat ditugaskan ke teknisi lewat dropdown, dan tugas muncul di dashboard teknisi dengan tombol "Selesaikan" membuka wizard checklist 9 tahap**
+before:
+- Form catat/ubah pemeliharaan menampilkan select status 4 opsi (Selesai/Terjadwal/Dalam proses/Gagal) + input "waktu pencatatan" yang diisi manual — status bisa diubah sesuka hati.
+- Log terjadwal tidak punya mekanisme penugasan ke teknisi tertentu; teknisi hanya bisa melihat tugas via dashboard tanpa bisa mengerjakan/menyelesaikannya.
+- Nama teknisi pada baris log memakai label "Teknisi Sistem" bila kosong, tidak mencerminkan belum ada penugasan.
+after:
+- **Halaman `src/app/maintenance/page.tsx`:**
+  - Input status diganti tampilan read-only: badge status saat ini (untuk catatan baru selalu "Terjadwal") + keterangan "Status diperbarui otomatis oleh sistem"; field `completed_at` dihapus dari form; input hanya "Waktu terjadwal" (datetime-local, default waktu sekarang; bug lama yang hanya menyimpan tanggal saat edit diperbaiki — kini memakai konversi `toDatetimeLocalInput`).
+  - Daftar teknisi (role "teknisi") diambil dari `GET /users?role=teknisi` (admin) untuk dropdown penugasan.
+  - Tombol aksi baru **Tugaskan** (ikon UserPlus) pada baris log berstatus "Terjadwal" (admin): modal pilih teknisi → `PUT /maintenance-logs/:id/assign`; setelah ditugaskan status otomatis "Dalam proses" dan nama teknisi tampil pada baris.
+  - Tombol aksi baru **Selesaikan** (ikon CheckCheck) pada baris log berstatus "Dalam proses" milik teknisi yang ditugaskan (atau admin): membuka wizard checklist 9 tahap dalam mode "complete".
+  - Teknisi tidak lagi melihat tombol "Catat Pemeliharaan" dan "Ubah" — alur teknisi: menerima tugas (dashboard) → mengerjakan → selesaikan; admin tetap bisa membuat/mengubah/menghapus.
+  - Baris & detail log menampilkan "Belum ditugaskan" saat `technician` nil.
+- **Wizard checklist `src/components/FieldMaintenanceModal.tsx`:** properti baru `mode="complete"` + `maintenanceLogId` — judul "Selesaikan Tugas Pemeliharaan", submit mengirim `POST /maintenance-logs/:id/complete` (tanpa `cctv_id`), toast sukses disesuaikan; seluruh 9 item + foto bukti (min 1, maks 5) tetap sama dengan mode field.
+- **Dashboard `src/app/dashboard/page.tsx`:** tipe tugas menambahkan `cctv_id`/`cctv_kode`; untuk teknisi, baris tugas berstatus "Dalam proses" menampilkan tombol **Selesaikan** yang membuka wizard yang sama; setelah disimpan dashboard di-refresh (status tugas berubah menjadi selesai/gagal otomatis).
+timestamp: 2026-08-03 WITA
+kategori: Feature, UI, Frontend
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/components/FieldMaintenanceModal.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 46 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Alur status dikelola sistem (dibuat → terjadwal → ditugaskan → dalam proses → selesai/gagal) sehingga formulir tidak perlu menawarkan pilihan status manual yang rawan salah; penugasan menghubungkan tugas ke teknisi spesifik sehingga dashboard teknisi berisi tugas yang benar-benar menjadi tanggung jawabnya; wizard checklist 9 tahap dipakai ulang dari modul pengecekan lapangan agar standar pelaporan seragam.
+
+---
+
 ## [1.23.0] - 2026-08-03
 
 ### Pengecekan Lapangan Teknisi via Scan QR + Halaman Admin

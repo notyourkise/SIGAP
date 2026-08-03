@@ -1,5 +1,12 @@
 basePath: /api
 definitions:
+  handlers.AssignMaintenanceLogRequest:
+    properties:
+      technician_id:
+        type: string
+    required:
+    - technician_id
+    type: object
   handlers.ChangePasswordRequest:
     properties:
       new_password:
@@ -11,6 +18,26 @@ definitions:
     required:
     - new_password
     - old_password
+    type: object
+  handlers.CompleteMaintenanceLogRequest:
+    properties:
+      checks:
+        items:
+          $ref: '#/definitions/handlers.FieldCheckItem'
+        minItems: 1
+        type: array
+      images:
+        items:
+          $ref: '#/definitions/handlers.FieldImageItem'
+        maxItems: 5
+        minItems: 1
+        type: array
+      notes:
+        maxLength: 1000
+        type: string
+    required:
+    - checks
+    - images
     type: object
   handlers.CreateCCTVRequest:
     properties:
@@ -101,9 +128,6 @@ definitions:
         type: string
       cctv_id:
         type: string
-      completed_at:
-        description: YYYY-MM-DD HH:MM:SS or RFC3339
-        type: string
       image_url:
         description: URL dari endpoint /api/upload
         type: string
@@ -113,16 +137,16 @@ definitions:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
         type: string
       status:
+        description: |-
+          Status hanya boleh bernilai "scheduled" saat pembuatan — alur status
+          selanjutnya dikelola sistem: assign teknisi (-> ongoing) dan penyelesaian
+          checklist (-> completed/failed), tidak bisa diubah manual lewat API.
         enum:
         - scheduled
-        - ongoing
-        - completed
-        - failed
         type: string
     required:
     - action_taken
     - cctv_id
-    - status
     type: object
   handlers.CreateUserRequest:
     properties:
@@ -263,9 +287,6 @@ definitions:
         type: string
       cctv_id:
         type: string
-      completed_at:
-        description: YYYY-MM-DD HH:MM:SS or RFC3339
-        type: string
       image_url:
         description: URL baru dari /api/upload (opsional)
         type: string
@@ -273,13 +294,6 @@ definitions:
         type: string
       scheduled_date:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
-        type: string
-      status:
-        enum:
-        - scheduled
-        - ongoing
-        - completed
-        - failed
         type: string
     type: object
   handlers.UpdateMyProfileRequest:
@@ -1493,6 +1507,115 @@ paths:
       summary: Update Log Pemeliharaan
       tags:
       - Log Pemeliharaan
+  /maintenance-logs/{id}/assign:
+    put:
+      consumes:
+      - application/json
+      description: Menugaskan log pemeliharaan berstatus "scheduled" ke teknisi berperan
+        "teknisi". Status log otomatis berubah menjadi "ongoing".
+      parameters:
+      - description: Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID Teknisi Tujuan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AssignMaintenanceLogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log berhasil ditugaskan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, log tidak terjadwal, atau format body salah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log atau teknisi tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tugaskan Log ke Teknisi
+      tags:
+      - Log Pemeliharaan
+  /maintenance-logs/{id}/complete:
+    post:
+      consumes:
+      - application/json
+      description: Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto
+        bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed".
+        Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.
+      parameters:
+      - description: Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Hasil Checklist & Foto Bukti
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CompleteMaintenanceLogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tugas berhasil diselesaikan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, tugas bukan berstatus dalam proses, atau
+            format body salah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: bukan teknisi yang ditugaskan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan hasil pengecekan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Selesaikan Tugas Pemeliharaan
+      tags:
+      - Log Pemeliharaan
   /maintenance-logs/export:
     get:
       description: Mengunduh seluruh riwayat pemeliharaan CCTV terfilter (tanpa limit
@@ -1700,6 +1823,10 @@ paths:
       - description: Cari berdasarkan username, full_name, atau email
         in: query
         name: search
+        type: string
+      - description: Filter berdasarkan peran (admin, teknisi)
+        in: query
+        name: role
         type: string
       produces:
       - application/json

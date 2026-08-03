@@ -45,8 +45,14 @@ type MaintenanceLog struct {
 	// kebenaran aset (unifikasi model assets ↔ cctv, Fase 3.6).
 	CCTVID       uuid.UUID  `gorm:"type:uuid;index" json:"cctv_id"`
 	CCTV         CCTV       `gorm:"foreignKey:CCTVID" json:"cctv"`
-	TechnicianID uuid.UUID  `gorm:"type:uuid;not null" json:"technician_id"`
-	User         User       `gorm:"foreignKey:TechnicianID" json:"technician"`
+	// TechnicianID bersifat opsional (nil) karena log baru dibuat berstatus
+	// "scheduled" tanpa penugasan; teknisi baru ditautkan saat admin menugaskan
+	// lewat endpoint assign (status berubah menjadi "ongoing").
+	TechnicianID *uuid.UUID `gorm:"type:uuid;index" json:"technician_id"`
+	User         *User      `gorm:"foreignKey:TechnicianID" json:"technician"`
+	// MaintenanceResultID menunjuk ke catatan FieldMaintenance hasil pengecekan
+	// 9 tahap checklist yang diselesaikan teknisi (nil sebelum tugas selesai).
+	MaintenanceResultID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_result_id"`
 	ActionTaken  string     `gorm:"type:text;not null" json:"action_taken"`
 	Notes        string     `gorm:"type:text" json:"notes"`
 	Status       string     `gorm:"type:varchar(20);not null" json:"status"`

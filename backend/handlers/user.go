@@ -33,6 +33,7 @@ type ResetUserPasswordRequest struct {
 // @Param        sort_by query string false "Kolom Pengurutan (username, full_name, email, role, created_at)"
 // @Param        order query string false "Arah Pengurutan (asc, desc)"
 // @Param        search query string false "Cari berdasarkan username, full_name, atau email"
+// @Param        role query string false "Filter berdasarkan peran (admin, teknisi)"
 // @Success      200 {object} map[string]interface{} "Sukses mendapatkan daftar pengguna"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
 // @Failure      403 {object} map[string]interface{} "Akses ditolak"
@@ -50,6 +51,11 @@ func GetAllUsers(c *fiber.Ctx) error {
 	// Pencarian teks
 	if search := c.Query("search"); search != "" {
 		query = query.Where("username ILIKE ? OR full_name ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Filter berdasarkan peran (mis. daftar teknisi untuk penugasan)
+	if role := c.Query("role"); role != "" {
+		query = query.Where("role = ?", role)
 	}
 
 	// Hitung total data terfilter

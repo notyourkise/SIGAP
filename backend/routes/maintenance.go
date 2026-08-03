@@ -18,7 +18,10 @@ func SetupMaintenanceRoutes(router fiber.Router) {
 	logGroup.Get("/:id", handlers.GetMaintenanceLogByID)
 	logGroup.Post("/", handlers.CreateMaintenanceLog)
 	logGroup.Put("/:id", handlers.UpdateMaintenanceLog)
+	// Penyelesaian tugas (9 tahap checklist) oleh teknisi yang ditugaskan
+	logGroup.Post("/:id/complete", handlers.CompleteMaintenanceLog)
 
 	// Rute yang hanya dapat diakses oleh Admin
+	logGroup.Put("/:id/assign", middleware.RequireRole("admin"), handlers.AssignMaintenanceLog)
 	logGroup.Delete("/:id", middleware.RequireRole("admin"), handlers.DeleteMaintenanceLog)
 }

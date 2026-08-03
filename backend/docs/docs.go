@@ -1884,6 +1884,163 @@ const docTemplate = `{
                 }
             }
         },
+        "/maintenance-logs/{id}/assign": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menugaskan log pemeliharaan berstatus \"scheduled\" ke teknisi berperan \"teknisi\". Status log otomatis berubah menjadi \"ongoing\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Log Pemeliharaan"
+                ],
+                "summary": "Tugaskan Log ke Teknisi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Log UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "ID Teknisi Tujuan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AssignMaintenanceLogRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Log berhasil ditugaskan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid, log tidak terjadwal, atau format body salah",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Log atau teknisi tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/maintenance-logs/{id}/complete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi \"completed\" bila 9/9 item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Log Pemeliharaan"
+                ],
+                "summary": "Selesaikan Tugas Pemeliharaan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Log UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Hasil Checklist \u0026 Foto Bukti",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CompleteMaintenanceLogRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tugas berhasil diselesaikan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid, tugas bukan berstatus dalam proses, atau format body salah",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: bukan teknisi yang ditugaskan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Log tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan hasil pengecekan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/test-panic": {
             "get": {
                 "description": "Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).",
@@ -2065,6 +2222,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Cari berdasarkan username, full_name, atau email",
                         "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan peran (admin, teknisi)",
+                        "name": "role",
                         "in": "query"
                     }
                 ],
@@ -2438,6 +2601,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handlers.AssignMaintenanceLogRequest": {
+            "type": "object",
+            "required": [
+                "technician_id"
+            ],
+            "properties": {
+                "technician_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.ChangePasswordRequest": {
             "type": "object",
             "required": [
@@ -2452,6 +2626,34 @@ const docTemplate = `{
                 },
                 "old_password": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.CompleteMaintenanceLogRequest": {
+            "type": "object",
+            "required": [
+                "checks",
+                "images"
+            ],
+            "properties": {
+                "checks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handlers.FieldCheckItem"
+                    }
+                },
+                "images": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handlers.FieldImageItem"
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1000
                 }
             }
         },
@@ -2570,8 +2772,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "action_taken",
-                "cctv_id",
-                "status"
+                "cctv_id"
             ],
             "properties": {
                 "action_taken": {
@@ -2579,10 +2780,6 @@ const docTemplate = `{
                     "minLength": 5
                 },
                 "cctv_id": {
-                    "type": "string"
-                },
-                "completed_at": {
-                    "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
                     "type": "string"
                 },
                 "image_url": {
@@ -2597,12 +2794,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
+                    "description": "Status hanya boleh bernilai \"scheduled\" saat pembuatan — alur status\nselanjutnya dikelola sistem: assign teknisi (-\u003e ongoing) dan penyelesaian\nchecklist (-\u003e completed/failed), tidak bisa diubah manual lewat API.",
                     "type": "string",
                     "enum": [
-                        "scheduled",
-                        "ongoing",
-                        "completed",
-                        "failed"
+                        "scheduled"
                     ]
                 }
             }
@@ -2801,10 +2996,6 @@ const docTemplate = `{
                 "cctv_id": {
                     "type": "string"
                 },
-                "completed_at": {
-                    "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
-                    "type": "string"
-                },
                 "image_url": {
                     "description": "URL baru dari /api/upload (opsional)",
                     "type": "string"
@@ -2815,15 +3006,6 @@ const docTemplate = `{
                 "scheduled_date": {
                     "description": "YYYY-MM-DD HH:MM:SS or RFC3339",
                     "type": "string"
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "scheduled",
-                        "ongoing",
-                        "completed",
-                        "failed"
-                    ]
                 }
             }
         },

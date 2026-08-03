@@ -7,6 +7,8 @@ import DashboardAnalytics, { type DashboardSummary } from '@/components/Dashboar
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
+import { CheckCheck } from 'lucide-react';
+import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 
 interface CCTV {
   id: string;
@@ -39,7 +41,9 @@ interface PaginationPayload<T> {
 
 interface DashboardTask {
   id: string;
+  cctv_id: string;
   cctv_name: string;
+  cctv_kode: string;
   cctv_location: string;
   status: 'scheduled' | 'ongoing';
   action_taken: string;
@@ -65,7 +69,7 @@ const statusLabel = (status: MaintenanceLog['status']) => ({
   scheduled: 'Terjadwal',
   ongoing: 'Dalam proses',
   completed: 'Selesai',
-  failed: 'Gagal',
+  failed: 'Perlu Tindak Lanjut',
 }[status]);
 
 export default function DashboardPage() {
@@ -81,6 +85,7 @@ export default function DashboardPage() {
   const [health, setHealth] = useState<'Memeriksa' | 'Terhubung' | 'Tidak terhubung'>('Memeriksa');
   const [analytics, setAnalytics] = useState<DashboardSummary | null>(null);
   const [tasks, setTasks] = useState<DashboardTasksResponse | null>(null);
+  const [completeTask, setCompleteTask] = useState<DashboardTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -389,6 +394,16 @@ export default function DashboardPage() {
                             }`}>
                               {statusLabel(task.status)}
                             </span>
+                            {!isAdmin && task.status === 'ongoing' && (
+                              <button
+                                type="button"
+                                onClick={() => setCompleteTask(task)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-bold text-emerald-600 transition-colors hover:bg-emerald-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+                              >
+                                <CheckCheck className="h-3.5 w-3.5" />
+                                Selesaikan
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -413,7 +428,7 @@ export default function DashboardPage() {
                 <StatusCard label="Terjadwal" value={scheduled} tone="blue" active={selectedStatus === 'scheduled'} onClick={() => setSelectedStatus((current) => current === 'scheduled' ? null : 'scheduled')} />
                 <StatusCard label="Dalam proses" value={ongoing} tone="warning" active={selectedStatus === 'ongoing'} onClick={() => setSelectedStatus((current) => current === 'ongoing' ? null : 'ongoing')} />
                 <StatusCard label="Selesai" value={completed} tone="success" active={selectedStatus === 'completed'} onClick={() => setSelectedStatus((current) => current === 'completed' ? null : 'completed')} />
-                <StatusCard label="Gagal" value={failed} tone="error" active={selectedStatus === 'failed'} onClick={() => setSelectedStatus((current) => current === 'failed' ? null : 'failed')} />
+                <StatusCard label="Perlu Tindak Lanjut" value={failed} tone="error" active={selectedStatus === 'failed'} onClick={() => setSelectedStatus((current) => current === 'failed' ? null : 'failed')} />
               </div>
 
               {selectedStatus && (
@@ -445,6 +460,22 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {completeTask && (
+        <FieldMaintenanceModal
+          mode="complete"
+          maintenanceLogId={completeTask.id}
+          cctv={{
+            id: completeTask.cctv_id,
+            kode_cctv: completeTask.cctv_kode,
+            nama: completeTask.cctv_name,
+            lokasi_area: completeTask.cctv_location,
+          }}
+          open
+          onClose={() => setCompleteTask(null)}
+          onSaved={() => loadDashboard()}
+        />
+      )}
     </DashboardLayout>
   );
 }

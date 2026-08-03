@@ -21,8 +21,11 @@ import {
   Eye,
   Image as ImageIcon,
   LoaderCircle,
-  ChevronDown
+  ChevronDown,
+  UserPlus,
+  CheckCheck,
 } from 'lucide-react';
+import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 
 interface MasterCCTV {
   id: string;
@@ -40,8 +43,9 @@ interface MaintenanceLog {
   id: string;
   cctv_id: string;
   cctv: (MasterCCTV & { lokasi_area?: string }) | null;
-  technician_id: string;
-  technician: User; // mapped by GORM Preload("User") via json:"technician"
+  technician_id: string | null;
+  // technician null saat log belum ditugaskan ke teknisi
+  technician: User | null;
   action_taken: string;
   notes: string;
   status: 'scheduled' | 'ongoing' | 'completed' | 'failed';
@@ -82,6 +86,7 @@ export default function MaintenanceLogsPage() {
 
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
   const [cctvs, setCctvs] = useState<MasterCCTV[]>([]);
+  const [technicians, setTechnicians] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cctvsError, setCctvsError] = useState('');
@@ -105,15 +110,17 @@ export default function MaintenanceLogsPage() {
   const [detailLog, setDetailLog] = useState<MaintenanceLog | null>(null);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [assignLog, setAssignLog] = useState<MaintenanceLog | null>(null);
+  const [assignTechnicianId, setAssignTechnicianId] = useState('');
+  const [completeLog, setCompleteLog] = useState<MaintenanceLog | null>(null);
 
-  // Form State
+  // Form State — status dikelola sistem (created -> scheduled -> ongoing -> completed/failed),
+  // sehingga form hanya memuat data yang diisi admin saat menjadwalkan pemeliharaan.
   const [formData, setFormData] = useState({
     cctv_id: '',
     action_taken: '',
     notes: '',
-    status: 'completed',
-    scheduled_date: '',
-        completed_at: nowLocalDateTime(),
+    scheduled_date: nowLocalDateTime(),
     image_url: ''
   });
 
@@ -163,6 +170,33 @@ export default function MaintenanceLogsPage() {
       );
     }
   }, []);
+
+  // Daftar teknisi (role "teknisi") untuk dropdown penugasan tugas — admin saja
+  const fetchTechnicians = useCallback(async () => {
+    try {
+      const response = await apiRequest<{ rows?: User[] }>('/users?page=1&limit=100&role=teknisi');
+      if (response.status === 'success' && response.data) {
+        setTechnicians(response.data.rows || []);
+      }
+    } catch {
+      setTechnicians([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+
+    const loadTechnicians = async () => {
+      await Promise.resolve();
+      if (!cancelled) await fetchTechnicians();
+    };
+
+    void loadTechnicians();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, fetchTechnicians]);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,9 +264,7 @@ export default function MaintenanceLogsPage() {
         cctv_id: log.cctv_id,
         action_taken: log.action_taken,
         notes: log.notes || '',
-        status: log.status,
-        scheduled_date: log.scheduled_date ? log.scheduled_date.split('T')[0] : '',
-        completed_at: log.completed_at ? log.completed_at.replace('T', ' ').slice(0, 19) : '',
+        scheduled_date: log.scheduled_date ? toDatetimeLocalInput(log.scheduled_date) : nowLocalDateTime(),
         image_url: log.image_url || ''
       });
     } else {
@@ -241,9 +273,7 @@ export default function MaintenanceLogsPage() {
         cctv_id: cctvs.length > 0 ? cctvs[0].id : '',
         action_taken: '',
         notes: '',
-        status: 'completed',
-        scheduled_date: '',
-    completed_at: nowLocalDateTime(),
+        scheduled_date: nowLocalDateTime(),
         image_url: ''
       });
     }
@@ -301,6 +331,35 @@ export default function MaintenanceLogsPage() {
       setActionLoading(null);
     }
   };
+
+  // Tugaskan log terjadwal ke teknisi — status otomatis menjadi "ongoing"
+  const handleAssignLog = async () => {
+    if (!assignLog) return;
+    if (!assignTechnicianId) {
+      toast.error('Pilih teknisi tujuan terlebih dahulu.');
+      return;
+    }
+    setActionLoading(`assign-${assignLog.id}`);
+    try {
+      const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${assignLog.id}/assign`, {
+        method: 'PUT',
+        body: JSON.stringify({ technician_id: assignTechnicianId }),
+      });
+      if (response.status === 'success') {
+        toast.success('Tugas berhasil ditugaskan ke teknisi.');
+        setAssignLog(null);
+        setAssignTechnicianId('');
+        fetchLogs();
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Tugas belum dapat ditugaskan. Coba lagi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const canCompleteLog = (log: MaintenanceLog) =>
+    log.status === 'ongoing' && (isAdmin || user?.id === log.technician_id);
 
   const handleExport = async () => {
     const params = new URLSearchParams();
@@ -375,7 +434,7 @@ export default function MaintenanceLogsPage() {
 
   const getStatusLabel = (status: MaintenanceLog['status']) => {
     if (status === 'completed') return 'Selesai';
-    if (status === 'failed') return 'Gagal';
+    if (status === 'failed') return 'Perlu Tindak Lanjut';
     if (status === 'ongoing') return 'Dalam proses';
     return 'Terjadwal';
   };
@@ -400,15 +459,17 @@ export default function MaintenanceLogsPage() {
             <button type="button" title="Ekspor CSV" aria-label="Ekspor data ke CSV" disabled={actionLoading !== null} onClick={handleExport} className="flex min-h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-emerald-600 transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
               {actionLoading === 'export' ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <FileSpreadsheet className="h-5 w-5" />}
             </button>
-            <button
-              type="button"
-              onClick={() => handleOpenModal()}
-              disabled={actionLoading !== null}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.18)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-4 w-4" />
-              Catat Pemeliharaan
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => handleOpenModal()}
+                disabled={actionLoading !== null}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.18)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" />
+                Catat Pemeliharaan
+              </button>
+            )}
           </div>
         </div>
 
@@ -454,7 +515,7 @@ export default function MaintenanceLogsPage() {
               <option value="completed">Selesai</option>
               <option value="scheduled">Terjadwal</option>
               <option value="ongoing">Dalam proses</option>
-              <option value="failed">Gagal</option>
+              <option value="failed">Perlu Tindak Lanjut</option>
             </select>
           </div>
 
@@ -562,7 +623,7 @@ export default function MaintenanceLogsPage() {
                         {log.notes && <p className="mt-0.5 line-clamp-1 text-xs text-muted" title={log.notes}>{log.notes}</p>}
                       </td>
 
-                      <td className="px-5 py-4 text-muted">{log.technician?.full_name || 'Teknisi Sistem'}</td>
+                      <td className="px-5 py-4 text-muted">{log.technician?.full_name || 'Belum ditugaskan'}</td>
 
                       <td className="whitespace-nowrap px-5 py-4 text-xs text-muted">{formatDate(log.completed_at || log.scheduled_date)}</td>
 
@@ -592,16 +653,45 @@ export default function MaintenanceLogsPage() {
                             >
                               {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenModal(log)}
-                              disabled={actionLoading !== null}
-                              className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
-                              title="Ubah catatan pemeliharaan"
-                              aria-label={`Ubah catatan pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
-                            >
-                              <Settings className="h-4 w-4" />
-                            </button>
+                            {isAdmin && log.status === 'scheduled' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignLog(log);
+                                  setAssignTechnicianId('');
+                                }}
+                                disabled={actionLoading !== null}
+                                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Tugaskan ke teknisi"
+                                aria-label={`Tugaskan pemeliharaan ${log.cctv?.nama || 'CCTV'} ke teknisi`}
+                              >
+                                {actionLoading === `assign-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                              </button>
+                            )}
+                            {canCompleteLog(log) && log.cctv && (
+                              <button
+                                type="button"
+                                onClick={() => setCompleteLog(log)}
+                                disabled={actionLoading !== null}
+                                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-emerald-500/10 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Selesaikan tugas lewat checklist 9 tahap"
+                                aria-label={`Selesaikan tugas pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
+                              >
+                                <CheckCheck className="h-4 w-4" />
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenModal(log)}
+                                disabled={actionLoading !== null}
+                                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Ubah catatan pemeliharaan"
+                                aria-label={`Ubah catatan pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
+                              >
+                                <Settings className="h-4 w-4" />
+                              </button>
+                            )}
                             {isAdmin && <button
                                 type="button"
                                 onClick={() => handleDeleteLog(log.id)}
@@ -647,7 +737,9 @@ export default function MaintenanceLogsPage() {
                 <div>
                   <h3 id="maintenance-form-title" className="text-xl font-bold tracking-[-0.015em]">{currentLog ? 'Ubah Catatan Pemeliharaan' : 'Catat Pemeliharaan Baru'}</h3>
                   <p id="maintenance-form-description" className="mt-1 text-sm text-muted">
-                    {currentLog ? 'Perbarui hasil pekerjaan dan status pemeliharaan.' : 'Pilih CCTV, catat pekerjaan, lalu tetapkan statusnya.'}
+                    {currentLog
+                      ? 'Perbarui jadwal dan rincian pekerjaan pemeliharaan.'
+                      : 'Pilih CCTV, catat pekerjaan, lalu jadwalkan waktunya.'}
                   </p>
                 </div>
                 <button type="button" aria-label="Tutup formulir pemeliharaan" onClick={closeFormModal} disabled={actionLoading === 'save'} className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50">
@@ -692,50 +784,34 @@ export default function MaintenanceLogsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="maintenance-status" className="mb-1.5 block text-xs font-semibold text-muted">Status pemeliharaan *</label>
-                    <select
-                      id="maintenance-status"
-                      value={formData.status}
-                      onChange={(e) => {
-                        const nextStatus = e.target.value;
-                        setFormData((current) => ({
-                          ...current,
-                          status: nextStatus,
-                          scheduled_date: nextStatus === 'scheduled'
-                            ? (current.scheduled_date || current.completed_at)
-                            : '',
-                          completed_at: nextStatus === 'scheduled'
-                            ? ''
-                            : (current.completed_at || current.scheduled_date || nowLocalDateTime()),
-                        }));
-                      }}
-                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
-                    >
-                      <option value="completed">Selesai</option>
-                      <option value="scheduled">Terjadwal</option>
-                      <option value="ongoing">Dalam proses</option>
-                      <option value="failed">Gagal</option>
-                    </select>
+                    <label htmlFor="maintenance-status" className="mb-1.5 block text-xs font-semibold text-muted">Status pemeliharaan</label>
+                    <div id="maintenance-status" className="flex min-h-11 items-center gap-2 rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground">
+                      <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                        currentLog?.status === 'completed'
+                          ? 'border-success/25 bg-success/10 text-success'
+                          : currentLog?.status === 'failed'
+                          ? 'border-error/25 bg-error/10 text-error'
+                          : currentLog?.status === 'ongoing'
+                          ? 'border-warning/25 bg-warning/10 text-warning'
+                          : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                      }`}>
+                        {currentLog ? getStatusLabel(currentLog.status) : 'Terjadwal'}
+                      </span>
+                      <span className="text-xs text-muted">Status diperbarui otomatis oleh sistem.</span>
+                    </div>
                   </div>
 
                   <div>
-                    <label htmlFor="maintenance-time" className="mb-1.5 block text-xs font-semibold text-muted">{formData.status === 'scheduled' ? 'Waktu terjadwal *' : 'Waktu pencatatan *'}</label>
+                    <label htmlFor="maintenance-time" className="mb-1.5 block text-xs font-semibold text-muted">Waktu terjadwal *</label>
                     <input
                       id="maintenance-time"
                       type="datetime-local"
-                      value={toDatetimeLocalInput(formData.status === 'scheduled' ? formData.scheduled_date : formData.completed_at)}
-                      onChange={(e) => {
-                        const value = fromDatetimeLocalInput(e.target.value);
-                        if (formData.status === 'scheduled') {
-                          setFormData({...formData, scheduled_date: value, completed_at: ''});
-                        } else {
-                          setFormData({...formData, completed_at: value, scheduled_date: ''});
-                        }
-                      }}
+                      value={toDatetimeLocalInput(formData.scheduled_date)}
+                      onChange={(e) => setFormData({ ...formData, scheduled_date: fromDatetimeLocalInput(e.target.value) })}
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                       required
                     />
-                    <p className="mt-1.5 text-[11px] text-muted">Terisi otomatis waktu saat ini — buka kalender untuk memilih hari.</p>
+                    <p className="mt-1.5 text-[11px] text-muted">Tugas akan ditugaskan ke teknisi oleh admin sebelum dikerjakan.</p>
                   </div>
                 </div>
 
@@ -815,7 +891,7 @@ export default function MaintenanceLogsPage() {
               <div className="mb-4 flex items-start justify-between gap-4 rounded-xl bg-background px-4 py-3">
                 <div>
                   <p className="font-semibold">{detailLog.cctv?.nama || 'CCTV tidak tersedia'}</p>
-                  <p className="mt-0.5 text-xs text-muted">{detailLog.technician?.full_name || 'Teknisi Sistem'}</p>
+                  <p className="mt-0.5 text-xs text-muted">{detailLog.technician?.full_name || 'Belum ditugaskan'}</p>
                 </div>
                 <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
                   detailLog.status === 'completed'
@@ -837,7 +913,7 @@ export default function MaintenanceLogsPage() {
                 </div>
                 <div className="border-b border-border px-4 py-3">
                   <dt className="text-xs font-semibold text-muted">Teknisi</dt>
-                  <dd className="mt-1 font-medium">{detailLog.technician?.full_name || 'Teknisi Sistem'}</dd>
+                  <dd className="mt-1 font-medium">{detailLog.technician?.full_name || 'Belum ditugaskan'}</dd>
                 </div>
                 <div className="border-b border-border px-4 py-3 sm:col-span-2">
                   <dt className="text-xs font-semibold text-muted">Tindakan yang dilakukan</dt>
@@ -860,6 +936,98 @@ export default function MaintenanceLogsPage() {
               )}
             </div>
           </div>
+        )}
+        {assignLog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAssignLog(null)} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="maintenance-assign-title"
+              className="z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 id="maintenance-assign-title" className="text-xl font-bold tracking-[-0.015em]">Tugaskan ke Teknisi</h3>
+                  <p className="mt-1 text-sm text-muted">
+                    {assignLog.cctv?.kode_cctv || 'CCTV'} · {assignLog.action_taken}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  autoFocus
+                  aria-label="Tutup penugasan"
+                  onClick={() => setAssignLog(null)}
+                  disabled={actionLoading === `assign-${assignLog.id}`}
+                  className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted">
+                  Tugas berstatus <span className="font-bold text-blue-600 dark:text-blue-400">Terjadwal</span> akan berubah menjadi{' '}
+                  <span className="font-bold text-warning">Dalam proses</span> begitu ditugaskan, dan langsung tampil di dashboard teknisi.
+                </div>
+
+                <div>
+                  <label htmlFor="assign-technician" className="mb-1.5 block text-xs font-semibold text-muted">Pilih teknisi *</label>
+                  <select
+                    id="assign-technician"
+                    value={assignTechnicianId}
+                    onChange={(e) => setAssignTechnicianId(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    required
+                  >
+                    <option value="" disabled>Pilih teknisi</option>
+                    {technicians.map((tech) => (
+                      <option key={tech.id} value={tech.id}>{tech.full_name}</option>
+                    ))}
+                  </select>
+                  {technicians.length === 0 && (
+                    <p className="mt-1.5 text-[11px] text-red-500">Belum ada akun berperan teknisi. Buat akun teknisi di halaman Pengguna.</p>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => setAssignLog(null)}
+                    disabled={actionLoading === `assign-${assignLog.id}`}
+                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAssignLog}
+                    disabled={actionLoading === `assign-${assignLog.id}` || !assignTechnicianId}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {actionLoading === `assign-${assignLog.id}` && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    {actionLoading === `assign-${assignLog.id}` ? 'Menugaskan…' : 'Tugaskan'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {completeLog && (
+          <FieldMaintenanceModal
+            mode="complete"
+            maintenanceLogId={completeLog.id}
+            cctv={completeLog.cctv ? {
+              id: completeLog.cctv.id,
+              kode_cctv: completeLog.cctv.kode_cctv,
+              nama: completeLog.cctv.nama,
+              lokasi_area: completeLog.cctv.lokasi_area,
+            } : null}
+            open={true}
+            onClose={() => setCompleteLog(null)}
+            onSaved={() => fetchLogs()}
+          />
         )}
       </div>
     </DashboardLayout>
