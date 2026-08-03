@@ -37,7 +37,8 @@ SIGAP menghubungkan inventaris CCTV kawasan IKN dengan alur pemeliharaan dan ide
 - Peran yang dikonfirmasi adalah `admin` dan `teknisi`.
 - Admin memiliki kewenangan untuk mengelola data inti dan pengguna; teknisi dapat menjalankan alur operasional dan pemeliharaan sesuai hak aksesnya.
 - Identitas CCTV pada QR harus tetap terenkripsi. Konsistensi kunci enkripsi wajib dijaga karena perubahan kunci dapat membuat QR yang telah dicetak tidak dapat dibaca kembali.
-- Produk bergantung pada kamera browser untuk pemindaian QR; akses kamera memerlukan secure context seperti HTTPS atau localhost.
+- Produk bergantung pada kamera browser untuk pemindaian QR; pada deployment Docker akses resmi
+  `https://localhost` menyediakan secure context untuk pemindaian QR.
 - Sistem mencakup pencarian, filter, paginasi, ekspor data, impor Excel, unggah foto bukti, dan mode terang/gelap.
 - Sistem ditujukan untuk penggunaan internal, bukan produk publik atau layanan konsumen.
 

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiRequest, clearAuthCookies } from '@/lib/api';
 
 export interface User {
@@ -19,17 +18,23 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   login: (user: User) => void;
-  logout: (reason?: string) => void;
+  logout: () => void;
   updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function navigateAfterAuth(path: string) {
+  if (typeof window !== 'undefined') {
+    // Full navigation membatalkan request halaman lama sehingga 401 stale
+    // dari dashboard sebelum logout tidak dapat mencabut sesi baru.
+    window.location.replace(path);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const router = useRouter();
 
   // Sesi disimpan dalam cookie httpOnly (tidak dapat dibaca JavaScript).
   // Saat aplikasi dimuat, profil pengguna diambil dari endpoint /auth/me.
@@ -49,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (response.data.must_change_password && typeof window !== 'undefined') {
             const path = window.location.pathname;
             if (path !== '/change-password' && !path.startsWith('/change-password')) {
-              router.replace('/change-password');
+              navigateAfterAuth('/change-password');
             }
           }
         }
@@ -76,14 +81,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('sigap:auth-expired', onAuthExpired);
   }, []);
 
-  const logout = async (reason?: string) => {
-    if (reason) {
-      localStorage.setItem('sigap_logout_reason', reason);
-    }
-
+  const logout = async () => {
     try {
       // Cookie sesi dikirim otomatis; backend me-revoke token & menghapus cookie.
-      await apiRequest('/auth/logout', { method: 'POST' });
+      await apiRequest('/auth/logout', { method: 'POST', skipAuthRedirect: true });
     } catch {
       // Jika request gagal, tetap lanjutkan proses logout lokal.
     }
@@ -93,17 +94,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAuthCookies();
 
     setUser(null);
-    router.push('/login');
+    navigateAfterAuth('/login');
   };
 
   const login = (newUser: User) => {
     setUser(newUser);
-    localStorage.removeItem('sigap_logout_reason');
     // Akun baru / password di-reset → wajib ganti password dulu.
     if (newUser.must_change_password) {
-      router.push('/change-password');
+      navigateAfterAuth('/change-password');
     } else {
-      router.push('/dashboard');
+      navigateAfterAuth('/dashboard');
     }
   };
 

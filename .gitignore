@@ -27,6 +27,9 @@ Thumbs.db
 # Logs
 /backend/logs/
 
+# Foto bukti upload runtime (bind mount Docker, bukan aset repo)
+/backend/uploads/
+
 # TLS Certificates (private keys jangan pernah di-commit)
 /nginx/certs/*.crt
 /nginx/certs/*.key

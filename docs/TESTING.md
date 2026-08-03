@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-02 (Fase 4.1: jalur sukses handler, WebSocket valid, route bootstrap, dan resolusi migration).
+> Diperbarui: 2026-08-03 (sinkronisasi matriks test dan coverage audit log).
 
 ---
 
@@ -29,14 +29,15 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `encryption_test.go` | round-trip AES-256-GCM, nonce unik tiap enkripsi, hex invalid, input kosong |
 | `utils` | `blacklist_test.go` | `RevokeToken`/`IsTokenRevoked`, cleanup token kadaluarsa |
 | `utils` | `csrf_test.go` | `GenerateCSRFToken` (64 hex, unik), `ExtractTokenString` (prioritas cookie → Bearer → kosong) |
-| `utils` | `jwt_test.go` (lama) | generate & validate token, expiry, signature salah |
+| `utils` | `jwt_test.go` (lama + uniqueness) | generate & validate token, expiry, signature salah, klaim `jti`/`iat`, token selalu unik |
 | `utils` | `validator_test.go` (lama) | validator custom (`strongpassword`, dll) |
+| `utils` | `audit_test.go` | retry penyimpanan audit log setelah kegagalan sementara dan batas percobaan maksimum |
 | `middleware` | `auth_test.go` | `Protected`: tanpa token 401, revoked 401, invalid, valid, token-version mismatch 401 → `Sesi telah dicabut...`; `RequireRole`: none/wrong/allowed |
-| `middleware` | `csrf_test.go` | metode aman dilewati, Bearer dilewati, tanpa cookie sesi dilewati, mismatch/missing 403, matching lolos |
+| `middleware` | `csrf_test.go` | metode aman dilewati, Bearer dilewati, tanpa cookie sesi dilewati, login/logout dengan sesi stale dilewati, mismatch/missing 403, matching lolos |
 | `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429 |
 | `middleware` | `security_test.go` | header dasar selalu ada; CSP/HSTS hanya saat `APP_ENV=production` |
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
-| `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout, CreateUser (validasi, duplikat, sukses) |
+| `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
 | `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID |
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403 |
@@ -47,10 +48,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `health_test.go` | HealthCheck Connected |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
-| `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
+| `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 29 file test** (6 utils, 4 middleware, 11 handlers, 2 models, 2 config, 2 routes, termasuk helper).
+**Total: 28 file test** (7 utils, 4 middleware, 11 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 

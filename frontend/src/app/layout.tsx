@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { WebSocketProvider } from "@/context/WebSocketContext";
+import { ToastProvider } from "@/components/Toast";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +37,11 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <WebSocketProvider>
-              {children}
+              <ToastProvider>
+                <ConfirmProvider>
+                  {children}
+                </ConfirmProvider>
+              </ToastProvider>
             </WebSocketProvider>
           </AuthProvider>
         </ThemeProvider>

@@ -253,8 +253,8 @@ func StartUploadCleanup(db *gorm.DB, interval time.Duration) {
 }
 
 // CleanupOrphanUploads menghapus file di direktori uploads yang tidak
-// direferensikan oleh image_url pada tabel maintenance_logs dan sudah berumur
-// melebihi masa tenggang (uploadGracePeriod).
+// direferensikan oleh image_url pada tabel maintenance_logs / field_maintenance_images
+// dan sudah berumur melebihi masa tenggang (uploadGracePeriod).
 func CleanupOrphanUploads(db *gorm.DB) {
 	entries, err := os.ReadDir(uploadsDir)
 	if err != nil {
@@ -269,6 +269,15 @@ func CleanupOrphanUploads(db *gorm.DB) {
 		utils.Log.Warnf("⚠️ Gagal mengambil daftar image_url saat cleanup: %v", err)
 		return
 	}
+
+	// Foto bukti pengecekan lapangan juga merupakan referensi yang sah
+	var fieldImageURLs []string
+	if err := db.Model(&models.FieldMaintenanceImage{}).Unscoped().
+		Pluck("image_url", &fieldImageURLs).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar image_url pengecekan lapangan saat cleanup: %v", err)
+		return
+	}
+	imageURLs = append(imageURLs, fieldImageURLs...)
 
 	referenced := make(map[string]bool, len(imageURLs))
 	for _, u := range imageURLs {

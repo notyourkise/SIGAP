@@ -23,7 +23,8 @@ import (
 // @title                      SIGAP API
 // @version                    1.0
 // @description                Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
-// @host                       localhost:3000
+// @host                       localhost
+// @schemes                    https
 // @BasePath                   /api
 // @securityDefinitions.apikey  BearerAuth
 // @in                         header
@@ -55,6 +56,9 @@ func main() {
 	err := config.DB.AutoMigrate(
 		&models.User{},
 		&models.MaintenanceLog{},
+		&models.FieldMaintenance{},
+		&models.FieldMaintenanceCheck{},
+		&models.FieldMaintenanceImage{},
 		&models.CCTV{},
 		&models.AuditLog{},
 	)
@@ -104,11 +108,12 @@ func main() {
 	app.Use(middleware.Recovery())
 
 	// Pasang Middleware CORS: whitelist origin dari env (tanpa wildcard karena
-	// memakai cookie credentials). Default aman ke localhost:3001 bila tidak diset.
+	// memakai cookie credentials). Fallback ini hanya untuk development tanpa Docker;
+	// deployment Docker wajib mengatur origin publik https://localhost.
 	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
 	if allowedOrigins == "" {
 		allowedOrigins = "http://localhost:3001"
-		utils.Log.Warn("⚠️ CORS_ALLOWED_ORIGINS tidak diset — menggunakan default http://localhost:3001. Set variabel ini untuk origin produksi.")
+		utils.Log.Warn("⚠️ CORS_ALLOWED_ORIGINS tidak diset — menggunakan default development http://localhost:3001. Deployment Docker wajib memakai https://localhost.")
 	}
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
@@ -142,6 +147,7 @@ func main() {
 	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
 	routes.SetupAuthRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
+	routes.SetupFieldMaintenanceRoutes(api)
 	routes.SetupUserRoutes(api)
 	routes.SetupCCTVRoutes(api)
 	routes.SetupUploadRoutes(api)

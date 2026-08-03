@@ -13,6 +13,9 @@ Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codeb
   - **Frontend**: Aplikasi web yang dibangun dengan Next.js 16 dan React 19, berlokasi di direktori `frontend/`.
   - **Database**: PostgreSQL 15, dijalankan melalui Docker.
 - **Deployment**: Menggunakan Docker Compose untuk orkestrasi container.
+- **Akses web resmi**: Pada deployment Docker, aplikasi hanya diakses melalui `https://localhost`
+  dengan Nginx sebagai reverse proxy. Port internal API/frontend tidak boleh diakses langsung;
+  detail alur ada di `docs/ACCESS.md`.
 
 ## 2. Aturan Git yang WAJIB Dipatuhi (SANGAT PENTING)
 > [!CAUTION]
@@ -48,7 +51,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
 - `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, dan `health`.
-- `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist, validasi versi token, _sliding session_, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
+- `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
+  validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
@@ -57,8 +61,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
-- `utils/jwt.go` — Fungsi untuk me-generate, memvalidasi JWT token (HMAC-SHA256, kedaluwarsa 24 jam), dan memvalidasi versi token (`tv`) terhadap database.
-- `utils/session.go` — Pengaturan cookie sesi httpOnly (`sigap_session`) & cookie CSRF (`sigap_csrf`).
+- `utils/jwt.go` — Fungsi untuk me-generate, memvalidasi JWT token (HMAC-SHA256, kedaluwarsa 5 jam, klaim unik `jti`/`iat`), dan memvalidasi versi token (`tv`) terhadap database.
+- `utils/session.go` — Pengaturan cookie sesi httpOnly (`sigap_session`) & cookie CSRF (`sigap_csrf`), termasuk pembersihan path legacy `/api`.
 - `utils/blacklist.go` — Penyimpanan token yang di-_revoke_ (_in-memory_, bersifat sementara sampai restart server).
 - `utils/csrf.go` — Generate token CSRF dan ekstraksi token sesi (prioritas cookie → Bearer).
 - `utils/audit.go` — Pencatatan audit log secara _async_ dengan retry terbatas.
@@ -74,21 +78,23 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/globals.css` — Konfigurasi Tailwind CSS v4 (melalui directive `@theme`), custom CSS variables (untuk _dark/light mode_), animasi UI saat scan, dan _style override_ khusus untuk `html5-qrcode`.
 - `src/app/page.tsx` — Halaman akar yang hanya me-_redirect_ pengguna ke `/dashboard`.
 - `src/app/dashboard/page.tsx` — Halaman Dashboard utama: manajemen aset CCTV (tabel data, filter pencarian, CRUD modal, tombol quick maintenance) + komponen `DashboardAnalytics`.
+- `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
 - `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, serta fitur unggah bukti foto pemeliharaan.
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
 - `src/app/audit-logs/page.tsx` — Halaman audit trail (khusus admin): daftar aktivitas + ekspor CSV.
 - `src/app/profile/page.tsx` — Halaman profil pengguna (data diri + tautan ganti password).
 - `src/app/change-password/page.tsx` — Halaman self-service ganti password (wajib saat login pertama).
-- `src/app/login/page.tsx` — Halaman antarmuka login yang menggunakan desain _glassmorphism_.
+- `src/app/login/page.tsx` — Halaman antarmuka login dengan layout split-screen yang responsif.
 - `src/proxy.ts` — _Middleware_ server-side Next.js: validasi sesi & role sebelum halaman admin diproses (guard tambahan di sisi server).
 - `src/components/DashboardLayout.tsx` — Komponen _layout sidebar_ responsif dengan navigasi menu, _toggle dark mode_, info profil user, dan tombol _logout_.
 - `src/components/ProtectedRoute.tsx` — Komponen _High-Order Guard_ yang melakukan otomatisasi _redirect_ ke `/login` jika pengguna belum terautentikasi.
 - `src/components/DashboardAnalytics.tsx` — Komponen grafik/statistik dashboard.
-- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta.
+- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`.
 - `src/components/AuthenticatedImage.tsx` — Komponen `<img>` yang memuat file gambar melalui endpoint yang dilindungi JWT.
 - `src/components/Pagination.tsx` — Komponen navigasi halaman reusable.
-- `src/context/AuthContext.tsx` — Manajemen state sesi, idle-timer (auto-logout 15 menit), dan pengambilan profil `/auth/me`. **Sesi disimpan dalam cookie httpOnly `sigap_session` (tidak dapat dibaca JavaScript).**
+- `src/context/AuthContext.tsx` — Manajemen state sesi dan pengambilan profil `/auth/me`.
+  **Sesi disimpan dalam cookie httpOnly `sigap_session` (tidak dapat dibaca JavaScript).**
 - `src/context/ThemeContext.tsx` — Manajemen state untuk tema UI (disimpan dalam localStorage dengan key `sigap_theme`).
 - `src/context/WebSocketContext.tsx` — Koneksi WebSocket ke `/api/ws` untuk menerima broadcast event real-time.
 - `src/lib/api.ts` — _Wrapper_ untuk fungsi `fetch`: mengirim cookie sesi (`credentials: 'include'`), menyematkan header `X-CSRF-Token` untuk permintaan mutasi, serta menangani _redirect_ ke `/login` ketika server mengembalikan status HTTP 401.
@@ -168,7 +174,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Paginasi**: Menggunakan _query parameters_ `page`, `limit`, `sort_by`, dan `order`. Respons berhasil harus menyertakan properti meta `pagination: { page, limit, total_rows, total_pages }`.
 - **Filter Pencarian**: Tiap modul mendefinisikan _query parameters_ spesifiknya sendiri (seperti `status`, `search`, `vendor`, `jenis_cctv`, dll).
 - **Autentikasi**: Sesi utama disimpan dalam **cookie httpOnly `sigap_session`** yang dikirim otomatis oleh browser (mode web). Untuk klien API / Swagger, header `Authorization: Bearer <token>` tetap didukung sebagai _fallback_ (`utils.ExtractTokenString` memprioritaskan cookie, lalu Bearer).
-- **CSRF**: Semua permintaan mutasi (POST/PUT/PATCH/DELETE) yang terautentikasi via cookie **wajib** menyertakan header `X-CSRF-Token` yang bernilai sama dengan cookie non-httpOnly `sigap_csrf` (pola _double-submit_). Middleware CSRF melewati metode aman (GET/HEAD/OPTIONS) dan permintaan yang memakai Bearer. Token CSRF diperoleh dari respons `POST /api/auth/login`.
+- **CSRF**: Semua permintaan mutasi (POST/PUT/PATCH/DELETE) yang terautentikasi via cookie **wajib** menyertakan header `X-CSRF-Token` yang bernilai sama dengan cookie non-httpOnly `sigap_csrf` (pola _double-submit_). Middleware CSRF melewati metode aman (GET/HEAD/OPTIONS), login publik, logout idempotent, dan permintaan yang memakai Bearer. Token CSRF diperoleh dari respons `POST /api/auth/login`.
 - **Otorisasi (Role Check)**: Gunakan _middleware_ `RequireRole("admin")` pada rute yang melibatkan operasi _write_ atau _delete_ (hanya admin yang dapat memodifikasi data inti). Ekspor/laporan untuk teknisi dibatasi ke data miliknya (Fase 3.9).
 - **WebSocket**: Koneksi `/api/ws` **wajib terautentikasi** — token diambil dari cookie `sigap_session` (dikirim otomatis browser same-origin) dengan fallback query parameter `token`. Hub mem-broadcast event `CCTV_UPDATED`, `MAINTENANCE_CREATED`, `MAINTENANCE_UPDATED`, dan `AUDIT_LOG_ADDED`.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
@@ -203,7 +209,8 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 - JWT **tidak lagi** disimpan di `localStorage`. Token sesi ada di cookie httpOnly `sigap_session` (atribut `Secure` hanya aktif di `APP_ENV=production`, `SameSite=Lax`).
 - Jangan kembali menyimpan token di `localStorage`/`sessionStorage`; gunakan cookie + `credentials: 'include'` pada fetch.
 - Setiap perubahan password/reset/role oleh Admin menaikkan `TokenVersion` pengguna; seluruh JWT lama langsung dicabut (klaim `tv`). Middleware `Protected()` memvalidasi versi ini terhadap database pada **setiap** request.
-- _Sliding session_ (Fase 3.2): bila sisa masa berlaku token < 1 jam saat akses aktif, middleware `Protected()` menerbitkan token baru (versi sama) dan memperbarui cookie otomatis — token lama tetap valid sampai kedaluwarsa aslinya.
+- JWT berlaku 5 jam dan tidak menggunakan sliding session. Cookie `sigap_session` dan `sigap_csrf`
+  memiliki `MaxAge: 18000` detik (5 jam) agar durasinya selaras dengan JWT.
 
 ### WebSocket Autentikasi
 - Browser tidak dapat mengirim header `Authorization` saat handshake WebSocket, sehingga token diambil dari cookie httpOnly `sigap_session` (same-origin) atau query `?token=`. Jangan melepas validasi token pada route `/api/ws`.
@@ -214,7 +221,8 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 
 ### Kamera Scanner & Secure Context
 - Browser modern memiliki batasan privasi yang memblokir akses ke fungsi WebRTC `getUserMedia()` (akses kamera). Fitur ini hanya bisa dipanggil dalam ekosistem _Secure Context_: yakni melalui protokol `https://` atau jika di-host langsung di `http://localhost`.
-- **Catatan**: Fitur ini _tidak akan berfungsi_ jika aplikasi diakses melalui IP Address lokal (contoh: `http://192.168.x.x:3001`) karena hal itu dianggap sebagai _insecure context_.
+- **Catatan**: Akses resmi aplikasi adalah `https://localhost`. Akses melalui IP Address lokal
+  seperti `http://192.168.x.x:3001` dianggap sebagai _insecure context_ dan tidak didukung untuk scanner.
 
 ## 7. Konfigurasi Docker
 Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *deployment*:
@@ -222,7 +230,7 @@ Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *
   - `db` (berbasis `postgres:15-alpine`) — port `5432` **tidak dipublish** ke host; hanya dapat diakses dari dalam network.
   - `api` (merupakan _executable binary_ aplikasi Go) — port `3000` **tidak dipublish**; hanya diakses via reverse proxy.
   - `frontend` (menjalankan aplikasi Next.js) — port `3000` internal, **tidak dipublish**.
-  - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, dan routing `/api/*` (termasuk WebSocket) ke `api`, sisanya ke `frontend`.
+  - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, serta routing sisanya ke `frontend`.
 - *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` yang didaftarkan sebagai trusted proxy).
 - *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; folder `./backend/uploads` di-*bind mount* untuk foto bukti.
 - **Secret management**: Kredensial DB dibaca dari root `.env` (dipaksa via `${VAR:?}`), secret aplikasi (JWT/AES) dari `backend/.env.docker`. Jangan pernah men-commit file `.env*`.
@@ -232,7 +240,9 @@ Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *
 
 ## 8. Swagger Documentation (API Docs)
 Backend mendukung auto-generasi UI Dokumentasi Interaktif.
-- Antarmuka Swagger UI dapat diakses pada `http://localhost:3000/swagger/index.html`.
+- Pada deployment Docker/non-production, Swagger UI dapat diakses pada
+  `https://localhost/swagger/index.html` melalui Nginx. Pada development tanpa Docker,
+  Swagger tersedia pada `http://localhost:3000/swagger/index.html`.
 - Setiap kali Anda memodifikasi atau menambah _endpoint_ REST API yang menyertakan komentar _Swagger annotations_ di dalam file _handlers_, pastikan untuk menjalankan perintah regenerasi:
   ```bash
   cd backend
@@ -241,7 +251,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 - File yang secara otomatis di-generate akan tersimpan pada: `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`.
 
 ## 9. Testing
-- Matriks cakupan test lengkap (29 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
+- Matriks cakupan test lengkap (28 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
 - Untuk mengeksekusi tes & quality check:
   ```bash
   cd backend && go build ./... && go test ./... -count=1 && go vet ./...

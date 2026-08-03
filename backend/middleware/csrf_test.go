@@ -24,6 +24,9 @@ func csrfTestApp() *fiber.App {
 	app.Post("/api/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
+	app.Post("/api/auth/logout", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
 	app.Get("/read", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -74,6 +77,19 @@ func TestCSRF_LoginEndpointPassWithStaleSessionCookie(t *testing.T) {
 	// Login bersifat publik: sisa cookie sesi lama dari sesi sebelumnya
 	// TIDAK boleh memicu pengecekan CSRF pada percobaan login.
 	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: "stale-session"})
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func TestCSRF_LogoutEndpointPassWithStaleSessionCookie(t *testing.T) {
+	app := csrfTestApp()
+
+	// Logout harus tetap dapat membersihkan sesi ketika cookie CSRF stale/hilang.
+	req := httptest.NewRequest("POST", "/api/auth/logout", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: "stale-session"})
 

@@ -69,7 +69,7 @@ kapabilitas**. Prinsip:
 | # | Task | File Terkait | Skala | Status |
 |---|------|--------------|-------|--------|
 | 2.1 | Migrasi token ke cookie httpOnly + CSRF protection | `frontend/src/lib/api.ts`, `frontend/src/context/AuthContext.tsx`, `backend/middleware/auth.go` | Besar | ✅ Selesai |
-| 2.2 | Revoke token lama saat reset password / role diubah (token version `jti`) | `backend/utils/jwt.go`, `backend/handlers/user.go`, `backend/utils/blacklist.go` | Sedang | ✅ Selesai |
+| 2.2 | Revoke token lama saat reset password / role diubah (token version `tv`) | `backend/utils/jwt.go`, `backend/handlers/user.go`, `backend/utils/blacklist.go` | Sedang | ✅ Selesai |
 | 2.3 | Rate limiter & audit hanya percaya header proxy dari trusted proxy | `backend/middleware/limiter.go`, `backend/utils/audit.go`, `backend/main.go` | Kecil | ✅ Selesai |
 | 2.4 | Batasi ukuran file & jumlah baris import Excel | `backend/handlers/cctv.go` | Kecil | ✅ Selesai |
 | 2.5 | CORS: fail-fast jika env kosong; daftar origin eksplisit di produksi | `backend/main.go` | Kecil | ✅ Selesai |
@@ -100,7 +100,7 @@ kapabilitas**. Prinsip:
 | # | Task | File Terkait | Skala | Status |
 |---|------|--------------|-------|--------|
 | 3.1 | Self-service change password + force-change saat login pertama | `backend/handlers/auth.go`, `backend/routes/auth.go`, `frontend/src/app/login/page.tsx`, komponen profil | Sedang | ✅ Selesai |
-| 3.2 | Refresh token / sliding session | `backend/utils/jwt.go`, `backend/handlers/auth.go`, `frontend/src/context/AuthContext.tsx` | Sedang | ✅ Selesai |
+| 3.2 | Model sesi JWT 5 jam tanpa sliding session + revoke token | `backend/utils/jwt.go`, `backend/utils/session.go`, `backend/handlers/user.go`, `frontend/src/context/AuthContext.tsx` | Sedang | ✅ Selesai |
 | 3.3 | Dashboard analitik: tren pemeliharaan, distribusi status, peringatan overdue | `backend/handlers/dashboard.go` (baru), `frontend/src/app/dashboard/page.tsx` | Besar | ✅ Selesai |
 | 3.4 | Notifikasi tugas untuk teknisi | backend + `frontend/src/app/dashboard/page.tsx` | Besar | ✅ Selesai |
 | 3.5 | Halaman profil pengguna | `frontend/src/app/profile/page.tsx` (baru), `backend/handlers/auth.go` | Kecil | ✅ Selesai |
@@ -114,6 +114,10 @@ kapabilitas**. Prinsip:
 - Semua test & build lulus.
 - Manual: user baru dipaksa ganti password; notifikasi muncul saat tugas terjadwal; laporan PDF
   terunduh; ekspor dibatasi sesuai role.
+
+> Catatan task 3.2: rencana awal menggunakan refresh token/sliding session. Setelah evaluasi
+> stabilitas autentikasi, implementasi final memakai JWT statis 5 jam, cookie sesi/CSRF dengan
+> `MaxAge` 18000 detik, serta revoke berbasis blacklist dan token version.
 
 ---
 

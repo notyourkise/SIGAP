@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Eye, Camera, Network, ShieldCheck } from 'lucide-react';
+import { MapPin, Eye, Maximize, Minimize, Network, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 export interface CCTVMapItem {
@@ -93,8 +93,29 @@ const createCustomMarkerIcon = (status: string) => {
 };
 
 export default function CCTVMap({ cctvs }: CCTVMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    } else {
+      void containerRef.current?.requestFullscreen().catch(() => undefined);
+    }
+  };
+
   // Olah koordinat CCTV & sediakan fallback terdistribusi jika lat/long belum terisi
   const processedCCTVs = useMemo(() => {
+    const coordinateCounts = new Map<string, number>();
+
     return cctvs.map((cctv, index) => {
       let lat = parseFloat(cctv.latitude || '');
       let lng = parseFloat(cctv.longitude || '');
@@ -107,6 +128,17 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
         lng = IKN_CENTER_LNG + radius * Math.sin(angle);
       }
 
+      // Geser marker dengan koordinat identik agar tidak saling menutupi
+      const coordinateKey = `${lat},${lng}`;
+      const occurrence = (coordinateCounts.get(coordinateKey) ?? 0) + 1;
+      coordinateCounts.set(coordinateKey, occurrence);
+      if (occurrence > 1) {
+        const offsetAngle = ((occurrence - 1) * 137.5) * (Math.PI / 180);
+        const offsetRadius = 0.005;
+        lat += offsetRadius * Math.cos(offsetAngle);
+        lng += offsetRadius * Math.sin(offsetAngle);
+      }
+
       return {
         ...cctv,
         lat,
@@ -116,7 +148,14 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
   }, [cctvs]);
 
   return (
-    <div className="relative w-full h-[460px] rounded-3xl overflow-hidden border border-border shadow-md">
+    <div
+      ref={containerRef}
+      className={`relative w-full overflow-hidden transition-[height,border-radius] duration-300 ${
+        isFullscreen
+          ? 'h-screen rounded-none border-0'
+          : 'h-[460px] rounded-3xl border border-border shadow-md'
+      }`}
+    >
       <MapContainer
         center={[IKN_CENTER_LAT, IKN_CENTER_LNG]}
         zoom={13}
@@ -205,6 +244,17 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
           </span>
         </div>
       </div>
+
+      {/* Fullscreen Toggle */}
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? 'Keluar dari mode layar penuh' : 'Tampilkan peta layar penuh'}
+        title={isFullscreen ? 'Keluar dari mode layar penuh (Esc)' : 'Tampilkan peta layar penuh'}
+        className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/90 text-muted shadow-lg backdrop-blur-md transition-colors hover:border-primary/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+      </button>
     </div>
   );
 }

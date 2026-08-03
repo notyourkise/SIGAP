@@ -30,6 +30,19 @@ func TestGenerateAndValidateToken_Success(t *testing.T) {
 	assert.Equal(t, role, claims["role"])
 	// Versi token default adalah 1
 	assert.Equal(t, float64(1), claims["tv"])
+	assert.NotEmpty(t, claims["jti"])
+	assert.NotEmpty(t, claims["iat"])
+}
+
+func TestGenerateToken_AlwaysUnique(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+
+	first, err := GenerateToken("user-1", "admin", 1)
+	assert.NoError(t, err)
+	second, err := GenerateToken("user-1", "admin", 1)
+	assert.NoError(t, err)
+
+	assert.NotEqual(t, first, second, "token login ulang tidak boleh identik dengan token yang baru direvoke")
 }
 
 func TestGenerateToken_WithTokenVersion(t *testing.T) {

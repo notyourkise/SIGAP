@@ -1,5 +1,498 @@
 # Changelog - Frontend SIGAP
 
+## [1.23.0] - 2026-08-03
+
+### Pengecekan Lapangan Teknisi via Scan QR + Halaman Admin
+
+perubahan yang dilakukan: **Setelah scan QR CCTV, teknisi bisa langsung mengisi checklist pengecekan lapangan (jaringan, listrik, lensa, dll) satu per satu lengkap dengan foto bukti di tahap akhir; admin melihat semua hasilnya di halaman baru**
+before:
+- Hasil scan QR hanya menampilkan informasi CCTV (nama, kode, lokasi, IP, dll) tanpa sarana mencatat hasil pengecekan spontan di lapangan.
+- Catatan pemeliharaan hanya bisa dibuat lewat form di halaman Pemeliharaan CCTV (jadwal dari admin); tidak ada alur pengecekan langsung di lokasi.
+- Admin tidak memiliki tampilan khusus untuk melihat hasil pengecekan lapangan teknisi.
+after:
+- Tombol **"Maintenance"** (ikon ClipboardCheck) ditambahkan di hasil scan QR CCTV; mengkliknya membuka wizard "Pengecekan Lapangan" (komponen baru `src/components/FieldMaintenanceModal.tsx`).
+- Wizard memandu teknisi **satu item per satu**: 9 item checklist wajib (jaringan, listrik, pembersihan lensa, fisik kamera, kualitas gambar, perekaman, akses jarak jauh, kabel & konektor, lingkungan sekitar), masing-masing dengan pilihan "Normal/OK" atau "Bermasalah" + catatan (diwajibkan bila bermasalah); tombol Lanjut nonaktif sampai item dijawab; progress bar & nomor langkah.
+- **Tahap akhir wajib foto bukti** (minimal 1, maksimal 5): unggah langsung ke `/api/upload` dengan pratinjau thumbnail & hapus per foto; ditutup ringkasan hasil checklist dan catatan umum sebelum menyelesaikan.
+- Halaman baru **`/field-maintenance`** (menu sidebar admin "Pengecekan Lapangan", ikon ClipboardCheck): tabel CCTV, teknisi, tanggal, ringkasan x/y normal, status Normal / Perlu Tindak Lanjut, filter pencarian/status/rentang tanggal, pagination, modal detail berisi seluruh checklist + foto bukti, serta hapus catatan (dengan dialog konfirmasi kustom).
+- Halaman dilindungi admin-only via `proxy.ts` (ditambahkan ke `ADMIN_PATHS` + matcher).
+timestamp: 2026-08-03 WITA
+kategori: Feature, UI, Frontend
+file yang diubah:
+- frontend/src/components/FieldMaintenanceModal.tsx (baru)
+- frontend/src/app/field-maintenance/page.tsx (baru)
+- frontend/src/app/cctv/page.tsx (tombol Maintenance di hasil scan + render modal)
+- frontend/src/components/DashboardLayout.tsx (menu "Pengecekan Lapangan" admin)
+- frontend/src/proxy.ts (guard admin)
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 46 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Pengecekan di lapangan bersifat spontan (tidak selalu sesuai jadwal admin) sehingga membutuhkan alur terpisah dari MaintenanceLog; model checklist per-item memungkinkan admin melihat detail apa yang bermasalah, bukan sekadar status. Foto bukti diunggah melalui endpoint upload yang sudah ada (normalisasi JPEG + tanpa EXIF) dan ditampilkan memakai `AuthenticatedImage` (akses via JWT).
+
+---
+
+## [1.22.0] - 2026-08-03
+
+### Notifikasi & Konfirmasi Kustom dengan Animasi
+
+perubahan yang dilakukan: **Semua `alert()`/`confirm()` bawaan browser diganti sistem toast & dialog konfirmasi kustom beranimasi**
+before:
+- 24 titik memakai `alert()` (peringatan/pesan sukses) dan `confirm()` (konfirmasi hapus) bawaan browser yang polos, tidak konsisten dengan desain, dan tanpa animasi.
+after:
+- Komponen baru `src/components/Toast.tsx`: provider `ToastProvider` + hook `useToast()` dengan `toast.success()` / `toast.error()` / `toast.info()`. Toast tampil di kanan atas: kartu dengan ikon lingkaran, **animasi check hijau (stroke-draw SVG)** untuk sukses, ikon X merah untuk error, info biru; slide-in elastis (`toastIn`), pop ikon (`checkPop`), progress bar yang menyusut, auto-dismiss 4,2 detik, maksimal 4 toast.
+- Komponen baru `src/components/ConfirmDialog.tsx`: provider `ConfirmProvider` + hook `useConfirm()` (Promise<boolean>). Dialog kustom dengan ikon peringatan beranimasi goyang halus, fade + pop in/out, tombol Batal/Konfirmasi (merah untuk aksi destruktif), tutup via X/Escape/klik latar.
+- Kedua provider dipasang di `src/app/layout.tsx` (z-index di atas modal lain: toast z-80, dialog z-70).
+- Semua halaman diganti: users (simpan, reset password, hapus), maintenance (simpan, ekspor CSV, laporan PDF, hapus), cctv (simpan, hapus, bulk delete, cetak QR, template, impor). Toast sukses ditambahkan di semua aksi yang berhasil (sebelumnya beberapa hanya menutup modal tanpa umpan balik).
+- Animasi baru ditambahkan di `globals.css`: `toastIn`, `toastProgress`, `checkPop`, `checkCircle`, `checkPath`, `fadeIn/Out`, `popIn/Out`, `wiggleSlow`.
+timestamp: 2026-08-03 WITA
+kategori: Feature, UI, Frontend
+file yang diubah:
+- frontend/src/components/Toast.tsx (baru)
+- frontend/src/components/ConfirmDialog.tsx (baru)
+- frontend/src/app/layout.tsx
+- frontend/src/app/globals.css
+- frontend/src/app/users/page.tsx
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Menghilangkan seluruh UI native browser demi konsistensi bahasa desain, aksesibilitas (role/aria), dan umpan balik visual yang jelas (check animasi untuk sukses) serta mencegah logout/hapus tidak sengaja via dialog konfirmasi yang dapat dikustomisasi.
+
+---
+
+### Redesain Filter Audit Log (Input Tidak Lagi Terpotong)
+
+perubahan yang dilakukan: **Tata letak filter & search bar audit log dirombak agar setiap input mendapat ruang cukup**
+before:
+- Grid filter memakai 4 kolom (`lg:grid-cols-4`); dua input tanggal + teks "s.d." dipaksakan masuk dalam satu sel kolom sehingga input terpotong/tertekan di layar laptop.
+after:
+- Grid diubah menjadi `lg:grid-cols-3`: baris pencarian full-width di atas, lalu kolom "Modul", "Dari tanggal", dan "Sampai tanggal" masing-masing satu kolom penuh dengan label (`<label>` + `htmlFor`) sehingga jelas dan lega.
+- Teks "s.d." di tengah input tanggal digantikan label "Dari tanggal"/"Sampai tanggal".
+timestamp: 2026-08-03 WITA
+kategori: UI, Frontend
+file yang diubah:
+- frontend/src/app/audit-logs/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Dua input `type="date"` (masing-masing butuh ~150px) tidak muat dalam satu sel grid 4 kolom (~230px); memberi satu kolom penuh per input dan label di atasnya menghilangkan pemotongan dan memperjelas fungsi tiap field.
+
+---
+
+### Perbaikan Cetak Semua QR Code Hanya 10 CCTV
+
+perubahan yang dilakukan: **"Cetak Semua QR Code" kini mengambil seluruh data CCTV dari backend, bukan hanya halaman aktif**
+before:
+- Tombol "Cetak Semua QR Code" (menu aksi di halaman Aset CCTV) memakai state `cctvs` yang hanya berisi data halaman aktif (10 baris per halaman), sehingga hanya 10 label QR yang tercetak padahal total perangkat 35.
+after:
+- Ketika dipanggil tanpa ID target, halaman meminta seluruh data dari backend dengan `GET /cctv?page=1&limit=100` (batas maksimum backend); hasilnya difilter dan digunakan sebagai antrian cetak penuh.
+- Fallback ke data halaman aktif hanya jika permintaan gagal.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: State `cctvs` dibatasi paginasi (10 per halaman); cetak semua memerlukan dataset lengkap sehingga diambil ulang dari API dengan limit maksimum yang diizinkan server (100).
+
+---
+
+### Konfirmasi Logout dengan Dialog Kustom
+
+perubahan yang dilakukan: **Klik "Keluar" kini membuka dialog konfirmasi kustom (bukan logout langsung)**
+before:
+- Item menu "Keluar" di sidebar langsung menjalankan logout tanpa konfirmasi; risiko keluar tidak sengaja.
+after:
+- Klik "Keluar" membuka dialog konfirmasi kustom (modal) dengan: ikon `LogOut` dalam lingkaran merah, judul "Keluar dari SIGAP?", deskripsi penjelas, tombol "Batal" (netral) dan "Keluar" (merah, autoFocus).
+- Modal dapat ditutup via tombol X, klik area latar, atau tekan `Escape`; dialog memakai pola `role="dialog"` + `aria-modal` untuk aksesibilitas.
+- Logout hanya dieksekusi setelah konfirmasi; drawer mobile ikut ditutup saat logout disetujui.
+timestamp: 2026-08-03 WITA
+kategori: Feature, UI, Frontend
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Konfirmasi dialog kustom mencegah logout tidak disengaja dan konsisten dengan bahasa desain aplikasi (modal, backdrop blur, tombol danger merah).
+
+---
+
+### Card Tugas Menggantikan Distribusi Status CCTV
+
+perubahan yang dilakukan: **Card "Distribusi Status CCTV" dihapus, card tugas naik ke posisinya di samping "Tren Pemeliharaan"**
+before:
+- Dashboard menampilkan card "Distribusi Status CCTV" (bar persentase Aktif/Nonaktif/Pemeliharaan) di kolom kanan grid analitik, sedangkan card "Tugas Berjalan Semua Teknisi"/"Tugas Saya" berada sendiri di bawah grid.
+after:
+- Card "Distribusi Status CCTV" dihapus total dari `DashboardAnalytics`.
+- Card tugas kini dirender sebagai slot `children` di dalam grid analitik, menggantikan posisi card distribusi status — berdampingan dengan "Tren Pemeliharaan"; card "Peringatan Pemeliharaan Terlambat" tetap full-width di bawahnya.
+- Interface `DashboardSummary` dirapikan (field `cctv_status` dan helper `cctvStatusLabel` yang tidak terpakai dihapus).
+timestamp: 2026-08-03 WITA
+kategori: UI, Frontend
+file yang diubah:
+- frontend/src/components/DashboardAnalytics.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Mengurangi redundansi (distribusi status sudah terwakili ringkasan di atas), dan menaikkan card tugas yang lebih relevan untuk pemantauan pekerjaan ke area utama dashboard.
+
+---
+
+### Logout Hanya di Sidebar & Transisi Drawer Lebih Halus
+
+perubahan yang dilakukan: **Tombol logout di header mobile dihapus + animasi buka/tutup sidebar diperhalus**
+before:
+- Header mobile (dekat tombol hamburger) masih memiliki tombol logout ikon `LogOut` merah, sehingga ada dua jalur logout (header + item menu sidebar).
+- Drawer sidebar membuka/menutup dengan transisi 300ms linear dan overlay hanya muncul setelah kondisi berubah (tanpa animasi keluar).
+after:
+- Tombol logout di header mobile dihapus total; logout hanya tersedia melalui item menu "Keluar" di dalam sidebar.
+- Transisi sidebar memakai `duration-500 ease-in-out` untuk sliding yang lebih halus; overlay kini selalu ter-mount (`md:hidden`) dengan fade `transition-opacity duration-500` + `opacity-0`/`pointer-events-none` saat tertutup, sehingga efek buka dan tutup sama-sama beranimasi.
+timestamp: 2026-08-03 WITA
+kategori: UI, Frontend
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Menghindari duplikasi aksi logout yang membingungkan dan memperhalus gerakan drawer dengan easing yang lebih natural serta fade overlay dua arah.
+
+---
+
+### Tombol Keluar Sebagai Item Menu di Sidebar
+
+perubahan yang dilakukan: **Tombol logout dipindah ke dalam daftar navigasi, di bawah menu Audit Log, dengan gaya yang sama seperti item menu lain**
+before:
+- Tombol logout terpisah di bagian bawah sidebar (di bawah garis pembatas `border-t`), dengan gaya khusus merah dan label "Keluar dari SIGAP".
+after:
+- Tombol logout kini menjadi item terakhir di daftar navigasi sidebar — tepat di bawah "Audit Log" untuk admin (dan di bawah "Pemeliharaan CCTV" untuk teknisi) — dengan class yang identik dengan item menu lain (`min-h-11`, `rounded-xl`, `text-muted hover:bg-background hover:text-foreground`), ikon `LogOut`, dan label singkat "Keluar".
+- Item "Keluar" menutup drawer mobile saat diklik dan tetap kompatibel dengan mode sidebar diciutkan (ikon saja).
+timestamp: 2026-08-03 WITA
+kategori: UI, Frontend
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Meletakkan logout sebagai bagian dari menu navigasi membuatnya konsisten dengan pola item menu lain dan selalu terlihat tanpa menggantung di bagian bawah, sekaligus tetap tersedia di drawer mobile.
+
+---
+
+### Penyesuaian Antarmuka untuk Peran Teknisi
+
+perubahan yang dilakukan: **Tombol keluar di mobile, tombol PDF/CSV jadi ikon, payload QR disembunyikan untuk teknisi, dan ringkasan tugas teknisi**
+before:
+- Di layar kecil (HP) tidak ada tombol keluar pada sidebar; logout hanya tersedia di sidebar
+  desktop, dan pada perangkat pendek tombol logout bisa tergeser keluar layar karena nav tidak bisa digulir.
+- Tombol "Laporan PDF" dan "Ekspor CSV" di halaman Pemeliharaan (dan Audit Log) berupa tombol teks lebar.
+- Modal Pindai QR menampilkan tombol "Masukkan payload" (input manual payload terenkripsi) untuk semua peran, termasuk teknisi.
+- Card "Tugas Saya" teknisi menampilkan teks berlebihan: lokasi CCTV, tindakan (action_taken), dan baris "Jadwal: ...".
+after:
+- Header mobile (di samping toggle tema) kini memiliki tombol keluar berikon `LogOut` berwarna merah; sidebar mendapat `flex-1 min-h-0 overflow-y-auto` sehingga tombol logout tetap terjangkau pada layar pendek.
+- Tombol Laporan PDF kini ikon `FileText` merah dan Ekspor CSV ikon `FileSpreadsheet` hijau (konsisten di halaman Pemeliharaan dan Audit Log), keduanya kotak ikon-only dengan `title`/`aria-label`.
+- Toggle "Masukkan payload" dan view input manual hanya dirender untuk admin; teknisi hanya melihat pemindai kamera (`!isAdmin || !showManualInput`).
+- "Tugas Saya" teknisi dirampingkan: hanya nama CCTV + badge jadwal (mono) + badge status + badge terlambat; lokasi dan action_taken tetap tampil untuk admin. Subtitle diperpendek.
+timestamp: 2026-08-03 WITA
+kategori: Feature, UI, Frontend
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/audit-logs/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS (0 errors, 38 warnings existing).
+- `npm run build` PASS.
+alasan teknis: Akses payload QR terenkripsi dibatasi ke admin demi prinsip least privilege; tombol ikon-only menghemat ruang header pada layar kecil; sidebar scrollable menjamin aksi logout selalu tersedia; pengurangan teks menurunkan beban kognitif peran teknisi di lapangan.
+
+---
+
+### Waktu Pencatatan dengan Picker Kalender
+
+perubahan yang dilakukan: **Input teks diganti `datetime-local` + perbaikan zona waktu default**
+before:
+- Field "Waktu pencatatan"/"Waktu terjadwal" berupa input teks bebas dengan placeholder
+  `YYYY-MM-DD HH:MM:SS`; tidak ada kalender, mudah salah format.
+- Nilai default memakai `new Date().toISOString()` yang menghasilkan waktu **UTC** (bukan waktu
+  lokal Indonesia), sehingga tampilan bisa meleset beberapa jam.
+after:
+- Field memakai `type="datetime-local"`: kalender bawaan browser untuk memilih hari + picker jam,
+  nilai default otomatis waktu saat ini (format disimpan tetap `YYYY-MM-DD HH:MM:SS`).
+- Helper baru: `nowLocalDateTime()` (waktu lokal WITA/browser), `toDatetimeLocalInput()`, dan
+  `fromDatetimeLocalInput()` untuk konversi format dua arah.
+- Teks bantu "Terisi otomatis waktu saat ini — buka kalender untuk memilih hari."
+timestamp: 2026-08-03 WITA
+kategori: Feature, Bugfix, Frontend, UI
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Input native datetime-local menghilangkan kesalahan format manual dan menjaga
+konsistensi nilai yang dikirim ke backend (`YYYY-MM-DD HH:MM:SS`), sekaligus memperbaiki default
+waktu yang sebelumnya berada di zona UTC.
+
+---
+
+## [1.13.0] - 2026-08-03
+
+### Tren Pemeliharaan Menjadi Spline Area Chart
+
+perubahan yang dilakukan: **Bar chart CSS diganti grafik area melengkung halus dengan gradasi biru**
+before:
+- Card "Tren Pemeliharaan" menampilkan bar chart bertumpuk per status (CSS div) dengan tinggi
+  proporsional dan tooltip native.
+after:
+- Komponen baru `TrendChart` (`frontend/src/components/TrendChart.tsx`): Spline Area Chart berbasis
+  SVG murni tanpa dependency baru.
+- Garis tren total pekerjaan per bulan digambar melengkung halus (Catmull-Rom spline → cubic
+  Bézier), area di bawah garis diisi gradasi biru transparan.
+- Responsif via `ResizeObserver`, grid sumbu Y, label bulan, titik data, penanda hover dengan
+  garis putus-putus, dan tooltip rincian per status (Terjadwal/Dalam proses/Selesai/Gagal).
+- Legend bar chart per status diganti legend "Total pekerjaan" + petunjuk hover.
+- Deskripsi card disesuaikan menjadi "Total pekerjaan per bulan — 6 bulan terakhir."
+timestamp: 2026-08-03 WITA
+kategori: Feature, Frontend, UI
+file yang diubah:
+- frontend/src/components/TrendChart.tsx (baru)
+- frontend/src/components/DashboardAnalytics.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Visualisasi tren berbentuk area dengan garis halus lebih mudah dibaca untuk melihat
+pergerakan total pekerjaan antar bulan; implementasi SVG mandiri menghindari dependency chart
+eksternal yang menambah ukuran bundle dan risiko keamanan.
+
+---
+
+## [1.12.0] - 2026-08-03
+
+### Posisi Rincian Ringkasan CCTV & Warna Bar Distribusi Status
+
+perubahan yang dilakukan: **Detail respon kartu ringkasan dipindah ke bawah kartu; warna bar status dibuat cerah**
+before:
+- Klik kartu Total CCTV/Aktif/Nonaktif menampilkan rincian (`cctv-summary-details`) di bagian
+  paling bawah halaman — setelah analitik, tugas, dan pemeliharaan — sehingga respon jauh dari
+  kartu yang diklik.
+- Bar progress "Distribusi Status CCTV" memakai warna tema yang redup (`bg-success`/`bg-error`).
+after:
+- Section rincian kini dirender tepat setelah kartu ringkasan CCTV, sebelum
+  `DashboardAnalytics`, sehingga respon tampil langsung di bawah kartu yang diklik.
+- Bar progress aktif menjadi hijau terang (`bg-emerald-500`), nonaktif/rusak merah terang
+  (`bg-red-500`), pemeliharaan kuning cerah (`bg-amber-500`) — konsisten dengan marker peta.
+- Pencocokan status dibuat case-insensitive: backend mengirim `ACTIVE`/`INACTIVE` (kapital),
+  sedangkan pengecekan sebelumnya memakai `aktif` (huruf kecil) sehingga bar selalu jatuh ke
+  warna default. Label status juga dinormalisasi menjadi "Aktif"/"Nonaktif"/"Pemeliharaan".
+timestamp: 2026-08-03 WITA
+kategori: Feature, Frontend, UI
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/components/DashboardAnalytics.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Memperpendek jarak umpan balik (feedback loop) saat pengguna mengeksplorasi
+ringkasan CCTV, serta meningkatkan keterbacaan proporsi status pada bar chart.
+
+---
+
+## [1.11.0] - 2026-08-03
+
+### Mode Layar Penuh untuk Peta Sebaran CCTV
+
+perubahan yang dilakukan: **Tombol fullscreen pada peta sebaran CCTV menggunakan Fullscreen API**
+before:
+- Peta sebaran CCTV hanya tampil di dalam kartu (tinggi 460px) tanpa opsi memperbesar tampilan.
+after:
+- Tombol fullscreen (ikon Maximize/Minimize) ditambahkan di pojok kanan atas peta.
+- Mode layar penuh memakai Fullscreen API browser: peta mengisi seluruh layar (100vw x 100vh),
+  border/radius dihilangkan, dan dapat ditutup lewat tombol atau tombol Esc.
+- Ikon tombol ikut berubah mengikuti status fullscreen via event `fullscreenchange`.
+- Import ikon `Camera` yang tidak terpakai dihapus.
+timestamp: 2026-08-03 WITA
+kategori: Feature, Frontend, UI
+file yang diubah:
+- frontend/src/components/CCTVMap.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Memberikan fleksibilitas memeriksa sebaran CCTV pada layar besar tanpa mengubah
+tampilan peta di dalam halaman.
+
+---
+
+## [1.10.0] - 2026-08-03
+
+### Marker CCTV Bertumpuk pada Peta Sebaran
+
+perubahan yang dilakukan: **Marker dengan koordinat identik digeser agar tidak saling menutupi**
+before:
+- CCTV dengan koordinat latitude/longitude yang sama (contoh: THD-05 "Bundaran Sumbu Barat" dan
+  THD-17 "Pintu Masuk Sumbu Barat" keduanya di -0.977067574, 116.7091789) dirender di titik yang
+  persis sama, sehingga satu marker menutupi marker lainnya dan jumlah pin di peta lebih sedikit
+  dari jumlah CCTV sebenarnya (20 aktif di info, tapi hanya 19 pin terlihat).
+after:
+- `CCTVMap` menghitung kemunculan tiap pasangan koordinat dan menggeser marker ke-2, ke-3, dst.
+  secara deterministik (jarak 0.005° dengan sudut 137.5° per kemunculan) sehingga semua marker
+  tetap terlihat meskipun datanya berbagi koordinat yang sama.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Frontend, UI
+file yang diubah:
+- frontend/src/components/CCTVMap.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+- Verifikasi data: `SELECT status, COUNT(*) FROM cctvs GROUP BY status` → 20 ACTIVE, 15 INACTIVE
+  (kartu info akurat; selisih hanya efek tumpukan marker).
+alasan teknis: Memastikan visualisasi peta menampilkan seluruh CCTV tanpa kehilangan marker akibat
+duplikasi koordinat pada data aset, tanpa mengubah data di database.
+
+---
+
+## [1.9.0] - 2026-08-03
+
+### Pemisahan Peta Sebaran CCTV dari Dashboard
+
+perubahan yang dilakukan: **Peta GIS sebaran CCTV dipindah dari Dashboard ke halaman & menu baru**
+before:
+- Halaman `/dashboard` merender `CCTVMap` (peta GIS sebaran CCTV) di antara kartu ringkasan dan
+  analitik; navigasi sidebar hanya memiliki Dashboard, Aset CCTV, Pemeliharaan CCTV, dan menu admin.
+after:
+- Peta sebaran CCTV dihapus dari `/dashboard`; dashboard menjadi lebih fokus pada ringkasan,
+  analitik, tugas, dan pemeliharaan.
+- Halaman baru `/sebaran-cctv` dibuat: memuat data CCTV (`GET /cctv` limit 1000), menampilkan
+  `CCTVMap` dengan tinggi peta 560px, kartu ringkasan status (Total/Aktif/Pemeliharaan), indikator
+  kesehatan layanan, tombol muat ulang, dan refresh otomatis via event WebSocket `CCTV_UPDATED`.
+- Menu baru "Peta Sebaran CCTV" (ikon `MapPinned`) ditambahkan di bawah "Dashboard" pada sidebar
+  `DashboardLayout`, tersedia untuk semua peran.
+timestamp: 2026-08-03 WITA
+kategori: Feature, Frontend, UI
+file yang diubah:
+- frontend/src/app/sebaran-cctv/page.tsx (baru)
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Memisahkan visualisasi geospasial dari halaman ringkasan agar Dashboard tetap ringan
+dan fokus pada pemantauan data operasional, sekaligus memberikan akses cepat ke peta sebaran CCTV
+melalui menu navigasi utama.
+
+---
+
+## [1.8.0] - 2026-08-03
+
+### Navigasi Auth Atomik
+
+perubahan yang dilakukan: **Login dan logout memakai full navigation untuk membatalkan request/state lama**
+before:
+- `router.push()` mempertahankan root layout dan request dashboard lama setelah logout.
+- Request lama yang selesai dengan 401 dapat memicu redirect global setelah sesi baru berhasil login.
+after:
+- `window.location.replace()` digunakan setelah login/logout.
+- AuthProvider, WebSocket, dan request halaman dimulai ulang secara bersih dengan cookie sesi terbaru.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth, Frontend
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Mencegah race condition request async lama yang menyebabkan login berhasil tetapi
+langsung diarahkan kembali ke login.
+
+---
+
+## [1.7.0] - 2026-08-03
+
+### Hentikan Reconnect WebSocket Setelah Logout
+
+perubahan yang dilakukan: **Timer reconnect WebSocket sekarang mengikuti status autentikasi**
+before:
+- `onclose` selalu menjadwalkan koneksi ulang setiap 5 detik, termasuk setelah logout.
+- Browser terus mengirim `/api/ws` dengan status 401 setelah sesi dihapus.
+after:
+- Reconnect hanya dijadwalkan ketika sesi masih aktif.
+- Cleanup logout membatalkan timer dan menutup socket tanpa membuat koneksi baru.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth, Realtime
+file yang diubah:
+- frontend/src/context/WebSocketContext.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Menghentikan request WebSocket berulang setelah logout agar tidak mengganggu
+rate limiter dan tidak menimbulkan kesan sesi masih aktif.
+
+---
+
+## [1.6.0] - 2026-08-03
+
+### Stabilitas Alur Logout
+
+perubahan yang dilakukan: **Request logout tidak lagi memicu redirect 401 global**
+before:
+- `apiRequest('/auth/logout')` menggunakan penanganan 401 global yang tidak diperlukan untuk
+  request logout dan dapat menjalankan redirect/event auth-expired tambahan.
+after:
+- Request logout memakai `skipAuthRedirect: true`; frontend tetap membersihkan state lokal dan
+  mengarahkan ke login setelah endpoint logout idempotent dipanggil.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+verifikasi:
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+alasan teknis: Menjaga alur logout tetap deterministik ketika sesi server sudah kedaluwarsa atau
+cookie lama tidak lagi valid.
+
+---
+
+## [1.5.0] - 2026-08-03
+
+### Penghapusan Sisa Idle Logout
+
+perubahan yang dilakukan: **Menghapus state banner inaktivitas dan mekanisme `sigap_logout_reason` yang sudah tidak digunakan**
+before:
+- Halaman login masih membaca `sigap_logout_reason` dan menampilkan pesan logout otomatis setelah 15 menit.
+- `AuthContext.logout` masih menerima parameter alasan meskipun idle timer sudah dihapus.
+after:
+- State, effect, banner, ikon, dan localStorage key idle logout dihapus.
+- `logout()` hanya menjalankan alur logout manual/server-side yang masih aktif.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Refactor, Auth
+file yang diubah:
+- frontend/src/app/login/page.tsx
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+alasan teknis: Menghapus dead code dan mencegah UI menampilkan status sesi yang tidak lagi dapat dipicu.
+verifikasi:
+- `npm ci` berhasil memasang 370 package sesuai `package-lock.json`.
+- `npm run lint` PASS dengan warning existing.
+- `npm run build` PASS.
+- `npm audit` melaporkan 4 vulnerability high yang belum diperbaiki.
+
+---
+
 ## [1.4.0] - 2026-08-02
 
 ### Hapus Cookie CSRF Saat Logout

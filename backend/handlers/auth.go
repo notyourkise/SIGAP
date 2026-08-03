@@ -88,6 +88,9 @@ func Login(c *fiber.Ctx) error {
 	// Simpan token di cookie httpOnly (tidak dapat dibaca JavaScript) + token CSRF
 	// pola double-submit. Token JWT tidak lagi dikembalikan di body respons.
 	csrfToken := utils.GenerateCSRFToken()
+	// Bersihkan cookie lama pada semua path yang pernah dipakai sebelum menerbitkan
+	// sesi baru agar browser tidak memilih token stale untuk request /api/*.
+	utils.ClearSessionCookies(c)
 	utils.SetSessionCookie(c, token)
 	utils.SetCSRFCookie(c, csrfToken)
 
@@ -233,22 +236,22 @@ func ChangePassword(c *fiber.Ctx) error {
 	})
 }
 
-// Logout menginvalidasi token JWT yang sedang aktif agar tidak bisa digunakan lagi
+// Logout menginvalidasi token JWT yang sedang aktif agar tidak bisa digunakan lagi.
+// Endpoint ini idempotent: token kosong atau invalid tetap menghasilkan respons sukses
+// dan selalu menghapus cookie sesi/CSRF dari browser.
 // @Summary      Logout Pengguna
-// @Description  Merevoke token JWT aktif dan menambahkannya ke blacklist server. Token tidak dapat digunakan lagi setelah logout.
+// @Description  Merevoke token JWT aktif bila valid dan selalu menghapus cookie sesi/CSRF. Token invalid atau kosong tetap dianggap logout berhasil.
 // @Tags         Autentikasi
 // @Produce      json
-// @Security     BearerAuth
 // @Success      200 {object} map[string]interface{} "Logout berhasil, token diinvalidasi"
-// @Failure      401 {object} map[string]interface{} "Token tidak valid"
 // @Router       /auth/logout [post]
 func Logout(c *fiber.Ctx) error {
 	tokenString := utils.ExtractTokenString(c)
 	if tokenString == "" {
 		utils.ClearSessionCookies(c)
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Token otentikasi tidak ditemukan",
+		return c.JSON(fiber.Map{
+			"status":  "success",
+			"message": "Logout berhasil",
 		})
 	}
 

@@ -61,9 +61,9 @@ graph TD
     Backend[Go Fiber API\n:3000 internal]
     DB[(PostgreSQL\n:5432 internal)]
 
-    Browser -- "HTTPS /api/*, WS /api/ws" --> Nginx
+    Browser -- "HTTPS /api/*, /swagger/*, WS /api/ws" --> Nginx
     Browser -- "HTTPS aplikasi web" --> Nginx
-    Nginx -- "proxy /api/*" --> Backend
+    Nginx -- "proxy /api/*, /swagger/*" --> Backend
     Nginx -- "proxy / (halaman)" --> Frontend
     Frontend -- "REST API Calls (rewrite /api)" --> Backend
     Backend -- "SQL Queries" --> DB
@@ -349,7 +349,7 @@ Panduan berikut dirancang untuk memudahkan instalasi dan menjalankan aplikasi me
 
 3. **Isi secret penting**
    - `.env` (root): `POSTGRES_PASSWORD` **wajib** diisi — `docker compose` akan menolak `up` bila kosong.
-   - `backend/.env.docker`: `DB_PASSWORD` (harus cocok), `JWT_SECRET`, `AES_SECRET_KEY`, dan `ADMIN_DEFAULT_PASSWORD` (min. 8 karakter, dipakai hanya saat akun admin dibuat pertama kali).
+   - `backend/.env.docker`: `DB_PASSWORD` (harus cocok), `JWT_SECRET`, `AES_SECRET_KEY`, `ADMIN_DEFAULT_PASSWORD` (min. 8 karakter, dipakai hanya saat akun admin dibuat pertama kali), dan `CORS_ALLOWED_ORIGINS=https://localhost`.
 
 4. **Buat sertifikat TLS** (untuk reverse proxy Nginx)
    Ikuti petunjuk di `nginx/certs/README.md` untuk membuat sertifikat `self-signed` (development) atau menempatkan sertifikat resmi (produksi).
@@ -368,8 +368,8 @@ Panduan berikut dirancang untuk memudahkan instalasi dan menjalankan aplikasi me
 
 7. **Akses aplikasi**
    Aplikasi diakses melalui reverse proxy Nginx (bukan port langsung):
-   - **Frontend (Aplikasi Web)**: [https://localhost](https://localhost) *(port 80: `http://localhost`)*
-   - **Swagger UI (Dokumentasi API)**: `https://localhost/api/swagger/index.html`
+   - **Frontend (Aplikasi Web)**: [https://localhost](https://localhost) *(satu-satunya entrypoint Docker; `http://localhost` hanya redirect ke HTTPS)*
+   - **Swagger UI (Dokumentasi API)**: `https://localhost/swagger/index.html` *(non-production)*
 
 8. **Login dengan akun default**
    - **Username**: `admin`
@@ -444,7 +444,7 @@ Konfigurasi sistem diatur melalui _environment variables_. Berikut adalah refere
 | `AES_SECRET_KEY` | Secret key AES-256 enkripsi QR | - | Ya |
 | `ADMIN_DEFAULT_PASSWORD` | Password admin awal (hanya saat DB kosong, min. 8) | - | Ya (DB baru) |
 | `APP_ENV` | Environment (`development`/`staging`/`production`); nonaktifkan Swagger di produksi | `development` | Tidak |
-| `CORS_ALLOWED_ORIGINS` | Origin yang diizinkan (pisahkan koma; tanpa wildcard) | `http://localhost:3001` | Tidak |
+| `CORS_ALLOWED_ORIGINS` | Origin yang diizinkan (pisahkan koma; tanpa wildcard) | Lokal: `http://localhost:3001`; Docker: `https://localhost` | Tidak |
 | `TRUSTED_PROXY_IPS` | IP proxy yang dipercaya untuk header IP | kosong (aman) | Tidak |
 | `DB_MAX_OPEN_CONNS` | Max open connections | `50` | Tidak |
 | `DB_MAX_IDLE_CONNS` | Max idle connections | `10` | Tidak |

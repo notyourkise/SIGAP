@@ -1,7 +1,7 @@
 # SECURITY-AUDIT — SIGAP
 
 > Audit keamanan, pemahaman sistem, dan rekomendasi pengembangan.
-> Tanggal audit: 2026-08-01 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, infra).
+> Audit awal: 2026-08-01 · Status terakhir: 2026-08-03 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, infra).
 
 ---
 
@@ -10,8 +10,10 @@
 SIGAP (Sistem Identifikasi Gangguan Aset Pusat) adalah sistem internal berbasis web untuk
 mengelola, memantau, menginventarisasi, dan mencatat pemeliharaan CCTV kawasan IKN.
 
-**Arsitektur:** Monorepo 3 layanan — Go Fiber API (`:3000`), Next.js 16 App Router (`:3001`),
-PostgreSQL 15 — diorkestrasi dengan Docker Compose + Cloudflare quick tunnel.
+**Arsitektur:** Monorepo dengan 4 service Docker — Go Fiber API (`:3000` internal), Next.js 16
+App Router (`:3000` internal), PostgreSQL 15 (`:5432` internal), dan Nginx reverse proxy
+(`:80`/`:443`) — diorkestrasi dengan Docker Compose. Akses browser resmi adalah
+`https://localhost`; Cloudflare quick tunnel sudah dihapus.
 
 **Kekuatan keamanan yang sudah ada:**
 
@@ -21,7 +23,8 @@ PostgreSQL 15 — diorkestrasi dengan Docker Compose + Cloudflare quick tunnel.
 - Upload foto dengan deteksi MIME via magic bytes (tanpa fallback ekstensi), akses file dilindungi JWT.
 - Validasi input terpusat (`go-playground/validator`), whitelist kolom sorting (anti SQL-injection).
 - Soft-delete, graceful shutdown, security headers, audit trail, Swagger off di production.
-- Auto-logout inaktivitas (15 menit) di frontend.
+- Single-origin melalui Nginx dengan TLS, routing API/WebSocket, dan cookie sesi httpOnly yang
+  konsisten di `https://localhost`.
 
 **Hasil audit:** ditemukan **5 temuan Kritis**, **7 temuan Tinggi**, dan **8 catatan Sedang/Rendah**.
 
@@ -42,7 +45,7 @@ SIGAP/
 ├── docker-compose.yml      # Orkestrasi db, api, frontend, nginx (TLS)
 ├── makefile                # Task runner (BE + FE)
 ├── README.md
-├── docs/                   # Dokumentasi: ROADMAP, SECURITY-AUDIT, PRODUCT, DESIGN, agent, changelog, plan
+├── docs/                   # Dokumentasi: AGENTS, ACCESS, ROADMAP, SECURITY-AUDIT, TESTING, PRODUCT, DESIGN, changelog, plan
 ├── backend/
 │   ├── main.go             # Entry point, middleware stack, graceful shutdown
 │   ├── config/database.go  # Koneksi PostgreSQL + connection pooling
@@ -63,9 +66,9 @@ SIGAP/
 
 ### 2.2 Alur Utama
 
-- **Autentikasi:** Login (username/email + bcrypt) → JWT 24 jam → cookie `sigap_session` httpOnly
-  dengan CSRF double-submit → `Protected()` + `RequireRole("admin")` di backend. Idle-timer memicu
-  logout + revoke token.
+- **Autentikasi:** Login (username/email + bcrypt) → JWT 5 jam → cookie `sigap_session` httpOnly
+  dengan CSRF double-submit → `Protected()` + `RequireRole("admin")` di backend. Sliding session
+  dan idle-timer frontend tidak digunakan; logout manual atau kedaluwarsa token mengakhiri sesi.
 - **Master CCTV:** UUID perangkat dienkripsi AES-256-GCM menjadi `QrPayload`. Scan QR → dekripsi →
   cocokkan ID → tampilkan detail. Dukung import Excel, template, bulk-delete, cetak label QR.
 - **Pemeliharaan:** Log CRUD + upload foto bukti yang langsung merujuk ke CCTV melalui `cctv_id`.
@@ -92,7 +95,7 @@ SIGAP/
 |---|--------|--------|--------|-----------|--------|
 | 6 | Pagination `limit` tanpa cap maks | `backend/utils/pagination.go:20-28` | `limit=9999999999` → dump seluruh tabel / DoS memori | Beri batas maksimal (mis. 100) dan validasi `offset` | ✅ Selesai (1.6) |
 | 7 | JWT & data user di `localStorage` | `frontend/src/lib/api.ts:13`, `AuthContext.tsx:47` | Dapat dicuri oleh XSS; tidak ada httpOnly cookie | Migrasi ke cookie httpOnly + CSRF protection, atau minimal kurangi paparan | ✅ Selesai (2.1) |
-| 8 | Reset password / hapus user tidak mencabut token lama | `backend/handlers/user.go` | Token user tetap valid hingga 24 jam | Implementasi token version (klaim `jti`) atau revoke semua token saat reset | ✅ Selesai (2.2) |
+| 8 | Reset password / hapus user tidak mencabut token lama | `backend/handlers/user.go` | Pada saat audit, token user tetap valid hingga 24 jam | Implementasi token version (`tv`) atau revoke semua token saat reset | ✅ Selesai (2.2); token kini berlaku 5 jam |
 | 9 | Rate limiter & audit percaya `X-Real-IP`/`X-Forwarded-For` dari client | `backend/middleware/limiter.go:13-30`, `utils/audit.go:13-24` | Spoof header → bypass rate limit jika backend terekspos langsung | Hanya percaya header proxy jika di belakang trusted proxy (konfigurasi trust/proxy header Fiber) | ✅ Selesai (2.3) |
 | 10 | Import Excel tanpa batas ukuran/baris | `backend/handlers/cctv.go:592-643` | File dibaca penuh ke memori (zip bomb) → DoS | Batasi ukuran file (mis. 5 MB) dan jumlah baris (mis. 5000); stream parsing | ✅ Selesai (2.4) |
 | 11 | CORS default `*` jika env tidak diset | `backend/main.go:82-85` | Akses lintas-origin terbuka | Fail-fast atau default ke daftar origin eksplisit; wajib set `CORS_ALLOWED_ORIGINS` di produksi | ✅ Selesai (2.5) |
@@ -148,27 +151,30 @@ Tandai `[x]` saat selesai; nomor di dalam kurung menunjuk task pada `ROADMAP.md`
 
 ---
 
-## 4. Rekomendasi Fitur
+## 4. Rekomendasi Fitur dan Status Implementasi
 
-1. **Generate QR server-side** — endpoint `GET /api/cctv/:id/qrcode` + batch PDF/PNG (pakai `skip2/go-qrcode`); solusi offline untuk lapangan IKN.
-2. **Ubah password mandiri (self-service)** + **force-change password saat login pertama** (user baru / hasil reset).
-3. **Refresh token / sliding session** dan **revoke token saat role diubah / password di-reset** (klaim `jti` + versi token).
-4. **Dashboard analitik** — grafik tren pemeliharaan, distribusi status, peringatan pemeliharaan **overdue**, notifikasi tugas untuk teknisi.
-5. **Halaman profil** (data diri + ubah password) terpisah dari manajemen user admin.
-6. **Unifikasi model** `assets` (legacy) vs `cctv` — hilangkan duplikasi lewat `resolveMaintenanceAsset`.
-7. **Laporan PDF / export audit-log** + filter rentang tanggal.
-8. **Cleanup file yatim** (upload sukses tapi penyimpanan log gagal) + strip EXIF GPS pada foto.
-9. **Batas ekspor per role** — teknisi hanya data yang relevan, admin penuh.
+Item rekomendasi berikut telah diimplementasikan pada Fase 3. Item 3 disederhanakan pada
+backend 0.16.0: sliding session tidak dipertahankan dan JWT berlaku tetap selama 5 jam.
+
+1. **Generate QR server-side** — ✅ endpoint `GET /api/cctv/:id/qrcode` menggunakan `skip2/go-qrcode`.
+2. **Ubah password mandiri** dan **force-change password saat login pertama** — ✅ selesai.
+3. **Revoke token saat role/password berubah** — ✅ token version `tv`; sliding session diganti JWT statis 5 jam.
+4. **Dashboard analitik** — ✅ tren pemeliharaan, distribusi status, overdue, dan tugas teknisi.
+5. **Halaman profil** — ✅ data diri dan ubah password.
+6. **Unifikasi model** `assets` (legacy) dan `cctv` — ✅ `cctv` menjadi sumber kebenaran melalui `config/migrate.go`.
+7. **Laporan PDF, export audit-log, dan filter tanggal** — ✅ selesai.
+8. **Cleanup file yatim dan strip EXIF GPS** — ✅ selesai.
+9. **Batas ekspor per role** — ✅ teknisi hanya dapat mengekspor data miliknya.
 
 ---
 
 ## 5. Rekomendasi Kualitas & Infrastruktur
 
-- **CI/CD** (`.github/workflows/ci.yml` sudah ada): tambah `npm run lint` dan `golangci-lint`; perluas unit test (saat ini hanya auth & JWT) ke cctv/upload/websocket/pagination.
+- **CI/CD** (`.github/workflows/ci.yml`): `npm run lint`, `golangci-lint`, build, dan unit test sudah dijalankan; cakupan unit test Fase 4.1 sudah diperluas ke handler, middleware, utils, routes, models, dan config.
 - **Migrasi DB versioned** (golang-migrate/Atlas) — `AutoMigrate` tidak cukup untuk produksi.
 - **Redis** untuk rate-limit & blacklist token agar mendukung multi-instance.
 - **Backup**: cron `pg_dump` + backup volume uploads + restore script.
 - **Monitoring**: endpoint metrics (Prometheus) di samping health check; log Zap sudah baik.
 - **Docker hardening**: container non-root, resource limits, jangan publish 5432 ke host, secret via secrets/env.
-- **Reverse proxy** (Nginx/Traefik) + TLS + security headers di level proxy; ganti quick tunnel.
-- **Isi `docs/changelog.md`** sesuai rencana `plan.md` (sudah diisi Fase 1–3, 2026-08-01).
+- **Reverse proxy** Nginx + TLS + security headers sudah diterapkan; akses resmi kini melalui `https://localhost`.
+- **Isi `docs/changelog.md`** sesuai rencana `plan.md` sudah diterapkan untuk milestone proyek.
