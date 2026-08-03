@@ -74,10 +74,11 @@ services:
       # URL backend internal untuk Next.js rewrites (fallback; di produksi
       # reverse proxy Nginx yang menangani /api langsung ke service api).
       - INTERNAL_BACKEND_URL=http://api:3000
-    # Akses langsung frontend di http://localhost:3001 (opsional, untuk dev).
-    # Jalur utama produksi tetap via reverse proxy Nginx (80/443 + TLS).
-    ports:
-      - "3001:3000"
+    # SECURITY & SAME-ORIGIN: Port 3001 tidak dipublish agar seluruh trafik
+    # dipaksa melalui Reverse Proxy Nginx (https://localhost). Ini menjamin
+    # cookie sesi httpOnly dikirim dengan konsisten tanpa masalah cross-origin.
+    # ports:
+    #   - "3001:3000"
     depends_on:
       - api
     networks:
