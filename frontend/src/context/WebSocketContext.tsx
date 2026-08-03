@@ -21,9 +21,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef<Map<string, Set<EventCallback>>>(new Map());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldReconnectRef = useRef(false);
 
   const connect = useCallback(() => {
-    if (!isAuthenticated || typeof window === 'undefined') return;
+    if (!isAuthenticated || !shouldReconnectRef.current || typeof window === 'undefined') return;
 
     // Ubah http:// ke ws:// atau https:// ke wss://
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -58,10 +59,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       socket.onclose = () => {
+        if (socketRef.current === socket) {
+          socketRef.current = null;
+        }
         setIsConnected(false);
-        // Otomatisasi auto-reconnect setiap 5 detik
+        if (!shouldReconnectRef.current) return;
+
+        // Otomatisasi auto-reconnect setiap 5 detik hanya selama sesi aktif.
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          reconnectTimeoutRef.current = null;
+          if (shouldReconnectRef.current) connect();
         }, 5000);
       };
 
@@ -74,6 +81,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    shouldReconnectRef.current = isAuthenticated;
+
     if (isAuthenticated) {
       connect();
     } else {
@@ -84,8 +93,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     return () => {
+      shouldReconnectRef.current = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       if (socketRef.current) {
         socketRef.current.close();

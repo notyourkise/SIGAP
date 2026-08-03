@@ -8,6 +8,7 @@ import (
 	"sigap-backend/models"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -26,11 +27,14 @@ func GenerateToken(userID string, role string, tokenVersion ...int64) (string, e
 		version = tokenVersion[0]
 	}
 
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
 		"tv":      version,
-		"exp":     time.Now().Add(time.Hour * 5).Unix(), // Berlaku 5 jam kerja
+		"jti":     uuid.NewString(),
+		"iat":     now.Unix(),
+		"exp":     now.Add(time.Hour * 5).Unix(), // Berlaku 5 jam kerja
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

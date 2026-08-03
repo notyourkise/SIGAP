@@ -18,7 +18,7 @@ import {
   Globe, 
   Activity,
   Filter,
-  Download,
+  FileSpreadsheet,
   LoaderCircle
 } from 'lucide-react';
 
@@ -190,8 +190,8 @@ export default function AuditLogsPage() {
             </div>
 
             {/* Filter & Search Bar */}
-            <div className="grid gap-3 border-b border-border px-5 py-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="relative md:col-span-2">
+            <div className="grid gap-3 border-b border-border px-5 py-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="relative md:col-span-2 lg:col-span-3">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
                   type="search"
@@ -206,27 +206,37 @@ export default function AuditLogsPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted shrink-0" />
-                <select
-                  aria-label="Filter Modul Audit"
-                  value={moduleFilter}
-                  onChange={(e) => {
-                    setModuleFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  <option value="">Semua Modul</option>
-                  <option value="AUTH">Auth</option>
-                  <option value="CCTV">CCTV</option>
-                  <option value="MAINTENANCE">Pemeliharaan</option>
-                  <option value="USER">Manajemen User</option>
-                </select>
+              <div>
+                <label htmlFor="audit-module-filter" className="mb-1.5 block text-xs font-semibold text-muted">
+                  Modul
+                </label>
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 shrink-0 text-muted" />
+                  <select
+                    id="audit-module-filter"
+                    aria-label="Filter Modul Audit"
+                    value={moduleFilter}
+                    onChange={(e) => {
+                      setModuleFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+                  >
+                    <option value="">Semua Modul</option>
+                    <option value="AUTH">Auth</option>
+                    <option value="CCTV">CCTV</option>
+                    <option value="MAINTENANCE">Pemeliharaan</option>
+                    <option value="USER">Manajemen User</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div>
+                <label htmlFor="audit-start-date" className="mb-1.5 block text-xs font-semibold text-muted">
+                  Dari tanggal
+                </label>
                 <input
+                  id="audit-start-date"
                   type="date"
                   aria-label="Rentang tanggal mulai"
                   value={startDate}
@@ -236,8 +246,14 @@ export default function AuditLogsPage() {
                   }}
                   className="w-full rounded-xl border border-input-border bg-input px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary"
                 />
-                <span className="text-xs text-muted">s.d.</span>
+              </div>
+
+              <div>
+                <label htmlFor="audit-end-date" className="mb-1.5 block text-xs font-semibold text-muted">
+                  Sampai tanggal
+                </label>
                 <input
+                  id="audit-end-date"
                   type="date"
                   aria-label="Rentang tanggal akhir"
                   value={endDate}
@@ -253,12 +269,13 @@ export default function AuditLogsPage() {
             <div className="flex items-center justify-end gap-3 border-b border-border px-5 py-3">
               <button
                 type="button"
+                title="Ekspor CSV"
+                aria-label="Ekspor data ke CSV"
                 onClick={handleExport}
                 disabled={exporting}
-                className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold transition-colors hover:border-primary hover:text-primary disabled:cursor-wait disabled:opacity-60"
+                className="flex min-h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-emerald-600 transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10 disabled:cursor-wait disabled:opacity-60"
               >
-                {exporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting ? 'Menyiapkan ekspor…' : 'Ekspor CSV'}
+                {exporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
               </button>
             </div>
 

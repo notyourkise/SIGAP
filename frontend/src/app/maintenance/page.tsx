@@ -7,6 +7,8 @@ import { apiRequest, downloadApiFile } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { 
   Plus, 
   Trash2, 
@@ -14,7 +16,7 @@ import {
   AlertTriangle,
   Settings,
   X,
-  Download,
+  FileSpreadsheet,
   FileText,
   Eye,
   Image as ImageIcon,
@@ -59,9 +61,24 @@ interface MaintenanceLogsResponse {
   };
 }
 
+// Waktu lokal "YYYY-MM-DD HH:MM:SS" (bukan UTC)
+const nowLocalDateTime = () => {
+  const date = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+// "YYYY-MM-DD HH:MM:SS" → nilai input datetime-local "YYYY-MM-DDTHH:MM"
+const toDatetimeLocalInput = (value: string) => (value ? `${value.replace(' ', 'T').slice(0, 16)}` : '');
+
+// nilai input datetime-local "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM:SS"
+const fromDatetimeLocalInput = (value: string) => (value ? `${value}:00`.replace('T', ' ') : '');
+
 export default function MaintenanceLogsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
   const [cctvs, setCctvs] = useState<MasterCCTV[]>([]);
@@ -96,7 +113,7 @@ export default function MaintenanceLogsPage() {
     notes: '',
     status: 'completed',
     scheduled_date: '',
-    completed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        completed_at: nowLocalDateTime(),
     image_url: ''
   });
 
@@ -226,7 +243,7 @@ export default function MaintenanceLogsPage() {
         notes: '',
         status: 'completed',
         scheduled_date: '',
-        completed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    completed_at: nowLocalDateTime(),
         image_url: ''
       });
     }
@@ -237,7 +254,7 @@ export default function MaintenanceLogsPage() {
   const handleSaveLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.cctv_id) {
-      alert('Pilih CCTV yang dipelihara.');
+      toast.error('Pilih CCTV yang dipelihara.');
       return;
     }
 
@@ -263,10 +280,11 @@ export default function MaintenanceLogsPage() {
 
       if (response.status === 'success') {
         setIsModalOpen(false);
+        toast.success(currentLog ? 'Catatan pemeliharaan berhasil diperbarui.' : 'Catatan pemeliharaan berhasil disimpan.');
         fetchLogs();
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -278,7 +296,7 @@ export default function MaintenanceLogsPage() {
       const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${id}`);
       setDetailLog(response.data || null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -293,8 +311,9 @@ export default function MaintenanceLogsPage() {
     setActionLoading('export');
     try {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
+      toast.success('Data log pemeliharaan berhasil diekspor ke CSV.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat diekspor. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat diekspor. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -308,25 +327,32 @@ export default function MaintenanceLogsPage() {
     setActionLoading('pdf');
     try {
       await downloadApiFile(`/maintenance-logs/report-pdf?${params}`, 'laporan-pemeliharaan.pdf');
+      toast.success('Laporan PDF berhasil dibuat.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Laporan PDF belum dapat dibuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Laporan PDF belum dapat dibuat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleDeleteLog = async (id: string) => {
-    if (!confirm('Hapus catatan pemeliharaan ini? Catatan tidak akan ditampilkan lagi.')) return;
+    const ok = await confirm({
+      title: 'Hapus Catatan Pemeliharaan?',
+      message: 'Hapus catatan pemeliharaan ini? Catatan tidak akan ditampilkan lagi.',
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
     setActionLoading(`delete-${id}`);
     try {
       const response = await apiRequest(`/maintenance-logs/${id}`, {
         method: 'DELETE'
       });
       if (response.status === 'success') {
+        toast.success('Catatan pemeliharaan berhasil dihapus.');
         fetchLogs();
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -368,13 +394,11 @@ export default function MaintenanceLogsPage() {
             <p className="mt-1 max-w-2xl text-sm text-muted">Catat dan telusuri pekerjaan pemeliharaan CCTV.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <button type="button" disabled={actionLoading !== null} onClick={handleReportPDF} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
-              {actionLoading === 'pdf' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              {actionLoading === 'pdf' ? 'Menyiapkan laporan…' : 'Laporan PDF'}
+            <button type="button" title="Laporan PDF" aria-label="Unduh laporan PDF" disabled={actionLoading !== null} onClick={handleReportPDF} className="flex min-h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
+              {actionLoading === 'pdf' ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
             </button>
-            <button type="button" disabled={actionLoading !== null} onClick={handleExport} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
-              {actionLoading === 'export' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {actionLoading === 'export' ? 'Menyiapkan ekspor…' : 'Ekspor CSV'}
+            <button type="button" title="Ekspor CSV" aria-label="Ekspor data ke CSV" disabled={actionLoading !== null} onClick={handleExport} className="flex min-h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-emerald-600 transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-60">
+              {actionLoading === 'export' ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <FileSpreadsheet className="h-5 w-5" />}
             </button>
             <button
               type="button"
@@ -682,7 +706,7 @@ export default function MaintenanceLogsPage() {
                             : '',
                           completed_at: nextStatus === 'scheduled'
                             ? ''
-                            : (current.completed_at || current.scheduled_date || new Date().toISOString().slice(0, 19).replace('T', ' ')),
+                            : (current.completed_at || current.scheduled_date || nowLocalDateTime()),
                         }));
                       }}
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
@@ -698,19 +722,20 @@ export default function MaintenanceLogsPage() {
                     <label htmlFor="maintenance-time" className="mb-1.5 block text-xs font-semibold text-muted">{formData.status === 'scheduled' ? 'Waktu terjadwal *' : 'Waktu pencatatan *'}</label>
                     <input
                       id="maintenance-time"
-                      type="text"
-                      value={formData.completed_at || formData.scheduled_date}
+                      type="datetime-local"
+                      value={toDatetimeLocalInput(formData.status === 'scheduled' ? formData.scheduled_date : formData.completed_at)}
                       onChange={(e) => {
+                        const value = fromDatetimeLocalInput(e.target.value);
                         if (formData.status === 'scheduled') {
-                          setFormData({...formData, scheduled_date: e.target.value, completed_at: ''});
+                          setFormData({...formData, scheduled_date: value, completed_at: ''});
                         } else {
-                          setFormData({...formData, completed_at: e.target.value, scheduled_date: ''});
+                          setFormData({...formData, completed_at: value, scheduled_date: ''});
                         }
                       }}
-                      placeholder="YYYY-MM-DD HH:MM:SS"
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                       required
                     />
+                    <p className="mt-1.5 text-[11px] text-muted">Terisi otomatis waktu saat ini — buka kalender untuk memilih hari.</p>
                   </div>
                 </div>
 

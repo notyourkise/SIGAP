@@ -15,10 +15,12 @@ import {
   Moon,
   Database,
   LayoutDashboard,
+  MapPinned,
   Users,
   PanelLeftClose,
   PanelLeftOpen,
-  ShieldCheck
+  ShieldCheck,
+  ClipboardCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -44,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const isSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarPreference,
     getSidebarPreference,
@@ -67,12 +70,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [isSidebarOpen]);
 
+  useEffect(() => {
+    if (!isLogoutConfirmOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsLogoutConfirmOpen(false);
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isLogoutConfirmOpen]);
+
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
     { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
     ...(user?.role === 'admin'
       ? [
+          { name: 'Pengecekan Lapangan', href: '/field-maintenance', icon: ClipboardCheck },
           { name: 'Manajemen Pengguna', href: '/users', icon: Users },
           { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
         ]
@@ -81,6 +100,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = () => {
     logout();
+  };
+
+  const confirmLogout = () => {
+    setIsLogoutConfirmOpen(false);
+    setIsSidebarOpen(false);
+    handleLogout();
   };
 
   return (
@@ -119,26 +144,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Sidebar overlay for mobile */}
-        {isSidebarOpen && (
-          <button
-            type="button"
-            aria-label="Tutup menu navigasi"
-            className="fixed inset-0 z-30 bg-black/45 backdrop-blur-[2px] md:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
+        <button
+          type="button"
+          aria-label="Tutup menu navigasi"
+          className={`fixed inset-0 z-30 bg-black/45 backdrop-blur-[2px] transition-opacity duration-500 ease-in-out md:hidden ${isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          onClick={() => setIsSidebarOpen(false)}
+        />
 
         {/* Sidebar Container */}
         <aside
           id="primary-sidebar"
           aria-label="Sidebar aplikasi"
           className={`
-          fixed left-0 top-0 z-40 flex h-screen flex-col justify-between border-r border-border bg-card transition-[width,transform,padding] duration-300 md:sticky
+          fixed left-0 top-0 z-40 flex h-screen flex-col justify-between border-r border-border bg-card transition-[width,transform,padding] duration-500 ease-in-out md:sticky
           ${isSidebarCollapsed ? 'w-72 p-5 md:w-[5.5rem] md:p-3' : 'w-72 p-5'}
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
         >
-          <div className="space-y-7">
+          <div className="min-h-0 flex-1 space-y-7 overflow-y-auto">
             <div className="flex items-center justify-between border-b border-border pb-4 md:hidden">
               <Link
                 href="/dashboard"
@@ -249,21 +272,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </Link>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setIsLogoutConfirmOpen(true)}
+                title={isSidebarCollapsed ? 'Keluar' : undefined}
+                aria-label="Keluar dari SIGAP"
+                className={`
+                  flex min-h-11 w-full items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-medium transition-[background-color,color,box-shadow,border-color]
+                  ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}
+                  text-muted hover:bg-background hover:text-foreground
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card
+                `}
+              >
+                <LogOut className="h-5 w-5 shrink-0" />
+                <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar</span>
+              </button>
             </nav>
-          </div>
-
-          {/* Logout Button */}
-          <div className="border-t border-border pt-4">
-            <button
-              type="button"
-              onClick={handleLogout}
-              title={isSidebarCollapsed ? 'Keluar dari SIGAP' : undefined}
-              aria-label="Keluar dari SIGAP"
-              className={`flex min-h-11 w-full items-center gap-3 rounded-xl border border-transparent px-4 py-3 text-sm font-medium text-red-600 transition-colors hover:border-red-500/15 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-card dark:text-red-400 ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}
-            >
-              <LogOut className="h-5 w-5 shrink-0" />
-              <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar dari SIGAP</span>
-            </button>
           </div>
         </aside>
 
@@ -274,6 +298,52 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+
+      {/* Konfirmasi Keluar */}
+      {isLogoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-heading">
+          <div className="relative w-full max-w-sm space-y-5 rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setIsLogoutConfirmOpen(false)}
+              aria-label="Tutup dialog konfirmasi"
+              className="absolute right-3 top-3 rounded-lg p-1.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
+              <LogOut className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+
+            <div>
+              <h2 id="logout-confirm-heading" className="text-lg font-bold">Keluar dari SIGAP?</h2>
+              <p className="mt-1.5 text-sm text-muted">
+                Anda akan keluar dari sesi saat ini dan perlu login kembali untuk mengakses aplikasi.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setIsLogoutConfirmOpen(false)}
+                className="flex h-11 flex-1 items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmLogout}
+                autoFocus
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-colors hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <LogOut className="h-4 w-4" />
+                Keluar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ProtectedRoute>
   );
 }

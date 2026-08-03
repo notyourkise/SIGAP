@@ -32,30 +32,36 @@ func MigrateMaintenanceToCCTV(db *gorm.DB) {
 	var refs []legacyAssetRef
 	if err := db.Raw(`SELECT id, asset_id FROM maintenance_logs WHERE cctv_id IS NULL`).Scan(&refs).Error; err != nil {
 		log.Printf("⚠️ Migrasi maintenance→cctv: gagal membaca data lama: %v", err)
-		return
-	}
-	if len(refs) == 0 {
-		return
+	} else if len(refs) > 0 {
+		hasAssetsTable := db.Migrator().HasTable("assets")
+		updated := 0
+		for _, ref := range refs {
+			if ref.AssetID == uuid.Nil {
+				continue
+			}
+			cctvID, ok := resolveLegacyAssetToCCTV(db, ref.AssetID, hasAssetsTable)
+			if !ok {
+				log.Printf("⚠️ Migrasi maintenance→cctv: log %s tidak dapat dipetakan ke CCTV (asset_id %s). Periksa secara manual.", ref.ID, ref.AssetID)
+				continue
+			}
+			if err := db.Model(&models.MaintenanceLog{}).Unscoped().Where("id = ?", ref.ID).Update("cctv_id", cctvID).Error; err != nil {
+				log.Printf("⚠️ Migrasi maintenance→cctv: gagal memperbarui log %s: %v", ref.ID, err)
+				continue
+			}
+			updated++
+		}
+		log.Printf("✅ Migrasi maintenance→cctv selesai: %d log dipetakan ke CCTV", updated)
 	}
 
-	hasAssetsTable := db.Migrator().HasTable("assets")
-	updated := 0
-	for _, ref := range refs {
-		if ref.AssetID == uuid.Nil {
-			continue
+	// Hapus kolom legacy asset_id beserta foreign key-nya. Tanpa ini kolom lama yang masih
+	// NOT NULL membuat INSERT baru gagal (model sudah tidak mengirim asset_id lagi).
+	if db.Migrator().HasColumn("maintenance_logs", "asset_id") {
+		if err := db.Migrator().DropColumn("maintenance_logs", "asset_id"); err != nil {
+			log.Printf("⚠️ Migrasi maintenance→cctv: gagal menghapus kolom legacy asset_id: %v", err)
+		} else {
+			log.Printf("✅ Migrasi maintenance→cctv: kolom legacy asset_id dihapus dari maintenance_logs")
 		}
-		cctvID, ok := resolveLegacyAssetToCCTV(db, ref.AssetID, hasAssetsTable)
-		if !ok {
-			log.Printf("⚠️ Migrasi maintenance→cctv: log %s tidak dapat dipetakan ke CCTV (asset_id %s). Periksa secara manual.", ref.ID, ref.AssetID)
-			continue
-		}
-		if err := db.Model(&models.MaintenanceLog{}).Unscoped().Where("id = ?", ref.ID).Update("cctv_id", cctvID).Error; err != nil {
-			log.Printf("⚠️ Migrasi maintenance→cctv: gagal memperbarui log %s: %v", ref.ID, err)
-			continue
-		}
-		updated++
 	}
-	log.Printf("✅ Migrasi maintenance→cctv selesai: %d log dipetakan ke CCTV", updated)
 }
 
 // resolveLegacyAssetToCCTV mencari CCTV yang sesuai dengan referensi asset lama.

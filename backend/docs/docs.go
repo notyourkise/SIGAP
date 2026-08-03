@@ -296,12 +296,7 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Merevoke token JWT aktif dan menambahkannya ke blacklist server. Token tidak dapat digunakan lagi setelah logout.",
+                "description": "Merevoke token JWT aktif bila valid dan selalu menghapus cookie sesi/CSRF. Token invalid atau kosong tetap dianggap logout berhasil.",
                 "produces": [
                     "application/json"
                 ],
@@ -312,13 +307,6 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Logout berhasil, token diinvalidasi",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Token tidak valid",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1137,6 +1125,266 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Gagal memuat tugas",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/field-maintenance": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar catatan pengecekan lapangan terpaginasi. Admin melihat semua catatan, Teknisi hanya melihat miliknya sendiri.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengecekan Lapangan"
+                ],
+                "summary": "Ambil Semua Pengecekan Lapangan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan UUID CCTV",
+                        "name": "cctv_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan hasil (ok / attention)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang awal (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter rentang akhir (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cari catatan atau nama CCTV",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Nomor Halaman (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah data per halaman (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kolom pengurutan (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Arah pengurutan: asc, desc (default: desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar pengecekan terpaginasi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengecekan Lapangan"
+                ],
+                "summary": "Catat Pengecekan Lapangan",
+                "parameters": [
+                    {
+                        "description": "Detail Pengecekan Lapangan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateFieldMaintenanceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Catatan berhasil dibuat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format tidak valid, aset tidak ditemukan, data tidak lengkap",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/field-maintenance/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan detail satu catatan pengecekan lapangan berdasarkan UUID-nya.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengecekan Lapangan"
+                ],
+                "summary": "Ambil Pengecekan Lapangan Detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catatan UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data catatan ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Catatan tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus catatan pengecekan lapangan beserta checklist dan gambar buktinya (soft delete).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengecekan Lapangan"
+                ],
+                "summary": "Hapus Pengecekan Lapangan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catatan UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Catatan berhasil dihapus",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Catatan tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -2286,6 +2534,38 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.CreateFieldMaintenanceRequest": {
+            "type": "object",
+            "required": [
+                "cctv_id",
+                "checks",
+                "images"
+            ],
+            "properties": {
+                "cctv_id": {
+                    "type": "string"
+                },
+                "checks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handlers.FieldCheckItem"
+                    }
+                },
+                "images": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handlers.FieldImageItem"
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1000
+                }
+            }
+        },
         "handlers.CreateMaintenanceLogRequest": {
             "type": "object",
             "required": [
@@ -2359,6 +2639,42 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50,
                     "minLength": 4
+                }
+            }
+        },
+        "handlers.FieldCheckItem": {
+            "type": "object",
+            "required": [
+                "name",
+                "result"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 150,
+                    "minLength": 3
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "result": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "not_ok"
+                    ]
+                }
+            }
+        },
+        "handlers.FieldImageItem": {
+            "type": "object",
+            "required": [
+                "image_url"
+            ],
+            "properties": {
+                "image_url": {
+                    "type": "string"
                 }
             }
         },
@@ -2559,9 +2875,9 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:3000",
+	Host:             "localhost",
 	BasePath:         "/api",
-	Schemes:          []string{},
+	Schemes:          []string{"https"},
 	Title:            "SIGAP API",
 	Description:      "Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.",
 	InfoInstanceName: "swagger",

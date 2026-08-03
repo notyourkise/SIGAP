@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'sigap_session';
-const ADMIN_PATHS = ['/audit-logs', '/users'];
+const ADMIN_PATHS = ['/audit-logs', '/users', '/field-maintenance'];
 
 function redirectToLogin(request: NextRequest) {
   const loginURL = new URL('/login', request.url);
@@ -45,5 +45,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/audit-logs/:path*', '/users/:path*'],
+  matcher: ['/audit-logs/:path*', '/users/:path*', '/field-maintenance/:path*'],
 };

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Bell, Clock, Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
+import { Bell, Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
@@ -17,21 +17,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [inactivityNotice, setInactivityNotice] = useState(false);
-
   useEffect(() => {
     if (isAuthenticated && !authLoading) router.push('/');
   }, [isAuthenticated, authLoading, router]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const reason = localStorage.getItem('sigap_logout_reason');
-      if (reason === 'inactivity') {
-        setInactivityNotice(true);
-        localStorage.removeItem('sigap_logout_reason');
-      }
-    }
-  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -132,13 +120,6 @@ export default function LoginPage() {
             </h1>
             <p className="mt-2 text-sm text-muted">Sistem internal pengelolaan CCTV kawasan IKN.</p>
           </header>
-
-          {inactivityNotice && (
-            <div role="alert" className="mb-5 mt-8 flex items-center gap-3 rounded-xl border border-warning/25 bg-warning/10 p-3.5 text-xs font-semibold text-warning">
-              <Clock className="h-4 w-4 shrink-0" />
-              <span>Sesi Anda telah berakhir secara otomatis demi keamanan karena tidak ada aktivitas selama 15 menit.</span>
-            </div>
-          )}
 
           {error && (
             <div role="alert" className="mb-5 mt-8 flex items-center gap-3 rounded-xl border border-error/20 bg-error/10 p-3.5 text-sm text-error">

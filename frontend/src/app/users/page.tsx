@@ -6,6 +6,8 @@ import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Eye, KeyRound, Pencil, Plus, Search, Trash2, UserCog, X } from 'lucide-react';
 
 interface ManagedUser {
@@ -22,6 +24,8 @@ const initialForm = { username: '', password: '', full_name: '', email: '', role
 export default function UsersPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total_rows: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
@@ -74,7 +78,7 @@ export default function UsersPage() {
       setNewPassword('');
       setModal(mode);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail pengguna belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail pengguna belum dapat dimuat. Coba lagi.');
     }
   };
 
@@ -83,16 +87,18 @@ export default function UsersPage() {
     try {
       if (modal === 'create') {
         await apiRequest('/auth/users', { method: 'POST', body: JSON.stringify(form) });
+        toast.success(`Pengguna "${form.full_name}" berhasil ditambahkan.`);
       } else if (modal === 'edit' && selected) {
         await apiRequest(`/users/${selected.id}`, {
           method: 'PUT',
           body: JSON.stringify({ full_name: form.full_name, email: form.email, role: form.role }),
         });
+        toast.success(`Data pengguna "${form.full_name}" berhasil diperbarui.`);
       }
       setModal(null);
       loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Data pengguna belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Data pengguna belum dapat disimpan. Periksa isian lalu coba lagi.');
     }
   };
 
@@ -105,19 +111,25 @@ export default function UsersPage() {
         body: JSON.stringify({ new_password: newPassword }),
       });
       setModal(null);
-      alert('Kata sandi pengguna berhasil diperbarui.');
+      toast.success('Kata sandi pengguna berhasil diperbarui.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Kata sandi belum dapat diperbarui. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Kata sandi belum dapat diperbarui. Coba lagi.');
     }
   };
 
   const removeUser = async (item: ManagedUser) => {
-    if (!confirm(`Hapus pengguna “${item.full_name}”? Pengguna ini tidak akan dapat mengakses SIGAP.`)) return;
+    const ok = await confirm({
+      title: 'Hapus Pengguna?',
+      message: `Hapus pengguna “${item.full_name}”? Pengguna ini tidak akan dapat mengakses SIGAP.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/users/${item.id}`, { method: 'DELETE' });
+      toast.success(`Pengguna "${item.full_name}" berhasil dihapus.`);
       loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
     }
   };
 

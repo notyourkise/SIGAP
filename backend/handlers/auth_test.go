@@ -92,17 +92,23 @@ func TestLogin_Success(t *testing.T) {
 	cookies := resp.Cookies()
 	foundSession := false
 	foundCSRF := false
+	sessionPaths := make(map[string]bool)
+	csrfPaths := make(map[string]bool)
 	for _, ck := range cookies {
 		if ck.Name == "sigap_session" {
 			foundSession = true
+			sessionPaths[ck.Path] = true
 			assert.True(t, ck.HttpOnly, "cookie sesi wajib HttpOnly")
 		}
 		if ck.Name == "sigap_csrf" {
 			foundCSRF = true
+			csrfPaths[ck.Path] = true
 		}
 	}
 	assert.True(t, foundSession, "cookie sesi sigap_session harus diset")
 	assert.True(t, foundCSRF, "cookie CSRF sigap_csrf harus diset")
+	assert.Equal(t, map[string]bool{"/": true, "/api": true, "/api/": true}, sessionPaths)
+	assert.Equal(t, map[string]bool{"/": true, "/api": true, "/api/": true}, csrfPaths)
 
 	// Memastikan semua ekspektasi query mock terpenuhi
 	assert.NoError(t, mock.ExpectationsWereMet())

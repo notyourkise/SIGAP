@@ -7,6 +7,9 @@ import Pagination from '@/components/Pagination';
 import { apiRequest, downloadApiFile, API_BASE_URL } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
+import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import { 
   Plus, 
   Search, 
@@ -21,7 +24,8 @@ import {
   AlertTriangle, 
   Eye, 
   Printer,
-  LoaderCircle
+  LoaderCircle,
+  ClipboardCheck
 } from 'lucide-react';
 
 interface CCTV {
@@ -53,6 +57,8 @@ interface QRPrintItem {
 export default function CCTVPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +83,7 @@ export default function CCTVPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isFieldMaintenanceOpen, setIsFieldMaintenanceOpen] = useState(false);
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -153,7 +160,7 @@ export default function CCTVPage() {
   const openQRPrint = useCallback(
     async (items: CCTV[], mode: 'single' | 'batch') => {
       if (items.length === 0) {
-        alert('Tidak ada data QR Code CCTV yang dapat dicetak.');
+        toast.error('Tidak ada data QR Code CCTV yang dapat dicetak.');
         return;
       }
       try {
@@ -164,11 +171,12 @@ export default function CCTVPage() {
         }
         setPrintMode(mode);
         setPrintQueue(qrItems);
+        toast.success(`${qrItems.length} QR Code CCTV berhasil disiapkan untuk dicetak.`);
       } catch (err: any) {
-        alert(err?.message || 'Gagal menyiapkan QR Code untuk dicetak. Coba lagi.');
+        toast.error(err?.message || 'Gagal menyiapkan QR Code untuk dicetak. Coba lagi.');
       }
     },
-    [fetchQRDataUrl]
+    [fetchQRDataUrl, toast]
   );
 
   // Memicu dialog print ketika antrian cetak tersedia, lalu bersihkan setelahnya
@@ -269,7 +277,7 @@ export default function CCTVPage() {
         setIsDetailModalOpen(true);
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -332,17 +340,23 @@ export default function CCTVPage() {
 
       if (response.status === 'success') {
         setIsFormModalOpen(false);
+        toast.success(currentCCTV ? `Data CCTV "${formData.nama}" berhasil diperbarui.` : `CCTV "${formData.nama}" berhasil ditambahkan.`);
         fetchCCTVs();
       }
     } catch (err: any) {
-      alert(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleDeleteCCTV = async (cctv: CCTV) => {
-    if (!confirm(`Hapus CCTV “${cctv.nama}”? CCTV tidak akan ditampilkan dalam daftar aktif.`)) return;
+    const ok = await confirm({
+      title: 'Hapus CCTV?',
+      message: `Hapus CCTV “${cctv.nama}”? CCTV tidak akan ditampilkan dalam daftar aktif.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
     setActionLoading(`delete-${cctv.id}`);
     try {
       const response = await apiRequest(`/cctv/${cctv.id}`, {
@@ -350,10 +364,11 @@ export default function CCTVPage() {
       });
       if (response.status === 'success') {
         setSelectedIDs(prev => prev.filter(item => item !== cctv.id));
+        toast.success(`CCTV "${cctv.nama}" berhasil dihapus.`);
         fetchCCTVs();
       }
     } catch (err: any) {
-      alert(err.message || 'CCTV belum dapat dihapus. Coba lagi.');
+      toast.error(err.message || 'CCTV belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -381,7 +396,7 @@ export default function CCTVPage() {
       const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`);
       setSelectedIDs(response.data?.rows.map((cctv) => cctv.id) ?? []);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
       setSelectedIDs([]);
     } finally {
       setIsSelectingAll(false);
@@ -398,11 +413,16 @@ export default function CCTVPage() {
 
   // Bulk Delete Handler (Selected or All)
   const handleBulkDelete = async (deleteAll = false) => {
-    const confirmMessage = deleteAll 
+    const confirmMessage = deleteAll
       ? 'Hapus seluruh data CCTV? Semua CCTV akan dihapus dari SIGAP dan tindakan ini tidak dapat dibatalkan.'
       : `Hapus ${selectedIDs.length} CCTV terpilih dari SIGAP?`;
-      
-    if (!confirm(confirmMessage)) return;
+
+    const ok = await confirm({
+      title: deleteAll ? 'Hapus Semua CCTV?' : 'Hapus CCTV Terpilih?',
+      message: confirmMessage,
+      confirmLabel: deleteAll ? 'Hapus Semua' : 'Hapus Terpilih',
+    });
+    if (!ok) return;
 
     setActionLoading(deleteAll ? 'delete-all' : 'delete-selected');
     try {
@@ -416,9 +436,9 @@ export default function CCTVPage() {
 
       setSelectedIDs([]);
       fetchCCTVs();
-      alert(response.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
+      toast.success(response.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
     } catch (err: any) {
-      alert(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
+      toast.error(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -428,8 +448,9 @@ export default function CCTVPage() {
   const handleDownloadTemplate = async () => {
     try {
       await downloadApiFile('/cctv/template', 'template_import_cctv.xlsx');
+      toast.success('Template impor Excel berhasil diunduh.');
     } catch (err: any) {
-      alert(err.message || 'Template impor belum dapat diunduh. Coba lagi.');
+      toast.error(err.message || 'Template impor belum dapat diunduh. Coba lagi.');
     }
   };
 
@@ -456,6 +477,7 @@ export default function CCTVPage() {
 
       setImportSuccess(response.message || 'Data CCTV berhasil diimpor.');
       setSelectedFile(null);
+      toast.success(response.message || 'Data CCTV berhasil diimpor.');
       fetchCCTVs();
     } catch (err: any) {
       setImportError(err.message || 'Berkas Excel belum dapat diimpor. Periksa format lalu coba lagi.');
@@ -633,7 +655,17 @@ export default function CCTVPage() {
         }
       }
     } else {
-      itemsToPrint = cctvs;
+      try {
+        const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?page=1&limit=100`);
+        if (response.status === 'success' && response.data) {
+          itemsToPrint = response.data.rows;
+        } else {
+          itemsToPrint = cctvs;
+        }
+      } catch (err) {
+        console.error("Gagal mengambil data lengkap untuk cetak batch:", err);
+        itemsToPrint = cctvs;
+      }
     }
 
     await openQRPrint(itemsToPrint, 'batch');
@@ -1094,21 +1126,23 @@ export default function CCTVPage() {
 
               {!scannedResult ? (
                 <div className="space-y-3">
-                  {/* Toggle Mode Button */}
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowManualInput(!showManualInput);
-                        setScanError('');
-                      }}
-                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
-                    >
-                      {showManualInput ? 'Gunakan kamera' : 'Masukkan payload'}
-                    </button>
-                  </div>
+                  {/* Toggle Mode Button (admin only — teknisi cukup memakai kamera) */}
+                  {isAdmin && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowManualInput(!showManualInput);
+                          setScanError('');
+                        }}
+                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
+                      >
+                        {showManualInput ? 'Gunakan kamera' : 'Masukkan payload'}
+                      </button>
+                    </div>
+                  )}
 
-                  {!showManualInput ? (
+                  {!isAdmin || !showManualInput ? (
                     /* CAMERA SCANNER VIEW */
                     <div className="text-center">
                       <div className="relative mx-auto flex min-h-[220px] w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border bg-black">
@@ -1230,7 +1264,7 @@ export default function CCTVPage() {
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 border-t border-border pt-4">
+                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
                     <button
                       type="button"
                       onClick={() => {
@@ -1243,8 +1277,17 @@ export default function CCTVPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setIsFieldMaintenanceOpen(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-primary text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15 hover:bg-primary-hover"
+                      title="Catat hasil pengecekan lapangan"
+                    >
+                      <ClipboardCheck className="h-4 w-4" />
+                      Maintenance
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleCloseScanModal}
-                      className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-sm cursor-pointer"
+                      className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
                     >
                       Tutup
                     </button>
@@ -1466,6 +1509,14 @@ export default function CCTVPage() {
           </div>,
           document.body
         )}
+
+      {/* Modal pengecekan lapangan (hasil pindai QR) */}
+      <FieldMaintenanceModal
+        cctv={scannedResult}
+        open={isFieldMaintenanceOpen}
+        onClose={() => setIsFieldMaintenanceOpen(false)}
+        onSaved={() => fetchCCTVs()}
+      />
     </DashboardLayout>
   );
 }

@@ -20,10 +20,13 @@
 ## 4. Strategi Dokumentasi & Prompting AI
 Proyek ini menggunakan strategi distribusi file dokumentasi untuk memisahkan konteks antara pekerjaan Frontend dan Backend, serta menjaga fokus Codex AI:
 
-- **Aturan AI (`agent.md`):**
-  - `/docs/agent.md` -> Aturan kerja agent tingkat monorepo.
+- **Aturan AI (`AGENTS.md`):**
+  - `/docs/AGENTS.md` -> Aturan kerja agent tingkat monorepo.
   - `/backend/agent.md` -> Berisi aturan spesifik untuk Go Fiber, struktur database, dan logika backend.
   - `/frontend/agent.md` -> Berisi aturan spesifik untuk Next.js, komponen UI, dan Tailwind CSS.
+- **Akses aplikasi (`ACCESS.md`):**
+  - `/docs/ACCESS.md` -> Satu-satunya entrypoint Docker `https://localhost`, routing Nginx,
+    cookie httpOnly, CSRF, WebSocket, kamera, dan Swagger.
 - **Buku Harian Proyek (`changelog.md`):**
   - `/docs/changelog.md` (Utama) -> Mencatat pencapaian besar ekosistem monorepo.
   - `/backend/changelog.md` -> Mencatat pembaruan teknis terkait API dan database.
@@ -37,11 +40,13 @@ sigap-monorepo/
 ├── .gitignore
 │
 ├── docs/
-│   ├── agent.md
+│   ├── AGENTS.md
+│   ├── ACCESS.md
 │   ├── changelog.md
 │   ├── plan.md
 │   ├── ROADMAP.md
 │   ├── SECURITY-AUDIT.md
+│   ├── TESTING.md
 │   ├── PRODUCT.md
 │   └── DESIGN.md
 │

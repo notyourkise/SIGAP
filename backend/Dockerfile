@@ -47,6 +47,9 @@ COPY --from=builder /build/sigap-api .
 # Salin file docs swagger yang dibutuhkan saat runtime
 COPY --from=builder /build/docs ./docs
 
+# Salin aset statis (logo kop surat, dll.) yang dibutuhkan saat runtime
+COPY --from=builder /build/assets ./assets
+
 # Buat direktori uploads untuk lampiran foto pemeliharaan CCTV
 RUN mkdir -p /app/uploads
 

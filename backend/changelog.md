@@ -1,5 +1,230 @@
 # Changelog - Backend SIGAP
 
+## [0.24.0] - 2026-08-03
+
+### API Pengecekan Lapangan (Field Maintenance) untuk Teknisi
+
+perubahan yang dilakukan: **Endpoint baru untuk mencatat hasil pengecekan lapangan spontan teknisi (checklist per item + foto bukti), serta penyesuaian pembersihan file upload agar foto pengecekan tidak terhapus**
+before:
+- Tidak ada cara mencatat pengecekan lapangan selain `maintenance-logs` (jadwal dari admin); tidak ada struktur checklist per item maupun lampiran banyak foto.
+- `CleanupOrphanUploads` hanya menganggap `maintenance_logs.image_url` sebagai referensi sah, sehingga foto pengecekan lapangan akan dihapus sebagai file yatim setelah 24 jam.
+after:
+- Model baru di `models/field_maintenance.go`: `FieldMaintenance` (header: cctv_id, technician_id, overall_status ok/attention, notes, completed_at) + `FieldMaintenanceCheck` (name, result ok/not_ok, note) + `FieldMaintenanceImage` (image_url); semua terdaftar di `AutoMigrate` main.go.
+- Handler baru `handlers/field_maintenance.go`:
+  - `POST /api/field-maintenance` — wajib: cctv_id valid, 1–30 item checklist (name min 3 karakter, result ok/not_ok, note maks 500), minimal 1 maksimal 5 foto (`image_url` wajib prefix `/api/uploads/`). Teknisi diambil dari token JWT; `overall_status` dihitung otomatis (ada item not_ok → attention); seluruh header+checks+images disimpan dalam satu transaksi; audit log `CREATE_FIELD_MAINTENANCE`.
+  - `GET /api/field-maintenance` — terpaginasi; admin melihat semua, teknisi hanya miliknya (scope `technician_id`); filter cctv_id, status, rentang tanggal, pencarian (notes/nama CCTV/kode); preload CCTV, teknisi, checklist, foto.
+  - `GET /api/field-maintenance/:id` — detail lengkap dengan ownership check untuk teknisi.
+  - `DELETE /api/field-maintenance/:id` — admin saja; audit `DELETE_FIELD_MAINTENANCE`.
+- Rute baru `routes/field_maintenance.go` (group `/field-maintenance` dilindungi `Protected()`).
+- `CleanupOrphanUploads` kini juga membaca `field_maintenance_images.image_url` sebagai referensi sah agar foto bukti pengecekan tidak terhapus.
+- Unit test baru `handlers/field_maintenance_test.go` (validasi, CCTV tidak ditemukan, sukses bertransaksi, scope teknisi, UUID tidak valid, not found).
+timestamp: 2026-08-03 WITA
+kategori: Feature, Backend
+file yang diubah:
+- backend/models/field_maintenance.go (baru)
+- backend/handlers/field_maintenance.go (baru)
+- backend/routes/field_maintenance.go (baru)
+- backend/handlers/field_maintenance_test.go (baru)
+- backend/main.go (AutoMigrate + registrasi rute)
+- backend/handlers/upload.go (cleanup menyertakan field_maintenance_images)
+- backend/changelog.md
+verifikasi:
+- `go build ./...` PASS.
+- `go vet ./...` PASS.
+- `go test ./... -count=1` PASS (semua package ok).
+alasan teknis: Pengecekan spontan di lapangan membutuhkan struktur data terpisah dari jadwal pemeliharaan; checklist per item memungkinkan pelaporan hasil yang detail dan dapat difilter admin; penyimpanan transaksional menjaga konsistensi header-checklist-foto; referensi foto tambahan pada cleanup mencegah file bukti terhapus.
+
+---
+
+## [0.23.0] - 2026-08-03
+
+### Kop Surat & Perbaikan Tata Letak Laporan PDF Pemeliharaan
+
+perubahan yang dilakukan: **PDF laporan pemeliharaan kini berkop surat resmi (logo IKN + identitas instansi) dan tabel baris tidak lagi timpang/ketimpa**
+before:
+- Kop laporan hanya berupa 2 baris teks (judul + nama sistem) tanpa logo maupun alamat instansi.
+- Baris tabel memakai perkiraan jumlah baris lipat teks "Tindakan" berbasis hitungan karakter (44 karakter/baris) yang bisa meleset, sehingga teks menimpa garis/baris berikutnya; hanya ada garis bawah (tanpa border sel) sehingga tabel tampak tidak simetris; pindah halaman hanya dicek dengan ambang kasar `GetY() > 260` sehingga sel bisa terpotong di tengah saat pindah halaman.
+after:
+- Kop surat resmi: logo IKN (`assets/nusantara-logo.png`, 691×996 px) di kiri, nama instansi "OTORITA IBU KOTA NUSANTARA" + sub "Sistem Identifikasi Gangguan Aset Pusat (SIGAP)", alamat lengkap (Kompleks Perkantoran Pemerintah IKN, Kab. Penajam Paser Utara, Provinsi Kalimantan Timur), website www.ikn.go.id (telp/email sebagai konstanta kosong yang siap diisi), ditutup garis ganda (tebal + tipis).
+- Judul laporan diubah "LAPORAN PEMELIHARAAN CCTV"; baris "Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN" yang lama dihapus karena sudah ada di kop.
+- Perhitungan tinggi baris tabel kini akurat memakai `pdf.SplitLines` (pembungkus teks engine yang sama dengan MultiCell), sehingga teks multi-baris tidak lagi menimpa baris berikutnya.
+- Setiap sel digambar border grid penuh (`Rect`) sehingga tabel simetris dan mudah dibaca.
+- Pindah halaman dilakukan per-baris dengan cek `yStart+cellHeight > pdfBreakY` sebelum menggambar, mencegah sel terpotong di tengah (aksi pindah halaman lama di loop dihapus).
+- Logo dibuat opsional (`os.Stat`): jika berkas tidak ditemukan (mis. lingkungan unit test) kop tetap terbit tanpa logo tanpa membuat PDF gagal.
+- Dockerfile runner kini menyalin folder `backend/assets` ke `/app/assets` agar logo tersedia saat runtime.
+timestamp: 2026-08-03 WITA
+kategori: Feature, Bugfix, UI, Backend
+file yang diubah:
+- backend/handlers/report.go
+- backend/Dockerfile
+- backend/assets/nusantara-logo.png (baru, disalin dari frontend/public)
+- backend/changelog.md
+verifikasi:
+- `go build ./...` PASS.
+- `go vet ./handlers/` PASS.
+- `go test ./... -count=1` PASS (semua package ok).
+alasan teknis: FPDF `MultiCell` membungkus teks berdasarkan lebar karakter, bukan hitungan rune, sehingga estimasi baris lama tidak akurat → tumpang tindih. `SplitLines` memakai pengukuran yang sama sehingga konsisten; border grid + cek pindah halaman per-baris menjamin simetri dan tidak ada sel terpotong. Logo dimuat dari file lokal agar hasil cetak konsisten tanpa permintaan jaringan.
+
+---
+
+### Penghapusan Kolom Legacy asset_id pada maintenance_logs
+
+perubahan yang dilakukan: **Migrasi kini menghapus kolom legacy `asset_id` yang menyebabkan INSERT gagal**
+before:
+- `maintenance_logs` masih memiliki kolom `asset_id uuid NOT NULL` + FK `fk_maintenance_logs_asset`
+  dari era model `assets`, sementara model GORM `MaintenanceLog` sudah memakai `cctv_id`.
+- INSERT baru tidak pernah mengisi `asset_id`, sehingga setiap penyimpanan log pemeliharaan gagal
+  dengan `null value in column "asset_id" violates not-null constraint (SQLSTATE 23502)` → HTTP 500.
+- `MigrateMaintenanceToCCTV` hanya memetakan data lama `asset_id → cctv_id` dan tidak menghapus
+  kolom legacy; early-return `len(refs) == 0` juga membuat kolom tetap tertinggal walau tidak ada
+  data tersisa.
+after:
+- Migrasi memetakan baris `cctv_id IS NULL` lalu **menghapus kolom `asset_id`** beserta FK-nya
+  (`DROP COLUMN` di PostgreSQL ikut menurunkan constraint dependent).
+- Penghapusan dilakukan di luar early-return sehingga selalu dieksekusi selama kolom masih ada;
+  tetap idempotent (kolom sudah hilang → return awal).
+- Tabel kini hanya memakai `cctv_id` sebagai referensi aset; INSERT log baru berjalan normal.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Database, Migration
+file yang diubah:
+- backend/config/migrate.go
+- backend/changelog.md
+verifikasi:
+- `go test ./... -count=1` PASS.
+- `go vet ./...` PASS.
+- `gofmt` & `git diff --check` bersih.
+- Log startup Docker: "kolom legacy asset_id dihapus dari maintenance_logs".
+- `\d maintenance_logs` tidak lagi menampilkan kolom `asset_id`/FK `fk_maintenance_logs_asset`.
+alasan teknis: Kolom legacy dari model `assets` (yang sudah dihapus, Fase 3.6) masih mengikat
+NOT NULL constraint; membersihkannya memulihkan fungsi penyimpanan log pemeliharaan tanpa
+mengubah payload API.
+
+---
+
+## [0.21.0] - 2026-08-03
+
+### Cookie Legacy dan JWT Unik
+
+perubahan yang dilakukan: **Membersihkan cookie sesi pada semua path legacy dan menambahkan identitas unik JWT**
+before:
+- `fiber.Ctx.Cookie()` memakai Set-Cookie keyed by nama sehingga beberapa cookie `sigap_session`
+  dengan path berbeda tidak dapat dihapus dalam satu response.
+- JWT hanya memiliki `user_id`, `role`, `tv`, dan `exp`; login ulang pada detik yang sama dapat
+  menghasilkan string token identik dengan token blacklist.
+after:
+- Penulisan cookie memakai multi-value `Set-Cookie` untuk path `/`, `/api`, dan `/api/`.
+- Login membersihkan cookie legacy sebelum menerbitkan sesi baru; logout membersihkan seluruh path.
+- JWT memiliki `jti` UUID dan `iat`, sehingga setiap token selalu unik.
+- Test handler/session dan JWT uniqueness ditambahkan.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth, Security, Testing
+file yang diubah:
+- backend/utils/session.go
+- backend/utils/jwt.go
+- backend/utils/jwt_test.go
+- backend/handlers/auth.go
+- backend/handlers/auth_test.go
+- backend/handlers/auth_extra_test.go
+- backend/changelog.md
+verifikasi:
+- `go test ./... -count=1` PASS.
+- `go vet ./...` PASS.
+- `swag init` tetap PASS setelah perubahan handler.
+alasan teknis: Mencegah browser memilih cookie sesi lama untuk route `/api/*` dan mencegah token
+baru ditolak karena kebetulan identik dengan token yang baru direvoke.
+
+---
+
+## [0.20.0] - 2026-08-03
+
+### Logout Idempotent dan Trusted Proxy Runtime
+
+perubahan yang dilakukan: **Logout tidak lagi gagal karena CSRF stale dan konfigurasi runtime Docker dilengkapi**
+before:
+- Route logout dilindungi `Protected()` dan CSRF sehingga cookie sesi yang masih ada dengan token CSRF
+  stale dapat menghasilkan 403 sebelum cookie dibersihkan.
+- Request logout tanpa token menghasilkan 401 dan konfigurasi container aktif belum memuat trusted proxy.
+after:
+- Route logout menjadi idempotent tanpa `Protected()`: token valid direvoke, token kosong/invalid tetap
+  menghapus cookie dan mengembalikan 200.
+- CSRF melewati `/api/auth/logout`; route tetap tidak dapat mengakses resource lain dan hanya mencabut sesi.
+- Runtime Docker memakai `APP_ENV=production`, `CORS_ALLOWED_ORIGINS=https://localhost`, dan
+  `TRUSTED_PROXY_IPS=172.28.0.10`.
+- Test route, handler, dan middleware menutup regresi logout/CSRF.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth, Security, Infrastructure, Testing
+file yang diubah:
+- backend/handlers/auth.go
+- backend/middleware/csrf.go
+- backend/routes/auth.go
+- backend/handlers/auth_extra_test.go
+- backend/middleware/csrf_test.go
+- backend/routes/routes_test.go
+- backend/.env.docker (runtime lokal, tidak di-commit)
+- backend/.env.docker.example
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+verifikasi:
+- `go test ./... -count=1` PASS.
+- `go vet ./...` PASS.
+- `swag init` PASS.
+alasan teknis: Memastikan pengguna dapat logout dan login ulang meskipun cookie CSRF/session sudah
+kedaluwarsa, serta mencegah seluruh client di belakang Nginx berbagi bucket rate limit yang sama.
+
+---
+
+## [0.19.0] - 2026-08-03
+
+### Swagger Single-Origin melalui Nginx
+
+perubahan yang dilakukan: **Metadata Swagger diarahkan ke host publik `localhost` dengan scheme HTTPS**
+before:
+- Metadata Swagger menggunakan `localhost:3000`, sedangkan port API tidak dipublish pada Docker.
+- Swagger UI belum memiliki jalur reverse proxy `/swagger/*`.
+after:
+- Anotasi API menggunakan host `localhost` dan scheme `https`, kemudian file Swagger digenerate ulang.
+- Route publik Swagger diteruskan oleh Nginx pada non-production melalui `https://localhost/swagger/index.html`.
+- CORS example Docker menggunakan origin single-origin `https://localhost`.
+timestamp: 2026-08-03 WITA
+kategori: Documentation, Infrastructure, API
+file yang diubah:
+- backend/main.go
+- backend/.env.docker.example
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- nginx/nginx.conf
+- backend/changelog.md
+alasan teknis: Menyelaraskan dokumentasi interaktif dan origin CORS dengan deployment Nginx tanpa
+membuka port API internal ke host.
+verifikasi:
+- `swag init` berhasil menghasilkan ulang `backend/docs/docs.go`, `swagger.json`, dan `swagger.yaml`.
+- `go test ./... -count=1` PASS.
+- `go vet ./...` PASS.
+- `docker compose config --quiet` PASS dan syntax Nginx PASS.
+
+---
+
+## [0.18.0] - 2026-08-03
+
+### Penyetelan MaxAge Cookie Sesi & CSRF ke 5 Jam
+
+perubahan yang dilakukan: **Cookie sesi (sigap_session) dan CSRF (sigap_csrf) menyetel MaxAge=18000 (5 jam)**
+before:
+- Cookie sesi dan CSRF diterbitkan tanpa atribut `MaxAge` (session cookie), sehingga pada kondisi tertentu browser menghapus cookie saat tab/halaman di-refresh.
+after:
+- Cookie `sigap_session` (httpOnly) dan `sigap_csrf` kini menyetel `MaxAge: 18000` (5 jam), selaras dengan masa berlaku token JWT (`exp`). Sesi tetap bertahan utuh saat browser di-refresh.
+timestamp: 2026-08-03 WITA
+kategori: Bugfix, Auth, Security
+file yang diubah:
+- backend/utils/session.go
+- backend/changelog.md
+alasan teknis: Menyelaraskan umur cookie dengan umur token JWT agar cookie tidak hilang secara prematur saat navigasi atau refresh halaman.
+
+---
+
 ## [0.17.0] - 2026-08-02
 
 ### Perbaikan Cookie Sesi Tidak Terhapus Saat Logout

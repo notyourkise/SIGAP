@@ -130,6 +130,135 @@ body {
   }
 }
 
+/* ===== Toast & Dialog Konfirmasi Kustom ===== */
+
+.animate-toast-in {
+  animation: toastIn 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+}
+
+@keyframes toastIn {
+  from {
+    transform: translateX(28px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-toast-progress {
+  animation-name: toastProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes toastProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.animate-check-pop {
+  animation: checkPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s backwards;
+}
+
+@keyframes checkPop {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-check-circle {
+  animation: checkCircle 0.5s ease-out 0.12s forwards;
+}
+
+@keyframes checkCircle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-check-path {
+  animation: checkPath 0.35s ease-out 0.42s forwards;
+}
+
+@keyframes checkPath {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.22s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeIn 0.16s ease-in reverse forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-pop-in {
+  animation: popIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pop-out {
+  animation: popIn 0.16s ease-in reverse forwards;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0.94) translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-wiggle-slow {
+  animation: wiggleSlow 2.4s ease-in-out infinite;
+}
+
+@keyframes wiggleSlow {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  4% {
+    transform: rotate(-6deg);
+  }
+  8% {
+    transform: rotate(6deg);
+  }
+  12% {
+    transform: rotate(-3deg);
+  }
+  16% {
+    transform: rotate(0deg);
+  }
+}
+
 /* ===== Cetak Label QR CCTV ===== */
 /* Area cetak dirender via portal ke document.body, tersembunyi di layar */
 #sigap-print-area {

@@ -14,7 +14,10 @@ import (
 //   - Metode aman (GET/HEAD/OPTIONS) selalu dilewati.
 //   - Request dengan header Authorization Bearer (client API) dilewati —
 //     token Bearer tidak dikirim otomatis oleh browser sehingga tidak rentan CSRF.
-//   - Request mutasi tanpa cookie sesi dilewati (mis. login publik).
+//   - Login dan logout dilewati karena login bersifat publik dan logout
+//     idempotent: logout hanya mencabut sesi milik request tersebut serta
+//     menghapus cookie, tanpa mengubah resource aplikasi.
+//   - Request mutasi tanpa cookie sesi dilewati.
 //   - Untuk request mutasi yang terautentikasi via cookie, header
 //     X-CSRF-Token wajib cocok dengan nilai cookie sigap_csrf.
 func CSRFProtection() fiber.Handler {
@@ -23,10 +26,9 @@ func CSRFProtection() fiber.Handler {
 			return c.Next()
 		}
 
-		// Endpoint login bersifat publik — tidak ada resource terautentikasi
-		// yang dilindungi. Sisa cookie sesi lama dari sesi sebelumnya TIDAK
-		// boleh memicu pengecekan CSRF pada percobaan login.
-		if c.Path() == "/api/auth/login" {
+		// Login bersifat publik dan logout harus tetap dapat membersihkan sesi
+		// walau cookie CSRF sudah stale atau hilang.
+		if c.Path() == "/api/auth/login" || c.Path() == "/api/auth/logout" {
 			return c.Next()
 		}
 

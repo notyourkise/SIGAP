@@ -44,3 +44,13 @@ func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }
+
+func TestLogoutRouteRemainsAvailableWithoutSession(t *testing.T) {
+	app := fiber.New()
+	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
+	SetupAuthRoutes(api)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/api/auth/logout", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
