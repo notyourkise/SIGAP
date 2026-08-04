@@ -3,6 +3,19 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.7] — 2026-08-04 — CCTV: Sortir & Filter dalam Modal Popup
+
+### Perubahan
+
+- **Frontend** ([1.25.7]): select filter status, indoor/outdoor, dan sortir di
+  `/cctv` disembunyikan dari tampilan utama — digantikan tombol "Sortir" (badge
+  jumlah filter aktif) yang membuka modal "Sortir & Filter" (5 kolom pengurutan +
+  arah + filter status & lokasi, pola draft + Terapkan/Batal/Reset). Kotak pencarian
+  tetap tampil. State `sortMode` diganti `sortBy`/`sortOrder`; backend tidak berubah.
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil | Detail: `frontend/changelog.md` [1.25.7]
+
 ## [1.28.6] — 2026-08-04 — Audit Log: Sortir & Filter dalam Modal + Posisi Menu Pemberitahuan
 
 ### Perubahan
