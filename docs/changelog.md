@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.10] — 2026-08-04 — Badge Profil: Sejajar dengan Status Layanan + Monokrom
+
+### Perubahan
+
+- **Frontend** ([1.25.10]): badge profil di header Dashboard sejajar satu baris
+  dengan lonceng notifikasi & indikator "Layanan normal", menampilkan nama akun
+  dan peran di samping foto — teks monokrom mengikuti tema (putih/hitam), garis
+  pembatas antara badge dan teks, fallback avatar netral. Dialog konfirmasi
+  keluar dipindah ke dalam `ProfileMenu` (via portal) sehingga badge berfungsi
+  mandiri di halaman Dashboard; `DashboardLayout` dibersihkan dari modal konfirmasi.
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil | Detail: `frontend/changelog.md` [1.25.10]
+
 ## [1.28.9] — 2026-08-04 — Badge Profil Global + Foto Profil
 
 ### Perubahan

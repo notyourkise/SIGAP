@@ -1,6 +1,26 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.9] - 2026-08-04
+## [1.25.10] - 2026-08-04
+
+### Peningkatan: Badge Profil Sejajar dengan Status Layanan + Tampilan Nama & Peran Monokrom
+
+perubahan yang dilakukan: **Tombol profil di header Dashboard diposisikan sejajar (satu baris) dengan lonceng notifikasi dan indikator "Layanan normal"; di samping badge (foto) kini ditampilkan nama akun dan peran — teks monokrom (putih/hitam sesuai tema, tanpa warna-warni) yang dipisahkan garis pembatas (`border-l`) dari badge; avatar fallback (inisial) juga dibuat netral; dialog konfirmasi keluar dipindah ke dalam komponen `ProfileMenu` (diportal ke `document.body`) sehingga badge bisa dipakai langsung di halaman Dashboard tanpa prop khusus**
+before: badge profil (hanya foto) berada di baris terpisah di pojok kanan atas area konten (semua halaman); fallback avatar & teks peran memakai warna aksen berwarna; dialog konfirmasi keluar dikelola di `DashboardLayout` dengan prop `onLogoutRequest`.
+after:
+- Header Dashboard (desktop): `[Lonceng] [● Layanan normal] [Foto | Nama + Peran]` — satu baris sejajar (`hidden md:block`; di mobile tetap lewat header mobile).
+- Teks nama `text-foreground` & peran `text-muted` (monokrom mengikuti tema terang/gelap), peran ditampilkan kapitalisasi ("Admin"/"Teknisi"), garis pembatas `border-l border-border` di antara badge dan teks.
+- Fallback avatar (belum ada foto): latar `bg-muted/60` + inisial `text-foreground` — netral, tidak berwarna.
+- Dropdown tetap: identitas + "Profil" → `/profile` + "Keluar" (merah kontras) — kini memunculkan dialog konfirmasi yang dikelola sendiri oleh `ProfileMenu` via `createPortal`; `DashboardLayout` dibersihkan dari state/modal konfirmasi keluar (tombol Keluar lama di sidebar sudah dihapus di [1.25.9]).
+- Halaman selain Dashboard: badge tetap di pojok kanan atas area konten (desktop) dengan tampilan yang sama; header mobile tetap badge saja (`showDetails={false}`).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/ProfileMenu.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Badge Profil Global (foto + dropdown) & Foto Profil di Halaman Profil
 
