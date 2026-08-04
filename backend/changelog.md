@@ -1,6 +1,27 @@
 # Changelog - Backend SIGAP
 
-## [0.26.2] - 2026-08-04
+## [0.27.0] - 2026-08-04
+
+### Fitur: Foto Profil Pengguna (upload, simpan, dan hapus)
+
+perubahan yang dilakukan: **Menambahkan kolom `profile_photo_url` pada model `User` + dukungan pengaturan foto profil pada `PUT /api/auth/profile` (upload file memakai endpoint `/api/upload` yang sudah ada, path disimpan di database, file disajikan via `GET /api/uploads/:filename` yang dilindungi JWT). File foto profil tidak lagi ikut dihapus oleh pembersihan upload yatim; `GET /api/auth/me` dan `PUT /api/auth/profile` kini mengembalikan `profile_photo_url`**
+before: `User` tidak memiliki field foto profil; `PUT /api/auth/profile` hanya menerima `full_name`; `CleanupOrphanUploads` hanya menganggap file yang dirujuk `maintenance_logs.image_url` & `field_maintenance_images.image_url` sebagai referensi sah (file foto profil yang baru diupload akan dihapus setelah 24 jam).
+after:
+- `models/setup.go` (`User`): field baru `ProfilePhotoURL` (`varchar(255)`, JSON `profile_photo_url`) — kolom ditambahkan otomatis oleh AutoMigrate saat API restart.
+- `handlers/auth.go` (`UpdateMyProfileRequest`): field opsional `profile_photo_url` — `nil` = biarkan foto saat ini, `""` = hapus foto, selain itu harus path upload aman (`/api/uploads/<uuid>.jpg`, divalidasi `isSafeUploadPath` anti path-traversal).
+- `handlers/auth.go` (`GetMyProfile` & `UpdateMyProfile`): respons kini menyertakan `profile_photo_url`.
+- `handlers/upload.go` (`CleanupOrphanUploads`): referensi sah ditambah `users.profile_photo_url` agar foto profil tidak terhapus.
+- Swagger docs di-regenerate (`swag init`).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/setup.go
+- backend/handlers/auth.go
+- backend/handlers/upload.go
+- backend/docs/ (swag init)
+- backend/changelog.md
+
+
 
 ### Bugfix: Respons `GET /api/audit-logs` Tidak Sesuai Konvensi List SIGAP
 

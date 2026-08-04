@@ -362,7 +362,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengubah nama tampilan (full_name) dari pengguna yang sedang login.",
+                "description": "Mengubah nama tampilan (full_name) dan/atau foto profil (profile_photo_url, path dari endpoint upload) milik pengguna yang sedang login.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3247,6 +3247,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 2
+                },
+                "profile_photo_url": {
+                    "description": "ProfilePhotoURL bersifat opsional: nil = biarkan foto saat ini, \"\" = hapus\nfoto, selain itu harus path file upload SIGAP (\"/api/uploads/...\").",
+                    "type": "string"
                 }
             }
         },

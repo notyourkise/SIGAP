@@ -1,28 +1,60 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AtSign,
   BadgeCheck,
   Calendar,
+  Camera,
   KeyRound,
   LoaderCircle,
   Mail,
   Save,
   ShieldAlert,
+  Trash2,
   UserRound,
 } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
+
+const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB — sama dengan batas backend
+
+interface ProfileResponse {
+  id: string;
+  username: string;
+  full_name: string;
+  email: string;
+  role: 'admin' | 'teknisi';
+  profile_photo_url: string;
+}
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuth();
   const [fullName, setFullName] = useState(user?.full_name ?? '');
+  const [photoUrl, setPhotoUrl] = useState(user?.profile_photo_url ?? '');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const saveProfile = async (fullNameValue: string, photoUrlValue: string) => {
+    const response = await apiRequest<ProfileResponse>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({
+        full_name: fullNameValue.trim(),
+        profile_photo_url: photoUrlValue,
+      }),
+    });
+    if (response.status === 'success' && response.data) {
+      updateUser(response.data);
+      return true;
+    }
+    throw new Error(response.message || 'Profil belum dapat diperbarui. Periksa kembali isian Anda.');
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -36,20 +68,62 @@ export default function ProfilePage() {
 
     setLoading(true);
     try {
-      const response = await apiRequest<{ id: string; username: string; full_name: string; email: string; role: 'admin' | 'teknisi' }>('/auth/profile', {
-        method: 'PUT',
-        body: JSON.stringify({ full_name: fullName.trim() }),
-      });
-      if (response.status === 'success' && response.data) {
-        updateUser(response.data);
-        setSuccess('Profil berhasil diperbarui.');
-      } else {
-        setError(response.message || 'Profil belum dapat diperbarui. Periksa kembali isian Anda.');
-      }
+      await saveProfile(fullName, photoUrl);
+      setSuccess('Profil berhasil diperbarui.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Layanan SIGAP belum dapat dihubungi. Periksa koneksi lalu coba lagi.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setError('');
+    setSuccess('');
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Format foto tidak didukung. Gunakan JPEG, PNG, atau WebP.');
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      setError('Ukuran foto terlalu besar. Maksimal 2MB.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const upload = await apiRequest<{ url: string }>('/upload', { method: 'POST', body: formData });
+      if (upload.status !== 'success' || !upload.data?.url) {
+        throw new Error(upload.message || 'Gagal mengunggah foto.');
+      }
+      await saveProfile(fullName, upload.data.url);
+      setPhotoUrl(upload.data.url);
+      setSuccess('Foto profil berhasil diperbarui.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Gagal mengunggah foto profil.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setError('');
+    setSuccess('');
+    setUploadingPhoto(true);
+    try {
+      await saveProfile(fullName, '');
+      setPhotoUrl('');
+      setSuccess('Foto profil dihapus.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus foto profil.');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -86,11 +160,15 @@ export default function ProfilePage() {
 
         {user && (
           <section aria-labelledby="profile-details-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-4 border-b border-border px-5 py-5">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/20 text-[#775800] dark:text-accent">
-                <UserRound className="h-7 w-7" />
+            <div className="flex flex-wrap items-center gap-4 border-b border-border px-5 py-5">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-accent/20 text-[#775800] dark:text-accent">
+                {photoUrl ? (
+                  <AuthenticatedImage imageUrl={photoUrl} alt={user.full_name} className="h-full w-full rounded-2xl object-cover" />
+                ) : (
+                  <UserRound className="h-8 w-8" />
+                )}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2 id="profile-details-heading" className="truncate text-lg font-bold">{user.full_name}</h2>
                 <span className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                   user.role === 'admin'
@@ -99,6 +177,35 @@ export default function ProfilePage() {
                 }`}>
                   {user.role}
                 </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto || loading}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-primary/20 transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60"
+                >
+                  {uploadingPhoto ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  {uploadingPhoto ? 'Mengunggah…' : photoUrl ? 'Ubah Foto' : 'Tambah Foto'}
+                </button>
+                {photoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    disabled={uploadingPhoto || loading}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-error/30 bg-error/5 px-3.5 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-error/10 disabled:cursor-wait disabled:opacity-60 dark:text-red-400"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Hapus Foto
+                  </button>
+                )}
               </div>
             </div>
 
@@ -140,7 +247,7 @@ export default function ProfilePage() {
         <section aria-labelledby="edit-profile-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-5 py-4">
             <h2 id="edit-profile-heading" className="text-base font-bold">Informasi Tampilan</h2>
-            <p className="mt-0.5 text-xs text-muted">Nama ini ditampilkan pada sidebar dan aktivitas sistem.</p>
+            <p className="mt-0.5 text-xs text-muted">Nama ini ditampilkan pada badge profil dan aktivitas sistem.</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-5 p-5">
             <div>

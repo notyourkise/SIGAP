@@ -302,6 +302,11 @@ definitions:
         maxLength: 100
         minLength: 2
         type: string
+      profile_photo_url:
+        description: |-
+          ProfilePhotoURL bersifat opsional: nil = biarkan foto saat ini, "" = hapus
+          foto, selain itu harus path file upload SIGAP ("/api/uploads/...").
+        type: string
     required:
     - full_name
     type: object
@@ -564,7 +569,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Mengubah nama tampilan (full_name) dari pengguna yang sedang login.
+      description: Mengubah nama tampilan (full_name) dan/atau foto profil (profile_photo_url,
+        path dari endpoint upload) milik pengguna yang sedang login.
       parameters:
       - description: Data Profil yang diperbarui
         in: body

@@ -279,6 +279,16 @@ func CleanupOrphanUploads(db *gorm.DB) {
 	}
 	imageURLs = append(imageURLs, fieldImageURLs...)
 
+	// Foto profil pengguna (users.profile_photo_url) juga merupakan referensi sah
+	var avatarURLs []string
+	if err := db.Model(&models.User{}).Unscoped().
+		Where("profile_photo_url IS NOT NULL AND profile_photo_url <> ''").
+		Pluck("profile_photo_url", &avatarURLs).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar profile_photo_url saat cleanup: %v", err)
+		return
+	}
+	imageURLs = append(imageURLs, avatarURLs...)
+
 	referenced := make(map[string]bool, len(imageURLs))
 	for _, u := range imageURLs {
 		if strings.HasPrefix(u, uploadPrefix) {

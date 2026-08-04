@@ -3,6 +3,23 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.9] — 2026-08-04 — Badge Profil Global + Foto Profil
+
+### Perubahan
+
+- **Frontend** ([1.25.9]): badge profil berisi foto saja (fallback inisial) menjadi
+  elemen global di semua halaman (pojok kanan atas konten desktop + header mobile);
+  klik → dropdown "Profil" & "Keluar" (merah kontras). Tombol "Keluar" di sidebar
+  dihapus (dipindah ke dropdown). Halaman `/profile` mendukung tambah/ubah/hapus
+  foto profil (unggah via `/api/upload`, disimpan via `PUT /api/auth/profile`).
+- **Backend** ([0.27.0]): kolom `users.profile_photo_url`; `GET /auth/me` &
+  `PUT /auth/profile` mengembalikan/menerima `profile_photo_url` (validasi path
+  upload aman; `""` = hapus); `CleanupOrphanUploads` kini mengecualikan foto profil;
+  Swagger di-regenerate.
+- `go build`/`go vet`/`go test` PASS; `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.27.0], `frontend/changelog.md` [1.25.9]
+
 ## [1.28.8] — 2026-08-04 — Dashboard: Card Profil & Sidebar: Pemberitahuan
 
 ### Perubahan
