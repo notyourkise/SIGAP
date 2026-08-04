@@ -25,9 +25,11 @@ kapabilitas**. Prinsip:
 | 1 | Kritis (Prioritas Tertinggi) | 6/6 | ✅ Selesai |
 | 2 | Penguatan (Hardening) | 9/9 | ✅ Selesai |
 | 3 | Fitur (Kapabilitas) | 9/9 | ✅ Selesai |
-| 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | 🚧 Berjalan |
+| 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa task ditunda (menjelang go-live) |
+| 5 | Alur Kerja Operasional (Jalur A) | 1/5 | 🚧 Berjalan |
 
-> **Urutan pengerjaan:** Fase 1 ✅ → **Fase 2** ✅ → **Fase 3** ✅ → **Fase 4** (4.1–4.2 dan 4.8 berjalan/selesai; berikutnya 4.3).
+> **Urutan pengerjaan:** Fase 1 ✅ → Fase 2 ✅ → Fase 3 ✅ → **Fase 5 (Jalur A — aktif; kerjakan 5.1 → 5.5 berurutan)** → sisa Fase 4 (4.3–4.7, menjelang go-live produksi).
+> Sisa task Fase 4 ditunda karena sistem masih pilot/UAT (keputusan 2026-08-04); pengerasan infrastruktur kembali diprioritaskan saat mendekati go-live.
 > Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -123,7 +125,8 @@ kapabilitas**. Prinsip:
 
 ## Fase 4 — Infrastruktur & Kualitas (Berkelanjutan)
 
-> **Status: 🚧 BERJALAN.** Quick wins keamanan, pengujian, dan CI sedang dituntaskan.
+> **Status: ⏸️ SISA TASK DITUNDA** (sejak 2026-08-04) — 4.2 & 4.8 selesai, 4.1 sebagian besar selesai;
+> task 4.3–4.7 dikerjakan kembali menjelang go-live produksi setelah Fase 5 tuntas.
 > Referensi lengkap cakupan test & gotchas: `docs/TESTING.md`.
 
 | # | Task | Keterangan | Status |
@@ -136,6 +139,53 @@ kapabilitas**. Prinsip:
 | 4.6 | Monitoring: endpoint metrics (Prometheus) | `backend/handlers/metrics.go` (baru) | ⬜ Belum |
 | 4.7 | Container non-root, resource limits, secret management | `backend/Dockerfile`, `docker-compose.yml` | ⬜ Belum |
 | 4.8 | Isi `docs/changelog.md` (milestone monorepo) | `docs/changelog.md` | ✅ Selesai |
+
+---
+
+## Fase 5 — Alur Kerja Operasional (Jalur A)
+
+> Menutup gap alur kerja harian admin & teknisi: notifikasi penugasan, sinkronisasi status
+> perangkat, otomasi jadwal preventif, pemindahan tugas, dan eskalasi keterlambatan.
+> **Status: 🚧 BERJALAN** — disepakati 2026-08-04. Sistem masih pilot/UAT; notifikasi **in-app saja**.
+
+### Keputusan Desain (disepakati 2026-08-04)
+
+- **Notifikasi in-app saja** — bell icon + daftar notifikasi + toast real-time via WebSocket; tanpa layanan eksternal (email/SMTP tidak dipakai).
+- **Status CCTV otomatis bersifat konservatif** — hanya transisi `aktif ↔ pemeliharaan` yang dilakukan sistem; status `rusak`/`nonaktif` tetap keputusan manual admin dan tidak pernah ditimpa otomatis.
+- **Prasyarat arsitektur** — `WSHub` diperluas agar menyimpan identitas koneksi (`user_id`, `role`) sehingga mendukung `BroadcastToUser`/`BroadcastToRole`; event broadcast global yang ada tetap dipertahankan (backward-compatible).
+
+### Task (berurutan — kerjakan dari atas ke bawah)
+
+| # | Task | Keterangan | Status |
+|---|------|-----------|--------|
+| 5.1 | Notifikasi in-app penugasan real-time | Model `Notification`; endpoint `GET /api/notifications`, `GET /api/notifications/unread-count`, `PUT /api/notifications/:id/read`, `PUT /api/notifications/read-all`; util `NotifyUser`/`NotifyRole`; perluasan `WSHub` (targeted per-user/per-role); komponen `NotificationBell` + integrasi `DashboardLayout`; hook: assign → teknisi, complete → admin, field-check `attention` → admin; event WS `NOTIFICATION_CREATED`. Branch: `feature/notification-in-app` | ✅ Kode selesai (2026-08-04) — menunggu uji runtime Docker di `https://localhost` |
+| 5.2 | Sinkronisasi status CCTV otomatis (konservatif) | Helper dalam transaksi complete/field-check; `aktif→pemeliharaan` saat tugas gagal / hasil `attention`; `pemeliharaan→aktif` saat checklist 9/9 ok; `rusak`/`nonaktif` tidak disentuh; audit `UPDATE_CCTV` (keterangan otomatis) + broadcast `CCTV_UPDATED` | ⬜ Belum |
+| 5.3 | Re-assign tugas oleh admin | `PUT /maintenance-logs/:id/assign` diperluas ke log `ongoing`; audit `REASSIGN_MAINTENANCE`; notif `MAINTENANCE_ASSIGNED` ke teknisi baru & `MAINTENANCE_UNASSIGNED` ke teknisi lama; tombol "Alihkan" di UI admin; tolak assign ke teknisi yang sama (400) | ⬜ Belum |
+| 5.4 | Penjadwalan pemeliharaan berulang (recurring) | Model `MaintenanceSchedule` (frequency `daily`/`weekly`/`monthly`, `next_run_at`, `is_active`); kolom `MaintenanceScheduleID` di `MaintenanceLog` (link + idempotensi); goroutine generator harian (jalan juga saat startup, idempotent); CRUD admin `/api/maintenance-schedules`; halaman admin `/schedules` + menu sidebar | ⬜ Belum |
+| 5.5 | Eskalasi overdue otomatis | Kolom `OverdueNotifiedAt` di `MaintenanceLog`; goroutine tiap jam: log `scheduled`/`ongoing` lewat jadwal → notif `MAINTENANCE_OVERDUE` ke semua admin (+ teknisi bila ongoing), terkirim sekali saja; flag di-reset saat reschedule | ⬜ Belum |
+
+### Ketergantungan Antar Task
+
+- 5.3 & 5.5 memakai sistem notifikasi dari 5.1 — **wajib setelah 5.1**.
+- 5.2 berdiri di atas transaksi existing (bisa paralel dengan 5.1, tetapi notifikasi hasil bermasalah memakai 5.1).
+- 5.4 berdiri sendiri; log hasil generator mengikuti alur yang sama (assign → 5.3, overdue → 5.5).
+
+### Verifikasi Fase 5 (per task)
+
+- `cd backend && go build ./... && go test ./... -count=1 && go vet ./...` — PASS (test sqlmock baru untuk tiap handler/job baru).
+- `cd frontend && npm run lint && npm run build` — PASS.
+- `swag init` setelah anotasi endpoint baru; uji runtime Docker di `https://localhost`.
+- Uji manual per task: 5.1 lonceng notifikasi muncul real-time saat assign; 5.2 status CCTV berubah sesuai tabel keputusan (dan `rusak`/`nonaktif` tidak berubah); 5.3 alihkan tugas ke teknisi lain; 5.4 jadwal berulang membuat log otomatis tanpa duplikat; 5.5 notif overdue terkirim sekali saja.
+
+---
+
+## Kandidat Lanjutan (Jalur B — belum terjadwal, dievaluasi setelah Fase 5)
+
+- Analitik kinerja teknisi (completion rate, rata-rata waktu penyelesaian, overdue per teknisi).
+- Laporan PDF pengecekan lapangan per-record (`field-maintenance/:id/report-pdf`).
+- Kalender jadwal pemeliharaan (tampilan bulanan).
+- PWA / mode offline teknisi (checklist tersimpan lokal, sinkron saat online).
+- Notifikasi email (butuh SMTP) — saat ini sengaja tidak dipakai.
 
 ---
 

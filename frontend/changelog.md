@@ -1,6 +1,22 @@
 # Changelog - Frontend SIGAP
 
-## [1.24.2] - 2026-08-03
+## [1.25.0] - 2026-08-04
+
+### Notifikasi In-App Real-Time: NotificationBell di Header & Sidebar (Fase 5.1)
+
+perubahan yang dilakukan: **Komponen `NotificationBell` baru — ikon lonceng dengan badge jumlah belum dibaca, dropdown daftar notifikasi (10 terbaru), tombol "Tandai semua dibaca", klik item → tandai dibaca + navigasi ke halaman terkait (`/maintenance` atau `/field-maintenance`); terima notifikasi baru real-time via WebSocket (`NOTIFICATION_CREATED`) dengan toast + refresh badge, fallback polling 60 detik saat koneksi terputus**
+before: Tidak ada akses notifikasi di antarmuka; penugasan/penyelesaian tugas hanya terlihat saat membuka halaman terkait secara manual.
+after:
+- `src/components/NotificationBell.tsx` (baru): bell + badge `99+`; dropdown (border/rounded konsisten desain SIGAP, `line-clamp-2`, waktu `id-ID`); subscribe `NOTIFICATION_CREATED` → `toast.info(title)` + muat ulang; polling `unread-count` tiap 60 detik; tutup saat klik luar/Escape; peta tipe → rute tujuan (`field-maintenance` → `/field-maintenance`, lainnya → `/maintenance`); mark-read fire-and-forget agar navigasi tidak tertahan.
+- `src/components/DashboardLayout.tsx`: `NotificationBell` dirender di header mobile (sebelum tombol tema) dan area kontrol sidebar desktop (sebelum tombol tema/collapse) — tersedia untuk admin & teknisi.
+timestamp: 2026-08-04 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/components/NotificationBell.tsx (baru)
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+
+
 
 ### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan)
 

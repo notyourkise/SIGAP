@@ -1,6 +1,40 @@
 # Changelog - Backend SIGAP
 
-## [0.25.2] - 2026-08-03
+## [0.26.0] - 2026-08-04
+
+### Notifikasi In-App Real-Time (Fase 5.1 — Jalur A)
+
+perubahan yang dilakukan: **Sistem notifikasi in-app pertama: model `Notification`, 4 endpoint `/api/notifications`, perluasan `WSHub` untuk broadcast terarah per-user/per-role, util `NotifyUser`/`NotifyRole` (async + retry), dan hook otomatis pada alur assign/complete/field-check — setiap user melihat notifikasi miliknya saja (bell icon + badge unread), dikirim real-time via WebSocket dengan fallback polling 60 detik di frontend**
+before:
+- Tidak ada model/endpoint notifikasi; seluruh informasi (penugasan, penyelesaian, hasil pengecekan) hanya tampil di halaman masing-masing tanpa pemberitahuan aktif.
+- `WSHub` hanya menyimpan `map[*websocket.Conn]bool`; `BroadcastEvent` global — tidak mungkin mengirim pesan ke user/role tertentu.
+- WebSocket `/api/ws` tidak menyimpan identitas pengguna di balik koneksi.
+after:
+- `models/notification.go`: `Notification{UserID, Type, Title, Message, ReferenceID, ReferenceType, IsRead}` + 6 konstanta tipe (`MAINTENANCE_ASSIGNED`, `MAINTENANCE_REASSIGNED`, `MAINTENANCE_UNASSIGNED`, `MAINTENANCE_COMPLETED`, `MAINTENANCE_OVERDUE`, `FIELD_CHECK_ATTENTION`); index komposit `idx_notif_user_read (user_id, is_read)`; didaftarkan ke `AutoMigrate` (main.go).
+- Endpoint baru (semua butuh autentikasi, scope per-user dari klaim JWT): `GET /api/notifications` (paginasi + filter `unread`), `GET /api/notifications/unread-count`, `PUT /api/notifications/:id/read` (ownership check → 403), `PUT /api/notifications/read-all`. Rute statis didaftarkan sebelum dinamis (gotcha Fiber).
+- `utils/websocket.go`: `WSHubStore.clients` kini `map[*websocket.Conn]WSClientInfo{UserID, Role}`; `Register(conn, userID, role)`; `BroadcastToUser` & `BroadcastToRole` (guard clause tanpa client); `BroadcastEvent` global tetap (backward-compatible). `routes/websocket.go` meneruskan identitas JWT via `c.Locals("fiberctx")`.
+- `utils/notify.go`: `NotifyUser` (simpan async + `BroadcastToUser` event `NOTIFICATION_CREATED`) & `NotifyRole` (notif per user berperan + `BroadcastToRole`); retry 3x @100ms (pola `LogAudit`).
+- Hook: `AssignMaintenanceLog` → notif `MAINTENANCE_ASSIGNED` ke teknisi; `CompleteMaintenanceLog` → notif `MAINTENANCE_COMPLETED` ke seluruh admin (label "Selesai"/"Perlu Tindak Lanjut"); `CreateFieldMaintenance` hasil `attention` → notif `FIELD_CHECK_ATTENTION` ke admin.
+- Test baru: `handlers/notification_test.go` (11 kasus: list scope, filter unread, unread-count, read ownership 403, read-all, UUID invalid 400, tanpa identitas 401) & `utils/notify_test.go` (persist sukses/retry/gagal, guard clause broadcast tanpa client).
+- `swag init` — dokumentasi endpoint Notifikasi di Swagger.
+timestamp: 2026-08-04 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/notification.go (baru)
+- backend/utils/websocket.go
+- backend/utils/notify.go (baru)
+- backend/utils/notify_test.go (baru)
+- backend/routes/websocket.go
+- backend/routes/notification.go (baru)
+- backend/handlers/notification.go (baru)
+- backend/handlers/notification_test.go (baru)
+- backend/handlers/maintenance.go
+- backend/handlers/field_maintenance.go
+- backend/main.go
+- backend/docs/* (swag init)
+- backend/changelog.md
+
+
 
 ### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan, Nilai Internal Tetap `failed`)
 

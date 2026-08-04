@@ -32,6 +32,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `jwt_test.go` (lama + uniqueness) | generate & validate token, expiry, signature salah, klaim `jti`/`iat`, token selalu unik |
 | `utils` | `validator_test.go` (lama) | validator custom (`strongpassword`, dll) |
 | `utils` | `audit_test.go` | retry penyimpanan audit log setelah kegagalan sementara dan batas percobaan maksimum |
+| `utils` | `notify_test.go` (Fase 5.1) | `persistNotification` (sukses, retry setelah kegagalan sementara, error setelah batas percobaan), guard clause `BroadcastToUser`/`BroadcastToRole` tanpa koneksi (tidak panic) |
 | `middleware` | `auth_test.go` | `Protected`: tanpa token 401, revoked 401, invalid, valid, token-version mismatch 401 → `Sesi telah dicabut...`; `RequireRole`: none/wrong/allowed |
 | `middleware` | `csrf_test.go` | metode aman dilewati, Bearer dilewati, tanpa cookie sesi dilewati, login/logout dengan sesi stale dilewati, mismatch/missing 403, matching lolos |
 | `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429 |
@@ -46,12 +47,13 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
 | `handlers` | `health_test.go` | HealthCheck Connected |
+| `handlers` | `notification_test.go` (Fase 5.1) | GetNotifications (sukses + paginasi, filter unread, tanpa identitas 401), GetUnreadNotificationCount (sukses, tanpa identitas 401), MarkNotificationRead (sukses, milik orang lain 403, not found 404, UUID invalid 400), MarkAllNotificationsRead (sukses, tanpa identitas 401) |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 28 file test** (7 utils, 4 middleware, 11 handlers, 2 models, 2 config, 2 routes, termasuk helper).
+**Total: 30 file test** (8 utils, 4 middleware, 12 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 

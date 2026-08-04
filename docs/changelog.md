@@ -3,7 +3,30 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
-## [1.27.2] — 2026-08-03 — Label Status "Gagal" Menjadi "Perlu Tindak Lanjut"
+## [1.28.0] — 2026-08-04 — Notifikasi In-App Real-Time + Dokumen Perencanaan Jalur A
+
+### Perubahan
+
+- **Fase 5 (Jalur A) dimulai** — `docs/ROADMAP.md` & `docs/plan.md` diperbarui: status
+  Fase 4 "⏸️ Sisa task ditunda (menjelang go-live, sistem masih pilot/UAT)", bagian baru
+  Fase 5 dengan 5 task berurutan (5.1 notifikasi → 5.2 sinkron status CCTV → 5.3 re-assign →
+  5.4 jadwal berulang → 5.5 eskalasi overdue) + keputusan desain (notifikasi in-app saja,
+  sinkron status konservatif) + kandidat lanjutan Jalur B. Keputusan lengkap dicatat di
+  `docs/plan.md` Bagian 6.
+- **Backend** ([0.26.0]): model `Notification`, endpoint `/api/notifications`
+  (list/unread-count/read/read-all, scope per-user), `WSHub` diperluas dengan
+  `WSClientInfo{UserID, Role}` + `BroadcastToUser`/`BroadcastToRole` (global broadcast
+  tetap), util `NotifyUser`/`NotifyRole` (async + retry), hook notifikasi pada
+  assign/complete/field-check (attention), `swag init`.
+- **Frontend** ([1.25.0]): `NotificationBell` (badge unread, dropdown, tandai semua dibaca,
+  klik → navigasi, toast real-time `NOTIFICATION_CREATED`, polling 60 detik) di header
+  mobile & sidebar desktop.
+- Test: +13 kasus backend (handlers/notification_test.go, utils/notify_test.go);
+  `go build/test/vet` PASS, `npm run lint && npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.26.0], `frontend/changelog.md` [1.25.0]
+
+
 
 ### Perubahan
 

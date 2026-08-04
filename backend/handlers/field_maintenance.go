@@ -165,6 +165,16 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "CREATE_FIELD_MAINTENANCE", "MAINTENANCE", "Mencatat pengecekan lapangan CCTV "+cctv.KodeCCTV+" (Hasil: "+overall+")", nil, "", "")
 
+	// Notifikasi in-app ke seluruh admin bila hasil pengecekan perlu perhatian
+	// (ada item tidak ok) — Fase 5.1. Hasil "ok" tidak memicu notifikasi.
+	if overall == "attention" {
+		refID := entry.ID
+		utils.NotifyRole(config.DB, "admin", models.NotificationTypeFieldCheck,
+			"Pengecekan lapangan butuh perhatian",
+			"Pengecekan lapangan CCTV "+cctv.KodeCCTV+" menunjukkan ada item yang tidak ok ("+cctv.LokasiArea+").",
+			"field-maintenance", &refID)
+	}
+
 	// Muat ulang dengan relasi lengkap untuk respon JSON
 	config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").First(&entry, entry.ID)
 
