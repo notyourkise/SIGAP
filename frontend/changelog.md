@@ -1,6 +1,26 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.1] - 2026-08-04
+## [1.25.2] - 2026-08-04
+
+### Bugfix: Pemberitahuan Tidak Pernah Tampil (Salah Bungkus Respons API)
+
+perubahan yang dilakukan: **`NotificationBell` dan halaman `/pemberitahuan` membaca daftar dari `res.data?.data`, padahal respons `GET /api/notifications` menempatkan array di `data` (kini `data.rows` sesuai konvensi list SIGAP) — hasilnya daftar selalu kosong ("Belum ada pemberitahuan") meskipun notifikasi tersimpan di database; pembacaan diubah menjadi `res.data?.rows` (dan pagination dari `res.data.pagination`)**
+before:
+- `NotificationBell.tsx`: `apiRequest<{ data: NotificationItem[] }>` lalu `setNotifications(res.data?.data ?? [])` — `res.data` adalah array, sehingga `.data` selalu `undefined` → dropdown kosong.
+- `app/pemberitahuan/page.tsx`: membaca `res.data?.data` & `res.data?.pagination` dengan cara yang sama — halaman selalu kosong & total halaman 0.
+- Akibat: badge unread-count tetap benar (bentuk `data: { unread_count }` cocok), tapi daftar & riwayat tidak pernah tampil untuk admin maupun teknisi.
+after:
+- `NotificationBell.tsx`: `apiRequest<{ rows: NotificationItem[] }>` → `setNotifications(res.data?.rows ?? [])`.
+- `app/pemberitahuan/page.tsx`: `NotificationsResponse` kini `{ rows, pagination }`; `setNotifications(res.data?.rows ?? [])`, total rows/pages dari `res.data?.pagination`.
+- Backend `GET /api/notifications` diselaraskan ke konvensi `data: { rows, pagination }` (lihat backend changelog [0.26.1]).
+timestamp: 2026-08-04 WITA
+kategori: Bugfix, Frontend
+file yang diubah:
+- frontend/src/components/NotificationBell.tsx
+- frontend/src/app/pemberitahuan/page.tsx
+- frontend/changelog.md
+
+
 
 ### Pemberitahuan: Lonceng di Dashboard, Menu Sidebar & Halaman `/pemberitahuan` Terpisah
 

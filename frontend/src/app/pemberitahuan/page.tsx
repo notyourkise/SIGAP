@@ -21,7 +21,7 @@ interface NotificationItem {
 }
 
 interface NotificationsResponse {
-  data: NotificationItem[];
+  rows: NotificationItem[];
   pagination: {
     total_rows: number;
     total_pages: number;
@@ -71,7 +71,7 @@ export default function NotificationsPage() {
       const res = await apiRequest<NotificationsResponse>(
         `/notifications?page=${page}&limit=${PAGE_SIZE}${query}`
       );
-      setNotifications(res.data?.data ?? []);
+      setNotifications(res.data?.rows ?? []);
       setTotalRows(res.data?.pagination?.total_rows ?? 0);
       setTotalPages(res.data?.pagination?.total_pages ?? 1);
     } catch (err) {

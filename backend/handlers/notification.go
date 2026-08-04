@@ -72,11 +72,15 @@ func GetNotifications(c *fiber.Ctx) error {
 
 	pagination := utils.CalculatePagination(totalRows, page, limit)
 
+	// Konvensi respons list SIGAP: data berisi objek { rows, pagination }
+	// (sama dengan /cctv, /maintenance-logs, /users, /field-maintenance).
 	return c.JSON(fiber.Map{
-		"status":     "success",
-		"message":    "Berhasil mengambil data notifikasi",
-		"data":       notifications,
-		"pagination": pagination,
+		"status":  "success",
+		"message": "Berhasil mengambil data notifikasi",
+		"data": fiber.Map{
+			"rows":       notifications,
+			"pagination": pagination,
+		},
 	})
 }
 

@@ -1,6 +1,23 @@
 # Changelog - Backend SIGAP
 
-## [0.26.0] - 2026-08-04
+## [0.26.1] - 2026-08-04
+
+### Bugfix: Respons `GET /api/notifications` Tidak Sesuai Konvensi List SIGAP
+
+perubahan yang dilakukan: **Respons list notifikasi diubah dari `data: [array]` + `pagination` top-level menjadi `data: { rows, pagination }` — menyelaraskan dengan konvensi mayoritas handler list lain (`/cctv`, `/maintenance-logs`, `/users`, `/field-maintenance`) sehingga konsumen frontend memakai pola bungkus yang sama**
+before: `GET /api/notifications` mengembalikan `{ status, message, data: [...], pagination }` (pola lama `/audit-logs`) — frontend yang mengikuti konvensi `data.rows` membaca daftar kosong sehingga pemberitahuan tidak pernah tampil.
+after:
+- `handlers/notification.go` (GetNotifications): `data` kini objek `{ rows, pagination }`.
+- `handlers/notification_test.go`: asersi disesuaikan (data → `data.rows` + `data.pagination`).
+- Endpoint lain (`/unread-count`, `/:id/read`, `/read-all`) tidak berubah.
+timestamp: 2026-08-04 WITA
+kategori: Bugfix, Backend
+file yang diubah:
+- backend/handlers/notification.go
+- backend/handlers/notification_test.go
+- backend/changelog.md
+
+
 
 ### Notifikasi In-App Real-Time (Fase 5.1 — Jalur A)
 
