@@ -81,11 +81,15 @@ func GetAuditLogs(c *fiber.Ctx) error {
 
 	pagination := utils.CalculatePagination(totalRows, page, limit)
 
+	// Konvensi respons list SIGAP: data berisi objek { rows, pagination }
+	// (sama dengan /cctv, /maintenance-logs, /users, /field-maintenance, /notifications).
 	return c.JSON(fiber.Map{
-		"status":     "success",
-		"message":    "Berhasil mengambil data audit log",
-		"data":       auditLogs,
-		"pagination": pagination,
+		"status":  "success",
+		"message": "Berhasil mengambil data audit log",
+		"data": fiber.Map{
+			"rows":       auditLogs,
+			"pagination": pagination,
+		},
 	})
 }
 

@@ -35,10 +35,11 @@ func TestGetAuditLogs_Success(t *testing.T) {
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "success", result["status"])
-	pagination := result["pagination"].(map[string]interface{})
+	data := result["data"].(map[string]interface{})
+	rowsData := data["rows"].([]interface{})
+	assert.Len(t, rowsData, 1)
+	pagination := data["pagination"].(map[string]interface{})
 	assert.Equal(t, float64(1), pagination["total_rows"])
-	data := result["data"].([]interface{})
-	assert.Len(t, data, 1)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -59,7 +60,8 @@ func TestGetAuditLogs_ModuleFilter(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	pagination := result["pagination"].(map[string]interface{})
+	data := result["data"].(map[string]interface{})
+	pagination := data["pagination"].(map[string]interface{})
 	assert.Equal(t, float64(0), pagination["total_rows"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
