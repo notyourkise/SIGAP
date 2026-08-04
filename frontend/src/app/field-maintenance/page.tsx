@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   User as UserIcon,
   Camera,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 
 interface FieldCheck {
@@ -88,6 +90,25 @@ export default function FieldMaintenancePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Sort State (disembunyikan — diatur lewat modal "Sortir")
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Modal Sortir & Filter
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+  const [draftSortBy, setDraftSortBy] = useState('created_at');
+  const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [draftStatusFilter, setDraftStatusFilter] = useState('');
+  const [draftStartDate, setDraftStartDate] = useState('');
+  const [draftEndDate, setDraftEndDate] = useState('');
+
+  // Jumlah filter/sortir aktif — dipakai untuk badge pada tombol Sortir
+  const activeFilterCount =
+    (statusFilter ? 1 : 0) +
+    (startDate ? 1 : 0) +
+    (endDate ? 1 : 0) +
+    (sortBy !== 'created_at' || sortOrder !== 'desc' ? 1 : 0);
+
   const [detailEntry, setDetailEntry] = useState<FieldMaintenance | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -101,6 +122,8 @@ export default function FieldMaintenancePage() {
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (startDate) queryParams.push(`start_date=${startDate}`);
       if (endDate) queryParams.push(`end_date=${endDate}`);
+      if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
+      if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
 
       const response = await apiRequest<any>(`/field-maintenance?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
@@ -117,7 +140,7 @@ export default function FieldMaintenancePage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, startDate, endDate]);
+  }, [page, search, sortBy, sortOrder, statusFilter, startDate, endDate]);
 
   useEffect(() => {
     fetchEntries();
@@ -169,6 +192,53 @@ export default function FieldMaintenancePage() {
       minute: '2-digit',
     });
 
+  const openSortModal = () => {
+    setDraftSortBy(sortBy);
+    setDraftSortOrder(sortOrder);
+    setDraftStatusFilter(statusFilter);
+    setDraftStartDate(startDate);
+    setDraftEndDate(endDate);
+    setIsSortModalOpen(true);
+  };
+
+  const applySortFilter = () => {
+    let changed = false;
+    if (draftSortBy !== sortBy) { setSortBy(draftSortBy); changed = true; }
+    if (draftSortOrder !== sortOrder) { setSortOrder(draftSortOrder); changed = true; }
+    if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; }
+    if (draftStartDate !== startDate) { setStartDate(draftStartDate); changed = true; }
+    if (draftEndDate !== endDate) { setEndDate(draftEndDate); changed = true; }
+    if (changed) setPage(1);
+    setIsSortModalOpen(false);
+  };
+
+  const resetSortFilter = () => {
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setStatusFilter('');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+    setIsSortModalOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isSortModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSortModalOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSortModalOpen]);
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -186,15 +256,31 @@ export default function FieldMaintenancePage() {
         </header>
 
         <section aria-labelledby="field-maintenance-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="flex flex-col gap-1 border-b border-border px-5 py-4">
-            <h2 id="field-maintenance-heading" className="text-lg font-bold">Daftar Hasil Pengecekan</h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Catatan pengecekan spontan teknisi di lapangan — berbeda dari jadwal pemeliharaan rutin.
-            </p>
+          <div className="flex flex-col gap-1 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 id="field-maintenance-heading" className="text-lg font-bold">Daftar Hasil Pengecekan</h2>
+              <p className="mt-0.5 text-xs text-muted">
+                Catatan pengecekan spontan teknisi di lapangan — berbeda dari jadwal pemeliharaan rutin.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openSortModal}
+              disabled={loading}
+              className="relative inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Sortir
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-5 text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="grid gap-3 border-b border-border px-5 py-4 lg:grid-cols-[minmax(240px,1fr)_200px_200px_200px]">
-            <div className="relative">
+          <div className="border-b border-border px-5 py-4">
+            <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input
                 type="search"
@@ -206,45 +292,6 @@ export default function FieldMaintenancePage() {
                   setPage(1);
                 }}
                 className="w-full rounded-xl border border-input-border bg-input py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <select
-              aria-label="Filter hasil pengecekan"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-            >
-              <option value="">Semua hasil</option>
-              <option value="ok">Normal</option>
-              <option value="attention">Perlu tindak lanjut</option>
-            </select>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Dari tanggal</label>
-              <input
-                type="date"
-                aria-label="Filter dari tanggal"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full rounded-xl border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Sampai tanggal</label>
-              <input
-                type="date"
-                aria-label="Filter sampai tanggal"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full rounded-xl border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
               />
             </div>
           </div>
@@ -376,6 +423,130 @@ export default function FieldMaintenancePage() {
           )}
         </section>
       </div>
+
+      {/* Modal Sortir & Filter */}
+      {isSortModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSortModalOpen(false)} />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="field-maintenance-sort-title"
+            className="z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 id="field-maintenance-sort-title" className="text-xl font-bold tracking-[-0.015em]">Sortir &amp; Filter</h3>
+                <p className="mt-1 text-sm text-muted">Urutkan dan saring daftar pengecekan lapangan.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Tutup sortir dan filter"
+                onClick={() => setIsSortModalOpen(false)}
+                className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="field-maintenance-sort-by" className="mb-1.5 block text-xs font-semibold text-muted">Urutkan berdasarkan</label>
+                <select
+                  id="field-maintenance-sort-by"
+                  value={draftSortBy}
+                  onChange={(e) => setDraftSortBy(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                >
+                  <option value="created_at">Waktu pengecekan</option>
+                  <option value="completed_at">Waktu selesai</option>
+                  <option value="overall_status">Hasil keseluruhan</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="field-maintenance-sort-order" className="mb-1.5 block text-xs font-semibold text-muted">Arah pengurutan</label>
+                <select
+                  id="field-maintenance-sort-order"
+                  value={draftSortOrder}
+                  onChange={(e) => setDraftSortOrder(e.target.value as 'asc' | 'desc')}
+                  className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                >
+                  <option value="desc">Terbaru ke terlama</option>
+                  <option value="asc">Terlama ke terbaru</option>
+                </select>
+              </div>
+
+              <div className="space-y-4 border-t border-border pt-4">
+                <p className="text-xs font-semibold text-muted">Filter</p>
+                <div>
+                  <label htmlFor="field-maintenance-sort-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Hasil pengecekan</label>
+                  <select
+                    id="field-maintenance-sort-status-filter"
+                    value={draftStatusFilter}
+                    onChange={(e) => setDraftStatusFilter(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  >
+                    <option value="">Semua hasil</option>
+                    <option value="ok">Normal</option>
+                    <option value="attention">Perlu tindak lanjut</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="field-maintenance-sort-date-filter" className="mb-1.5 block text-xs font-semibold text-muted">Rentang tanggal pengecekan</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="field-maintenance-sort-date-filter"
+                      type="date"
+                      aria-label="Rentang tanggal mulai"
+                      value={draftStartDate}
+                      onChange={(e) => setDraftStartDate(e.target.value)}
+                      className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="text-xs text-muted">s.d.</span>
+                    <input
+                      type="date"
+                      aria-label="Rentang tanggal akhir"
+                      value={draftEndDate}
+                      onChange={(e) => setDraftEndDate(e.target.value)}
+                      className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
+              <button
+                type="button"
+                onClick={resetSortFilter}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSortModalOpen(false)}
+                  className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={applySortFilter}
+                  className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                >
+                  Terapkan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Detail Modal */}
       {isDetailOpen && detailEntry && (
