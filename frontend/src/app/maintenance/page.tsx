@@ -24,6 +24,8 @@ import {
   ChevronDown,
   UserPlus,
   CheckCheck,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 
@@ -104,6 +106,27 @@ export default function MaintenanceLogsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Sort State (disembunyikan — diatur lewat modal "Sortir")
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Modal Sortir & Filter
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+  const [draftSortBy, setDraftSortBy] = useState('created_at');
+  const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [draftStatusFilter, setDraftStatusFilter] = useState('');
+  const [draftCctvFilter, setDraftCctvFilter] = useState('');
+  const [draftStartDate, setDraftStartDate] = useState('');
+  const [draftEndDate, setDraftEndDate] = useState('');
+
+  // Jumlah filter/sortir aktif — dipakai untuk badge pada tombol Sortir
+  const activeFilterCount =
+    (cctvFilter ? 1 : 0) +
+    (statusFilter ? 1 : 0) +
+    (startDate ? 1 : 0) +
+    (endDate ? 1 : 0) +
+    (sortBy !== 'created_at' || sortOrder !== 'desc' ? 1 : 0);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentLog, setCurrentLog] = useState<MaintenanceLog | null>(null);
@@ -133,6 +156,8 @@ export default function MaintenanceLogsPage() {
       if (cctvFilter) queryParams.push(`cctv_id=${encodeURIComponent(cctvFilter)}`);
       if (startDate) queryParams.push(`start_date=${encodeURIComponent(startDate)}`);
       if (endDate) queryParams.push(`end_date=${encodeURIComponent(endDate)}`);
+      if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
+      if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
       
       const response = await apiRequest<MaintenanceLogsResponse>(`/maintenance-logs?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
@@ -149,7 +174,7 @@ export default function MaintenanceLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cctvFilter, page, statusFilter, startDate, endDate]);
+  }, [cctvFilter, page, sortBy, sortOrder, statusFilter, startDate, endDate]);
 
   const fetchCCTVsList = useCallback(async () => {
     setCctvsError('');
@@ -239,13 +264,14 @@ export default function MaintenanceLogsPage() {
   }, [subscribe, fetchLogs]);
 
   useEffect(() => {
-    if (!isModalOpen && !detailLog) return;
+    if (!isModalOpen && !detailLog && !isSortModalOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || actionLoading === 'save') return;
       setIsModalOpen(false);
       setDetailLog(null);
+      setIsSortModalOpen(false);
     };
 
     document.body.style.overflow = 'hidden';
@@ -255,7 +281,7 @@ export default function MaintenanceLogsPage() {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [actionLoading, detailLog, isModalOpen]);
+  }, [actionLoading, detailLog, isModalOpen, isSortModalOpen]);
 
   const handleOpenModal = (log: MaintenanceLog | null = null) => {
     if (log) {
@@ -444,6 +470,39 @@ export default function MaintenanceLogsPage() {
     setIsModalOpen(false);
   };
 
+  const openSortModal = () => {
+    setDraftSortBy(sortBy);
+    setDraftSortOrder(sortOrder);
+    setDraftStatusFilter(statusFilter);
+    setDraftCctvFilter(cctvFilter);
+    setDraftStartDate(startDate);
+    setDraftEndDate(endDate);
+    setIsSortModalOpen(true);
+  };
+
+  const applySortFilter = () => {
+    let changed = false;
+    if (draftSortBy !== sortBy) { setSortBy(draftSortBy); changed = true; }
+    if (draftSortOrder !== sortOrder) { setSortOrder(draftSortOrder); changed = true; }
+    if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; }
+    if (draftCctvFilter !== cctvFilter) { setCctvFilter(draftCctvFilter); changed = true; }
+    if (draftStartDate !== startDate) { setStartDate(draftStartDate); changed = true; }
+    if (draftEndDate !== endDate) { setEndDate(draftEndDate); changed = true; }
+    if (changed) setPage(1);
+    setIsSortModalOpen(false);
+  };
+
+  const resetSortFilter = () => {
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setStatusFilter('');
+    setCctvFilter('');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+    setIsSortModalOpen(false);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -479,74 +538,21 @@ export default function MaintenanceLogsPage() {
               <h2 id="maintenance-list-heading" className="font-semibold">Riwayat Pemeliharaan</h2>
               <p className="mt-0.5 text-xs text-muted">{pagination.total_rows} catatan</p>
             </div>
-          </div>
-
-        <div className="grid grid-cols-1 gap-3 border-b border-border px-5 py-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="maintenance-cctv-filter" className="mb-1.5 block text-xs font-semibold text-muted">CCTV</label>
-            <select
-              id="maintenance-cctv-filter"
-              value={cctvFilter}
-              onChange={(e) => {
-                setCctvFilter(e.target.value);
-                setPage(1);
-              }}
-              className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            <button
+              type="button"
+              onClick={openSortModal}
+              disabled={loading}
+              className="relative inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <option value="">Semua CCTV</option>
-              {cctvs.map((cctv) => (
-                <option key={cctv.id} value={cctv.id}>{cctv.nama}</option>
-              ))}
-            </select>
+              <SlidersHorizontal className="h-4 w-4" />
+              Sortir
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-5 text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
-
-          <div>
-            <label htmlFor="maintenance-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
-            <select
-              id="maintenance-status-filter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="">Semua status</option>
-              <option value="completed">Selesai</option>
-              <option value="scheduled">Terjadwal</option>
-              <option value="ongoing">Dalam proses</option>
-              <option value="failed">Perlu Tindak Lanjut</option>
-            </select>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label htmlFor="maintenance-date-filter" className="mb-1.5 block text-xs font-semibold text-muted">Rentang tanggal pencatatan</label>
-            <div className="flex items-center gap-2">
-              <input
-                id="maintenance-date-filter"
-                type="date"
-                aria-label="Rentang tanggal mulai"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setPage(1);
-                }}
-                className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              <span className="text-xs text-muted">s.d.</span>
-              <input
-                type="date"
-                aria-label="Rentang tanggal akhir"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setPage(1);
-                }}
-                className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-        </div>
 
         {cctvsError && (
           <div
@@ -720,6 +726,149 @@ export default function MaintenanceLogsPage() {
           </div>
         )}
         </section>
+
+        {/* MODAL SORTIR & FILTER */}
+        {isSortModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSortModalOpen(false)} />
+
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="maintenance-sort-title"
+              className="z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="maintenance-sort-title" className="text-xl font-bold tracking-[-0.015em]">Sortir &amp; Filter</h3>
+                  <p className="mt-1 text-sm text-muted">Urutkan dan saring riwayat pemeliharaan.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Tutup sortir dan filter"
+                  onClick={() => setIsSortModalOpen(false)}
+                  className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="maintenance-sort-by" className="mb-1.5 block text-xs font-semibold text-muted">Urutkan berdasarkan</label>
+                  <select
+                    id="maintenance-sort-by"
+                    value={draftSortBy}
+                    onChange={(e) => setDraftSortBy(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  >
+                    <option value="created_at">Waktu pencatatan</option>
+                    <option value="scheduled_date">Waktu terjadwal</option>
+                    <option value="completed_at">Waktu selesai</option>
+                    <option value="status">Status</option>
+                    <option value="action_taken">Pekerjaan (A-Z)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="maintenance-sort-order" className="mb-1.5 block text-xs font-semibold text-muted">Arah pengurutan</label>
+                  <select
+                    id="maintenance-sort-order"
+                    value={draftSortOrder}
+                    onChange={(e) => setDraftSortOrder(e.target.value as 'asc' | 'desc')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  >
+                    <option value="desc">Terbaru ke terlama</option>
+                    <option value="asc">Terlama ke terbaru</option>
+                  </select>
+                </div>
+
+                <div className="space-y-4 border-t border-border pt-4">
+                  <p className="text-xs font-semibold text-muted">Filter</p>
+                  <div>
+                    <label htmlFor="maintenance-sort-cctv-filter" className="mb-1.5 block text-xs font-semibold text-muted">CCTV</label>
+                    <select
+                      id="maintenance-sort-cctv-filter"
+                      value={draftCctvFilter}
+                      onChange={(e) => setDraftCctvFilter(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    >
+                      <option value="">Semua CCTV</option>
+                      {cctvs.map((cctv) => (
+                        <option key={cctv.id} value={cctv.id}>{cctv.nama}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="maintenance-sort-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
+                    <select
+                      id="maintenance-sort-status-filter"
+                      value={draftStatusFilter}
+                      onChange={(e) => setDraftStatusFilter(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    >
+                      <option value="">Semua status</option>
+                      <option value="completed">Selesai</option>
+                      <option value="scheduled">Terjadwal</option>
+                      <option value="ongoing">Dalam proses</option>
+                      <option value="failed">Perlu Tindak Lanjut</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="maintenance-sort-date-filter" className="mb-1.5 block text-xs font-semibold text-muted">Rentang tanggal pencatatan</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="maintenance-sort-date-filter"
+                        type="date"
+                        aria-label="Rentang tanggal mulai"
+                        value={draftStartDate}
+                        onChange={(e) => setDraftStartDate(e.target.value)}
+                        className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <span className="text-xs text-muted">s.d.</span>
+                      <input
+                        type="date"
+                        aria-label="Rentang tanggal akhir"
+                        value={draftEndDate}
+                        onChange={(e) => setDraftEndDate(e.target.value)}
+                        className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
+                <button
+                  type="button"
+                  onClick={resetSortFilter}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSortModalOpen(false)}
+                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applySortFilter}
+                    className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                  >
+                    Terapkan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODAL FORM TAMBAH/EDIT LOG PEMELIHARAAN */}
         {isModalOpen && (
