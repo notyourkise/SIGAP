@@ -22,6 +22,8 @@ file yang diubah:
 
 
 
+## [1.25.9] - 2026-08-04
+
 ### Peningkatan: Badge Profil Global (foto + dropdown) & Foto Profil di Halaman Profil
 
 perubahan yang dilakukan: **Badge profil kini hanya menampilkan foto (avatar bulat; fallback inisial bila belum ada foto) dan dipindah menjadi elemen global di komponen layout — pojok kanan atas area konten (desktop) dan header mobile — di semua halaman. Klik badge membuka dropdown menu: "Profil" (→ `/profile`) dan "Keluar" (warna kontras merah). Tombol "Keluar" di sidebar dihapus dan dipindah ke dropdown ini. Halaman `/profile` mendapat fitur unggah/ubah/hapus foto profil**
@@ -45,6 +47,8 @@ file yang diubah:
 
 
 
+## [1.25.8] - 2026-08-04
+
 ### Peningkatan: Card Profil di Dashboard + Pemberitahuan di Sidebar
 
 perubahan yang dilakukan: **Card profil pengguna dipindah dari sidebar ke header halaman Dashboard (di sebelah indikator "Layanan normal"), tampilan diubah tanpa border dan berbentuk badge profil (avatar inisial + nama + badge peran, mengarah ke halaman `/profile`); tombol "Muat ulang" dihapus; menu "Pemberitahuan" di sidebar kini menampilkan badge jumlah notifikasi belum dibaca (hilang saat sudah dibaca) dan membuka modal daftar pemberitahuan — item notifikasi bisa diklik untuk membuka modal informasi lengkap (sebelumnya hanya navigasi langsung)**
@@ -66,6 +70,8 @@ file yang diubah:
 
 
 
+## [1.25.7] - 2026-08-04
+
 ### Peningkatan: Sortir & Filter Daftar CCTV dalam Modal Popup
 
 perubahan yang dilakukan: **Select filter status, filter indoor/outdoor, dan select sortir di halaman `/cctv` disembunyikan dari tampilan utama dan dipindah ke modal "Sortir & Filter" (pola sama dengan `/maintenance`, `/field-maintenance`, `/audit-logs`); kotak pencarian tetap tampil; opsi pengurutan diperluas (sebelumnya hanya nama A-Z/Z-A, kini 5 kolom)**
@@ -82,6 +88,8 @@ file yang diubah:
 - frontend/changelog.md
 
 
+
+## [1.25.6] - 2026-08-04
 
 ### Peningkatan: Sortir & Filter Audit Log dalam Modal Popup + Posisi Menu Pemberitahuan
 
@@ -102,6 +110,8 @@ file yang diubah:
 
 
 
+## [1.25.5] - 2026-08-04
+
 ### Redesign: Modal Detail Pengguna di Halaman `/users`
 
 perubahan yang dilakukan: **Modal detail pengguna didesain ulang dari daftar field polos (ikon + 4 baris grid) menjadi kartu identitas bertingkat: header avatar inisial (warna sesuai peran), nama + badge peran, username mono; panel rincian akun (email, tanggal akun dibuat) dalam satu grid berlapis; dan footer aksi cepat (Ubah data, Atur ulang kata sandi, Hapus pengguna — merah terpisah)**
@@ -118,6 +128,8 @@ file yang diubah:
 - frontend/changelog.md
 
 
+
+## [1.25.4] - 2026-08-04
 
 ### Peningkatan: Sortir & Filter Pengecekan Lapangan Dipindah ke Modal Popup
 
@@ -136,6 +148,8 @@ file yang diubah:
 
 
 
+## [1.25.3] - 2026-08-04
+
 ### Peningkatan: Sortir & Filter Pemeliharaan Dipindah ke Modal Popup
 
 perubahan yang dilakukan: **Grid filter (CCTV, Status, rentang tanggal) di halaman `/maintenance` disembunyikan dari tampilan utama dan dipindah ke dalam modal "Sortir & Filter" yang terbuka lewat tombol Sortir di header tabel; modal kini juga berisi pengaturan pengurutan (kolom + arah) yang dikirim ke backend lewat `sort_by` & `order`**
@@ -152,6 +166,8 @@ file yang diubah:
 - frontend/changelog.md
 
 
+
+## [1.25.2] - 2026-08-04
 
 ### Bugfix: Pemberitahuan Tidak Pernah Tampil (Salah Bungkus Respons API)
 
@@ -172,6 +188,8 @@ file yang diubah:
 - frontend/changelog.md
 
 
+
+## [1.25.1] - 2026-08-04
 
 ### Pemberitahuan: Lonceng di Dashboard, Menu Sidebar & Halaman `/pemberitahuan` Terpisah
 
@@ -195,6 +213,8 @@ file yang diubah:
 
 
 
+## [1.25.0] - 2026-08-04
+
 ### Notifikasi In-App Real-Time: NotificationBell di Header & Sidebar (Fase 5.1)
 
 perubahan yang dilakukan: **Komponen `NotificationBell` baru — ikon lonceng dengan badge jumlah belum dibaca, dropdown daftar notifikasi (10 terbaru), tombol "Tandai semua dibaca", klik item → tandai dibaca + navigasi ke halaman terkait (`/maintenance` atau `/field-maintenance`); terima notifikasi baru real-time via WebSocket (`NOTIFICATION_CREATED`) dengan toast + refresh badge, fallback polling 60 detik saat koneksi terputus**
@@ -210,6 +230,8 @@ file yang diubah:
 - frontend/changelog.md
 
 
+
+## [1.24.2] - 2026-08-03
 
 ### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan)
 
@@ -342,6 +364,8 @@ alasan teknis: Menghilangkan seluruh UI native browser demi konsistensi bahasa d
 
 ---
 
+## [1.21.0] - 2026-08-03
+
 ### Redesain Filter Audit Log (Input Tidak Lagi Terpotong)
 
 perubahan yang dilakukan: **Tata letak filter & search bar audit log dirombak agar setiap input mendapat ruang cukup**
@@ -361,6 +385,8 @@ verifikasi:
 alasan teknis: Dua input `type="date"` (masing-masing butuh ~150px) tidak muat dalam satu sel grid 4 kolom (~230px); memberi satu kolom penuh per input dan label di atasnya menghilangkan pemotongan dan memperjelas fungsi tiap field.
 
 ---
+
+## [1.20.0] - 2026-08-03
 
 ### Perbaikan Cetak Semua QR Code Hanya 10 CCTV
 
@@ -382,6 +408,8 @@ alasan teknis: State `cctvs` dibatasi paginasi (10 per halaman); cetak semua mem
 
 ---
 
+## [1.19.0] - 2026-08-03
+
 ### Konfirmasi Logout dengan Dialog Kustom
 
 perubahan yang dilakukan: **Klik "Keluar" kini membuka dialog konfirmasi kustom (bukan logout langsung)**
@@ -402,6 +430,8 @@ verifikasi:
 alasan teknis: Konfirmasi dialog kustom mencegah logout tidak disengaja dan konsisten dengan bahasa desain aplikasi (modal, backdrop blur, tombol danger merah).
 
 ---
+
+## [1.18.0] - 2026-08-03
 
 ### Card Tugas Menggantikan Distribusi Status CCTV
 
@@ -425,6 +455,8 @@ alasan teknis: Mengurangi redundansi (distribusi status sudah terwakili ringkasa
 
 ---
 
+## [1.17.0] - 2026-08-03
+
 ### Logout Hanya di Sidebar & Transisi Drawer Lebih Halus
 
 perubahan yang dilakukan: **Tombol logout di header mobile dihapus + animasi buka/tutup sidebar diperhalus**
@@ -446,6 +478,8 @@ alasan teknis: Menghindari duplikasi aksi logout yang membingungkan dan memperha
 
 ---
 
+## [1.16.0] - 2026-08-03
+
 ### Tombol Keluar Sebagai Item Menu di Sidebar
 
 perubahan yang dilakukan: **Tombol logout dipindah ke dalam daftar navigasi, di bawah menu Audit Log, dengan gaya yang sama seperti item menu lain**
@@ -465,6 +499,8 @@ verifikasi:
 alasan teknis: Meletakkan logout sebagai bagian dari menu navigasi membuatnya konsisten dengan pola item menu lain dan selalu terlihat tanpa menggantung di bagian bawah, sekaligus tetap tersedia di drawer mobile.
 
 ---
+
+## [1.15.0] - 2026-08-03
 
 ### Penyesuaian Antarmuka untuk Peran Teknisi
 
@@ -495,6 +531,8 @@ verifikasi:
 alasan teknis: Akses payload QR terenkripsi dibatasi ke admin demi prinsip least privilege; tombol ikon-only menghemat ruang header pada layar kecil; sidebar scrollable menjamin aksi logout selalu tersedia; pengurangan teks menurunkan beban kognitif peran teknisi di lapangan.
 
 ---
+
+## [1.14.0] - 2026-08-03
 
 ### Waktu Pencatatan dengan Picker Kalender
 

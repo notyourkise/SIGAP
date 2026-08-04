@@ -150,6 +150,8 @@ Timestamp: 2026-08-04 WITA | Kategori: Kecil (bugfix) | Detail: `backend/changel
 
 Timestamp: 2026-08-04 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` [1.25.1]
 
+## [1.28.0] — 2026-08-04 — Notifikasi In-App Real-Time (Fase 5.1 — Jalur A)
+
 ### Perubahan
 
 - **Fase 5 (Jalur A) dimulai** — `docs/ROADMAP.md` & `docs/plan.md` diperbarui: status
@@ -172,6 +174,8 @@ Timestamp: 2026-08-04 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` 
 Timestamp: 2026-08-04 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.26.0], `frontend/changelog.md` [1.25.0]
 
 
+
+## [1.27.2] — 2026-08-03 — Label "Gagal" Menjadi "Perlu Tindak Lanjut"
 
 ### Perubahan
 
@@ -312,6 +316,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 
 ---
 
+## [1.24.0] — 2026-08-03 — Kop Surat & Perbaikan Tata Letak Laporan PDF Pemeliharaan
+
 ### Backend
 
 - PDF laporan pemeliharaan kini berkop surat resmi: logo IKN (dari
@@ -328,6 +334,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 
 ---
 
+## [1.23.0] — 2026-08-03 — Redesain Filter Audit Log (Input Tidak Lagi Terpotong)
+
 ### Frontend
 
 - Filter audit log dirombak agar input tidak terpotong: grid 3 kolom (bukan 4), baris
@@ -341,6 +349,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 
 ---
 
+## [1.22.0] — 2026-08-03 — Perbaikan Cetak Semua QR Code
+
 ### Frontend
 
 - "Cetak Semua QR Code" di halaman Aset CCTV sebelumnya hanya mencetak data halaman aktif
@@ -353,6 +363,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 - Tidak ada perubahan backend pada rilis ini.
 
 ---
+
+## [1.21.0] — 2026-08-03 — Konfirmasi Logout dengan Dialog Kustom
 
 ### Frontend
 
@@ -368,6 +380,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 
 ---
 
+## [1.20.0] — 2026-08-03 — Card Tugas Menggantikan Distribusi Status CCTV
+
 ### Frontend
 
 - Card "Distribusi Status CCTV" dihapus dari dashboard.
@@ -381,6 +395,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 - Tidak ada perubahan backend pada rilis ini.
 
 ---
+
+## [1.19.0] — 2026-08-03 — Logout Hanya di Sidebar & Transisi Drawer Lebih Halus
 
 ### Frontend
 
@@ -396,6 +412,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 
 ---
 
+## [1.18.0] — 2026-08-03 — Tombol Keluar Sebagai Item Menu di Sidebar
+
 ### Frontend
 
 - Tombol logout dipindah dari bagian bawah sidebar ke dalam daftar navigasi, tepat di bawah
@@ -408,6 +426,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 - Tidak ada perubahan backend pada rilis ini.
 
 ---
+
+## [1.17.0] — 2026-08-03 — Penyesuaian Antarmuka untuk Peran Teknisi
 
 ### Frontend
 
@@ -428,6 +448,8 @@ Timestamp: 2026-08-03 WITA | Kategori: Bugfix | Detail: `backend/changelog.md` [
 - Tidak ada perubahan backend pada rilis ini.
 
 ---
+
+## [1.16.0] — 2026-08-03 — Penghapusan Kolom Legacy asset_id pada maintenance_logs
 
 ### Backend Database
 
