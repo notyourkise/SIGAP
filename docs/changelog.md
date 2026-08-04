@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.4] — 2026-08-04 — Pengecekan Lapangan: Sortir & Filter dalam Modal Popup
+
+### Perubahan
+
+- **Frontend** ([1.25.4]): filter hasil & rentang tanggal di `/field-maintenance`
+  disembunyikan dari tampilan utama — digantikan tombol "Sortir" (dengan badge jumlah
+  filter aktif) yang membuka modal "Sortir & Filter" (kolom + arah pengurutan via
+  `sort_by`/`order`, filter lengkap, pola draft + Terapkan/Batal/Reset). Kotak pencarian
+  teks tetap tampil. Pola seragam dengan `/maintenance` ([1.25.3]).
+- Backend tidak berubah (endpoint `/field-maintenance` sudah mendukung `sort_by`/`order`).
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil | Detail: `frontend/changelog.md` [1.25.4]
+
 ## [1.28.3] — 2026-08-04 — Pemeliharaan: Sortir & Filter dalam Modal Popup
 
 ### Perubahan

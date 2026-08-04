@@ -1,6 +1,23 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.3] - 2026-08-04
+## [1.25.4] - 2026-08-04
+
+### Peningkatan: Sortir & Filter Pengecekan Lapangan Dipindah ke Modal Popup
+
+perubahan yang dilakukan: **Filter hasil pengecekan (status) & rentang tanggal di halaman `/field-maintenance` disembunyikan dari tampilan utama dan dipindah ke dalam modal "Sortir & Filter" (pola sama dengan halaman `/maintenance`); modal kini juga berisi pengaturan pengurutan (kolom + arah) yang dikirim ke backend lewat `sort_by` & `order`; kotak pencarian teks tetap tampil di atas tabel**
+before: status select + dua input tanggal tampil langsung di atas tabel (grid 4 kolom); tidak ada kontrol pengurutan (list selalu `sort_by=created_at&order=desc` dari default backend).
+after:
+- Tombol "Sortir" (ikon `SlidersHorizontal`) di header bagian "Daftar Hasil Pengecekan" + badge jumlah filter/sortir aktif.
+- Modal "Sortir & Filter": kolom pengurutan (Waktu pengecekan/Waktu selesai/Hasil keseluruhan — whitelist backend: id, cctv_id, technician_id, overall_status, created_at, completed_at) + arah (terbaru→terlama / terlama→terbaru) + filter lengkap (hasil pengecekan, rentang tanggal) dengan pola draft → Terapkan/Batal/Reset.
+- Kotak pencarian (CCTV/kode/catatan) tetap terlihat langsung untuk alur pencarian cepat.
+- `fetchEntries` kini menyertakan `sort_by` & `order`; modal menutup via Escape/klik luar dengan scroll-lock body.
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/field-maintenance/page.tsx
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Sortir & Filter Pemeliharaan Dipindah ke Modal Popup
 
