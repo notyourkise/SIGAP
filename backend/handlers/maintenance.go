@@ -504,6 +504,13 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "ASSIGN_MAINTENANCE", "MAINTENANCE", "Menugaskan log pemeliharaan ke teknisi: "+techUser.FullName+" ("+logEntry.ActionTaken+")", nil, "", "")
 
+	// Notifikasi in-app ke teknisi yang ditugaskan (Fase 5.1)
+	refID := logEntry.ID
+	utils.NotifyUser(config.DB, techUUID, models.NotificationTypeAssigned,
+		"Tugas baru ditugaskan",
+		"Tugas \""+logEntry.ActionTaken+"\" ditugaskan kepada Anda. Silakan kerjakan sesuai jadwal.",
+		"maintenance-log", &refID)
+
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
 
@@ -667,6 +674,18 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "COMPLETE_MAINTENANCE", "MAINTENANCE", "Menyelesaikan tugas pemeliharaan: "+logEntry.ActionTaken+" (Status: "+newStatus+")", nil, "", "")
+
+	// Notifikasi in-app ke seluruh admin: hasil selesai (9/9 ok) atau perlu
+	// tindak lanjut (failed karena ada item tidak ok) — Fase 5.1.
+	label := "Selesai"
+	if newStatus == "failed" {
+		label = "Perlu Tindak Lanjut"
+	}
+	refID := logEntry.ID
+	utils.NotifyRole(config.DB, "admin", models.NotificationTypeCompleted,
+		"Tugas selesai: "+label,
+		"Tugas \""+logEntry.ActionTaken+"\" selesai dikerjakan dengan status \""+label+"\".",
+		"maintenance-log", &refID)
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)

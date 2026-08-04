@@ -1,3 +1,6 @@
+# AI Agent working artifacts (jangan pernah di-commit)
+/.opencode/
+
 # Node & Dependencies
 node_modules/
 npm-debug.log

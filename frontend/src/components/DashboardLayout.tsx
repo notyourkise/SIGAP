@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import ProtectedRoute from './ProtectedRoute';
+import NotificationBell from './NotificationBell';
 import {
   Wrench, 
   LogOut, 
@@ -122,6 +123,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             SIGAP
           </Link>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <button
               type="button"
               onClick={toggleTheme}
@@ -191,6 +193,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className={`${isSidebarCollapsed ? 'text-sm' : 'text-2xl'} font-black tracking-[-0.03em]`}>SIGAP</span>
               </Link>
               <div className={`flex gap-2 ${isSidebarCollapsed ? 'flex-col' : ''}`}>
+                <NotificationBell />
                 <button
                   type="button"
                   onClick={(event) => {

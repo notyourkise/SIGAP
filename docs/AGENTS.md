@@ -47,17 +47,18 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `config/database.go` — Konfigurasi koneksi ke PostgreSQL menggunakan GORM dengan pengaturan _connection pooling_.
 - `config/migrate.go` — Migrasi data satu kali (_one-time_) yang meresolusi _maintenance log_ legacy `asset_id` → `cctv_id` (unifikasi model, Fase 3.6).
 - `models/setup.go` — Definisi struktur `Base` (berisi UUID, timestamps, dan _soft delete_) yang di-_embed_ pada semua model, termasuk _hook_ `BeforeCreate` yang hanya men-generate UUID baru jika ID kosong (`uuid.Nil`). File ini juga mendefinisikan model `User` dan `MaintenanceLog`.
+- `models/notification.go` — Definisi struktur `Notification` (notifikasi in-app per-user, Fase 5.1): `UserID`, `Type`, `Title`, `Message`, `ReferenceID`, `ReferenceType`, `IsRead` + konstanta tipe (`MAINTENANCE_ASSIGNED`, `MAINTENANCE_REASSIGNED`, `MAINTENANCE_UNASSIGNED`, `MAINTENANCE_COMPLETED`, `MAINTENANCE_OVERDUE`, `FIELD_CHECK_ATTENTION`); index komposit `(user_id, is_read)`.
 - `models/cctv.go` — Definisi struktur `CCTV` (16 field), termasuk `QrPayload` yang dienkripsi menggunakan AES-256.
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, dan `health`.
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, `notification`, dan `health`.
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
-- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, user, upload, audit, dashboard, websocket).
+- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, user, upload, audit, dashboard, notification, websocket).
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
@@ -66,7 +67,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `utils/blacklist.go` — Penyimpanan token yang di-_revoke_ (_in-memory_, bersifat sementara sampai restart server).
 - `utils/csrf.go` — Generate token CSRF dan ekstraksi token sesi (prioritas cookie → Bearer).
 - `utils/audit.go` — Pencatatan audit log secara _async_ dengan retry terbatas.
-- `utils/websocket.go` — Hub manajemen koneksi WebSocket + broadcast event real-time.
+- `utils/notify.go` — Util notifikasi in-app (Fase 5.1): `NotifyUser`/`NotifyRole` — simpan `Notification` secara _async_ (pola `LogAudit`, retry terbatas) lalu broadcast event `NOTIFICATION_CREATED` secara terarah.
+- `utils/websocket.go` — Hub manajemen koneksi WebSocket + broadcast event real-time. Sejak Fase 5.1 setiap koneksi menyimpan `WSClientInfo{UserID, Role}`; tersedia `BroadcastToUser` (per-user) & `BroadcastToRole` (per-role) selain `BroadcastEvent` global.
 - `utils/pagination.go` — Helper utilitas untuk fitur paginasi (dengan cap maksimum `MAX_PAGE_SIZE`) dan proteksi _SQL injection_ pada kolom _sorting_.
 - `utils/validator.go` — Validator kustom (mis. kebijakan password kuat).
 - `utils/logger.go` — Sistem logging ganda menggunakan Zap (menyimpan log ke file JSON dan menampilkannya di konsol dengan warna).
@@ -88,6 +90,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/login/page.tsx` — Halaman antarmuka login dengan layout split-screen yang responsif.
 - `src/proxy.ts` — _Middleware_ server-side Next.js: validasi sesi & role sebelum halaman admin diproses (guard tambahan di sisi server).
 - `src/components/DashboardLayout.tsx` — Komponen _layout sidebar_ responsif dengan navigasi menu, _toggle dark mode_, info profil user, dan tombol _logout_.
+- `src/components/NotificationBell.tsx` — Komponen lonceng notifikasi in-app (Fase 5.1): badge jumlah belum dibaca, dropdown daftar notifikasi, tandai semua dibaca, klik item → navigasi, toast real-time via WebSocket `NOTIFICATION_CREATED`, fallback polling 60 detik.
 - `src/components/ProtectedRoute.tsx` — Komponen _High-Order Guard_ yang melakukan otomatisasi _redirect_ ke `/login` jika pengguna belum terautentikasi.
 - `src/components/DashboardAnalytics.tsx` — Komponen grafik/statistik dashboard.
 - `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`.
@@ -159,6 +162,15 @@ Menyimpan riwayat aktivitas penting pengguna (dipakai pada halaman audit trail):
 - `Action`, `Module`, `Description`
 - `IPAddress`, `UserAgent`
 
+### Notification (Fase 5.1)
+Notifikasi in-app per-pengguna (bell icon). Satu baris = satu penerima:
+- `UserID` (Foreign Key → `users`, penerima)
+- `Type` (konstanta `NotificationType*`: `MAINTENANCE_ASSIGNED`, `MAINTENANCE_REASSIGNED`, `MAINTENANCE_UNASSIGNED`, `MAINTENANCE_COMPLETED`, `MAINTENANCE_OVERDUE`, `FIELD_CHECK_ATTENTION`)
+- `Title`, `Message` (teks untuk dropdown bell)
+- `ReferenceID` (UUID record terkait) + `ReferenceType` (`"maintenance-log"` / `"field-maintenance"`) — penentu rute navigasi frontend
+- `IsRead` (default `false`)
+- Index komposit `(user_id, is_read)`
+
 ## 5. Pola API & Konvensi
 
 Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru:
@@ -176,7 +188,8 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Autentikasi**: Sesi utama disimpan dalam **cookie httpOnly `sigap_session`** yang dikirim otomatis oleh browser (mode web). Untuk klien API / Swagger, header `Authorization: Bearer <token>` tetap didukung sebagai _fallback_ (`utils.ExtractTokenString` memprioritaskan cookie, lalu Bearer).
 - **CSRF**: Semua permintaan mutasi (POST/PUT/PATCH/DELETE) yang terautentikasi via cookie **wajib** menyertakan header `X-CSRF-Token` yang bernilai sama dengan cookie non-httpOnly `sigap_csrf` (pola _double-submit_). Middleware CSRF melewati metode aman (GET/HEAD/OPTIONS), login publik, logout idempotent, dan permintaan yang memakai Bearer. Token CSRF diperoleh dari respons `POST /api/auth/login`.
 - **Otorisasi (Role Check)**: Gunakan _middleware_ `RequireRole("admin")` pada rute yang melibatkan operasi _write_ atau _delete_ (hanya admin yang dapat memodifikasi data inti). Ekspor/laporan untuk teknisi dibatasi ke data miliknya (Fase 3.9).
-- **WebSocket**: Koneksi `/api/ws` **wajib terautentikasi** — token diambil dari cookie `sigap_session` (dikirim otomatis browser same-origin) dengan fallback query parameter `token`. Hub mem-broadcast event `CCTV_UPDATED`, `MAINTENANCE_CREATED`, `MAINTENANCE_UPDATED`, dan `AUDIT_LOG_ADDED`.
+- **WebSocket**: Koneksi `/api/ws` **wajib terautentikasi** — token diambil dari cookie `sigap_session` (dikirim otomatis browser same-origin) dengan fallback query parameter `token`. Hub mem-broadcast event `CCTV_UPDATED`, `MAINTENANCE_CREATED`, `MAINTENANCE_UPDATED`, `AUDIT_LOG_ADDED` (global), serta `NOTIFICATION_CREATED` (terarah per-user/per-role via `BroadcastToUser`/`BroadcastToRole` — Fase 5.1).
+- **Notifikasi In-App** (Fase 5.1): Endpoint `/api/notifications` — `GET /` (list + filter `unread` + paginasi), `GET /unread-count`, `PUT /:id/read` (ownership check → 403), `PUT /read-all`. Semua scope per-user dari klaim JWT; rute statis didaftarkan sebelum dinamis. Pembuatan notifikasi tidak dilakukan handler secara manual — gunakan `utils.NotifyUser`/`utils.NotifyRole`.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
 ## 6. Gotchas & Catatan Teknis Penting

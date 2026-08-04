@@ -61,6 +61,7 @@ func main() {
 		&models.FieldMaintenanceImage{},
 		&models.CCTV{},
 		&models.AuditLog{},
+		&models.Notification{},
 	)
 	if err != nil {
 		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
@@ -154,6 +155,7 @@ func main() {
 	routes.SetupAuditRoutes(api)
 	routes.SetupWebSocketRoutes(api)
 	routes.SetupDashboardRoutes(api)
+	routes.SetupNotificationRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)

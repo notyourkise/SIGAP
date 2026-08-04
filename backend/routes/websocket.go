@@ -81,7 +81,14 @@ func SetupWebSocketRoutes(api fiber.Router) {
 
 	// GET /api/ws — Handshake & Listening Loop WebSocket
 	api.Get("/ws", websocket.New(func(c *websocket.Conn) {
-		utils.Hub.Register(c)
+		// Ambil kembali Fiber context asli dari middleware upgrade; identitas
+		// pengguna (user_id & role) sudah divalidasi & disimpan di c.Locals.
+		var userID, role string
+		if fc, ok := c.Locals("fiberctx").(*fiber.Ctx); ok {
+			userID, _ = fc.Locals("user_id").(string)
+			role, _ = fc.Locals("role").(string)
+		}
+		utils.Hub.Register(c, userID, role)
 		defer utils.Hub.Unregister(c)
 
 		// Loop pembacaan pesan (menjaga koneksi tetap terbuka & merespons ping)
