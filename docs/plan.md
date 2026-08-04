@@ -108,8 +108,9 @@ sigap-monorepo/
 - Hook: `AssignMaintenanceLog` → notif ke teknisi; `CompleteMaintenanceLog` → notif ke semua admin (label "Selesai"/"Perlu Tindak Lanjut"); `CreateFieldMaintenance` bila `attention` → notif ke admin.
 
 **Frontend**
-- `components/NotificationBell.tsx`: ikon Bell + badge unread; dropdown (daftar notifikasi, tombol "Tandai semua dibaca", klik item → mark-read + navigasi ke `/maintenance` atau `/field-maintenance`); subscribe `NOTIFICATION_CREATED` → `toast.info` + refresh badge; fallback polling 60 detik.
-- `components/DashboardLayout.tsx`: render `NotificationBell` di header mobile dan area kontrol sidebar desktop.
+- `components/NotificationBell.tsx`: ikon Bell + badge unread; dropdown 3 notifikasi teratas + tombol "Lihat lainnya" → `/pemberitahuan`; subscribe `NOTIFICATION_CREATED` → `toast.info` + refresh badge; fallback polling 60 detik; dirender di header halaman Dashboard.
+- `components/DashboardLayout.tsx`: menu sidebar "Pemberitahuan" (`/pemberitahuan`).
+- `app/pemberitahuan/page.tsx`: daftar lengkap notifikasi milik user (paginasi, filter belum dibaca, tandai semua, klik item → mark-read + navigasi ke `/maintenance` atau `/field-maintenance`).
 
 **Test & Verifikasi Sprint 1**
 - `handlers/notification_test.go` (sqlmock, `SkipDefaultTransaction`): list scope user, filter unread, unread-count, read milik orang lain → 403/404, read-all, UUID invalid → 400, tanpa identitas → 401.

@@ -1,6 +1,28 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.0] - 2026-08-04
+## [1.25.1] - 2026-08-04
+
+### Pemberitahuan: Lonceng di Dashboard, Menu Sidebar & Halaman `/pemberitahuan` Terpisah
+
+perubahan yang dilakukan: **Posisi lonceng notifikasi dipindah dari header/sidebar global ke halaman Dashboard (di samping indikator layanan); dropdown lonceng kini hanya menampilkan 3 pemberitahuan teratas + tombol "Lihat lainnya" yang mengarah ke halaman Pemberitahuan baru (`/pemberitahuan`, ada di menu sidebar) berisi riwayat lengkap milik user yang login saja — teknisi tidak bisa melihat pemberitahuan teknisi lain (scope tetap dari klaim JWT di backend)**
+before:
+- `NotificationBell` dirender di header mobile & sidebar desktop (`DashboardLayout`) untuk semua halaman; dropdown menampilkan 10 notifikasi dan tidak ada halaman daftar lengkap.
+- Tidak ada menu/halaman khusus pemberitahuan.
+after:
+- `src/components/DashboardLayout.tsx`: `NotificationBell` dihapus dari header mobile & sidebar; item navigasi baru "Pemberitahuan" (`/pemberitahuan`, ikon Bell) ditambahkan untuk admin & teknisi.
+- `src/components/NotificationBell.tsx`: preview dropdown dibatasi 3 notifikasi terbaru (`limit=3`); tombol "Lihat lainnya" di footer dropdown → `router.push('/pemberitahuan')`; badge unread, real-time `NOTIFICATION_CREATED`, dan polling 60 detik tetap.
+- `src/app/dashboard/page.tsx`: `NotificationBell` dirender di header halaman Dashboard (sebelum indikator "Layanan normal").
+- `src/app/pemberitahuan/page.tsx` (baru): halaman daftar lengkap pemberitahuan milik user — paginasi (10/halaman), filter "Belum dibaca saja", tombol "Tandai semua dibaca", klik item → tandai dibaca + navigasi ke `/maintenance` atau `/field-maintenance`, refresh real-time, empty state.
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/components/NotificationBell.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/app/pemberitahuan/page.tsx (baru)
+- frontend/changelog.md
+
+
 
 ### Notifikasi In-App Real-Time: NotificationBell di Header & Sidebar (Fase 5.1)
 

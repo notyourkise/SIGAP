@@ -3,7 +3,19 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
-## [1.28.0] — 2026-08-04 — Notifikasi In-App Real-Time + Dokumen Perencanaan Jalur A
+## [1.28.1] — 2026-08-04 — Pemberitahuan: Lonceng di Dashboard + Halaman `/pemberitahuan`
+
+### Perubahan
+
+- **Frontend** ([1.25.1]): lonceng notifikasi dipindah ke header halaman Dashboard
+  (tidak lagi global); dropdown menampilkan 3 pemberitahuan teratas + tombol
+  "Lihat lainnya"; menu sidebar baru "Pemberitahuan" menuju halaman `/pemberitahuan`
+  (paginasi, filter belum dibaca, tandai semua, klik → navigasi, real-time).
+- Scope pemberitahuan tetap per-user dari klaim JWT (backend) — teknisi tidak
+  melihat pemberitahuan teknisi lain.
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` [1.25.1]
 
 ### Perubahan
 
