@@ -3,6 +3,21 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.2] — 2026-08-04 — Bugfix: Pemberitahuan Tidak Tampil di Bell & Halaman `/pemberitahuan`
+
+### Perubahan
+
+- **Backend** ([0.26.1]): respons `GET /api/notifications` diselaraskan ke konvensi
+  list SIGAP — `data: { rows, pagination }` (sebelumnya `data: [array]` + pagination
+  top-level, pola usang `/audit-logs`).
+- **Frontend** ([1.25.2]): `NotificationBell` & `/pemberitahuan` membaca `res.data?.rows`
+  (sebelumnya salah baca `res.data?.data` → daftar selalu kosong meski notifikasi ada
+  di database); pagination dibaca dari `res.data?.pagination`.
+- Test: `go build/test` PASS, `npm run lint` (0 error) & `npm run build` PASS;
+  container `api` + `frontend` di-rebuild, `/api/health` 200.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil (bugfix) | Detail: `backend/changelog.md` [0.26.1], `frontend/changelog.md` [1.25.2]
+
 ## [1.28.1] — 2026-08-04 — Pemberitahuan: Lonceng di Dashboard + Halaman `/pemberitahuan`
 
 ### Perubahan

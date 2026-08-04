@@ -62,10 +62,11 @@ export default function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await apiRequest<{ data: NotificationItem[] }>(
+      // Konvensi respons list SIGAP: data = { rows, pagination }
+      const res = await apiRequest<{ rows: NotificationItem[] }>(
         `/notifications?limit=${BELL_PREVIEW_LIMIT}`
       );
-      setNotifications(res.data?.data ?? []);
+      setNotifications(res.data?.rows ?? []);
     } catch {
       // Tetap tampilkan data lama bila refresh gagal.
     } finally {
