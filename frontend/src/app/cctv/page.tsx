@@ -25,7 +25,9 @@ import {
   Eye, 
   Printer,
   LoaderCircle,
-  ClipboardCheck
+  ClipboardCheck,
+  SlidersHorizontal,
+  RotateCcw
 } from 'lucide-react';
 
 interface CCTV {
@@ -75,7 +77,23 @@ export default function CCTVPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [ioFilter, setIoFilter] = useState('');
-  const [sortMode, setSortMode] = useState<'newest' | 'name-asc' | 'name-desc'>('newest');
+
+  // Sort State (disembunyikan — diatur lewat modal "Sortir")
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Modal Sortir & Filter
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+  const [draftSortBy, setDraftSortBy] = useState('created_at');
+  const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [draftStatusFilter, setDraftStatusFilter] = useState('');
+  const [draftIoFilter, setDraftIoFilter] = useState('');
+
+  // Jumlah filter/sortir aktif — dipakai untuk badge pada tombol Sortir
+  const activeFilterCount =
+    (statusFilter ? 1 : 0) +
+    (ioFilter ? 1 : 0) +
+    (sortBy !== 'created_at' || sortOrder !== 'desc' ? 1 : 0);
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -223,8 +241,8 @@ export default function CCTVPage() {
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
-      if (sortMode === 'name-asc') queryParams.push('sort_by=nama', 'order=asc');
-      if (sortMode === 'name-desc') queryParams.push('sort_by=nama', 'order=desc');
+      if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
+      if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
       
       const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`);
       
@@ -246,7 +264,7 @@ export default function CCTVPage() {
 
   useEffect(() => {
     fetchCCTVs();
-  }, [page, search, statusFilter, ioFilter, sortMode]);
+  }, [page, search, statusFilter, ioFilter, sortBy, sortOrder]);
 
   const { subscribe } = useWebSocket();
 
@@ -671,6 +689,50 @@ export default function CCTVPage() {
     await openQRPrint(itemsToPrint, 'batch');
   };
 
+  const openSortModal = () => {
+    setDraftSortBy(sortBy);
+    setDraftSortOrder(sortOrder);
+    setDraftStatusFilter(statusFilter);
+    setDraftIoFilter(ioFilter);
+    setIsSortModalOpen(true);
+  };
+
+  const applySortFilter = () => {
+    let changed = false;
+    if (draftSortBy !== sortBy) { setSortBy(draftSortBy); changed = true; }
+    if (draftSortOrder !== sortOrder) { setSortOrder(draftSortOrder); changed = true; }
+    if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; }
+    if (draftIoFilter !== ioFilter) { setIoFilter(draftIoFilter); changed = true; }
+    if (changed) setPage(1);
+    setIsSortModalOpen(false);
+  };
+
+  const resetSortFilter = () => {
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setStatusFilter('');
+    setIoFilter('');
+    setPage(1);
+    setIsSortModalOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isSortModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSortModalOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSortModalOpen]);
+
   return (
     <DashboardLayout>
       <div className={`space-y-8 ${selectedIDs.length > 0 && isAdmin ? 'pb-24' : ''}`}>
@@ -743,15 +805,29 @@ export default function CCTVPage() {
         </header>
 
         <section aria-labelledby="cctv-list-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="flex flex-col gap-1 border-b border-border px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 id="cctv-list-heading" className="text-lg font-bold">Daftar CCTV</h2>
               <p className="mt-0.5 text-xs text-muted">{pagination.total_rows} perangkat</p>
             </div>
+            <button
+              type="button"
+              onClick={openSortModal}
+              disabled={loading}
+              className="relative inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Sortir
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-5 text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="grid gap-3 border-b border-border px-5 py-4 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
-            <div className="relative">
+          <div className="border-b border-border px-5 py-4">
+            <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input
                 type="search"
@@ -766,50 +842,6 @@ export default function CCTVPage() {
                 className="w-full rounded-xl border border-input-border bg-input py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
-            <select
-              aria-label="Filter status CCTV"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setSelectedIDs([]);
-                setPage(1);
-              }}
-              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-            >
-              <option value="">Semua status</option>
-              <option value="ACTIVE">Aktif</option>
-              <option value="INACTIVE">Nonaktif</option>
-              <option value="MAINTENANCE">Pemeliharaan</option>
-            </select>
-
-            <select
-              aria-label="Filter lokasi pemasangan"
-              value={ioFilter}
-              onChange={(e) => {
-                setIoFilter(e.target.value);
-                setSelectedIDs([]);
-                setPage(1);
-              }}
-              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-            >
-              <option value="">Semua lokasi (indoor/outdoor)</option>
-              <option value="INDOOR">Indoor</option>
-              <option value="OUTDOOR">Outdoor</option>
-            </select>
-
-            <select
-              aria-label="Urutkan daftar CCTV"
-              value={sortMode}
-              onChange={(e) => {
-                setSortMode(e.target.value as 'newest' | 'name-asc' | 'name-desc');
-                setPage(1);
-              }}
-              className="rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="newest">Terbaru</option>
-              <option value="name-asc">Nama A-Z</option>
-              <option value="name-desc">Nama Z-A</option>
-            </select>
           </div>
 
           {/* Floating Bulk Actions Bar */}
@@ -1035,6 +1067,125 @@ export default function CCTVPage() {
         </section>
 
         {/* CCTV Form Modal (Create/Edit) */}
+        {/* Modal Sortir & Filter */}
+        {isSortModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSortModalOpen(false)} />
+
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cctv-sort-title"
+              className="z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="cctv-sort-title" className="text-xl font-bold tracking-[-0.015em]">Sortir &amp; Filter</h3>
+                  <p className="mt-1 text-sm text-muted">Urutkan dan saring daftar CCTV.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Tutup sortir dan filter"
+                  onClick={() => setIsSortModalOpen(false)}
+                  className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="cctv-sort-by" className="mb-1.5 block text-xs font-semibold text-muted">Urutkan berdasarkan</label>
+                  <select
+                    id="cctv-sort-by"
+                    value={draftSortBy}
+                    onChange={(e) => setDraftSortBy(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  >
+                    <option value="created_at">Waktu ditambahkan</option>
+                    <option value="nama">Nama</option>
+                    <option value="kode_cctv">Kode CCTV</option>
+                    <option value="status">Status</option>
+                    <option value="lokasi_area">Lokasi area</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="cctv-sort-order" className="mb-1.5 block text-xs font-semibold text-muted">Arah pengurutan</label>
+                  <select
+                    id="cctv-sort-order"
+                    value={draftSortOrder}
+                    onChange={(e) => setDraftSortOrder(e.target.value as 'asc' | 'desc')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  >
+                    <option value="desc">Terbaru ke terlama</option>
+                    <option value="asc">Terlama ke terbaru</option>
+                  </select>
+                </div>
+
+                <div className="space-y-4 border-t border-border pt-4">
+                  <p className="text-xs font-semibold text-muted">Filter</p>
+                  <div>
+                    <label htmlFor="cctv-sort-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
+                    <select
+                      id="cctv-sort-status-filter"
+                      value={draftStatusFilter}
+                      onChange={(e) => setDraftStatusFilter(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    >
+                      <option value="">Semua status</option>
+                      <option value="ACTIVE">Aktif</option>
+                      <option value="INACTIVE">Nonaktif</option>
+                      <option value="MAINTENANCE">Pemeliharaan</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="cctv-sort-io-filter" className="mb-1.5 block text-xs font-semibold text-muted">Lokasi pemasangan</label>
+                    <select
+                      id="cctv-sort-io-filter"
+                      value={draftIoFilter}
+                      onChange={(e) => setDraftIoFilter(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    >
+                      <option value="">Semua lokasi (indoor/outdoor)</option>
+                      <option value="INDOOR">Indoor</option>
+                      <option value="OUTDOOR">Outdoor</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
+                <button
+                  type="button"
+                  onClick={resetSortFilter}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSortModalOpen(false)}
+                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applySortFilter}
+                    className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                  >
+                    Terapkan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isFormModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
             <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">

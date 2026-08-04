@@ -1,6 +1,23 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.6] - 2026-08-04
+## [1.25.7] - 2026-08-04
+
+### Peningkatan: Sortir & Filter Daftar CCTV dalam Modal Popup
+
+perubahan yang dilakukan: **Select filter status, filter indoor/outdoor, dan select sortir di halaman `/cctv` disembunyikan dari tampilan utama dan dipindah ke modal "Sortir & Filter" (pola sama dengan `/maintenance`, `/field-maintenance`, `/audit-logs`); kotak pencarian tetap tampil; opsi pengurutan diperluas (sebelumnya hanya nama A-Z/Z-A, kini 5 kolom)**
+before: 3 select (status, indoor/outdoor, urutan) tampil di grid baris dengan kotak pencarian; opsi urutan hanya "Terbaru / Nama A-Z / Nama Z-A" (mapping `sort_by=nama`).
+after:
+- Tombol "Sortir" (ikon `SlidersHorizontal`) di header bagian "Daftar CCTV" + badge jumlah filter/sortir aktif.
+- Modal "Sortir & Filter": kolom pengurutan (Waktu ditambahkan/Nama/Kode CCTV/Status/Lokasi area — whitelist backend: id, kode_cctv, nama, lokasi_area, status, created_at, updated_at) + arah (terbaru→terlama / terlama→terbaru) + filter status (Aktif/Nonaktif/Pemeliharaan) + lokasi pemasangan (Indoor/Outdoor); pola draft → Terapkan/Batal/Reset; Escape/klik luar menutup + scroll-lock body.
+- State `sortMode` (`newest|name-asc|name-desc`) diganti `sortBy` + `sortOrder`; `fetchCCTVs` mengirim `sort_by` & `order`; default `created_at desc` setara perilaku lama "Terbaru".
+- Kotak pencarian tetap tampil; seleksi massal & fitur lain tidak berubah.
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Sortir & Filter Audit Log dalam Modal Popup + Posisi Menu Pemberitahuan
 
