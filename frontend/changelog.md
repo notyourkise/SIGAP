@@ -1,6 +1,23 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.4] - 2026-08-04
+## [1.25.5] - 2026-08-04
+
+### Redesign: Modal Detail Pengguna di Halaman `/users`
+
+perubahan yang dilakukan: **Modal detail pengguna didesain ulang dari daftar field polos (ikon + 4 baris grid) menjadi kartu identitas bertingkat: header avatar inisial (warna sesuai peran), nama + badge peran, username mono; panel rincian akun (email, tanggal akun dibuat) dalam satu grid berlapis; dan footer aksi cepat (Ubah data, Atur ulang kata sandi, Hapus pengguna — merah terpisah)**
+before: `Modal` generik dengan judul "Detail Pengguna", satu baris berisi ikon `UserCog` + grid 2 kolom berisi 4 pasangan label-nilai (Nama lengkap, Username, Email, Peran); tanpa tanggal dibuat, tanpa aksi, tanpa hierarki visual.
+after:
+- Header identitas: avatar inisial 56px (rounded-xl) — `bg-warning/10 text-warning` untuk admin, `bg-primary/10 text-primary` untuk teknisi; nama (text-xl bold) + chip pill peran (kuning/hijau sesuai tabel); username `@username` mono; tombol tutup.
+- Panel rincian akun: satu `dl` grid 2 kolom dengan pemisah border (pola sama dengan modal detail pemeliharaan) — Email (ikon `Mail`, `break-all`) & Akun dibuat (ikon `CalendarDays`, format `id-ID` panjang).
+- Footer aksi cepat setelah separator: "Hapus pengguna" (bordered merah + hover `bg-error/10`) di kiri; "Ubah data" (secondary) & "Atur ulang kata sandi" (primary) di kanan — langsung berpindah ke modal edit/password yang sudah ada (tanpa fetch ulang), hapus memakai confirm dialog lalu menutup modal & memuat ulang daftar.
+- Overlay kini `backdrop-blur-sm` + shadow besar (pola modal terbaru); layout responsif (footer menumpuk di mobile).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/users/page.tsx
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Sortir & Filter Pengecekan Lapangan Dipindah ke Modal Popup
 

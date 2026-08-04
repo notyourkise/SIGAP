@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { Eye, KeyRound, Pencil, Plus, Search, Trash2, UserCog, X } from 'lucide-react';
+import { Eye, KeyRound, Mail, CalendarDays, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
 interface ManagedUser {
   id: string;
@@ -20,6 +20,27 @@ interface ManagedUser {
 }
 
 const initialForm = { username: '', password: '', full_name: '', email: '', role: 'teknisi' as 'admin' | 'teknisi' };
+
+// Inisial nama untuk avatar (dua kata pertama)
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+const formatUserDate = (iso: string) => {
+  if (!iso) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 export default function UsersPage() {
   const { user, loading: authLoading } = useAuth();
@@ -133,6 +154,24 @@ export default function UsersPage() {
     }
   };
 
+  const handleDeleteFromDetail = async () => {
+    if (!selected) return;
+    const ok = await confirm({
+      title: 'Hapus Pengguna?',
+      message: `Hapus pengguna “${selected.full_name}”? Pengguna ini tidak akan dapat mengakses SIGAP.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/users/${selected.id}`, { method: 'DELETE' });
+      setModal(null);
+      toast.success(`Pengguna "${selected.full_name}" berhasil dihapus.`);
+      loadUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
+    }
+  };
+
   if (!authLoading && user?.role !== 'admin') return null;
 
   return (
@@ -204,14 +243,90 @@ export default function UsersPage() {
       )}
 
       {modal === 'detail' && selected && (
-        <Modal title="Detail Pengguna" onClose={() => setModal(null)}>
-          <div className="flex items-start gap-4">
-            <div className="rounded-xl bg-primary/10 p-3 text-primary"><UserCog className="h-6 w-6" /></div>
-            <dl className="grid flex-1 gap-4 sm:grid-cols-2">
-              {Object.entries({ 'Nama lengkap': selected.full_name, Username: selected.username, Email: selected.email, Peran: selected.role }).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 font-medium capitalize">{value}</dd></div>)}
-            </dl>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button type="button" aria-label="Tutup modal detail" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)} />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-detail-name"
+            className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+          >
+            {/* Header identitas */}
+            <div className="flex items-start gap-4 border-b border-border p-6">
+              <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ${selected.role === 'admin' ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
+                {getInitials(selected.full_name)}
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="flex items-center gap-2">
+                  <h3 id="user-detail-name" className="truncate text-xl font-bold tracking-[-0.015em]">{selected.full_name}</h3>
+                  <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${selected.role === 'admin' ? 'border-warning/25 bg-warning/10 text-warning' : 'border-success/25 bg-success/10 text-success'}`}>
+                    {selected.role}
+                  </span>
+                </div>
+                <p className="mt-1 truncate font-mono text-xs font-semibold text-muted">@{selected.username}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Tutup detail pengguna"
+                onClick={() => setModal(null)}
+                className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Rincian akun */}
+            <div className="px-6 py-5">
+              <dl className="grid overflow-hidden rounded-xl border border-border bg-background text-sm sm:grid-cols-2">
+                <div className="flex items-start gap-3 border-b border-border px-4 py-3.5 sm:border-b-0 sm:border-r">
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+                  <div className="min-w-0">
+                    <dt className="text-xs font-semibold text-muted">Email</dt>
+                    <dd className="mt-0.5 break-all font-medium">{selected.email || '-'}</dd>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 px-4 py-3.5">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+                  <div className="min-w-0">
+                    <dt className="text-xs font-semibold text-muted">Akun dibuat</dt>
+                    <dd className="mt-0.5 font-medium">{formatUserDate(selected.created_at)}</dd>
+                  </div>
+                </div>
+              </dl>
+            </div>
+
+            {/* Aksi cepat */}
+            <div className="flex flex-col-reverse gap-2 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={handleDeleteFromDetail}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-error/30 px-4 py-2.5 text-sm font-semibold text-error transition-colors hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+              >
+                <Trash2 className="h-4 w-4" />
+                Hapus pengguna
+              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setModal('edit')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Ubah data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModal('password')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Atur ulang kata sandi
+                </button>
+              </div>
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
 
       {modal === 'password' && selected && (

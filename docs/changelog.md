@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.5] — 2026-08-04 — Pengguna: Redesign Modal Detail
+
+### Perubahan
+
+- **Frontend** ([1.25.5]): modal detail pengguna di `/users` didesain ulang —
+  header identitas (avatar inisial berwarna peran, nama + badge peran, username mono),
+  panel rincian akun (email + tanggal dibuat, grid 2 kolom dengan pemisah),
+  dan footer aksi cepat (Ubah data / Atur ulang kata sandi / Hapus pengguna —
+  destruktif terpisah warna merah).
+- Backend tidak berubah.
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil | Detail: `frontend/changelog.md` [1.25.5]
+
 ## [1.28.4] — 2026-08-04 — Pengecekan Lapangan: Sortir & Filter dalam Modal Popup
 
 ### Perubahan
