@@ -20,6 +20,9 @@ interface NotificationItem {
 
 const POLL_INTERVAL_MS = 60_000;
 const NOTIFICATION_EVENT = 'NOTIFICATION_CREATED';
+// Preview dropdown hanya menampilkan 3 notifikasi terbaru; sisanya diakses
+// lewat halaman /pemberitahuan melalui tombol "Lihat lainnya".
+const BELL_PREVIEW_LIMIT = 3;
 
 const typeStyles: Record<string, string> = {
   MAINTENANCE_ASSIGNED: 'bg-primary',
@@ -59,7 +62,9 @@ export default function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await apiRequest<{ data: NotificationItem[] }>('/notifications?limit=10');
+      const res = await apiRequest<{ data: NotificationItem[] }>(
+        `/notifications?limit=${BELL_PREVIEW_LIMIT}`
+      );
       setNotifications(res.data?.data ?? []);
     } catch {
       // Tetap tampilkan data lama bila refresh gagal.
@@ -237,6 +242,19 @@ export default function NotificationBell() {
               ))
             )}
           </ul>
+
+          <div className="border-t border-border px-3 py-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                router.push('/pemberitahuan');
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background px-3 py-2.5 text-xs font-bold text-primary transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              Lihat lainnya
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -86,11 +86,12 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
 - `src/app/audit-logs/page.tsx` — Halaman audit trail (khusus admin): daftar aktivitas + ekspor CSV.
 - `src/app/profile/page.tsx` — Halaman profil pengguna (data diri + tautan ganti password).
+- `src/app/pemberitahuan/page.tsx` — Halaman Pemberitahuan (Fase 5.1): riwayat lengkap notifikasi milik user yang login (paginasi, filter belum dibaca, tandai semua dibaca, klik item → navigasi ke `/maintenance`/`/field-maintenance`). Scope per-user dijamin backend dari klaim JWT.
 - `src/app/change-password/page.tsx` — Halaman self-service ganti password (wajib saat login pertama).
 - `src/app/login/page.tsx` — Halaman antarmuka login dengan layout split-screen yang responsif.
 - `src/proxy.ts` — _Middleware_ server-side Next.js: validasi sesi & role sebelum halaman admin diproses (guard tambahan di sisi server).
 - `src/components/DashboardLayout.tsx` — Komponen _layout sidebar_ responsif dengan navigasi menu, _toggle dark mode_, info profil user, dan tombol _logout_.
-- `src/components/NotificationBell.tsx` — Komponen lonceng notifikasi in-app (Fase 5.1): badge jumlah belum dibaca, dropdown daftar notifikasi, tandai semua dibaca, klik item → navigasi, toast real-time via WebSocket `NOTIFICATION_CREATED`, fallback polling 60 detik.
+- `src/components/NotificationBell.tsx` — Komponen lonceng notifikasi in-app (Fase 5.1): **hanya dirender di halaman Dashboard**; badge jumlah belum dibaca, dropdown 3 notifikasi teratas, tombol "Lihat lainnya" → `/pemberitahuan`, tandai semua dibaca, toast real-time via WebSocket `NOTIFICATION_CREATED`, fallback polling 60 detik.
 - `src/components/ProtectedRoute.tsx` — Komponen _High-Order Guard_ yang melakukan otomatisasi _redirect_ ke `/login` jika pengguna belum terautentikasi.
 - `src/components/DashboardAnalytics.tsx` — Komponen grafik/statistik dashboard.
 - `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`.
