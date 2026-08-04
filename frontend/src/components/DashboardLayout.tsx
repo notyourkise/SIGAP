@@ -7,7 +7,6 @@ import { useTheme } from '@/context/ThemeContext';
 import ProtectedRoute from './ProtectedRoute';
 import {
   Wrench, 
-  LogOut, 
   Menu, 
   X, 
   Sun, 
@@ -43,11 +42,10 @@ function getSidebarPreference() {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const isSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarPreference,
     getSidebarPreference,
@@ -71,20 +69,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [isSidebarOpen]);
 
-  useEffect(() => {
-    if (!isLogoutConfirmOpen) return;
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsLogoutConfirmOpen(false);
-    };
-
-    document.addEventListener('keydown', closeOnEscape);
-
-    return () => {
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [isLogoutConfirmOpen]);
-
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
@@ -98,16 +82,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ]
       : []),
   ];
-
-  const handleLogout = () => {
-    logout();
-  };
-
-  const confirmLogout = () => {
-    setIsLogoutConfirmOpen(false);
-    setIsSidebarOpen(false);
-    handleLogout();
-  };
 
   return (
     <ProtectedRoute>
@@ -123,12 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             SIGAP
           </Link>
           <div className="flex items-center gap-2">
-            <ProfileMenu
-              onLogoutRequest={() => {
-                setIsSidebarOpen(false);
-                setIsLogoutConfirmOpen(true);
-              }}
-            />
+            <ProfileMenu showDetails={false} />
             <button
               type="button"
               onClick={toggleTheme}
@@ -266,64 +235,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto px-6 py-8 md:px-10">
           <div className="max-w-6xl w-full mx-auto">
-            <div className="mb-6 flex items-center justify-end">
-              <ProfileMenu
-                onLogoutRequest={() => {
-                  setIsSidebarOpen(false);
-                  setIsLogoutConfirmOpen(true);
-                }}
-              />
-            </div>
+            {pathname !== '/dashboard' && (
+              <div className="mb-6 hidden items-center justify-end md:flex">
+                <ProfileMenu />
+              </div>
+            )}
             {children}
           </div>
         </main>
       </div>
-
-      {/* Konfirmasi Keluar */}
-      {isLogoutConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-heading">
-          <div className="relative w-full max-w-sm space-y-5 rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
-            <button
-              type="button"
-              onClick={() => setIsLogoutConfirmOpen(false)}
-              aria-label="Tutup dialog konfirmasi"
-              className="absolute right-3 top-3 rounded-lg p-1.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
-              <LogOut className="h-6 w-6 text-red-600 dark:text-red-400" />
-            </div>
-
-            <div>
-              <h2 id="logout-confirm-heading" className="text-lg font-bold">Keluar dari SIGAP?</h2>
-              <p className="mt-1.5 text-sm text-muted">
-                Anda akan keluar dari sesi saat ini dan perlu login kembali untuk mengakses aplikasi.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setIsLogoutConfirmOpen(false)}
-                className="flex h-11 flex-1 items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={confirmLogout}
-                autoFocus
-                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-colors hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <LogOut className="h-4 w-4" />
-                Keluar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </ProtectedRoute>
   );
 }

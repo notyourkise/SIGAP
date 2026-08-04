@@ -10,6 +10,7 @@ import { apiRequest } from '@/lib/api';
 import { CheckCheck } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import NotificationBell from '@/components/NotificationBell';
+import ProfileMenu from '@/components/ProfileMenu';
 
 interface CCTV {
   id: string;
@@ -195,6 +196,9 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
               <span>{health === 'Terhubung' ? 'Layanan normal' : health}</span>
+            </div>
+            <div className="hidden md:block">
+              <ProfileMenu />
             </div>
           </div>
         </header>
