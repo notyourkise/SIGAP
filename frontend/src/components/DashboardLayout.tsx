@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
+import ProfileMenu from './ProfileMenu';
 
 const SIDEBAR_STORAGE_KEY = 'sigap_sidebar_collapsed';
 const SIDEBAR_CHANGE_EVENT = 'sigap-sidebar-change';
@@ -122,6 +123,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             SIGAP
           </Link>
           <div className="flex items-center gap-2">
+            <ProfileMenu
+              onLogoutRequest={() => {
+                setIsSidebarOpen(false);
+                setIsLogoutConfirmOpen(true);
+              }}
+            />
             <button
               type="button"
               onClick={toggleTheme}
@@ -250,24 +257,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 );
               })}
 
-              {/* Pemberitahuan selalu di akhir menu, tepat di atas tombol Keluar */}
+              {/* Pemberitahuan selalu di akhir menu sidebar */}
               <NotificationsMenu isCollapsed={isSidebarCollapsed} />
-
-              <button
-                type="button"
-                onClick={() => setIsLogoutConfirmOpen(true)}
-                title={isSidebarCollapsed ? 'Keluar' : undefined}
-                aria-label="Keluar dari SIGAP"
-                className={`
-                  flex min-h-11 w-full items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-medium transition-[background-color,color,box-shadow,border-color]
-                  ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}
-                  text-muted hover:bg-background hover:text-foreground
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card
-                `}
-              >
-                <LogOut className="h-5 w-5 shrink-0" />
-                <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Keluar</span>
-              </button>
             </nav>
           </div>
         </aside>
@@ -275,6 +266,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto px-6 py-8 md:px-10">
           <div className="max-w-6xl w-full mx-auto">
+            <div className="mb-6 flex items-center justify-end">
+              <ProfileMenu
+                onLogoutRequest={() => {
+                  setIsSidebarOpen(false);
+                  setIsLogoutConfirmOpen(true);
+                }}
+              />
+            </div>
             {children}
           </div>
         </main>

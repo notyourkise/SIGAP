@@ -1,6 +1,29 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.8] - 2026-08-04
+## [1.25.9] - 2026-08-04
+
+### Peningkatan: Badge Profil Global (foto + dropdown) & Foto Profil di Halaman Profil
+
+perubahan yang dilakukan: **Badge profil kini hanya menampilkan foto (avatar bulat; fallback inisial bila belum ada foto) dan dipindah menjadi elemen global di komponen layout — pojok kanan atas area konten (desktop) dan header mobile — di semua halaman. Klik badge membuka dropdown menu: "Profil" (→ `/profile`) dan "Keluar" (warna kontras merah). Tombol "Keluar" di sidebar dihapus dan dipindah ke dropdown ini. Halaman `/profile` mendapat fitur unggah/ubah/hapus foto profil**
+before: badge profil (avatar inisial + nama + badge peran) hanya ada di header Dashboard; tombol "Keluar" ada di sidebar; halaman profil hanya bisa mengubah nama tampilan.
+after:
+- `ProfileMenu.tsx` (baru): badge bulat berisi foto profil (diambil via endpoint JWT; jika gagal/tidak ada → inisial), dropdown dengan identitas pengguna, link "Profil", dan tombol "Keluar" (teks merah, hover merah muda). Dropdown ditutup oleh klik luar/Escape; item Keluar tetap memicu dialog konfirmasi keluar yang sama seperti sebelumnya.
+- `DashboardLayout.tsx`: tombol "Keluar" dihapus dari sidebar; `ProfileMenu` dirender di baris atas area konten (desktop) dan di header mobile (bersebelahan dengan tombol tema); dialog konfirmasi keluar tetap dipertahankan.
+- `dashboard/page.tsx`: card profil di header dashboard dihapus (digantikan badge global); indikator "Layanan normal" + lonceng tetap.
+- `profile/page.tsx`: section identitas menampilkan foto profil (atau ikon), tombol "Tambah/ubah Foto" (unggah JPEG/PNG/WebP maks 2MB → `POST /api/upload` → `PUT /api/auth/profile` dengan `profile_photo_url`), dan tombol "Hapus Foto". Simpan nama tampilan kini selalu mengirim `profile_photo_url` terkini sehingga foto tidak hilang.
+- `AuthContext.tsx`: tipe `User` ditambah `profile_photo_url`.
+- Backend pendukung: changelog [0.27.0] (kolom `users.profile_photo_url` + validasi path + pengecualian pembersihan upload yatim).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/ProfileMenu.tsx (baru)
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/app/profile/page.tsx
+- frontend/src/context/AuthContext.tsx
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Card Profil di Dashboard + Pemberitahuan di Sidebar
 

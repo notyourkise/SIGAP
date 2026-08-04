@@ -11,6 +11,7 @@ export interface User {
   role: 'admin' | 'teknisi';
   must_change_password?: boolean;
   created_at?: string;
+  profile_photo_url?: string;
 }
 
 interface AuthContextType {

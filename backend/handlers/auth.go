@@ -329,6 +329,7 @@ func GetMyProfile(c *fiber.Ctx) error {
 			"role":                 user.Role,
 			"created_at":           user.CreatedAt,
 			"must_change_password": user.MustChangePassword,
+			"profile_photo_url":    user.ProfilePhotoURL,
 		},
 	})
 }
@@ -336,11 +337,14 @@ func GetMyProfile(c *fiber.Ctx) error {
 // UpdateMyProfileRequest memuat field yang boleh diubah oleh pengguna untuk dirinya sendiri.
 type UpdateMyProfileRequest struct {
 	FullName string `json:"full_name" validate:"required,min=2,max=100"`
+	// ProfilePhotoURL bersifat opsional: nil = biarkan foto saat ini, "" = hapus
+	// foto, selain itu harus path file upload SIGAP ("/api/uploads/...").
+	ProfilePhotoURL *string `json:"profile_photo_url"`
 }
 
-// UpdateMyProfile memperbarui profil pengguna yang sedang login (nama tampilan).
+// UpdateMyProfile memperbarui profil pengguna yang sedang login (nama tampilan & foto profil).
 // @Summary      Perbarui Profil Sendiri
-// @Description  Mengubah nama tampilan (full_name) dari pengguna yang sedang login.
+// @Description  Mengubah nama tampilan (full_name) dan/atau foto profil (profile_photo_url, path dari endpoint upload) milik pengguna yang sedang login.
 // @Tags         Autentikasi
 // @Accept       json
 // @Produce      json
@@ -383,6 +387,16 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 	}
 
 	user.FullName = strings.TrimSpace(req.FullName)
+	if req.ProfilePhotoURL != nil {
+		photo := strings.TrimSpace(*req.ProfilePhotoURL)
+		if photo != "" && !isSafeUploadPath(photo) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Path foto profil tidak valid",
+			})
+		}
+		user.ProfilePhotoURL = photo
+	}
 	if err := config.DB.Save(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -390,18 +404,31 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 		})
 	}
 
-	utils.LogAudit(config.DB, c, "UPDATE_PROFILE", "USER", "Pengguna memperbarui nama tampilannya", &user.ID, "", user.Role)
+	utils.LogAudit(config.DB, c, "UPDATE_PROFILE", "USER", "Pengguna memperbarui profilnya", &user.ID, "", user.Role)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"id":        user.ID,
-			"username":  user.Username,
-			"full_name": user.FullName,
-			"email":     user.Email,
-			"role":      user.Role,
+			"id":                user.ID,
+			"username":          user.Username,
+			"full_name":         user.FullName,
+			"email":             user.Email,
+			"role":              user.Role,
+			"profile_photo_url": user.ProfilePhotoURL,
 		},
 	})
+}
+
+// isSafeUploadPath memastikan path hanya menunjuk ke file upload SIGAP yang aman.
+func isSafeUploadPath(path string) bool {
+	if !strings.HasPrefix(path, "/api/uploads/") {
+		return false
+	}
+	rest := strings.TrimPrefix(path, "/api/uploads/")
+	if rest == "" || strings.Contains(rest, "..") || strings.Contains(rest, "/") || strings.Contains(rest, "\\") {
+		return false
+	}
+	return true
 }
 
 // CreateUser digunakan oleh Admin untuk meregistrasikan akun baru (Admin/Teknisi)

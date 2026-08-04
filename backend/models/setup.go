@@ -30,6 +30,10 @@ type User struct {
 	FullName     string `gorm:"type:varchar(100);not null" json:"full_name"`
 	Email        string `gorm:"type:varchar(100);uniqueIndex;not null" json:"email"`
 	Role         string `gorm:"type:varchar(20);not null" json:"role"`
+	// ProfilePhotoURL menyimpan path file foto profil (mis. "/api/uploads/<uuid>.jpg").
+	// Kosong = belum mengunggah foto; file disimpan di direktori uploads seperti
+	// foto pemeliharaan dan disajikan via endpoint yang dilindungi JWT.
+	ProfilePhotoURL string `gorm:"type:varchar(255)" json:"profile_photo_url"`
 	// TokenVersion dipakai untuk mencabut semua token lama saat password
 	// di-reset atau role diubah oleh Admin (disematkan dalam klaim JWT "tv").
 	TokenVersion int64 `gorm:"type:integer;not null;default:1" json:"-"`
