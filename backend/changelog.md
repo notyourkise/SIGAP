@@ -23,6 +23,8 @@ file yang diubah:
 
 
 
+## [0.26.2] - 2026-08-04
+
 ### Bugfix: Respons `GET /api/audit-logs` Tidak Sesuai Konvensi List SIGAP
 
 perubahan yang dilakukan: **Respons list audit log diubah dari `data: [array]` + `pagination` top-level menjadi `data: { rows, pagination }` — menyelaraskan dengan konvensi mayoritas handler list lain (`/cctv`, `/maintenance-logs`, `/users`, `/field-maintenance`, `/notifications`). Halaman audit-logs frontend membaca `data.rows`, sehingga sebelum perbaikan ini daftar selalu kosong ("Belum ada data audit log") meskipun log tersimpan di database**
@@ -40,6 +42,8 @@ file yang diubah:
 
 
 
+## [0.26.1] - 2026-08-04
+
 ### Bugfix: Respons `GET /api/notifications` Tidak Sesuai Konvensi List SIGAP
 
 perubahan yang dilakukan: **Respons list notifikasi diubah dari `data: [array]` + `pagination` top-level menjadi `data: { rows, pagination }` — menyelaraskan dengan konvensi mayoritas handler list lain (`/cctv`, `/maintenance-logs`, `/users`, `/field-maintenance`) sehingga konsumen frontend memakai pola bungkus yang sama**
@@ -56,6 +60,8 @@ file yang diubah:
 - backend/changelog.md
 
 
+
+## [0.26.0] - 2026-08-04
 
 ### Notifikasi In-App Real-Time (Fase 5.1 — Jalur A)
 
@@ -90,6 +96,8 @@ file yang diubah:
 - backend/changelog.md
 
 
+
+## [0.25.2] - 2026-08-03
 
 ### Label Status "Gagal" Menjadi "Perlu Tindak Lanjut" (Hanya Tampilan, Nilai Internal Tetap `failed`)
 
@@ -240,6 +248,8 @@ verifikasi:
 alasan teknis: FPDF `MultiCell` membungkus teks berdasarkan lebar karakter, bukan hitungan rune, sehingga estimasi baris lama tidak akurat → tumpang tindih. `SplitLines` memakai pengukuran yang sama sehingga konsisten; border grid + cek pindah halaman per-baris menjamin simetri dan tidak ada sel terpotong. Logo dimuat dari file lokal agar hasil cetak konsisten tanpa permintaan jaringan.
 
 ---
+
+## [0.22.0] - 2026-08-03
 
 ### Penghapusan Kolom Legacy asset_id pada maintenance_logs
 
