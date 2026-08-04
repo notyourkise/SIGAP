@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.8] — 2026-08-04 — Dashboard: Card Profil & Sidebar: Pemberitahuan
+
+### Perubahan
+
+- **Frontend** ([1.25.8]): card profil dipindah dari sidebar ke header Dashboard
+  (di sebelah indikator "Layanan normal") — tanpa border, berbentuk badge profil
+  (avatar inisial + nama + badge peran, klik → `/profile`); tombol "Muat ulang"
+  dihapus. Menu "Pemberitahuan" di sidebar kini tombol dengan badge jumlah belum
+  dibaca (sinkron via polling 60 dtk + WebSocket) yang membuka modal daftar
+  notifikasi; item dapat diklik → modal informasi lengkap dengan tombol "Lihat
+  detail" (tandai dibaca + navigasi); ada "Tandai semua dibaca" & "Lihat riwayat
+  lengkap" → `/pemberitahuan`. Modal dirender via `createPortal`.
+- `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` [1.25.8]
+
 ## [1.28.7] — 2026-08-04 — CCTV: Sortir & Filter dalam Modal Popup
 
 ### Perubahan

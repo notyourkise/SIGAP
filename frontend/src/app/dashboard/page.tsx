@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import DashboardAnalytics, { type DashboardSummary } from '@/components/DashboardAnalytics';
@@ -21,6 +22,13 @@ interface CCTV {
 
 type CCTVFilter = 'all' | 'active' | 'inactive';
 const CCTV_PAGE_SIZE = 6;
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
 
 interface MaintenanceLog {
   id: string;
@@ -190,20 +198,33 @@ export default function DashboardPage() {
               {isAdmin ? 'Pantau kondisi aset dan pekerjaan pemeliharaan.' : 'Pantau kondisi CCTV dan prioritas pekerjaan.'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <NotificationBell />
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
               <span>{health === 'Terhubung' ? 'Layanan normal' : health}</span>
             </div>
-            <button
-              type="button"
-              onClick={loadDashboard}
-              disabled={loading}
-              className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold transition-colors hover:border-primary disabled:cursor-wait disabled:opacity-60"
+            <Link
+              href="/profile"
+              title={`${user?.full_name ?? 'Profil'} · ${user?.role ?? ''}`}
+              className="group flex items-center gap-3 rounded-2xl bg-transparent py-1 pl-1 pr-2.5 transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              {loading ? 'Memuat…' : 'Muat ulang'}
-            </button>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/20 text-sm font-bold text-[#775800] ring-1 ring-accent/30 dark:text-accent">
+                {user ? getInitials(user.full_name) : '?'}
+              </span>
+              <span className="hidden overflow-hidden sm:block">
+                <span className="block truncate text-xs font-semibold text-foreground group-hover:text-primary">
+                  {user?.full_name ?? 'Profil'}
+                </span>
+                <span className={`mt-0.5 inline-block rounded-md px-1.5 py-px text-[10px] font-bold uppercase tracking-wider ${
+                  user?.role === 'admin'
+                    ? 'bg-accent/20 text-[#775800] dark:text-accent'
+                    : 'bg-success/10 text-success'
+                }`}>
+                  {user?.role ?? ''}
+                </span>
+              </span>
+            </Link>
           </div>
         </header>
 

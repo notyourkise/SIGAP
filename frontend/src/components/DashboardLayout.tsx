@@ -10,7 +10,6 @@ import {
   LogOut, 
   Menu, 
   X, 
-  User as UserIcon, 
   Sun, 
   Moon,
   Database,
@@ -21,9 +20,9 @@ import {
   PanelLeftOpen,
   ShieldCheck,
   ClipboardCheck,
-  Bell
 } from 'lucide-react';
 import Link from 'next/link';
+import NotificationsMenu from './NotificationsMenu';
 
 const SIDEBAR_STORAGE_KEY = 'sigap_sidebar_collapsed';
 const SIDEBAR_CHANGE_EVENT = 'sigap-sidebar-change';
@@ -97,8 +96,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
         ]
       : []),
-    // Pemberitahuan selalu di akhir menu, tepat di atas tombol Keluar
-    { name: 'Pemberitahuan', href: '/pemberitahuan', icon: Bell },
   ];
 
   const handleLogout = () => {
@@ -222,29 +219,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </div>
 
-            {/* User Profile Card */}
-            {user && (
-              <Link
-                href="/profile"
-                title={isSidebarCollapsed ? `${user.full_name} · ${user.role}` : undefined}
-                className={`flex items-center gap-3 rounded-2xl border border-border bg-background transition-colors hover:border-primary/30 ${isSidebarCollapsed ? 'md:justify-center md:p-2.5' : 'p-3'}`}
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/20 text-[#775800] dark:text-accent">
-                  <UserIcon className="h-5 w-5" />
-                </div>
-                <div className={`overflow-hidden ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
-                  <h4 className="truncate text-sm font-semibold">{user.full_name}</h4>
-                  <span className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                    user.role === 'admin' 
-                      ? 'bg-accent/20 text-[#775800] border border-accent/30 dark:text-accent'
-                      : 'bg-success/10 text-success border border-success/20'
-                  }`}>
-                    {user.role}
-                  </span>
-                </div>
-              </Link>
-            )}
-
             {/* Navigation links */}
             <nav aria-label="Navigasi utama" className="space-y-1.5">
               <p className={`mb-2 px-3 text-xs font-semibold text-muted ${isSidebarCollapsed ? 'md:sr-only' : ''}`}>
@@ -275,6 +249,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </Link>
                 );
               })}
+
+              {/* Pemberitahuan selalu di akhir menu, tepat di atas tombol Keluar */}
+              <NotificationsMenu isCollapsed={isSidebarCollapsed} />
+
               <button
                 type="button"
                 onClick={() => setIsLogoutConfirmOpen(true)}
