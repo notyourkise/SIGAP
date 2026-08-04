@@ -1,6 +1,23 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.2] - 2026-08-04
+## [1.25.3] - 2026-08-04
+
+### Peningkatan: Sortir & Filter Pemeliharaan Dipindah ke Modal Popup
+
+perubahan yang dilakukan: **Grid filter (CCTV, Status, rentang tanggal) di halaman `/maintenance` disembunyikan dari tampilan utama dan dipindah ke dalam modal "Sortir & Filter" yang terbuka lewat tombol Sortir di header tabel; modal kini juga berisi pengaturan pengurutan (kolom + arah) yang dikirim ke backend lewat `sort_by` & `order`**
+before: filter tampil langsung di atas tabel; tidak ada kontrol pengurutan sama sekali (list selalu `sort_by=created_at&order=desc` dari default backend); filter bar memakan ruang vertikal halaman.
+after:
+- Tombol "Sortir" (ikon `SlidersHorizontal`) di header bagian "Riwayat Pemeliharaan"; badge angka menunjukkan jumlah filter/sortir yang aktif; tombol dinonaktifkan saat data sedang dimuat.
+- Modal "Sortir & Filter": kolom pengurutan (Waktu pencatatan/Waktu terjadwal/Waktu selesai/Status/Pekerjaan A-Z) + arah (terbaru→terlama / terlama→terbaru) + filter lengkap (CCTV, Status, rentang tanggal) dengan pola draft → tombol Terapkan (perubahan diterapkan sekaligus, halaman kembali ke halaman 1) / Batal (draft dibuang) / Reset (kembali ke `created_at desc`, semua filter kosong).
+- `fetchLogs` kini menyertakan `sort_by` & `order` (whitelist backend: id, cctv_id, technician_id, action_taken, notes, status, scheduled_date, completed_at, created_at, updated_at).
+- Modal memakai pola yang sama dengan modal lain di halaman (backdrop blur, tutup via Escape/klik luar, scroll-lock body).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/changelog.md
+
+
 
 ### Bugfix: Pemberitahuan Tidak Pernah Tampil (Salah Bungkus Respons API)
 
