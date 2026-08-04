@@ -7,7 +7,7 @@ import { apiRequest } from '@/lib/api';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from './Toast';
 
-interface NotificationItem {
+export interface NotificationItem {
   id: string;
   type: string;
   title: string;
@@ -24,7 +24,7 @@ const NOTIFICATION_EVENT = 'NOTIFICATION_CREATED';
 // lewat halaman /pemberitahuan melalui tombol "Lihat lainnya".
 const BELL_PREVIEW_LIMIT = 3;
 
-const typeStyles: Record<string, string> = {
+export const typeStyles: Record<string, string> = {
   MAINTENANCE_ASSIGNED: 'bg-primary',
   MAINTENANCE_REASSIGNED: 'bg-primary',
   MAINTENANCE_UNASSIGNED: 'bg-blue-500',
@@ -34,9 +34,19 @@ const typeStyles: Record<string, string> = {
 };
 
 // Peta tipe notifikasi ke rute halaman tujuan saat item diklik.
-function getTargetRoute(item: NotificationItem): string {
+export function getTargetRoute(item: NotificationItem): string {
   if (item.reference_type === 'field-maintenance') return '/field-maintenance';
   return '/maintenance';
+}
+
+export function formatNotifTime(iso: string): string {
+  const date = new Date(iso);
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export default function NotificationBell() {
@@ -158,15 +168,7 @@ export default function NotificationBell() {
     router.push(getTargetRoute(item));
   };
 
-  const formatTime = (iso: string) => {
-    const date = new Date(iso);
-    return date.toLocaleString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = formatNotifTime;
 
   return (
     <div ref={dropdownRef} className="relative">

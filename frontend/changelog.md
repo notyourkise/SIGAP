@@ -1,6 +1,27 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.7] - 2026-08-04
+## [1.25.8] - 2026-08-04
+
+### Peningkatan: Card Profil di Dashboard + Pemberitahuan di Sidebar
+
+perubahan yang dilakukan: **Card profil pengguna dipindah dari sidebar ke header halaman Dashboard (di sebelah indikator "Layanan normal"), tampilan diubah tanpa border dan berbentuk badge profil (avatar inisial + nama + badge peran, mengarah ke halaman `/profile`); tombol "Muat ulang" dihapus; menu "Pemberitahuan" di sidebar kini menampilkan badge jumlah notifikasi belum dibaca (hilang saat sudah dibaca) dan membuka modal daftar pemberitahuan — item notifikasi bisa diklik untuk membuka modal informasi lengkap (sebelumnya hanya navigasi langsung)**
+before: card profil (avatar ikon + nama + badge peran) tampil di sidebar dengan border; indikator status "Layanan normal" berdampingan dengan tombol "Muat ulang"; menu "Pemberitahuan" di sidebar berisi link biasa tanpa indikator; item notifikasi pada dropdown lonceng langsung menavigasi ke halaman.
+after:
+- Header dashboard: `[Lonceng] [● Layanan normal] [Card profil tanpa border — avatar inisial (badge) + nama + badge peran, klik → /profile]`; tombol "Muat ulang" dihapus (refresh tetap otomatis via websocket + polling).
+- Sidebar: item "Pemberitahuan" adalah tombol yang menampilkan badge merah berisi angka unread (sinkron via `/notifications/unread-count`, polling 60 detik + event websocket `NOTIFICATION_CREATED`; ter-update juga saat notifikasi dibaca/ditandai semua).
+- Klik item "Pemberitahuan" di sidebar → modal daftar pemberitahuan (20 terbaru, filter preview): tiap item bisa diklik → modal informasi lengkap (judul, pesan, waktu lengkap) dengan tombol "Lihat detail" (menandai dibaca + navigasi ke halaman terkait); tersedia "Tandai semua dibaca" dan "Lihat riwayat lengkap" → `/pemberitahuan`.
+- Helper notifikasi (`NotificationItem`, `typeStyles`, `getTargetRoute`, `formatNotifTime`) di-export dari `NotificationBell.tsx` agar dipakai bersama komponen baru `NotificationsMenu.tsx`; modal dirender via `createPortal` (aman dari transform sidebar).
+- Card profil lama di sidebar dihapus (posisi baru di dashboard; halaman `/profile` tidak berubah).
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/components/NotificationBell.tsx
+- frontend/src/components/NotificationsMenu.tsx (baru)
+- frontend/changelog.md
+
+
 
 ### Peningkatan: Sortir & Filter Daftar CCTV dalam Modal Popup
 
