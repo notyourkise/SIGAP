@@ -1,6 +1,23 @@
 # Changelog - Backend SIGAP
 
-## [0.26.1] - 2026-08-04
+## [0.26.2] - 2026-08-04
+
+### Bugfix: Respons `GET /api/audit-logs` Tidak Sesuai Konvensi List SIGAP
+
+perubahan yang dilakukan: **Respons list audit log diubah dari `data: [array]` + `pagination` top-level menjadi `data: { rows, pagination }` — menyelaraskan dengan konvensi mayoritas handler list lain (`/cctv`, `/maintenance-logs`, `/users`, `/field-maintenance`, `/notifications`). Halaman audit-logs frontend membaca `data.rows`, sehingga sebelum perbaikan ini daftar selalu kosong ("Belum ada data audit log") meskipun log tersimpan di database**
+before: `GET /api/audit-logs` mengembalikan `{ status, message, data: [...], pagination }` — tidak cocok dengan pembacaan frontend `response.data.rows`.
+after:
+- `handlers/audit.go` (GetAuditLogs): `data` kini objek `{ rows, pagination }`.
+- `handlers/audit_test.go`: asersi disesuaikan (data → `data.rows` + `data.pagination`).
+- Endpoint ekspor CSV tidak berubah.
+timestamp: 2026-08-04 WITA
+kategori: Bugfix, Backend
+file yang diubah:
+- backend/handlers/audit.go
+- backend/handlers/audit_test.go
+- backend/changelog.md
+
+
 
 ### Bugfix: Respons `GET /api/notifications` Tidak Sesuai Konvensi List SIGAP
 

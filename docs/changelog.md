@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.6] — 2026-08-04 — Audit Log: Sortir & Filter dalam Modal + Posisi Menu Pemberitahuan
+
+### Perubahan
+
+- **Backend** ([0.26.2]): bugfix respons `GET /api/audit-logs` — `data` diselaraskan
+  ke konvensi `{ rows, pagination }`; sebelumnya halaman audit-logs selalu kosong
+  (frontend membaca `data.rows`, backend mengirim array).
+- **Frontend** ([1.25.6]): filter modul & rentang tanggal di `/audit-logs` dipindah
+  ke modal "Sortir & Filter" (kolom + arah pengurutan via `sort_by`/`order`,
+  pola draft + Terapkan/Batal/Reset); kotak pencarian tetap tampil. Menu sidebar
+  "Pemberitahuan" dipindah ke akhir menu utama — di bawah "Audit Log", tepat di atas
+  tombol "Keluar".
+- Test: `go test` & `go vet` PASS, `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-04 WITA | Kategori: Kecil | Detail: `backend/changelog.md` [0.26.2], `frontend/changelog.md` [1.25.6]
+
 ## [1.28.5] — 2026-08-04 — Pengguna: Redesign Modal Detail
 
 ### Perubahan

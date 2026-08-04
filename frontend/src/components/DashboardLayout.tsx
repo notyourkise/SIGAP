@@ -90,7 +90,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
     { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
-    { name: 'Pemberitahuan', href: '/pemberitahuan', icon: Bell },
     ...(user?.role === 'admin'
       ? [
           { name: 'Pengecekan Lapangan', href: '/field-maintenance', icon: ClipboardCheck },
@@ -98,6 +97,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
         ]
       : []),
+    // Pemberitahuan selalu di akhir menu, tepat di atas tombol Keluar
+    { name: 'Pemberitahuan', href: '/pemberitahuan', icon: Bell },
   ];
 
   const handleLogout = () => {

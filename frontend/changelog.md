@@ -1,6 +1,25 @@
 # Changelog - Frontend SIGAP
 
-## [1.25.5] - 2026-08-04
+## [1.25.6] - 2026-08-04
+
+### Peningkatan: Sortir & Filter Audit Log dalam Modal Popup + Posisi Menu Pemberitahuan
+
+perubahan yang dilakukan: **Filter modul & rentang tanggal di halaman `/audit-logs` disembunyikan dari tampilan utama dan dipindah ke modal "Sortir & Filter" (pola sama dengan `/maintenance` & `/field-maintenance`); kotak pencarian tetap tampil; menu sidebar "Pemberitahuan" dipindah ke posisi setelah "Audit Log" dan tepat di atas tombol "Keluar"**
+before: filter bar 3 kontrol (modul, dari tanggal, sampai tanggal) tampil di bawah kotak pencarian; menu Pemberitahuan berada setelah "Pemeliharaan CCTV" (di tengah daftar menu). Selain itu halaman audit-logs tidak pernah menampilkan baris data karena backend merespons `data: [array]` sementara frontend membaca `data.rows` (bug tersembunyi — diperbaiki lewat backend changelog [0.26.2]).
+after:
+- Tombol "Sortir" (ikon `SlidersHorizontal`) di header bagian "Riwayat Aktivitas" + badge jumlah filter/sortir aktif.
+- Modal "Sortir & Filter": kolom pengurutan (Waktu kejadian/Aksi/Modul/Pengguna/Peran — whitelist backend) + arah + filter modul (AUTH/CCTV/MAINTENANCE/USER) + rentang tanggal; pola draft → Terapkan/Batal/Reset; Escape/klik luar menutup + scroll-lock.
+- Kotak pencarian teks tetap tampil langsung; tombol ekspor CSV tetap di baris terpisah.
+- `fetchAuditLogs` kini mengirim `sort_by` & `order`.
+- Sidebar: "Pemberitahuan" dipindah ke akhir daftar menu utama (bawah "Audit Log" untuk admin), tepat di atas tombol "Keluar" — untuk semua role.
+timestamp: 2026-08-04 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/audit-logs/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+
+
 
 ### Redesign: Modal Detail Pengguna di Halaman `/users`
 
