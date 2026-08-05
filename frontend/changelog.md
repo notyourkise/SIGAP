@@ -1,5 +1,21 @@
 # Changelog - Frontend SIGAP
 
+## [1.26.0] - 2026-08-05
+
+### Fitur: Tombol "Alihkan" untuk Re-assign Tugas Pemeliharaan — Task 5.3
+
+perubahan yang dilakukan: **Halaman Pemeliharaan kini menampilkan tombol "Alihkan" (ikon `ArrowLeftRight`) pada baris tugas admin berstatus `ongoing` — di samping tombol "Tugaskan" (`UserPlus`) yang tetap untuk log `scheduled`. Klik membuka modal penugasan dengan dropdown teknisi (`GET /api/users?role=teknisi`) yang sudah ada; tugas `ongoing` menampilkan peringatan "Tugas ini sedang dikerjakan oleh [nama]. Yakin ingin mengalihkan?" dan tombol submit berlabel "Alihkan". Keduanya memanggil `PUT /api/maintenance-logs/:id/assign` yang sama, lalu toast sukses/error dan refresh tabel (error 400 "Teknisi sudah ditugaskan pada tugas ini" tampil via toast)**.
+before: Tombol aksi hanya memunculkan "Tugaskan" (`UserPlus`) untuk log `scheduled`; tugas `ongoing` tidak punya aksi pengalihan sehingga admin tidak bisa memindahkan tugas yang sedang dikerjakan ke teknisi lain.
+after:
+- `app/maintenance/page.tsx`: kondisi tombol assign diperluas `log.status === 'scheduled' || log.status === 'ongoing'` dengan ikon & label berbeda per status (`ArrowLeftRight` / "Alihkan ke teknisi lain" untuk ongoing); impor ikon `ArrowLeftRight` ditambahkan.
+- Modal assign: judul dinamis ("Tugaskan ke Teknisi" / "Alihkan ke Teknisi Lain"); kotak info berubah menjadi peringatan kuning bertuliskan nama teknisi saat ini untuk status `ongoing`; tombol submit berlabel "Tugaskan"/"Alihkan" sesuai status.
+- `handleAssignLog`: toast sukses disesuaikan ("Tugas berhasil dialihkan ke teknisi lain." saat re-assign); error dari backend ditampilkan via toast.
+timestamp: 2026-08-05 20:33 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/changelog.md
+
 ## [1.25.13] - 2026-08-05
 
 ### Perubahan: Opsi Status "Rusak" Dihapus — Digabung ke "Nonaktif"
