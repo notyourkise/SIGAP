@@ -71,13 +71,14 @@ sigap-monorepo/
         ├── components/
         └── lib/
 
-## 6. Rencana Pengembangan Aktif (per 2026-08-04)
+## 6. Rencana Pengembangan Aktif (per 2026-08-05)
 
-> Sumber kebenaran status & urutan pengerjaan: `docs/ROADMAP.md` (Fase 5).
+> Sumber kebenaran status & urutan pengerjaan: `docs/ROADMAP.md` (Fase 5–8).
 > Bagian ini mencatat konteks keputusan agar tidak hilang antar sesi pengembangan.
 
-### 6.1 Konteks Keputusan (diskusi 2026-08-04)
+### 6.1 Konteks Keputusan
 
+**Diskusi 2026-08-04:**
 - Sistem **masih pilot/UAT** — belum menampung data produksi nyata, sehingga fitur alur
   kerja (Jalur A) didahulukan; pengerasan infrastruktur (sisa Fase 4: backup, versioned
   migration, container hardening, Redis, metrics) menyusul menjelang go-live.
@@ -86,15 +87,29 @@ sigap-monorepo/
 - Status CCTV otomatis: **konservatif** — hanya `aktif ↔ pemeliharaan`; `rusak`/`nonaktif`
   tetap keputusan manual admin.
 
-### 6.2 Ringkasan Sprint (Jalur A)
+**Brainstorming 2026-08-05:**
+- Setelah analisis gap menyeluruh, disepakati **3 fase baru** (Fase 6–8) setelah Fase 5 tuntas:
+  - **Fase 6 — Kecerdasan Operasional**: skor kesehatan CCTV, kinerja teknisi, laporan PDF pengecekan lapangan, ringkasan harian otomatis.
+  - **Fase 7 — Kesiapan Produksi**: menyerap sisa Fase 4 (4.3–4.7) + logging terstruktur. Wajib sebelum go-live.
+  - **Fase 8 — Pengalaman Lapangan**: PWA, kalender jadwal, push notification, geotag pengecekan.
+- Fase 6 dan 7 bisa dikerjakan **paralel** (fitur vs infrastruktur). Jika tim terbatas dan go-live dekat, Fase 7 diprioritaskan.
+- Sisa Fase 4 (4.3–4.7) resmi **dilebur ke Fase 7** — tidak lagi menjadi backlog terpisah.
 
-| Sprint | Task ROADMAP | Cakupan | Status |
-|--------|--------------|---------|--------|
-| 1 | 5.1 Notifikasi in-app | Model `Notification`, endpoint `/api/notifications`, `WSHub` targeted, `NotificationBell`, hook assign/complete/field-check | ✅ Kode selesai (2026-08-04, branch `feature/notification-in-app`) — menunggu uji runtime Docker |
-| 2 | 5.2 Sinkron status CCTV | Helper dalam transaksi complete/field-check; tabel transisi konservatif | ⬜ Belum |
-| 3 | 5.3 Re-assign tugas | Perluas endpoint assign ke log `ongoing`, notif dua pihak, tombol "Alihkan" | ⬜ Belum |
-| 4 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ⬜ Belum |
-| 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine tiap jam, notif admin/teknisi | ⬜ Belum |
+### 6.2 Ringkasan Sprint
+
+| Sprint | Fase | Task ROADMAP | Cakupan | Status |
+|--------|------|--------------|---------|--------|
+| 1 | 5 | 5.1 Notifikasi in-app | Model `Notification`, endpoint `/api/notifications`, `WSHub` targeted, `NotificationBell`, hook assign/complete/field-check | ✅ Kode selesai (2026-08-04, branch `feature/notification-in-app`) — menunggu uji runtime Docker |
+| 2 | 5 | 5.2 Sinkron status CCTV | Helper dalam transaksi complete/field-check; tabel transisi konservatif | ✅ Selesai (2026-08-05, branch `feature/sync-cctv-status`) — build/test/vet PASS, menunggu uji runtime Docker |
+| 3 | 5 | 5.3 Re-assign tugas | Perluas endpoint assign ke log `ongoing`, notif dua pihak, tombol "Alihkan" | ⬜ Belum |
+| 4 | 5 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ⬜ Belum |
+| 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine tiap jam, notif admin/teknisi | ⬜ Belum |
+| 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, badge visual, goroutine berkala | ⬜ Belum |
+| 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ⬜ Belum |
+| 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ⬜ Belum |
+| 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ⬜ Belum |
+| 10–15 | 7 | 7.1–7.6 Kesiapan Produksi | Versioned migration, Redis, backup, monitoring, hardening, logging | ⬜ Belum |
+| 16–19 | 8 | 8.1–8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | ⬜ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 

@@ -522,7 +522,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 // CompleteMaintenanceLog menyelesaikan tugas terjadwal lewat checklist (Admin & Teknisi)
 // @Summary      Selesaikan Tugas Pemeliharaan
-// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.
+// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed → "pemeliharaan"; status "rusak"/"nonaktif" tidak pernah ditimpa otomatis.
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json
@@ -664,7 +664,23 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		logEntry.MaintenanceResultID = &field.ID
 		logEntry.Status = newStatus
 		logEntry.CompletedAt = &now
-		return tx.Save(&logEntry).Error
+		if err := tx.Save(&logEntry).Error; err != nil {
+			return err
+		}
+
+		// Fase 5.2: sinkronisasi status CCTV otomatis (konservatif) dalam
+		// transaksi yang sama — completed (9/9 item ok) mengembalikan CCTV ke
+		// "aktif"; failed (ada item tidak ok) memindahkannya ke "pemeliharaan".
+		targetStatus := "pemeliharaan"
+		syncReason := "tugas pemeliharaan gagal — ada item checklist tidak OK"
+		if newStatus == "completed" {
+			targetStatus = "aktif"
+			syncReason = "semua checklist pemeliharaan berhasil"
+		}
+		if err := syncCCTVStatus(tx, c, logEntry.CCTVID, targetStatus, syncReason); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

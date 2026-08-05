@@ -20,8 +20,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// cctvMockRow membangun sqlmock rows dengan seluruh kolom tabel cctvs.
+// cctvMockRow membangun sqlmock rows dengan seluruh kolom tabel cctvs
+// berstatus "aktif" (varian status berbeda via cctvMockRowWithStatus).
 func cctvMockRow() (*sqlmock.Rows, uuid.UUID) {
+	return cctvMockRowWithStatus("aktif")
+}
+
+// cctvMockRowWithStatus membangun sqlmock rows CCTV dengan status tertentu —
+// dipakai untuk menguji sinkronisasi status otomatis (Fase 5.2).
+func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 	id := uuid.New()
 	rows := sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
@@ -30,7 +37,7 @@ func cctvMockRow() (*sqlmock.Rows, uuid.UUID) {
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
-		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
+		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
 		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload")
 	return rows, id
 }

@@ -1159,9 +1159,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar
+      description: 'Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar
         checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi
-        otomatis dari token JWT.
+        otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif):
+        hasil "attention" → "pemeliharaan", hasil "ok" → "aktif"; status "rusak"/"nonaktif"
+        tidak pernah ditimpa otomatis.'
       parameters:
       - description: Detail Pengecekan Lapangan
         in: body
@@ -1568,9 +1570,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto
-        bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed".
+      description: 'Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta
+        foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed".
         Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.
+        Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif",
+        failed → "pemeliharaan"; status "rusak"/"nonaktif" tidak pernah ditimpa otomatis.'
       parameters:
       - description: Log UUID
         in: path

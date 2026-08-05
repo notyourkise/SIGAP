@@ -39,7 +39,7 @@ type CreateFieldMaintenanceRequest struct {
 
 // CreateFieldMaintenance mencatat hasil pengecekan lapangan teknisi (Admin & Teknisi)
 // @Summary      Catat Pengecekan Lapangan
-// @Description  Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT.
+// @Description  Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif): hasil "attention" → "pemeliharaan", hasil "ok" → "aktif"; status "rusak"/"nonaktif" tidak pernah ditimpa otomatis.
 // @Tags         Pengecekan Lapangan
 // @Accept       json
 // @Produce      json
@@ -154,6 +154,19 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			if createErr := tx.Create(&image).Error; createErr != nil {
 				return createErr
 			}
+		}
+
+		// Fase 5.2: sinkronisasi status CCTV otomatis (konservatif) dalam
+		// transaksi yang sama — hasil "attention" memindahkan CCTV ke
+		// "pemeliharaan"; hasil "ok" mengembalikannya ke "aktif".
+		targetStatus := "aktif"
+		syncReason := "pengecekan lapangan menunjukkan semua item OK"
+		if overall == "attention" {
+			targetStatus = "pemeliharaan"
+			syncReason = "hasil pengecekan lapangan memerlukan perhatian"
+		}
+		if err := syncCCTVStatus(tx, c, cctvUUID, targetStatus, syncReason); err != nil {
+			return err
 		}
 		return nil
 	}); err != nil {

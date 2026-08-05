@@ -1,5 +1,33 @@
 # Changelog - Backend SIGAP
 
+## [0.28.0] - 2026-08-05
+
+### Fitur: Sinkronisasi Status CCTV Otomatis (Konservatif) — Task 5.2
+
+perubahan yang dilakukan: **Menambahkan helper `syncCCTVStatus` yang menyinkronkan status CCTV secara otomatis dan konservatif di dalam transaksi yang sama dengan complete/field-check. Hanya transisi `aktif ↔ pemeliharaan` yang dilakukan sistem; status `rusak`/`nonaktif` tidak pernah ditimpa otomatis. Complete dengan 9/9 checklist ok → `aktif`, complete dengan item tidak ok → `pemeliharaan`, field-check `attention` → `pemeliharaan`, field-check `ok` → `aktif`. Setiap perubahan mencatat audit log `UPDATE_CCTV` (keterangan otomatis) dan menyiarkan event WebSocket `CCTV_UPDATED` agar tabel & peta sebaran ter-refresh real-time**
+before: Status CCTV hanya bisa diubah manual oleh admin lewat halaman master CCTV; hasil complete/field-check tidak memengaruhi status perangkat sehingga CCTV yang bermasalah tetap tampil "aktif".
+after:
+- `handlers/cctv_sync.go` (baru): helper `syncCCTVStatus(tx, c, cctvID, newStatus, reason)` — baca status saat ini dalam transaksi `tx`; skip bila status `rusak`/`nonaktif` atau sudah sama dengan target; update status → `newStatus`; catat audit `UPDATE_CCTV` + broadcast `CCTV_UPDATED`.
+- `handlers/maintenance.go` (`CompleteMaintenanceLog`): dalam transaksi yang sama — hasil `completed` → `syncCCTVStatus(..., "aktif", "semua checklist pemeliharaan berhasil")`; hasil `failed` → `syncCCTVStatus(..., "pemeliharaan", "tugas pemeliharaan gagal — ada item checklist tidak OK")`.
+- `handlers/field_maintenance.go` (`CreateFieldMaintenance`): dalam transaksi yang sama — hasil `attention` → `syncCCTVStatus(..., "pemeliharaan", "hasil pengecekan lapangan memerlukan perhatian")`; hasil `ok` → `syncCCTVStatus(..., "aktif", "pengecekan lapangan menunjukkan semua item OK")`.
+- `handlers/cctv_test.go`: tambah `cctvMockRowWithStatus` (varian status untuk simulasi sqlmock).
+- `handlers/maintenance_test.go`: test baru — complete 9/9 ok → CCTV `aktif`; complete gagal → CCTV `pemeliharaan`; complete pada CCTV `rusak`/`nonaktif` → status tidak berubah.
+- `handlers/field_maintenance_test.go`: test baru — field-check `attention` → CCTV `pemeliharaan`; field-check `ok` → CCTV `aktif`.
+- Swagger docs di-regenerate (`swag init`).
+timestamp: 2026-08-05 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/handlers/cctv_sync.go (baru)
+- backend/handlers/maintenance.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/cctv_test.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/field_maintenance_test.go
+- backend/docs/ (swag init)
+- backend/changelog.md
+
+
+
 ## [0.27.0] - 2026-08-04
 
 ### Fitur: Foto Profil Pengguna (upload, simpan, dan hapus)

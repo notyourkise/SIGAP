@@ -442,6 +442,14 @@ func TestCompleteMaintenanceLog_Success(t *testing.T) {
 	}
 	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Fase 5.2: sinkronisasi status otomatis — CCTV berstatus "pemeliharaan"
+	// dan hasil 9/9 ok mengembalikannya menjadi "aktif".
+	syncRows, _ := cctvMockRowWithStatus("pemeliharaan")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(syncRows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
 	// Reload dengan relasi
@@ -475,6 +483,118 @@ func TestCompleteMaintenanceLog_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCompleteMaintenanceLog_SyncCCTV_RusakUntouched(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectBegin()
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	for i := 0; i < 9; i++ {
+		mock.ExpectExec(`^INSERT INTO "field_maintenance_checks"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+	for i := 0; i < 2; i++ {
+		mock.ExpectExec(`^INSERT INTO "field_maintenance_images"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Fase 5.2: CCTV berstatus "rusak" — sinkronisasi otomatis dipaksa skip
+	// (tidak ada aksi update status), hanya membaca status saat ini.
+	rusakRows, _ := cctvMockRowWithStatus("rusak")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(rusakRows)
+	mock.ExpectCommit()
+
+	reload := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa kamera", "Debu", "completed", nil, time.Now(), "")
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(reload)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	payload := `{` + completeChecks(true) + `,"images":[{"image_url":"/api/uploads/a.jpg"},{"image_url":"/api/uploads/b.jpg"}],"notes":"Semua normal"}`
+	req := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, "completed", data["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCompleteMaintenanceLog_SyncCCTV_NonaktifUntouched(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectBegin()
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	for i := 0; i < 9; i++ {
+		mock.ExpectExec(`^INSERT INTO "field_maintenance_checks"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+	mock.ExpectExec(`^INSERT INTO "field_maintenance_images"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Fase 5.2: CCTV berstatus "nonaktif" dengan hasil tidak semua ok →
+	// sinkronisasi otomatis dipaksa skip (status manual admin tidak diubah).
+	nonaktifRows, _ := cctvMockRowWithStatus("nonaktif")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(nonaktifRows)
+	mock.ExpectCommit()
+
+	reload := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa kamera", "Debu", "failed", nil, time.Now(), "")
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(reload)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	payload := `{` + completeChecks(false) + `,"images":[{"image_url":"/api/uploads/a.jpg"}],"notes":"Kualitas gambar buram"}`
+	req := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, "failed", data["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCompleteMaintenanceLog_NotAllOk(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
@@ -491,6 +611,14 @@ func TestCompleteMaintenanceLog_NotAllOk(t *testing.T) {
 	mock.ExpectExec(`^INSERT INTO "field_maintenance_images"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Fase 5.2: sinkronisasi status otomatis — CCTV berstatus "aktif" dengan
+	// hasil ada item tidak ok dipindahkan menjadi "pemeliharaan".
+	aktifRows, _ := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(aktifRows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
