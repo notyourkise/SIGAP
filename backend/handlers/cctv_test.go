@@ -20,8 +20,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// cctvMockRow membangun sqlmock rows dengan seluruh kolom tabel cctvs.
+// cctvMockRow membangun sqlmock rows dengan seluruh kolom tabel cctvs
+// berstatus "aktif" (varian status berbeda via cctvMockRowWithStatus).
 func cctvMockRow() (*sqlmock.Rows, uuid.UUID) {
+	return cctvMockRowWithStatus("aktif")
+}
+
+// cctvMockRowWithStatus membangun sqlmock rows CCTV dengan status tertentu —
+// dipakai untuk menguji sinkronisasi status otomatis (Fase 5.2).
+func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 	id := uuid.New()
 	rows := sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
@@ -30,7 +37,7 @@ func cctvMockRow() (*sqlmock.Rows, uuid.UUID) {
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
-		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
+		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
 		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload")
 	return rows, id
 }
@@ -327,6 +334,7 @@ func TestUpdateCCTV_Success(t *testing.T) {
 
 	app := newTestApp()
 	app.Put("/cctv/:id", UpdateCCTV)
+	// "rusak" (status lama) dinormalisasi menjadi "nonaktif" sejak penggabungan status
 	req := httptest.NewRequest("PUT", "/cctv/"+id.String(), strings.NewReader(`{"nama":"Kamera Diperbarui","status":"rusak"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := app.Test(req)
@@ -337,7 +345,7 @@ func TestUpdateCCTV_Success(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	data := result["data"].(map[string]interface{})
 	assert.Equal(t, "Kamera Diperbarui", data["nama"])
-	assert.Equal(t, "rusak", data["status"])
+	assert.Equal(t, "nonaktif", data["status"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -353,4 +361,36 @@ func TestDeleteCCTV_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNormalizeCCTVStatus memastikan padanan bahasa Indonesia & Inggris
+// (huruf besar/kecil, dengan spasi di sekitar) dinormalisasi ke enum standar,
+// sementara nilai tak dikenal dibiarkan apa adanya agar validasi oneof menolaknya.
+func TestNormalizeCCTVStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"indonesia aktif", "aktif", "aktif"},
+		{"indonesia rusak → nonaktif", "rusak", "nonaktif"},
+		{"indonesia pemeliharaan", "pemeliharaan", "pemeliharaan"},
+		{"indonesia nonaktif", "nonaktif", "nonaktif"},
+		{"inggris active", "active", "aktif"},
+		{"inggris broken → nonaktif", "broken", "nonaktif"},
+		{"inggris maintenance", "maintenance", "pemeliharaan"},
+		{"inggris inactive", "inactive", "nonaktif"},
+		{"huruf besar dari UI", "ACTIVE", "aktif"},
+		{"huruf besar dari UI 2", "MAINTENANCE", "pemeliharaan"},
+		{"huruf besar dari UI 3", "INACTIVE", "nonaktif"},
+		{"campuran huruf", "MainTenance", "pemeliharaan"},
+		{"spasi di sekitar", "  aktif ", "aktif"},
+		{"nilai tidak dikenal dibiarkan", "matang", "matang"},
+		{"string kosong", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizeCCTVStatus(tt.in))
+		})
+	}
 }

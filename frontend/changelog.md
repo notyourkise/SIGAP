@@ -1,5 +1,58 @@
 # Changelog - Frontend SIGAP
 
+## [1.25.13] - 2026-08-05
+
+### Perubahan: Opsi Status "Rusak" Dihapus — Digabung ke "Nonaktif"
+
+perubahan yang dilakukan: **Status `rusak` digabung ke `nonaktif` (keputusan backend [0.28.3]) karena keduanya selalu ditampilkan sebagai "Nonaktif" dan dilindungi sinkronisasi otomatis. Opsi "Rusak" dihapus dari dropdown form dan filter, `toStatusValue` memetakan `RUSAK`/`BROKEN` → `nonaktif` sehingga baris legacy rusak tetap tampil benar, dan enum status pada komentar diperbarui menjadi `aktif` / `pemeliharaan` / `nonaktif`**
+before: Dropdown form & filter menyediakan 4 opsi (`Aktif/Nonaktif/Rusak/Pemeliharaan`); `toStatusValue` memetakan `RUSAK`/`BROKEN` → `rusak`; komentar enum masih menyebut 4 status.
+after:
+- `app/cctv/page.tsx`: opsi `<option value="rusak">Rusak</option>` dihapus dari form Tambah/Ubah dan modal "Sortir & Filter" — tersisa `aktif` / `nonaktif` / `pemeliharaan`.
+- `app/cctv/page.tsx` (`toStatusValue`): `RUSAK`/`BROKEN` kini dipetakan ke `nonaktif`; komentar enum backend diperbarui.
+- `lib/api.ts`: contoh kalimat terjemahan validasi & komentar format `errors[]` disesuaikan ("aktif, pemeliharaan, nonaktif").
+- Halaman dashboard/sebaran tidak perlu berubah — badge legacy `rusak` sudah tampil "Nonaktif" sejak sebelumnya.
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/lib/api.ts
+- frontend/changelog.md
+
+## [1.25.12] - 2026-08-05
+
+### Perbaikan: Dropdown Status Form & Filter CCTV Selaras dengan Enum Backend (lowercase Indonesia)
+
+perubahan yang dilakukan: **Opsi `<select>` status di form Tambah/Ubah CCTV dan filter Sortir memakai nilai Inggris huruf besar (`ACTIVE`/`INACTIVE`/`MAINTENANCE`), sementara database (dan enum backend `oneof=aktif rusak pemeliharaan nonaktif`) memakai huruf kecil Indonesia. Saat mengedit CCTV berstatus `pemeliharaan`, controlled select tidak cocok dengan opsi mana pun sehingga browser menampilkan "Aktif" seolah terpilih padahal nilai tersimpan tetap `pemeliharaan` → perubahan status tidak tersimpan walau toast sukses. Nilai opsi kini memakai enum backend dan status diisi normalisasi saat form dibuka**
+before: `<select value={formData.status}>` dengan opsi `ACTIVE/INACTIVE/MAINTENANCE`, sedangkan `formData.status` diisi nilai mentah DB (`pemeliharaan`) — select tampil fallback ke opsi pertama ("Aktif") dan nilai sebenarnya tidak berubah; setelan status manual pemeliharaan→aktif seolah "berhasil" padahal tidak.
+after:
+- `app/cctv/page.tsx`: helper `toStatusValue` menormalisasi nilai status (huruf kecil Indonesia & legacy huruf besar Inggris → enum `aktif/nonaktif/pemeliharaan/rusak`); dipakai saat mengisi form edit (`handleOpenForm`) sehingga dropdown menampilkan status yang sebenarnya.
+- Opsi status di form (Tambah/Ubah) diganti: `aktif`/`nonaktif`/`rusak`/`pemeliharaan` (termasuk opsi baru "Rusak" agar baris berstatus `rusak` tidak mengalami fallback display yang sama); default form baru juga `aktif`.
+- Opsi status di modal "Sortir & Filter" diganti ke lowercase — sinkron dengan query `status=` backend yang mencocokkan persis (`status = ?`) agar filter benar-benar bekerja untuk baris lowercase.
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+
+## [1.25.11] - 2026-08-05
+
+### Peningkatan: Pesan Error Validasi yang Jelas (rincian per field) di Form CCTV
+
+perubahan yang dilakukan: **Sebelumnya saat penyimpanan form CCTV ditolak backend, toast hanya menampilkan "Validasi input gagal" tanpa menjelaskan isian mana yang bermasalah — padahal backend sudah mengirim rincian per field (`errors: [{field, tag, value}]`) namun dibuang oleh lapisan API. Kini `apiRequest` menangkap rincian tersebut dan menerjemahkannya menjadi kalimat jelas per field (mis. "Status harus berupa salah satu dari: aktif, rusak, pemeliharaan, nonaktif"); pada form Tambah/Ubah CCTV, daftar isian yang bermasalah ditampilkan langsung di dalam modal (kotak merah dengan bullet) sehingga pengguna langsung tahu apa yang harus diperbaiki — tidak hanya lewat toast**
+before: `apiRequest` hanya melempar `Error(data.message)` sehingga rincian `errors[]` dari backend hilang; toast form CCTV menampilkan pesan generik "Validasi input gagal" (via `toast.error(err.message)`).
+after:
+- `lib/api.ts`: tipe `ApiResponse` bertambah `errors?: ApiFieldError[]`; kelas baru `ApiValidationError` (membawa `.errors` terstruktur); fungsi `formatValidationMessages(errors)` menerjemahkan `{field, tag, value}` → kalimat Bahasa Indonesia per field (label field via `FIELD_LABELS`, fallback transformasi CamelCase; tag didukung: `required`, `min`, `max`, `oneof`, `ip`, `ipv4`, `email`, `alpha`, `alphanum`, `uuid`/`uuid4`, `strongpassword`, `datetime`, `eqfield`).
+- Saat respons error memuat `errors[]`, `apiRequest` melempar `ApiValidationError` dengan `.message` yang sudah berisi ringkasan per field — otomatis membuat toast halaman lain ikut informatif tanpa perubahan di tiap halaman.
+- `app/cctv/page.tsx`: state `formErrors`; saat `ApiValidationError` diterima, daftar isian yang bermasalah dirender di dalam modal form (kotak `border-red-500/20 bg-red-500/10` berisi bullet "Periksa isian berikut sebelum menyimpan:"), state di-reset saat form dibuka/disimpan sukses; error non-validasi tetap via toast.
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/lib/api.ts
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+
+
+
 ## [1.25.10] - 2026-08-04
 
 ### Peningkatan: Badge Profil Sejajar dengan Status Layanan + Tampilan Nama & Peran Monokrom

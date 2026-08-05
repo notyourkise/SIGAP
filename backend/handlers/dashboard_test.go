@@ -66,7 +66,7 @@ func TestDashboardSummary_Success(t *testing.T) {
 	mock.ExpectQuery(`^SELECT status, count\(\*\) as count FROM "cctvs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "count"}).
 			AddRow("aktif", 2).
-			AddRow("rusak", 1))
+			AddRow("nonaktif", 1))
 
 	// 2. Tren pemeliharaan 6 bulan
 	mock.ExpectQuery(`^SELECT status, created_at FROM "maintenance_logs"`).

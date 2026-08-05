@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest, downloadApiFile, API_BASE_URL } from '@/lib/api';
+import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
@@ -105,6 +105,9 @@ export default function CCTVPage() {
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Error validasi per field dari backend (ditampilkan di dalam modal form)
+  const [formErrors, setFormErrors] = useState<string[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -277,6 +280,16 @@ export default function CCTVPage() {
 
   const normalizedStatus = (status: string) => status.trim().toUpperCase();
   const isStatus = (status: string, values: string[]) => values.includes(normalizedStatus(status));
+
+  // Normalisasi nilai status dari database (huruf kecil Indonesia / legacy huruf
+  // besar Inggris) ke nilai opsi <select> — enum backend: aktif/pemeliharaan/nonaktif.
+  const toStatusValue = (status: string) => {
+    const norm = status.trim().toUpperCase();
+    if (norm === 'ACTIVE') return 'aktif';
+    if (norm === 'INACTIVE' || norm === 'RUSAK' || norm === 'BROKEN') return 'nonaktif';
+    if (norm === 'MAINTENANCE') return 'pemeliharaan';
+    return status.toLowerCase();
+  };
   const statusLabel = (status: string) => {
     const normalized = normalizedStatus(status);
     if (['ACTIVE', 'AKTIF'].includes(normalized)) return 'Aktif';
@@ -302,6 +315,7 @@ export default function CCTVPage() {
   };
 
   const handleOpenForm = (cctv: CCTV | null = null) => {
+    setFormErrors([]);
     if (cctv) {
       setCurrentCCTV(cctv);
       setFormData({
@@ -316,7 +330,7 @@ export default function CCTVPage() {
         tipe_koneksi: cctv.tipe_koneksi || '',
         indoor_outdoor: cctv.indoor_outdoor || 'indoor',
         pemilik: cctv.pemilik || '',
-        status: cctv.status,
+        status: toStatusValue(cctv.status),
         ip_nvr: cctv.ip_nvr || '',
         ip_camera: cctv.ip_camera || '',
         keterangan: cctv.keterangan || ''
@@ -335,7 +349,7 @@ export default function CCTVPage() {
         tipe_koneksi: '',
         indoor_outdoor: 'INDOOR',
         pemilik: '',
-        status: 'ACTIVE',
+        status: 'aktif',
         ip_nvr: '',
         ip_camera: '',
         keterangan: ''
@@ -358,11 +372,21 @@ export default function CCTVPage() {
 
       if (response.status === 'success') {
         setIsFormModalOpen(false);
+        setFormErrors([]);
         toast.success(currentCCTV ? `Data CCTV "${formData.nama}" berhasil diperbarui.` : `CCTV "${formData.nama}" berhasil ditambahkan.`);
         fetchCCTVs();
       }
     } catch (err: any) {
-      toast.error(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
+      if (err instanceof ApiValidationError) {
+        // Tampilkan rincian isian yang bermasalah langsung di dalam form
+        setFormErrors(
+          err.errors.length > 0
+            ? formatValidationMessages(err.errors)
+            : [err.message]
+        );
+      } else {
+        toast.error(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
+      }
     } finally {
       setActionLoading(null);
     }
@@ -1134,9 +1158,9 @@ export default function CCTVPage() {
                       className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                     >
                       <option value="">Semua status</option>
-                      <option value="ACTIVE">Aktif</option>
-                      <option value="INACTIVE">Nonaktif</option>
-                      <option value="MAINTENANCE">Pemeliharaan</option>
+                      <option value="aktif">Aktif</option>
+                      <option value="nonaktif">Nonaktif</option>
+                      <option value="pemeliharaan">Pemeliharaan</option>
                     </select>
                   </div>
 
@@ -1203,9 +1227,9 @@ export default function CCTVPage() {
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-muted">Status *</label>
                     <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                      <option value="ACTIVE">Aktif</option>
-                      <option value="INACTIVE">Nonaktif</option>
-                      <option value="MAINTENANCE">Pemeliharaan</option>
+                      <option value="aktif">Aktif</option>
+                      <option value="nonaktif">Nonaktif</option>
+                      <option value="pemeliharaan">Pemeliharaan</option>
                     </select>
                   </div>
                   <CCTVTextField className="md:col-span-2" label="Nama CCTV *" required value={formData.nama} onChange={(value) => setFormData({ ...formData, nama: value })} placeholder="Contoh: CCTV Sumbu Kebangsaan Utama" />
@@ -1241,6 +1265,17 @@ export default function CCTVPage() {
                     </div>
                   </div>
                 </details>
+
+                {formErrors.length > 0 && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
+                    <p className="font-semibold">Periksa isian berikut sebelum menyimpan:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {formErrors.map((msg, i) => (
+                        <li key={i}>{msg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 border-t border-border pt-4 mt-2">
                   <button

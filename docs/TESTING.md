@@ -40,8 +40,9 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
-| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID |
-| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403 |
+| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi) |
+| `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah |
+| `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif` |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong) |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
 | `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
@@ -53,7 +54,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 30 file test** (8 utils, 4 middleware, 12 handlers, 2 models, 2 config, 2 routes, termasuk helper).
+**Total: 31 file test** (8 utils, 4 middleware, 13 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 

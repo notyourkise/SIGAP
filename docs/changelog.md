@@ -3,6 +3,26 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.11] — 2026-08-05 — Sprint 2 Selesai: Sinkronisasi Status CCTV (Task 5.2) + Uji Manual S1–S8
+
+### Perubahan
+
+- **Backend** ([0.28.0]–[0.28.3]): helper `syncCCTVStatus` konservatif dalam transaksi
+  complete/field-check (`aktif ↔ pemeliharaan`; `nonaktif` tidak pernah ditimpa);
+  normalisasi status menerima nilai Inggris (`active`/`maintenance`/`inactive`);
+  guard kini membandingkan nilai ternormalisasi agar baris legacy huruf besar tetap
+  dilindungi; status `rusak` **digabung ke `nonaktif`** (enum resmi:
+  `aktif`/`pemeliharaan`/`nonaktif`); audit `UPDATE_CCTV` + broadcast `CCTV_UPDATED`.
+- **Frontend** ([1.25.11]–[1.25.13]): pesan error validasi rinci per field (kotak
+  merah di modal form); dropdown status form & filter selaras enum lowercase;
+  opsi "Rusak" dihapus (nilai legacy `rusak`/`broken` dipetakan ke `nonaktif`).
+- **Dokumen**: panduan uji manual `docs/manual-test-sync-cctv.md` (8 skenario S1–S8)
+  — hasil uji runtime Docker: 3 bug ditemukan & ditindaklanjuti; `docs/plan.md` &
+  `docs/ROADMAP.md` status Sprint 2 = ✅ Selesai.
+- `go build`/`go vet`/`go test` PASS; `npx tsc --noEmit` & `npm run lint` (0 error) PASS.
+
+Timestamp: 2026-08-05 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.28.0]–[0.28.3], `frontend/changelog.md` [1.25.11]–[1.25.13]
+
 ## [1.28.10] — 2026-08-04 — Badge Profil: Sejajar dengan Status Layanan + Monokrom
 
 ### Perubahan

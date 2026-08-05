@@ -4,6 +4,122 @@ export interface ApiResponse<T> {
   status: string;
   message?: string;
   data?: T;
+  errors?: ApiFieldError[];
+}
+
+// Error validasi per field yang dikirim backend (format utils/validator.go):
+// { field, tag, value } — mis. { field: "Status", tag: "oneof", value: "aktif pemeliharaan nonaktif" }.
+export interface ApiFieldError {
+  field: string;
+  tag: string;
+  value?: string;
+}
+
+// Error khusus untuk respons validasi: selain .message yang sudah berisi
+// ringkasan, .errors menyimpan detail per field agar halaman bisa
+// menampilkan daftar isian yang bermasalah secara terstruktur.
+export class ApiValidationError extends Error {
+  errors: ApiFieldError[];
+
+  constructor(message: string, errors: ApiFieldError[]) {
+    super(message);
+    this.name = 'ApiValidationError';
+    this.errors = errors;
+    Object.setPrototypeOf(this, ApiValidationError.prototype);
+  }
+}
+
+// Label Bahasa Indonesia per field. Kunci memakai nama JSON (snake_case);
+// lookup dilakukan case-insensitive, dengan fallback transformasi nama
+// field Go (CamelCase, mis. "IPNVR") menjadi label yang bisa dibaca.
+const FIELD_LABELS: Record<string, string> = {
+  kode_cctv: 'Kode CCTV',
+  id_channel: 'ID Channel',
+  nama: 'Nama',
+  lokasi_area: 'Lokasi',
+  longitude: 'Longitude',
+  latitude: 'Latitude',
+  jenis_cctv: 'Jenis CCTV',
+  sumber_listrik: 'Sumber listrik',
+  tipe_koneksi: 'Tipe koneksi',
+  indoor_outdoor: 'Pemasangan (indoor/outdoor)',
+  pemilik: 'Pemilik / pengelola',
+  status: 'Status',
+  ip_nvr: 'IP NVR',
+  ip_camera: 'IP kamera',
+  keterangan: 'Keterangan',
+  username: 'Username',
+  password: 'Kata sandi',
+  old_password: 'Kata sandi lama',
+  new_password: 'Kata sandi baru',
+  new_password_confirm: 'Konfirmasi kata sandi baru',
+  confirm_password: 'Konfirmasi kata sandi',
+  full_name: 'Nama lengkap',
+  email: 'Email',
+  role: 'Peran',
+  profile_photo_url: 'Foto profil',
+  qr_payload: 'Payload QR',
+  cctv_id: 'CCTV',
+  cctv_ids: 'CCTV',
+  technician_id: 'Teknisi',
+  action_taken: 'Tindakan',
+  scheduled_date: 'Tanggal terjadwal',
+  notes: 'Catatan',
+  image_url: 'URL gambar',
+  start_date: 'Tanggal mulai',
+  end_date: 'Tanggal selesai',
+  module: 'Modul',
+  search: 'Pencarian',
+  checklist_results: 'Hasil checklist',
+  photos: 'Foto',
+};
+
+function getFieldLabel(field: string): string {
+  const key = field.toLowerCase();
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  // Transformasi nama field Go (CamelCase) → label terbaca, mis. "IPNVR" → "IPNVR",
+  // "NewPassword" → "New Password" — dikapitalisasi huruf pertama.
+  const readable = field.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+// Terjemahkan error validasi backend menjadi kalimat per field yang jelas,
+// mis. "Status harus berupa salah satu dari: aktif, pemeliharaan, nonaktif".
+export function formatValidationMessages(errors: ApiFieldError[]): string[] {
+  return errors.map((e) => {
+    const label = getFieldLabel(e.field);
+    switch (e.tag) {
+      case 'required':
+        return `${label} wajib diisi`;
+      case 'min':
+        return `${label} minimal ${e.value || 'N'} karakter`;
+      case 'max':
+        return `${label} maksimal ${e.value || 'N'} karakter`;
+      case 'oneof':
+        return `${label} harus berupa salah satu dari: ${(e.value || '').trim().replace(/\s+/g, ', ')}`;
+      case 'ip':
+        return `${label} harus berupa alamat IP yang valid`;
+      case 'ipv4':
+        return `${label} harus berupa alamat IPv4 yang valid`;
+      case 'email':
+        return `${label} harus berupa alamat email yang valid`;
+      case 'alpha':
+        return `${label} hanya boleh berisi huruf`;
+      case 'alphanum':
+        return `${label} hanya boleh berisi huruf dan angka`;
+      case 'uuid':
+      case 'uuid4':
+        return `${label} tidak valid`;
+      case 'strongpassword':
+        return `${label} harus mengandung huruf besar, huruf kecil, angka, dan karakter khusus`;
+      case 'datetime':
+        return `${label} harus berupa tanggal yang valid`;
+      case 'eqfield':
+        return `${label} harus sama dengan isian yang bersesuaian`;
+      default:
+        return `${label} tidak valid (aturan: ${e.tag})`;
+    }
+  });
 }
 
 const SESSION_COOKIE = 'sigap_session';
@@ -112,6 +228,15 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
+    // Respons validasi backend memuat detail per field (errors[]) yang selama
+    // ini dibuang — sekarang diubah menjadi pesan yang menjelaskan apa yang salah.
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      const details = formatValidationMessages(data.errors as ApiFieldError[]);
+      throw new ApiValidationError(
+        `${data.message || 'Validasi input gagal'}: ${details.join('; ')}`,
+        data.errors as ApiFieldError[]
+      );
+    }
     throw new Error(data.message || 'Terjadi kesalahan pada server');
   }
 
