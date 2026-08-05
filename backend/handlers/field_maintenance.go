@@ -39,7 +39,7 @@ type CreateFieldMaintenanceRequest struct {
 
 // CreateFieldMaintenance mencatat hasil pengecekan lapangan teknisi (Admin & Teknisi)
 // @Summary      Catat Pengecekan Lapangan
-// @Description  Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif): hasil "attention" → "pemeliharaan", hasil "ok" → "aktif"; status "rusak"/"nonaktif" tidak pernah ditimpa otomatis.
+// @Description  Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif): hasil "attention" → "pemeliharaan", hasil "ok" → "aktif"; status "nonaktif" tidak pernah ditimpa otomatis.
 // @Tags         Pengecekan Lapangan
 // @Accept       json
 // @Produce      json

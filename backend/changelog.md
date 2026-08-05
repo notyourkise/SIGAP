@@ -1,5 +1,67 @@
 # Changelog - Backend SIGAP
 
+## [0.28.3] - 2026-08-05
+
+### Perubahan: Penggabungan Status "rusak" → "nonaktif"
+
+perubahan yang dilakukan: **Status `rusak` digabung ke `nonaktif` karena secara fungsional identik di SIGAP (keduanya dilindungi dari sinkronisasi otomatis dan ditampilkan sama sebagai "Nonaktif" di antarmuka). Enum status resmi kini `aktif` / `pemeliharaan` / `nonaktif`: `normalizeCCTVStatus` memetakan `rusak`/`broken` → `nonaktif` (berlaku otomatis untuk create, update, dan impor Excel), validasi `oneof` dan switch validasi impor hanya menerima tiga status resmi, dan guard konservatif sinkronisasi disederhanakan menjadi `current == "nonaktif"`**
+before: Tiga status dilindungi sinkronisasi (`rusak` + `nonaktif`) dengan enum 4 nilai — memaksa frontend & dokumentasi menyediakan opsi "Rusak" yang perilakunya identik dengan "Nonaktif" (dua status = satu makna).
+after:
+- `handlers/cctv.go`: `normalizeCCTVStatus` — `case "rusak", "broken": return "nonaktif"` (sejak 2026-08-05); tag `oneof` pada `CreateCCTVRequest`/`UpdateCCTVRequest` → `aktif pemeliharaan nonaktif`; switch validasi impor → `case "aktif", "pemeliharaan", "nonaktif"` dengan pesan error "Gunakan: aktif, pemeliharaan, atau nonaktif".
+- `handlers/cctv_sync.go`: guard konservatif `if current == "rusak" || current == "nonaktif"` → `if current == "nonaktif"` (nilai `rusak` sudah ternormalisasi menjadi `nonaktif` sebelumnya); komentar aturan transisi diperbarui.
+- `handlers/cctv_test.go`: `TestNormalizeCCTVStatus` — kasus `rusak`/`broken` kini mengharapkan `nonaktif`; `TestUpdateCCTV_Success` — input `{"status":"rusak"}` disimpan sebagai `nonaktif` (bukti pemetaan pada jalur update).
+- `handlers/dashboard_test.go`: agregat status dashboard `AddRow("rusak", ...)` → `AddRow("nonaktif", ...)`.
+- Anotasi Swagger `field_maintenance.go` & `maintenance.go` diperbarui ("status nonaktif tidak pernah ditimpa otomatis"); docs di-regenerate (`swag init`).
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_sync.go
+- backend/handlers/cctv_test.go
+- backend/handlers/dashboard_test.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/maintenance.go
+- backend/docs/*
+- backend/changelog.md
+
+
+
+## [0.28.2] - 2026-08-05
+
+### Perbaikan: Guard Konservatif Sinkronisasi Status Berlaku untuk Baris Legacy (huruf besar/Inggris)
+
+perubahan yang dilakukan: **Guard "rusak/nonaktif tidak pernah ditimpa" di `syncCCTVStatus` membandingkan string secara persis terhadap huruf kecil Indonesia, sehingga baris legacy berstatus huruf besar Inggris (`'INACTIVE'`, `'RUSAK'`, `'BROKEN'`, ...) lolos guard dan bisa diubah otomatis — terbukti di audit log uji manual: `Status CCTV diubah otomatis dari 'INACTIVE' ke 'aktif'`. Kini status saat ini dinormalisasi (`normalizeCCTVStatus`) sebelum guard, jadi baris legacy tetap dilindungi**
+before: `if cctv.Status == "rusak" || cctv.Status == "nonaktif" { return nil }` — nilai `'INACTIVE'`/`'RUSAK'` (huruf besar dari data lama) tidak cocok dengan perbandingan literal → sinkronisasi otomatis menimpanya (mis. `'INACTIVE'` → `'aktif'`).
+after:
+- `handlers/cctv_sync.go`: status saat ini dinormalisasi dulu (`current := normalizeCCTVStatus(cctv.Status)`), lalu guard membandingkan `current`; perbandingan "sudah sesuai target" juga memakai `current` sehingga baris legacy `'ACTIVE'` tidak ditulis ulang percuma saat target `aktif`.
+- `handlers/maintenance_test.go`: test baru `TestCompleteMaintenanceLog_SyncCCTV_LegacyUppercaseUntouched` — CCTV legacy `'INACTIVE'` + complete 9/9 ok → tidak ada aksi UPDATE status (hanya baca).
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/handlers/cctv_sync.go
+- backend/handlers/maintenance_test.go
+- backend/changelog.md
+
+
+
+## [0.28.1] - 2026-08-05
+
+### Perbaikan: Normalisasi Status CCTV untuk Nilai Bahasa Inggris (ACTIVE/MAINTENANCE/INACTIVE)
+
+perubahan yang dilakukan: **`normalizeCCTVStatus` tidak menormalisasi padanan bahasa Inggris dari dropdown antarmuka (`ACTIVE`/`INACTIVE`/`MAINTENANCE` — padahal komentar fungsi sudah menjanjikannya), sehingga validasi `oneof=aktif rusak pemeliharaan nonaktif` selalu menolak simpan/ubah CCTV via form UI dengan pesan "Validasi input gagal". Kini alias bahasa Inggris ditambahkan: `active`→`aktif`, `broken`→`rusak`, `maintenance`→`pemeliharaan`, `inactive`→`nonaktif` (tetap case-insensitive, spasi di sekitar ditrim). Berlaku untuk create, update, dan impor Excel karena ketiganya lewat fungsi yang sama**
+before: `normalizeCCTVStatus` hanya mengenal kata Indonesia; "ACTIVE"/"MAINTENANCE"/"INACTIVE" dari dropdown form gagal validasi enum → 400 "Validasi input gagal" (kode error: `Status harus berupa salah satu dari: aktif, rusak, pemeliharaan, nonaktif`).
+after:
+- `handlers/cctv.go` (`normalizeCCTVStatus`): switch diperluas dengan alias Inggris (`active`, `broken`, `maintenance`, `inactive`) selain kata Indonesia yang sudah ada; nilai tak dikenal tetap dibiarkan agar validasi `oneof` menolaknya.
+- `handlers/cctv_test.go`: test baru `TestNormalizeCCTVStatus` (tabel 15 kasus: Indonesia, Inggris, huruf besar UI, campuran, spasi, nilai tak dikenal, string kosong).
+timestamp: 2026-08-05 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/changelog.md
+
+
+
 ## [0.28.0] - 2026-08-05
 
 ### Fitur: Sinkronisasi Status CCTV Otomatis (Konservatif) — Task 5.2

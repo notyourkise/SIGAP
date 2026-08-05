@@ -17,8 +17,8 @@ import (
 //
 // Aturan transisi (keputusan desain 2026-08-04):
 //   - Hanya perpindahan aktif ↔ pemeliharaan yang boleh dilakukan otomatis.
-//   - Status "rusak" dan "nonaktif" TIDAK PERNAH ditimpa otomatis — keduanya
-//     merupakan keputusan manual admin.
+//   - Status "nonaktif" TIDAK PERNAH ditimpa otomatis — keputusan manual admin.
+//     (Sejak 2026-08-05 "rusak" digabung ke "nonaktif".)
 //   - Jika status saat ini sudah sama dengan target, tidak ada perubahan.
 //
 // Saat status benar-benar berubah, helper mencatat audit log UPDATE_CCTV
@@ -30,13 +30,16 @@ func syncCCTVStatus(tx *gorm.DB, c *fiber.Ctx, cctvID uuid.UUID, newStatus strin
 		return err
 	}
 
-	// Konservatif: status rusak/nonaktif tidak pernah ditimpa otomatis
-	if cctv.Status == "rusak" || cctv.Status == "nonaktif" {
+	// Konservatif: status nonaktif tidak pernah ditimpa otomatis.
+	// Bandingkan nilai ternormalisasi agar baris legacy berhuruf besar/Inggris
+	// ('INACTIVE', 'RUSAK', 'BROKEN', ...) tetap dilindungi (regresi 2026-08-05).
+	current := normalizeCCTVStatus(cctv.Status)
+	if current == "nonaktif" {
 		return nil
 	}
 
 	// Status sudah sesuai target — tidak perlu mengubah apa pun
-	if cctv.Status == newStatus {
+	if current == newStatus {
 		return nil
 	}
 

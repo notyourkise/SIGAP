@@ -17,18 +17,22 @@ import (
 )
 
 // normalizeCCTVStatus mengubah input status menjadi enum huruf kecil standar
-// (aktif/rusak/pemeliharaan/nonaktif) agar penyimpanan & filter konsisten.
-// Input huruf besar (mis. "ACTIVE" dari antarmuka/impor lama) diterima dan
+// (aktif/pemeliharaan/nonaktif) agar penyimpanan & filter konsisten.
+// Input huruf besar (mis. "ACTIVE" dari antarmuka/impor lama) maupun padanan
+// bahasa Inggris ("active", "broken", "maintenance", "inactive") diterima dan
 // dinormalisasi sebelum validasi.
+// Sejak 2026-08-05 status "rusak" digabung ke "nonaktif" — keduanya tidak
+// dibedakan oleh logika sistem maupun tampilan, sehingga masukan "rusak"/"broken"
+// dipetakan menjadi "nonaktif".
 func normalizeCCTVStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "aktif":
+	case "aktif", "active":
 		return "aktif"
-	case "rusak":
-		return "rusak"
-	case "pemeliharaan":
+	case "rusak", "broken":
+		return "nonaktif"
+	case "pemeliharaan", "maintenance":
 		return "pemeliharaan"
-	case "nonaktif":
+	case "nonaktif", "inactive":
 		return "nonaktif"
 	default:
 		return s
@@ -48,7 +52,7 @@ type CreateCCTVRequest struct {
 	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
 	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
 	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
-	Status        string `json:"status" validate:"required,oneof=aktif rusak pemeliharaan nonaktif"`
+	Status        string `json:"status" validate:"required,oneof=aktif pemeliharaan nonaktif"`
 	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
 	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
 	Keterangan    string `json:"keterangan" validate:"omitempty"`
@@ -67,7 +71,7 @@ type UpdateCCTVRequest struct {
 	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
 	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
 	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
-	Status        string `json:"status" validate:"omitempty,oneof=aktif rusak pemeliharaan nonaktif"`
+	Status        string `json:"status" validate:"omitempty,oneof=aktif pemeliharaan nonaktif"`
 	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
 	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
 	Keterangan    string `json:"keterangan" validate:"omitempty"`
@@ -745,12 +749,12 @@ func ImportCCTV(c *fiber.Ctx) error {
 		// Normalisasi & validasi enum status agar data impor konsisten
 		status = normalizeCCTVStatus(status)
 		switch status {
-		case "aktif", "rusak", "pemeliharaan", "nonaktif":
+		case "aktif", "pemeliharaan", "nonaktif":
 		default:
 			tx.Rollback()
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"status":  "error",
-				"message": fmt.Sprintf("Baris %d: Status '%s' tidak valid. Gunakan: aktif, rusak, pemeliharaan, atau nonaktif", rowNum, getCell(11)),
+				"message": fmt.Sprintf("Baris %d: Status '%s' tidak valid. Gunakan: aktif, pemeliharaan, atau nonaktif", rowNum, getCell(11)),
 			})
 		}
 

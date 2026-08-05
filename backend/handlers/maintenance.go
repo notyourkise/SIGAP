@@ -522,7 +522,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 // CompleteMaintenanceLog menyelesaikan tugas terjadwal lewat checklist (Admin & Teknisi)
 // @Summary      Selesaikan Tugas Pemeliharaan
-// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed → "pemeliharaan"; status "rusak"/"nonaktif" tidak pernah ditimpa otomatis.
+// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed → "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis.
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json

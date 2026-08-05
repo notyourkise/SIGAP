@@ -1230,7 +1230,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif): hasil \"attention\" → \"pemeliharaan\", hasil \"ok\" → \"aktif\"; status \"rusak\"/\"nonaktif\" tidak pernah ditimpa otomatis.",
+                "description": "Membuat catatan pengecekan lapangan untuk aset CCTV dengan daftar checklist item yang wajib diisi dan minimal satu foto bukti. ID Teknisi dideteksi otomatis dari token JWT. Status CCTV ikut disinkronkan otomatis (konservatif): hasil \"attention\" → \"pemeliharaan\", hasil \"ok\" → \"aktif\"; status \"nonaktif\" tidak pernah ditimpa otomatis.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1966,7 +1966,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi \"completed\" bila 9/9 item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → \"aktif\", failed → \"pemeliharaan\"; status \"rusak\"/\"nonaktif\" tidak pernah ditimpa otomatis.",
+                "description": "Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi \"completed\" bila 9/9 item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → \"aktif\", failed → \"pemeliharaan\"; status \"nonaktif\" tidak pernah ditimpa otomatis.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2949,7 +2949,6 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "aktif",
-                        "rusak",
                         "pemeliharaan",
                         "nonaktif"
                     ]
@@ -3199,7 +3198,6 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "aktif",
-                        "rusak",
                         "pemeliharaan",
                         "nonaktif"
                     ]

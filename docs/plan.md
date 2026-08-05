@@ -85,7 +85,9 @@ sigap-monorepo/
 - Prioritas: **Jalur A — Alur Logika**, 5 task berurutan 5.1 → 5.5 (lihat `ROADMAP.md` Fase 5).
 - Notifikasi: **in-app saja** (bell + daftar notifikasi + toast via WebSocket); email tidak dipakai.
 - Status CCTV otomatis: **konservatif** — hanya `aktif ↔ pemeliharaan`; `rusak`/`nonaktif`
-  tetap keputusan manual admin.
+  tetap keputusan manual admin. **Per 2026-08-05 status `rusak` digabung ke `nonaktif`**
+  (fungsional identik: keduanya dilindungi sync dan tampil sama "Nonaktif"); enum resmi
+  kini `aktif` / `pemeliharaan` / `nonaktif`.
 
 **Brainstorming 2026-08-05:**
 - Setelah analisis gap menyeluruh, disepakati **3 fase baru** (Fase 6–8) setelah Fase 5 tuntas:
@@ -100,7 +102,7 @@ sigap-monorepo/
 | Sprint | Fase | Task ROADMAP | Cakupan | Status |
 |--------|------|--------------|---------|--------|
 | 1 | 5 | 5.1 Notifikasi in-app | Model `Notification`, endpoint `/api/notifications`, `WSHub` targeted, `NotificationBell`, hook assign/complete/field-check | ✅ Kode selesai (2026-08-04, branch `feature/notification-in-app`) — menunggu uji runtime Docker |
-| 2 | 5 | 5.2 Sinkron status CCTV | Helper dalam transaksi complete/field-check; tabel transisi konservatif | ✅ Selesai (2026-08-05, branch `feature/sync-cctv-status`) — build/test/vet PASS, menunggu uji runtime Docker |
+| 2 | 5 | 5.2 Sinkron status CCTV | Helper dalam transaksi complete/field-check; tabel transisi konservatif | ✅ Selesai (2026-08-05, branch `feature/sync-cctv-status`) — build/test/vet PASS, uji manual S1–S8 di `docs/manual-test-sync-cctv.md` (3 bug ditemukan & ditindaklanjuti: pesan validasi [FE 1.25.11], normalisasi Inggris [BE 0.28.1], guard legacy uppercase [BE 0.28.2], dropdown status [FE 1.25.12]) + penggabungan `rusak`→`nonaktif` [BE 0.28.3 / FE 1.25.13] |
 | 3 | 5 | 5.3 Re-assign tugas | Perluas endpoint assign ke log `ongoing`, notif dua pihak, tombol "Alihkan" | ⬜ Belum |
 | 4 | 5 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ⬜ Belum |
 | 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine tiap jam, notif admin/teknisi | ⬜ Belum |
