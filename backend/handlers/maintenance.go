@@ -410,17 +410,17 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 // hanya bila 9/9 item berstatus ok; selain itu "failed".
 const maintenanceCheckTotal = 9
 
-// AssignMaintenanceLog menugaskan log terjadwal ke seorang teknisi (Admin saja)
-// @Summary      Tugaskan Log ke Teknisi
-// @Description  Menugaskan log pemeliharaan berstatus "scheduled" ke teknisi berperan "teknisi". Status log otomatis berubah menjadi "ongoing".
+// AssignMaintenanceLog menugaskan atau mengalihkan log pemeliharaan ke teknisi (Admin saja)
+// @Summary      Tugaskan / Alihkan Log ke Teknisi
+// @Description  Menugaskan log berstatus "scheduled" ke teknisi (assign pertama) atau mengalihkan log berstatus "ongoing" ke teknisi lain (re-assign, Fase 5.3). Status log otomatis menjadi "ongoing"; pada re-assign teknisi lama dilepas dan diberi notifikasi. User tujuan wajib berperan "teknisi" dan tidak boleh sama dengan teknisi yang sedang ditugaskan.
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id path string true "Log UUID"
 // @Param        request body AssignMaintenanceLogRequest true "ID Teknisi Tujuan"
-// @Success      200 {object} map[string]interface{} "Log berhasil ditugaskan"
-// @Failure      400 {object} map[string]interface{} "UUID tidak valid, log tidak terjadwal, atau format body salah"
+// @Success      200 {object} map[string]interface{} "Log berhasil ditugaskan/dialihkan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid, status log tidak mendukung (hanya scheduled/ongoing), teknisi sama dengan yang sedang ditugaskan, atau format body salah"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
 // @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
 // @Failure      404 {object} map[string]interface{} "Log atau teknisi tidak ditemukan"
@@ -443,11 +443,14 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Hanya log terjadwal (belum ditugaskan) yang dapat di-assign
-	if logEntry.Status != "scheduled" {
+	// Fase 5.3: penugasan diperluas — log berstatus "scheduled" untuk assign
+	// pertama, dan "ongoing" untuk re-assign (teknisi lama dilepas). Log
+	// "completed"/"failed" tidak boleh dialihkan karena sudah berakhir.
+	isReassign := logEntry.Status == "ongoing"
+	if logEntry.Status != "scheduled" && logEntry.Status != "ongoing" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Hanya log berstatus terjadwal yang dapat ditugaskan ke teknisi",
+			"message": "Hanya log berstatus terjadwal atau dalam proses yang dapat ditugaskan ke teknisi",
 		})
 	}
 
@@ -490,6 +493,23 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
+	// Saat re-assign (status ongoing): muat teknisi lama untuk audit &
+	// notifikasi, serta tolak bila user tujuan sama dengan teknisi sekarang
+	var oldTechUser models.User
+	if isReassign && logEntry.TechnicianID != nil {
+		if *logEntry.TechnicianID == techUUID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Teknisi sudah ditugaskan pada tugas ini",
+			})
+		}
+		// Muat teknisi lama — bila sudah dihapus (soft delete), nama kosong
+		// digantikan label generik pada audit/notifikasi
+		if err := config.DB.First(&oldTechUser, "id = ?", *logEntry.TechnicianID).Error; err != nil {
+			oldTechUser = models.User{}
+		}
+	}
+
 	now := time.Now()
 	logEntry.TechnicianID = &techUUID
 	logEntry.Status = "ongoing"
@@ -502,14 +522,43 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	utils.LogAudit(config.DB, c, "ASSIGN_MAINTENANCE", "MAINTENANCE", "Menugaskan log pemeliharaan ke teknisi: "+techUser.FullName+" ("+logEntry.ActionTaken+")", nil, "", "")
+	// Audit: assign pertama memakai action ASSIGN_MAINTENANCE; re-assign
+	// memakai REASSIGN_MAINTENANCE dengan rincian teknisi lama → baru
+	if isReassign {
+		oldName := oldTechUser.FullName
+		if oldName == "" {
+			oldName = "teknisi lama"
+		}
+		utils.LogAudit(config.DB, c, "REASSIGN_MAINTENANCE", "MAINTENANCE",
+			"Tugas "+logEntry.ID.String()+" dialihkan dari "+oldName+" ke "+techUser.FullName, nil, "", "")
+	} else {
+		utils.LogAudit(config.DB, c, "ASSIGN_MAINTENANCE", "MAINTENANCE", "Menugaskan log pemeliharaan ke teknisi: "+techUser.FullName+" ("+logEntry.ActionTaken+")", nil, "", "")
+	}
 
-	// Notifikasi in-app ke teknisi yang ditugaskan (Fase 5.1)
+	// Nama CCTV dipakai pada pesan notifikasi re-assign
+	var cctvName string
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", logEntry.CCTVID).Error; err == nil {
+		cctvName = cctv.Nama
+	}
+	if cctvName == "" {
+		cctvName = logEntry.ActionTaken
+	}
+
 	refID := logEntry.ID
+	// Notifikasi in-app ke teknisi yang ditugaskan (Fase 5.1)
 	utils.NotifyUser(config.DB, techUUID, models.NotificationTypeAssigned,
 		"Tugas baru ditugaskan",
-		"Tugas \""+logEntry.ActionTaken+"\" ditugaskan kepada Anda. Silakan kerjakan sesuai jadwal.",
+		"Anda mendapat tugas pemeliharaan baru untuk CCTV "+cctvName+".",
 		"maintenance-log", &refID)
+
+	// Fase 5.3: saat re-assign, beri tahu teknisi lama bahwa tugas dialihkan
+	if isReassign && oldTechUser.ID != uuid.Nil {
+		utils.NotifyUser(config.DB, oldTechUser.ID, models.NotificationTypeUnassigned,
+			"Tugas dialihkan",
+			"Tugas pemeliharaan untuk CCTV "+cctvName+" telah dialihkan ke teknisi lain.",
+			"maintenance-log", &refID)
+	}
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
