@@ -1891,7 +1891,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Menugaskan log pemeliharaan berstatus \"scheduled\" ke teknisi berperan \"teknisi\". Status log otomatis berubah menjadi \"ongoing\".",
+                "description": "Menugaskan log berstatus \"scheduled\" ke teknisi (assign pertama) atau mengalihkan log berstatus \"ongoing\" ke teknisi lain (re-assign, Fase 5.3). Status log otomatis menjadi \"ongoing\"; pada re-assign teknisi lama dilepas dan diberi notifikasi. User tujuan wajib berperan \"teknisi\" dan tidak boleh sama dengan teknisi yang sedang ditugaskan.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1901,7 +1901,7 @@ const docTemplate = `{
                 "tags": [
                     "Log Pemeliharaan"
                 ],
-                "summary": "Tugaskan Log ke Teknisi",
+                "summary": "Tugaskan / Alihkan Log ke Teknisi",
                 "parameters": [
                     {
                         "type": "string",
@@ -1922,14 +1922,14 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Log berhasil ditugaskan",
+                        "description": "Log berhasil ditugaskan/dialihkan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "UUID tidak valid, log tidak terjadwal, atau format body salah",
+                        "description": "UUID tidak valid, status log tidak mendukung (hanya scheduled/ongoing), teknisi sama dengan yang sedang ditugaskan, atau format body salah",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

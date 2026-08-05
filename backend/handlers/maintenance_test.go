@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
+
+	"sigap-backend/middleware"
 )
 
 func maintenanceMockRow() *sqlmock.Rows {
@@ -324,6 +326,11 @@ func TestAssignMaintenanceLog_Success(t *testing.T) {
 	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	// Nama CCTV untuk pesan notifikasi ke teknisi yang ditugaskan
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
+			AddRow(cctvID, "CCTV-01", "Kamera Gerbang", "aktif"))
+
 	// Reload dengan relasi (Preload CCTV & User)
 	reload := sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
@@ -354,13 +361,16 @@ func TestAssignMaintenanceLog_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAssignMaintenanceLog_NotScheduled(t *testing.T) {
+// TestAssignMaintenanceLog_CompletedRejected memastikan log berstatus
+// "completed" (atau "failed") tidak dapat dialihkan — hanya "scheduled" dan
+// "ongoing" yang menerima penugasan (Fase 5.3).
+func TestAssignMaintenanceLog_CompletedRejected(t *testing.T) {
 	_, mock := setupMockGORM(t)
-	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+	id, techID := uuid.New(), uuid.New()
 
-	// Log sudah berstatus ongoing — tidak boleh di-assign ulang
+	// Log sudah berstatus completed — tidak boleh di-assign/dialihkan
 	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
-		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+		WillReturnRows(maintenanceMockRow())
 
 	app := newTestApp()
 	app.Put("/maintenance-logs/:id/assign", withUserLocals(uuid.New().String(), "admin"), AssignMaintenanceLog)
@@ -371,6 +381,112 @@ func TestAssignMaintenanceLog_NotScheduled(t *testing.T) {
 	resp, err := app.Test(req)
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestAssignMaintenanceLog_ReassignSuccess — re-assign log berstatus "ongoing"
+// ke teknisi lain: teknisi lama dilepas, teknisi baru ditugaskan, status tetap
+// "ongoing" (Fase 5.3).
+func TestAssignMaintenanceLog_ReassignSuccess(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, cctvID, oldTechID, newTechID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+
+	// Log berstatus ongoing dengan teknisi lama
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, oldTechID, cctvID))
+	// Teknisi baru (user tujuan) valid berperan teknisi
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(userRow(newTechID, "teknisi2", "teknisi"))
+	// Teknisi lama dimuat untuk audit & notifikasi "dialihkan"
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(userRow(oldTechID, "teknisi1", "teknisi"))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Nama CCTV untuk pesan notifikasi re-assign
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
+			AddRow(cctvID, "CCTV-01", "Kamera Gerbang", "aktif"))
+
+	// Reload dengan relasi — teknisi kini teknisi baru, status tetap ongoing
+	reload := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, newTechID, "Bersihkan lensa kamera", "Debu", "ongoing", nil, nil, "")
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(reload)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id/assign", withUserLocals(uuid.New().String(), "admin"), AssignMaintenanceLog)
+
+	req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String()+"/assign", strings.NewReader(`{"technician_id":"`+newTechID.String()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, "ongoing", data["status"])
+	assert.Equal(t, newTechID.String(), data["technician_id"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestAssignMaintenanceLog_ReassignSameTechnician — re-assign ke teknisi yang
+// sama dengan yang sedang ditugaskan ditolak dengan 400 (Fase 5.3).
+func TestAssignMaintenanceLog_ReassignSameTechnician(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, cctvID, techID := uuid.New(), uuid.New(), uuid.New()
+
+	// Log berstatus ongoing dengan teknisi lama = user tujuan
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(userRow(techID, "teknisi1", "teknisi"))
+
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id/assign", withUserLocals(uuid.New().String(), "admin"), AssignMaintenanceLog)
+
+	req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String()+"/assign", strings.NewReader(`{"technician_id":"`+techID.String()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "Teknisi sudah ditugaskan pada tugas ini", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestAssignMaintenanceLog_ReassignRoleForbidden — re-assign hanya boleh
+// dilakukan admin; user berperan teknisi ditolak middleware RequireRole (403).
+func TestAssignMaintenanceLog_ReassignRoleForbidden(t *testing.T) {
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id/assign",
+		withUserLocals(uuid.New().String(), "teknisi"),
+		middleware.RequireRole("admin"),
+		AssignMaintenanceLog,
+	)
+
+	req := httptest.NewRequest("PUT", "/maintenance-logs/"+uuid.New().String()+"/assign", strings.NewReader(`{"technician_id":"`+uuid.New().String()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "error", result["status"])
 }
 
 func TestAssignMaintenanceLog_NotTechnician(t *testing.T) {

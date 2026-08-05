@@ -26,6 +26,7 @@ import {
   CheckCheck,
   SlidersHorizontal,
   RotateCcw,
+  ArrowLeftRight,
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 
@@ -358,7 +359,8 @@ export default function MaintenanceLogsPage() {
     }
   };
 
-  // Tugaskan log terjadwal ke teknisi — status otomatis menjadi "ongoing"
+  // Tugaskan/alihkan log ke teknisi — status otomatis menjadi "ongoing";
+  // untuk log ongoing, teknisi lama dilepas dan diberi notifikasi (Fase 5.3)
   const handleAssignLog = async () => {
     if (!assignLog) return;
     if (!assignTechnicianId) {
@@ -372,13 +374,13 @@ export default function MaintenanceLogsPage() {
         body: JSON.stringify({ technician_id: assignTechnicianId }),
       });
       if (response.status === 'success') {
-        toast.success('Tugas berhasil ditugaskan ke teknisi.');
+        toast.success(assignLog.status === 'ongoing' ? 'Tugas berhasil dialihkan ke teknisi lain.' : 'Tugas berhasil ditugaskan ke teknisi.');
         setAssignLog(null);
         setAssignTechnicianId('');
         fetchLogs();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Tugas belum dapat ditugaskan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Tugas belum dapat dialihkan. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -659,7 +661,7 @@ export default function MaintenanceLogsPage() {
                             >
                               {actionLoading === `detail-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                             </button>
-                            {isAdmin && log.status === 'scheduled' && (
+                            {isAdmin && (log.status === 'scheduled' || log.status === 'ongoing') && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -668,10 +670,10 @@ export default function MaintenanceLogsPage() {
                                 }}
                                 disabled={actionLoading !== null}
                                 className="rounded-lg p-2.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
-                                title="Tugaskan ke teknisi"
-                                aria-label={`Tugaskan pemeliharaan ${log.cctv?.nama || 'CCTV'} ke teknisi`}
+                                title={log.status === 'ongoing' ? 'Alihkan ke teknisi lain' : 'Tugaskan ke teknisi'}
+                                aria-label={`${log.status === 'ongoing' ? 'Alihkan pemeliharaan' : 'Tugaskan pemeliharaan'} ${log.cctv?.nama || 'CCTV'} ke teknisi lain`}
                               >
-                                {actionLoading === `assign-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                                {actionLoading === `assign-${log.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : log.status === 'ongoing' ? <ArrowLeftRight className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
                               </button>
                             )}
                             {canCompleteLog(log) && log.cctv && (
@@ -1097,7 +1099,9 @@ export default function MaintenanceLogsPage() {
             >
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h3 id="maintenance-assign-title" className="text-xl font-bold tracking-[-0.015em]">Tugaskan ke Teknisi</h3>
+                  <h3 id="maintenance-assign-title" className="text-xl font-bold tracking-[-0.015em]">
+                    {assignLog.status === 'ongoing' ? 'Alihkan ke Teknisi Lain' : 'Tugaskan ke Teknisi'}
+                  </h3>
                   <p className="mt-1 text-sm text-muted">
                     {assignLog.cctv?.kode_cctv || 'CCTV'} · {assignLog.action_taken}
                   </p>
@@ -1115,10 +1119,21 @@ export default function MaintenanceLogsPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted">
-                  Tugas berstatus <span className="font-bold text-blue-600 dark:text-blue-400">Terjadwal</span> akan berubah menjadi{' '}
-                  <span className="font-bold text-warning">Dalam proses</span> begitu ditugaskan, dan langsung tampil di dashboard teknisi.
-                </div>
+                {assignLog.status === 'ongoing' ? (
+                  <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-foreground">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                    <p>
+                      Tugas ini sedang dikerjakan oleh{' '}
+                      <span className="font-bold">{assignLog.technician?.full_name || 'teknisi yang ditugaskan'}</span>.
+                      Yakin ingin mengalihkan ke teknisi lain?
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted">
+                    Tugas berstatus <span className="font-bold text-blue-600 dark:text-blue-400">Terjadwal</span> akan berubah menjadi{' '}
+                    <span className="font-bold text-warning">Dalam proses</span> begitu ditugaskan, dan langsung tampil di dashboard teknisi.
+                  </div>
+                )}
 
                 <div>
                   <label htmlFor="assign-technician" className="mb-1.5 block text-xs font-semibold text-muted">Pilih teknisi *</label>
@@ -1155,7 +1170,9 @@ export default function MaintenanceLogsPage() {
                     className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {actionLoading === `assign-${assignLog.id}` && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                    {actionLoading === `assign-${assignLog.id}` ? 'Menugaskan…' : 'Tugaskan'}
+                    {actionLoading === `assign-${assignLog.id}`
+                      ? assignLog.status === 'ongoing' ? 'Mengalihkan…' : 'Menugaskan…'
+                      : assignLog.status === 'ongoing' ? 'Alihkan' : 'Tugaskan'}
                   </button>
                 </div>
               </div>

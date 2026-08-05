@@ -1,5 +1,25 @@
 # Changelog - Backend SIGAP
 
+## [0.29.0] - 2026-08-05
+
+### Fitur: Re-assign Tugas oleh Admin — Task 5.3
+
+perubahan yang dilakukan: **`PUT /api/maintenance-logs/:id/assign` diperluas untuk menerima log berstatus `ongoing` (re-assign) selain `scheduled`. Saat re-assign teknisi lama dilepas dan teknisi baru ditugaskan dengan status tetap `ongoing`; assign ke teknisi yang sama ditolak 400 "Teknisi sudah ditugaskan pada tugas ini". Audit log mencatat action baru `REASSIGN_MAINTENANCE` dengan deskripsi "Tugas [ID] dialihkan dari [nama lama] ke [nama baru]". Notifikasi in-app dua pihak: `MAINTENANCE_ASSIGNED` ke teknisi baru ("Anda mendapat tugas pemeliharaan baru untuk CCTV [nama]") dan `MAINTENANCE_UNASSIGNED` ke teknisi lama ("Tugas pemeliharaan untuk CCTV [nama] telah dialihkan ke teknisi lain"). Pesan notifikasi assign pertama juga diseragamkan memakai nama CCTV**.
+before: Endpoint assign hanya menerima log berstatus `scheduled`; log `ongoing` ditolak 400 sehingga admin tidak bisa mengalihkan tugas yang sedang dikerjakan. Tidak ada audit khusus atau notifikasi ke teknisi lama.
+after:
+- `handlers/maintenance.go` (`AssignMaintenanceLog`): guard status diperluas ke `scheduled`/`ongoing` (selain itu 400); variabel `isReassign`; saat re-assign muat teknisi lama, tolak bila `*TechnicianID == techUUID` (400 khusus), dan teknisi lama/baru dipakai untuk audit & notifikasi; audit memakai action `REASSIGN_MAINTENANCE` saat re-assign; nama CCTV diambil untuk pesan notifikasi (fallback `action_taken` bila CCTV tak ditemukan). Anotasi Swagger diperbarui.
+- `handlers/maintenance_test.go`: test baru — re-assign log `ongoing` ke teknisi baru → 200 (status tetap ongoing), assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` (lewat `RequireRole("admin")`) → 403; `TestAssignMaintenanceLog_Success` diperbarui (query nama CCTV) & `TestAssignMaintenanceLog_NotScheduled` diganti `TestAssignMaintenanceLog_CompletedRejected`.
+- Swagger docs di-regenerate (`swag init`).
+timestamp: 2026-08-05 20:33 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+
 ## [0.28.3] - 2026-08-05
 
 ### Perubahan: Penggabungan Status "rusak" → "nonaktif"
