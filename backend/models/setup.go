@@ -57,6 +57,11 @@ type MaintenanceLog struct {
 	// MaintenanceResultID menunjuk ke catatan FieldMaintenance hasil pengecekan
 	// 9 tahap checklist yang diselesaikan teknisi (nil sebelum tugas selesai).
 	MaintenanceResultID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_result_id"`
+	// MaintenanceScheduleID menautkan log yang dibuat otomatis oleh generator
+	// jadwal pemeliharaan berulang (Fase 5.4) ke MaintenanceSchedule. Nil saat
+	// log dibuat manual. Kolom ini dipakai generator untuk menjamin idempotensi
+	// (satu log per hari per jadwal) dan untuk audit/penelusuran asal log.
+	MaintenanceScheduleID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_schedule_id"`
 	ActionTaken  string     `gorm:"type:text;not null" json:"action_taken"`
 	Notes        string     `gorm:"type:text" json:"notes"`
 	Status       string     `gorm:"type:varchar(20);not null" json:"status"`

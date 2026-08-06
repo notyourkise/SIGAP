@@ -147,6 +147,26 @@ definitions:
     - action_taken
     - cctv_id
     type: object
+  handlers.CreateMaintenanceScheduleRequest:
+    properties:
+      action_taken:
+        minLength: 5
+        type: string
+      cctv_id:
+        type: string
+      frequency:
+        enum:
+        - daily
+        - weekly
+        - monthly
+        type: string
+      technician_id:
+        type: string
+    required:
+    - action_taken
+    - cctv_id
+    - frequency
+    type: object
   handlers.CreateUserRequest:
     properties:
       email:
@@ -292,6 +312,22 @@ definitions:
         type: string
       scheduled_date:
         description: YYYY-MM-DD HH:MM:SS or RFC3339
+        type: string
+    type: object
+  handlers.UpdateMaintenanceScheduleRequest:
+    properties:
+      action_taken:
+        minLength: 5
+        type: string
+      cctv_id:
+        type: string
+      frequency:
+        enum:
+        - daily
+        - weekly
+        - monthly
+        type: string
+      technician_id:
         type: string
     type: object
   handlers.UpdateMyProfileRequest:
@@ -1714,6 +1750,317 @@ paths:
       summary: Laporan Pemeliharaan CCTV (PDF)
       tags:
       - Log Pemeliharaan
+  /maintenance-schedules:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar jadwal pemeliharaan berulang terpaginasi dengan
+        preload CCTV & teknisi. Mendukung filter is_active dan sorting.
+      parameters:
+      - description: Filter berdasarkan status aktif jadwal (true/false)
+        in: query
+        name: is_active
+        type: boolean
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar jadwal terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar jadwal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Jadwal Pemeliharaan
+      tags:
+      - Jadwal Pemeliharaan
+    post:
+      consumes:
+      - application/json
+      description: Membuat jadwal pemeliharaan berulang (harian/mingguan/bulanan)
+        untuk sebuah CCTV. NextRunAt dihitung otomatis = waktu sekarang + frekuensi.
+        Teknisi opsional; bila disertakan wajib berperan teknisi dan log hasil generator
+        akan langsung ditugaskan ke teknisi tersebut.
+      parameters:
+      - description: Detail Jadwal
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateMaintenanceScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Jadwal berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format tidak valid, CCTV/teknisi tidak valid, atau frekuensi
+            tidak dikenal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV atau teknisi tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan jadwal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Jadwal Pemeliharaan Berulang
+      tags:
+      - Jadwal Pemeliharaan
+  /maintenance-schedules/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus jadwal pemeliharaan berulang (soft-delete). Log yang
+        sudah di-generate oleh jadwal tetap tersimpan.
+      parameters:
+      - description: Jadwal UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Jadwal berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Jadwal tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus jadwal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Jadwal Pemeliharaan
+      tags:
+      - Jadwal Pemeliharaan
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail satu jadwal pemeliharaan berulang beserta relasi
+        CCTV & teknisi berdasarkan UUID-nya.
+      parameters:
+      - description: Jadwal UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data jadwal ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Jadwal tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Jadwal Pemeliharaan Detail
+      tags:
+      - Jadwal Pemeliharaan
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data jadwal pemeliharaan berulang (CCTV, teknisi, template
+        aksi, frekuensi). Bila frekuensi berubah, NextRunAt di-reset = waktu sekarang
+        + frekuensi baru. Kirim technician_id kosong ("") untuk melepas penugasan
+        teknisi.
+      parameters:
+      - description: Jadwal UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Jadwal
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateMaintenanceScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Jadwal berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau teknisi tidak berperan
+            teknisi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Jadwal tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui jadwal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Jadwal Pemeliharaan
+      tags:
+      - Jadwal Pemeliharaan
+  /maintenance-schedules/{id}/toggle:
+    put:
+      consumes:
+      - application/json
+      description: Membalik status IsActive jadwal pemeliharaan berulang. Jadwal nonaktif
+        di-skip oleh generator sehingga tidak lagi membuat log otomatis (tanpa menghapus
+        jadwal).
+      parameters:
+      - description: Jadwal UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status jadwal berhasil dibalik
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Jadwal tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengubah status jadwal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Aktifkan / Nonaktifkan Jadwal
+      tags:
+      - Jadwal Pemeliharaan
   /notifications:
     get:
       description: Mengembalikan daftar notifikasi in-app milik user yang sedang login,
