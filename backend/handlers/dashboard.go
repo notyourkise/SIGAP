@@ -30,13 +30,13 @@ type DashboardTrendPoint struct {
 
 // DashboardOverdueItem mewakili satu pekerjaan pemeliharaan yang melewati jadwal.
 type DashboardOverdueItem struct {
-	ID             string  `json:"id"`
-	CCTVName       string  `json:"cctv_name"`
-	CCTVLocation   string  `json:"cctv_location"`
-	Status         string  `json:"status"`
-	ActionTaken    string  `json:"action_taken"`
-	ScheduledDate  string  `json:"scheduled_date"`
-	DaysOverdue    float64 `json:"days_overdue"`
+	ID            string  `json:"id"`
+	CCTVName      string  `json:"cctv_name"`
+	CCTVLocation  string  `json:"cctv_location"`
+	Status        string  `json:"status"`
+	ActionTaken   string  `json:"action_taken"`
+	ScheduledDate string  `json:"scheduled_date"`
+	DaysOverdue   float64 `json:"days_overdue"`
 }
 
 // DashboardSummary menyediakan ringkasan analitik untuk halaman dashboard
@@ -92,13 +92,13 @@ func DashboardSummary(c *fiber.Ctx) error {
 			daysOverdue = now.Sub(*log.ScheduledDate).Hours() / 24
 		}
 		overdue = append(overdue, DashboardOverdueItem{
-			ID:             log.ID.String(),
-			CCTVName:       log.CCTV.Nama,
-			CCTVLocation:   log.CCTV.LokasiArea,
-			Status:         log.Status,
-			ActionTaken:    log.ActionTaken,
-			ScheduledDate:  log.ScheduledDate.Format("2006-01-02 15:04:05"),
-			DaysOverdue:    math.Round(daysOverdue*10) / 10,
+			ID:            log.ID.String(),
+			CCTVName:      log.CCTV.Nama,
+			CCTVLocation:  log.CCTV.LokasiArea,
+			Status:        log.Status,
+			ActionTaken:   log.ActionTaken,
+			ScheduledDate: log.ScheduledDate.Format("2006-01-02 15:04:05"),
+			DaysOverdue:   math.Round(daysOverdue*10) / 10,
 		})
 	}
 
@@ -114,22 +114,23 @@ func DashboardSummary(c *fiber.Ctx) error {
 
 // DashboardTaskItem mewakili satu tugas pemeliharaan (notifikasi untuk teknisi).
 type DashboardTaskItem struct {
-	ID             string  `json:"id"`
-	CCTVID         string  `json:"cctv_id"`
-	CCTVName       string  `json:"cctv_name"`
-	CCTVCode       string  `json:"cctv_kode"`
-	CCTVLocation   string  `json:"cctv_location"`
-	Status         string  `json:"status"`
-	ActionTaken    string  `json:"action_taken"`
-	ScheduledDate  string  `json:"scheduled_date"`
-	DaysOverdue    float64 `json:"days_overdue"`
+	ID            string  `json:"id"`
+	CCTVID        string  `json:"cctv_id"`
+	CCTVName      string  `json:"cctv_name"`
+	CCTVCode      string  `json:"cctv_kode"`
+	CCTVLocation  string  `json:"cctv_location"`
+	Status        string  `json:"status"`
+	ActionTaken   string  `json:"action_taken"`
+	ScheduledDate string  `json:"scheduled_date"`
+	DaysOverdue   float64 `json:"days_overdue"`
 }
 
 // DashboardTasks mengembalikan daftar tugas pemeliharaan aktif untuk pengguna
 // saat ini — Teknisi hanya melihat tugas miliknya, Admin melihat semua.
 // @Summary      Tugas & Notifikasi Teknisi
 // @Description  Mengembalikan tugas pemeliharaan berstatus terjadwal/berjalan milik teknisi
-//               (atau seluruh tugas bila Admin) beserta jumlah tugas yang melewati jadwal.
+//
+//	(atau seluruh tugas bila Admin) beserta jumlah tugas yang melewati jadwal.
 //
 // @Tags         Dashboard
 // @Produce      json
@@ -370,6 +371,58 @@ func GetTechnicianPerformance(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   performance,
+	})
+}
+
+// GetDailyDigests mengembalikan ringkasan operasional harian untuk Admin.
+// Digest selalu diurutkan dari tanggal terbaru dan memakai format paginasi
+// standar list SIGAP agar dapat dipakai oleh timeline maupun konsumen lain.
+// @Summary      Ringkasan Operasional Harian
+// @Description  Mengembalikan daftar ringkasan operasional harian yang dibuat otomatis pada pukul 06:00 WITA.
+// @Tags         Dashboard
+// @Produce      json
+// @Security     BearerAuth
+// @Param        page query integer false "Nomor halaman (default: 1)"
+// @Param        limit query integer false "Jumlah data per halaman (default: 10)"
+// @Success      200 {object} map[string]interface{} "Daftar ringkasan operasional terpaginasi"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Hanya admin yang dapat mengakses ringkasan operasional"
+// @Failure      500 {object} map[string]interface{} "Gagal memuat ringkasan operasional"
+// @Router       /dashboard/digest [get]
+func GetDailyDigests(c *fiber.Ctx) error {
+	if role, _ := c.Locals("role").(string); role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: ringkasan operasional hanya untuk admin",
+		})
+	}
+
+	limit, page, _ := utils.GetPaginationParams(c, []string{"digest_date", "created_at"})
+	query := config.DB.Model(&models.DailyDigest{})
+
+	var totalRows int64
+	if err := query.Count(&totalRows).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung ringkasan operasional",
+		})
+	}
+
+	digests := make([]models.DailyDigest, 0)
+	offset := (page - 1) * limit
+	if err := query.Order("digest_date desc").Offset(offset).Limit(limit).Find(&digests).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memuat ringkasan operasional",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"rows":       digests,
+			"pagination": utils.CalculatePagination(totalRows, page, limit),
+		},
 	})
 }
 

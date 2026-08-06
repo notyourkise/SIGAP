@@ -320,6 +320,7 @@ erDiagram
 |--------|----------|-----------|------|------|
 | GET | `/api/dashboard/summary` | Statistik, tren, distribusi status, overdue | JWT | Semua |
 | GET | `/api/dashboard/tasks` | Tugas teknisi (Teknisi: miliknya / Admin: semua) | JWT | Semua |
+| GET | `/api/dashboard/digest` | Ringkasan operasional harian terpaginasi | JWT | Admin |
 
 ### Upload, WebSocket & Utilitas
 | Method | Endpoint | Deskripsi | Auth | Role |

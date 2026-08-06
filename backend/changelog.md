@@ -1,5 +1,40 @@
 # Changelog - Backend SIGAP
 
+## [0.35.0] - 2026-08-06
+
+### Fitur: Ringkasan Operasional Otomatis (Task 6.4)
+
+perubahan yang dilakukan: **Menambahkan model `DailyDigest`, generator ringkasan harian yang berjalan setiap pukul 06:00 WITA, endpoint Admin `GET /api/dashboard/digest`, dan notifikasi in-app `DAILY_DIGEST_AVAILABLE` ke seluruh Admin. Ringkasan mengagregasi tugas baru/selesai/gagal/overdue, pengecekan lapangan, hasil attention, dan perubahan status CCTV pada jendela 24 jam terakhir.**
+
+before: Admin belum memiliki arsip ringkasan harian yang menggabungkan pergerakan tugas, pengecekan lapangan, dan perubahan status CCTV secara otomatis.
+
+after:
+- `models/daily_digest.go`: model `DailyDigest` dengan `digest_date` unique, tujuh metrik, dan summary naratif.
+- `models/notification.go`: konstanta `DAILY_DIGEST_AVAILABLE`.
+- `handlers/digest_generator.go`: scheduler 06:00 WITA, agregasi 24 jam, idempotensi per tanggal, penyimpanan, dan notifikasi Admin.
+- `handlers/dashboard.go`: endpoint `GetDailyDigests` dengan role admin, paginasi, dan urutan tanggal terbaru.
+- `routes/dashboard.go`: route `/dashboard/digest` protected + `RequireRole("admin")`.
+- `main.go`: AutoMigrate `DailyDigest` dan goroutine generator saat startup.
+- `handlers/digest_generator_test.go`, `routes/routes_test.go`: coverage generator, idempotensi, jadwal, notifikasi, endpoint, dan proteksi route.
+- `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`: dokumentasi Swagger diregenerasi.
+
+timestamp: 2026-08-06 15:35 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/daily_digest.go
+- backend/models/notification.go
+- backend/handlers/digest_generator.go
+- backend/handlers/digest_generator_test.go
+- backend/handlers/dashboard.go
+- backend/routes/dashboard.go
+- backend/routes/routes_test.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Mengubah data operasional harian menjadi ringkasan yang dapat dipantau Admin tanpa query manual, dengan idempotensi dan notifikasi in-app sebagai pengingat.
+
 ## [0.34.0] - 2026-08-06
 
 ### Fitur: Laporan PDF Pengecekan Lapangan (Task 6.3)

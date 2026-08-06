@@ -14,4 +14,5 @@ func SetupDashboardRoutes(router fiber.Router) {
 	dashboardGroup.Get("/summary", handlers.DashboardSummary)
 	dashboardGroup.Get("/tasks", handlers.DashboardTasks)
 	dashboardGroup.Get("/technician-performance", middleware.RequireRole("admin"), handlers.GetTechnicianPerformance)
+	dashboardGroup.Get("/digest", middleware.RequireRole("admin"), handlers.GetDailyDigests)
 }

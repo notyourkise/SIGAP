@@ -31,11 +31,13 @@ export const typeStyles: Record<string, string> = {
   MAINTENANCE_COMPLETED: 'bg-success',
   MAINTENANCE_OVERDUE: 'bg-red-500',
   FIELD_CHECK_ATTENTION: 'bg-accent',
+  DAILY_DIGEST_AVAILABLE: 'bg-primary',
 };
 
 // Peta tipe notifikasi ke rute halaman tujuan saat item diklik.
 export function getTargetRoute(item: NotificationItem): string {
   if (item.reference_type === 'field-maintenance') return '/field-maintenance';
+  if (item.reference_type === 'daily-digest') return '/ringkasan';
   return '/maintenance';
 }
 

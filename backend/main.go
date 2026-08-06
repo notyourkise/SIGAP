@@ -63,6 +63,7 @@ func main() {
 		&models.AuditLog{},
 		&models.Notification{},
 		&models.MaintenanceSchedule{},
+		&models.DailyDigest{},
 	)
 	if err != nil {
 		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
@@ -98,6 +99,11 @@ func main() {
 	// dilakukan saat startup, lalu diulang setiap 6 jam.
 	go handlers.RunHealthScoreCalculator(config.DB)
 	utils.Log.Info("🩺 Kalkulator skor kesehatan CCTV diaktifkan (interval: 6 jam)")
+
+	// Jalankan generator ringkasan operasional harian (Fase 6.4). Generator
+	// menunggu jadwal 06:00 WITA berikutnya lalu memproses jendela 24 jam.
+	go handlers.RunDailyDigestGenerator(config.DB)
+	utils.Log.Info("🗓️ Generator ringkasan operasional harian diaktifkan (jadwal: 06:00 WITA)")
 
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari

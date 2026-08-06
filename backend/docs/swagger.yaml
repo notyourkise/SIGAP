@@ -1119,6 +1119,47 @@ paths:
       summary: Unduh Template Excel CCTV
       tags:
       - Master CCTV
+  /dashboard/digest:
+    get:
+      description: Mengembalikan daftar ringkasan operasional harian yang dibuat otomatis
+        pada pukul 06:00 WITA.
+      parameters:
+      - description: 'Nomor halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar ringkasan operasional terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Hanya admin yang dapat mengakses ringkasan operasional
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat ringkasan operasional
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ringkasan Operasional Harian
+      tags:
+      - Dashboard
   /dashboard/summary:
     get:
       description: Mengembalikan distribusi status CCTV, tren pemeliharaan 6 bulan
