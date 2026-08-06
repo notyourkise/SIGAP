@@ -47,18 +47,19 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `config/database.go` — Konfigurasi koneksi ke PostgreSQL menggunakan GORM dengan pengaturan _connection pooling_.
 - `config/migrate.go` — Migrasi data satu kali (_one-time_) yang meresolusi _maintenance log_ legacy `asset_id` → `cctv_id` (unifikasi model, Fase 3.6).
 - `models/setup.go` — Definisi struktur `Base` (berisi UUID, timestamps, dan _soft delete_) yang di-_embed_ pada semua model, termasuk _hook_ `BeforeCreate` yang hanya men-generate UUID baru jika ID kosong (`uuid.Nil`). File ini juga mendefinisikan model `User` dan `MaintenanceLog`.
+- `models/maintenance_schedule.go` — Definisi struktur `MaintenanceSchedule` (Fase 5.4, jadwal pemeliharaan berulang): `CCTVID`, `TechnicianID` (opsional), `ActionTaken`, `Frequency` (`daily`/`weekly`/`monthly`), `NextRunAt`, `IsActive`, `LastGeneratedAt` + konstanta `FrequencyDaily/Weekly/Monthly`.
 - `models/notification.go` — Definisi struktur `Notification` (notifikasi in-app per-user, Fase 5.1): `UserID`, `Type`, `Title`, `Message`, `ReferenceID`, `ReferenceType`, `IsRead` + konstanta tipe (`MAINTENANCE_ASSIGNED`, `MAINTENANCE_REASSIGNED`, `MAINTENANCE_UNASSIGNED`, `MAINTENANCE_COMPLETED`, `MAINTENANCE_OVERDUE`, `FIELD_CHECK_ATTENTION`); index komposit `(user_id, is_read)`.
 - `models/cctv.go` — Definisi struktur `CCTV` (16 field), termasuk `QrPayload` yang dienkripsi menggunakan AES-256.
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, `notification`, dan `health`.
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4) dan `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
-- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, user, upload, audit, dashboard, notification, websocket).
+- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, websocket).
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
@@ -83,6 +84,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
 - `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, fitur unggah bukti foto pemeliharaan, penugasan ke teknisi (tombol "Tugaskan"), dan pengalihan tugas (tombol "Alihkan" untuk log `ongoing`, Fase 5.3 — menampilkan peringatan nama teknisi saat ini sebelum submit).
+- `src/app/schedules/page.tsx` — Halaman Jadwal Pemeliharaan (Fase 5.4, khusus admin): CRUD jadwal berulang, toggle aktif/nonaktif, filter status, paginasi; menu sidebar "Jadwal".
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
 - `src/app/audit-logs/page.tsx` — Halaman audit trail (khusus admin): daftar aktivitas + ekspor CSV.
 - `src/app/profile/page.tsx` — Halaman profil pengguna (data diri + tautan ganti password).
@@ -156,6 +158,17 @@ Menyimpan data catatan pemeliharaan:
 - `ScheduledDate`
 - `CompletedAt`
 - `ImageUrl` (jalur URL gambar bukti pemeliharaan)
+- `MaintenanceScheduleID` (Foreign Key → `maintenance_schedules`, nullable — menunjuk jadwal berulang yang menghasilkan log ini; dipakai generator untuk idempotensi per hari)
+
+### MaintenanceSchedule (Fase 5.4)
+Menyimpan jadwal pemeliharaan berulang:
+- `CCTVID` (Foreign Key → `cctvs`)
+- `TechnicianID` (Foreign Key → `users`, nullable — bila diisi, log hasil generator langsung berstatus `ongoing` + notifikasi `MAINTENANCE_ASSIGNED`)
+- `ActionTaken`
+- `Frequency` (enum: `daily` / `weekly` / `monthly`)
+- `NextRunAt` (waktu eksekusi berikutnya; diatur ulang otomatis bila frekuensi diubah)
+- `IsActive` (default `true`; jadwal nonaktif tidak diproses generator)
+- `LastGeneratedAt` (waktu terakhir generator membuat log)
 
 ### AuditLog
 Menyimpan riwayat aktivitas penting pengguna (dipakai pada halaman audit trail):

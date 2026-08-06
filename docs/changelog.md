@@ -3,6 +3,24 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.12] — 2026-08-06 — Recurring Maintenance: Penjadwalan Pemeliharaan Berulang (Task 5.4)
+
+### Perubahan
+
+- **Backend** ([0.30.0]): modul baru `maintenance_schedules` — model, CRUD admin
+  (`/api/maintenance-schedules`), kolom `maintenance_schedule_id` pada
+  `maintenance_logs`, dan generator berjalan saat startup + tiap 1 jam yang
+  membuat log otomatis (idempotent per hari per jadwal; tanpa teknisi → log
+  `scheduled`, dengan teknisi → `ongoing` + notifikasi in-app). Audit
+  CREATE/UPDATE/DELETE/TOGGLE_SCHEDULE dan "Dibuat otomatis oleh jadwal [id]".
+- **Frontend** ([1.27.0]): halaman `/schedules` khusus admin (CRUD + toggle
+  aktif/nonaktif + filter + paginasi), menu sidebar "Jadwal", `/schedules`
+  terdaftar di proxy admin.
+- **Dokumen**: `docs/ROADMAP.md` & `docs/plan.md` status Task 5.4 = ✅ Selesai.
+- `go build`/`go vet`/`go test` PASS; `npm run lint` (0 error) & `npm run build` PASS.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.30.0], `frontend/changelog.md` [1.27.0]
+
 ## [1.28.11] — 2026-08-05 — Sprint 2 Selesai: Sinkronisasi Status CCTV (Task 5.2) + Uji Manual S1–S8
 
 ### Perubahan
