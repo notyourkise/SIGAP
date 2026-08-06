@@ -52,23 +52,36 @@ func main() {
 		utils.Log.Fatalf("❌ Gagal membuat direktori uploads: %v", err)
 	}
 
-	// 2. Jalankan Auto-Migrate (Mencetak tabel otomatis ke PostgreSQL)
-	err := config.DB.AutoMigrate(
-		&models.User{},
-		&models.MaintenanceLog{},
-		&models.FieldMaintenance{},
-		&models.FieldMaintenanceCheck{},
-		&models.FieldMaintenanceImage{},
-		&models.CCTV{},
-		&models.AuditLog{},
-		&models.Notification{},
-		&models.MaintenanceSchedule{},
-		&models.DailyDigest{},
-	)
-	if err != nil {
-		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
+	// 2. Jalankan migrasi DB versioned (golang-migrate v4) — sumber skema resmi.
+	//    File SQL terurut ada di backend/migrations/ dan riwayat versi dicatat
+	//    pada tabel schema_migrations. Migration ini BERJALAN LEBIH DULU
+	//    dibanding AutoMigrate (fase transisi) di bawahnya.
+	if err := config.RunMigrations(config.DB); err != nil {
+		utils.Log.Fatal("❌ Gagal menjalankan migrasi DB versioned: ", err)
 	}
-	utils.Log.Info("✅ Migrasi tabel database berhasil!")
+	utils.Log.Info("✅ Migrasi DB versioned berhasil dijalankan!")
+
+	// FASE TRANSISI (Task 7.1): AutoMigrate GORM dikomentari dan AKAN DIHAPUS
+	// setelah migration versioned stabil. Jangan diaktifkan kembali tanpa
+	// persetujuan — skema kini dikelola sepenuhnya oleh migration file.
+	/*
+		err := config.DB.AutoMigrate(
+			&models.User{},
+			&models.MaintenanceLog{},
+			&models.FieldMaintenance{},
+			&models.FieldMaintenanceCheck{},
+			&models.FieldMaintenanceImage{},
+			&models.CCTV{},
+			&models.AuditLog{},
+			&models.Notification{},
+			&models.MaintenanceSchedule{},
+			&models.DailyDigest{},
+		)
+		if err != nil {
+			utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
+		}
+		utils.Log.Info("✅ Migrasi tabel database berhasil!")
+	*/
 
 	// Migrasi data legacy: maintenance_logs.asset_id → cctv_id (Fase 3.6)
 	config.MigrateMaintenanceToCCTV(config.DB)

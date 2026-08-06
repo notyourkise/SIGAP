@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.18] — 2026-08-06 — Migrasi DB Versioned (Task 7.1)
+
+### Perubahan
+
+- **Backend** ([0.36.0]): adopsi `golang-migrate` v4 (driver pgx v5) — skema dikelola file SQL terurut di `backend/migrations/` (embed FS); `config.RunMigrations` otomatis saat startup; CLI `go run cmd/migrate/main.go up|down|version`; fase transisi AutoMigrate dikomentari (akan dihapus setelah stabil); migration 000001 idempoten terhadap DB eksisting.
+- **CI**: job backend-ci menambah service PostgreSQL + verifikasi `up → down → up → version` end-to-end.
+- **Dokumen**: `docs/MIGRATION.md` (baru — prosedur, CLI, troubleshooting, cara tambah migration); ROADMAP Task 7.1 ✅ Selesai (Fase 7 1/6); plan Sprint 10; matriks test; panduan agent.
+- Verifikasi: `go build`/`go test`/`go vet` PASS; uji live PostgreSQL 18 lokal `up → down → up` (+ skenario DB warisan AutoMigrate) PASS; DB uji dihapus setelah selesai.
+
+Timestamp: 2026-08-06 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.36.0]
+
 ## [1.28.17] — 2026-08-06 — Ringkasan Operasional Otomatis (Task 6.4)
 
 ### Perubahan
