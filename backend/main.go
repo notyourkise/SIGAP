@@ -86,8 +86,13 @@ func main() {
 
 	// Jalankan goroutine generator jadwal pemeliharaan berulang (Fase 5.4).
 	// Berjalan sekali saat startup + tiap 1 jam; idempotent per hari per jadwal.
-	handlers.RunScheduleGenerator(config.DB)
+	go handlers.RunScheduleGenerator(config.DB)
 	utils.Log.Info("⏰ Generator jadwal pemeliharaan berulang diaktifkan (interval: 1 jam)")
+
+	// Jalankan goroutine eskalasi overdue (Fase 5.5). Proses pertama dilakukan
+	// saat startup, lalu berulang setiap 1 jam.
+	go handlers.RunOverdueChecker(config.DB)
+	utils.Log.Info("🚨 Checker eskalasi overdue diaktifkan (interval: 1 jam)")
 
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari

@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga kecerdasan operasional.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-05
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-06
 
 ---
 
@@ -28,7 +28,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 2 | Penguatan (Hardening) | 9/9 | ✅ Selesai |
 | 3 | Fitur (Kapabilitas) | 9/9 | ✅ Selesai |
 | 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa dilebur ke Fase 7 |
-| 5 | Alur Kerja Operasional (Jalur A) | 4/5 | 🚧 Berjalan |
+| 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
 | 6 | Kecerdasan Operasional | 0/4 | ⬜ Belum |
 | 7 | Kesiapan Produksi | 0/6 | ⬜ Belum |
 | 8 | Pengalaman Lapangan | 0/4 | ⬜ Belum |
@@ -159,7 +159,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Menutup gap alur kerja harian admin & teknisi: notifikasi penugasan, sinkronisasi status
 > perangkat, otomasi jadwal preventif, pemindahan tugas, dan eskalasi keterlambatan.
-> **Status: 🚧 BERJALAN** — disepakati 2026-08-04. Sistem masih pilot/UAT; notifikasi **in-app saja**.
+> **Status: ✅ SELESAI** — disepakati 2026-08-04 dan seluruh task 5.1–5.5 telah diimplementasikan serta diverifikasi. Sistem masih pilot/UAT; notifikasi **in-app saja**.
 
 ### Keputusan Desain (disepakati 2026-08-04)
 
@@ -175,7 +175,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 5.2 | Sinkronisasi status CCTV otomatis (konservatif) | Helper dalam transaksi complete/field-check; `aktif→pemeliharaan` saat tugas gagal / hasil `attention`; `pemeliharaan→aktif` saat checklist 9/9 ok; `nonaktif` tidak disentuh (status `rusak` digabung ke `nonaktif` per 2026-08-05 — enum resmi: `aktif`/`pemeliharaan`/`nonaktif`); audit `UPDATE_CCTV` (keterangan otomatis) + broadcast `CCTV_UPDATED`. Branch: `feature/sync-cctv-status` | ✅ Selesai (2026-08-05) — uji manual S1–S8 `docs/manual-test-sync-cctv.md` + 4 perbaikan lanjutan (validasi jelas, normalisasi Inggris, guard legacy uppercase, dropdown status) |
 | 5.3 | Re-assign tugas oleh admin | `PUT /maintenance-logs/:id/assign` diperluas ke log `ongoing`; audit `REASSIGN_MAINTENANCE`; notif `MAINTENANCE_ASSIGNED` ke teknisi baru & `MAINTENANCE_UNASSIGNED` ke teknisi lama; tombol "Alihkan" di UI admin; tolak assign ke teknisi yang sama (400). Branch: `feature/reassign-maintenance` | ✅ Selesai (2026-08-05) — build/test/vet + lint/build PASS; menunggu uji manual runtime Docker (teknisi lama dapat notif "dialihkan", teknisi baru dapat notif "tugas baru") |
 | 5.4 | Penjadwalan pemeliharaan berulang (recurring) | Model `MaintenanceSchedule` (frequency `daily`/`weekly`/`monthly`, `next_run_at`, `is_active`); kolom `MaintenanceScheduleID` di `MaintenanceLog` (link + idempotensi); goroutine generator harian (jalan juga saat startup, idempotent); CRUD admin `/api/maintenance-schedules`; halaman admin `/schedules` + menu sidebar | ✅ Selesai (2026-08-06) — build/test/vet + lint/build PASS; generator idempotent per hari per jadwal, log hasil generator mengikuti alur yang sama (assign → 5.3) |
-| 5.5 | Eskalasi overdue otomatis | Kolom `OverdueNotifiedAt` di `MaintenanceLog`; goroutine tiap jam: log `scheduled`/`ongoing` lewat jadwal → notif `MAINTENANCE_OVERDUE` ke semua admin (+ teknisi bila ongoing), terkirim sekali saja; flag di-reset saat reschedule | ⬜ Belum |
+| 5.5 | Eskalasi overdue otomatis | Kolom `OverdueNotifiedAt` di `MaintenanceLog`; goroutine saat startup lalu tiap jam: log `scheduled`/`ongoing` lewat jadwal → notif `MAINTENANCE_OVERDUE` ke semua admin (+ teknisi bila ongoing), terkirim sekali saja; flag di-reset saat reschedule | ✅ Selesai (2026-08-06) — build/test/vet + `swag init` PASS; test sqlmock mencakup notifikasi admin/teknisi, skip flag, status terminal, dan reset reschedule |
 
 ### Ketergantungan Antar Task
 
@@ -188,7 +188,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 - `cd backend && go build ./... && go test ./... -count=1 && go vet ./...` — PASS (test sqlmock baru untuk tiap handler/job baru).
 - `cd frontend && npm run lint && npm run build` — PASS.
 - `swag init` setelah anotasi endpoint baru; uji runtime Docker di `https://localhost`.
-- Uji manual per task: 5.1 lonceng notifikasi muncul real-time saat assign; 5.2 status CCTV berubah sesuai tabel keputusan (dan `nonaktif` — termasuk legacy `rusak` — tidak berubah); 5.3 alihkan tugas ke teknisi lain; 5.4 jadwal berulang membuat log otomatis tanpa duplikat; 5.5 notif overdue terkirim sekali saja.
+- Uji manual per task: 5.1 lonceng notifikasi muncul real-time saat assign; 5.2 status CCTV berubah sesuai tabel keputusan (dan `nonaktif` — termasuk legacy `rusak` — tidak berubah); 5.3 alihkan tugas ke teknisi lain; 5.4 jadwal berulang membuat log otomatis tanpa duplikat; 5.5 notif overdue terkirim sekali saja dan flag kembali kosong setelah reschedule ke masa depan.
 
 ---
 

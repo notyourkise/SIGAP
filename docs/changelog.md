@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.13] — 2026-08-06 — Eskalasi Overdue Otomatis (Task 5.5)
+
+### Perubahan
+
+- **Backend** ([0.31.0]): `MaintenanceLog.OverdueNotifiedAt` nullable; checker background saat startup + tiap 1 jam mengirim `MAINTENANCE_OVERDUE` ke semua admin dan teknisi untuk log `ongoing`, satu kali per log sampai reschedule; reschedule ke masa depan me-reset flag. Generator recurring juga dijalankan sebagai goroutine agar startup Fiber tidak terblokir.
+- **Frontend**: tidak ada perubahan UI; tipe `MAINTENANCE_OVERDUE` sudah tersedia dari sistem notifikasi in-app Task 5.1.
+- **Dokumen**: status Task 5.5 dan seluruh Fase 5 diperbarui menjadi ✅ Selesai; matriks test menambahkan `overdue_checker_test.go`; panduan agent mencatat field dan checker baru; panduan uji manual ditambahkan di `docs/manual-test-overdue-escalation.md`.
+- `go build`/`go test`/`go vet` + `swag init` diverifikasi pada branch fitur.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.31.0]
+
 ## [1.28.12] — 2026-08-06 — Recurring Maintenance: Penjadwalan Pemeliharaan Berulang (Task 5.4)
 
 ### Perubahan

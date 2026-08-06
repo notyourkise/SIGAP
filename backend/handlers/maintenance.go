@@ -375,6 +375,11 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		}
 		if err == nil {
 			logEntry.ScheduledDate = &t
+			// Jadwal baru di masa depan membuka kesempatan eskalasi baru bila
+			// tugas kembali terlambat setelah reschedule.
+			if t.After(time.Now()) {
+				logEntry.OverdueNotifiedAt = nil
+			}
 		}
 	}
 
