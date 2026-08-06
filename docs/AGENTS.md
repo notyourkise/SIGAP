@@ -12,6 +12,7 @@ Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codeb
   - **Backend**: REST API yang dibangun menggunakan Go Fiber, berlokasi di direktori `backend/`.
   - **Frontend**: Aplikasi web yang dibangun dengan Next.js 16 dan React 19, berlokasi di direktori `frontend/`.
   - **Database**: PostgreSQL 15, dijalankan melalui Docker.
+- **Cache/Shared Store**: Redis 7 Alpine — dipakai untuk rate-limit counter & token blacklist (shared multi-instance, persisten lintas restart); sejak Task 7.2.
 - **Deployment**: Menggunakan Docker Compose untuk orkestrasi container.
 - **Akses web resmi**: Pada deployment Docker, aplikasi hanya diakses melalui `https://localhost`
   dengan Nginx sebagai reverse proxy. Port internal API/frontend tidak boleh diakses langsung;
@@ -38,13 +39,14 @@ Setiap pengembangan fitur atau perbaikan _bug_ HARUS menggunakan branch baru.
 Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam repositori ini:
 
 ### Root `/`
-- `docker-compose.yml` — Orkestrasi 4 _service_ (db, api, frontend, nginx) di dalam _network_ `sigap_network`.
+- `docker-compose.yml` — Orkestrasi 5 _service_ (db, redis, api, frontend, nginx) di dalam _network_ `sigap_network`.
 - `makefile` — Kumpulan _script_ untuk menjalankan backend dan frontend secara bersamaan di lingkungan lokal.
 - `.gitignore` — Mengabaikan direktori seperti `node_modules`, file `.env`, hasil _build_ binary Go, dan folder _logs_.
 
 ### Backend `backend/`
 - `main.go` — Titik masuk (entry point) aplikasi Go. Berisi inisialisasi _logger_, validasi secret wajib (fail-fast), koneksi database, _migrations_ versioned + migrasi data legacy, _seeders_, instansiasi Fiber app (termasuk _Trusted Proxies_ dan CORS), _middleware stack_, pendaftaran _routes_, dan _graceful shutdown_.
 - `config/database.go` — Konfigurasi koneksi ke PostgreSQL menggunakan GORM dengan pengaturan _connection pooling_.
+- `config/redis.go` — Koneksi Redis (`github.com/redis/go-redis/v9`) untuk rate-limit & blacklist (Task 7.2). `ConnectRedis()` membaca `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (default `redis:6379`); bila Redis tidak tersedia hanya mengeluarkan LOG WARNING + fallback in-memory (bukan fail-fast — aman untuk development tanpa Docker).
 - `config/migrate.go` — Dua peran sejak Task 7.1: (1) **migrasi DB versioned** dengan golang-migrate v4 — `RunMigrations(db)` dijalankan otomatis saat startup, plus `MigrationUp/MigrationDown/MigrationVersion` untuk CLI; (2) **migrasi data satu kali** (_one-time_) yang meresolusi _maintenance log_ legacy `asset_id` → `cctv_id` (unifikasi model, Fase 3.6).
 - `migrations/` — Folder berisi **file migration SQL versioned** (embed FS via `migrations.go`, dikompilasi ke binary): `000001_init_schema.up.sql`/`.down.sql` membentuk skema awal (10 tabel + index + FK, idempoten). Skema kini dikelola migration files; `AutoMigrate` GORM hanya fase transisi (dikomentari di `main.go`, akan dihapus setelah stabil). Prosedur lengkap di `docs/MIGRATION.md`.
 - `cmd/migrate/main.go` — CLI helper manual: `go run cmd/migrate/main.go up|down|version` (env `DB_*` sama dengan aplikasi).
@@ -58,7 +60,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi dan daftar digest admin), `digest_generator` (goroutine ringkasan operasional harian pukul 06:00 WITA), `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
-- `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
+- `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Sejak Task 7.2 memakai counter fixed-window kustom berbasis Redis `INCR`/`EXPIRE` (key `limiter:{ip}:{endpoint}`) dengan fallback in-memory. Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
@@ -68,7 +70,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
 - `utils/jwt.go` — Fungsi untuk me-generate, memvalidasi JWT token (HMAC-SHA256, kedaluwarsa 5 jam, klaim unik `jti`/`iat`), dan memvalidasi versi token (`tv`) terhadap database.
 - `utils/session.go` — Pengaturan cookie sesi httpOnly (`sigap_session`) & cookie CSRF (`sigap_csrf`), termasuk pembersihan path legacy `/api`.
-- `utils/blacklist.go` — Penyimpanan token yang di-_revoke_ (_in-memory_, bersifat sementara sampai restart server).
+- `utils/blacklist.go` — Penyimpanan token yang di-_revoke_. Sejak Task 7.2 memakai Redis SET (`SADD`/`SISMEMBER`/`SREM` + TTL otomatis) via interface `TokenBlacklist` (persisten lintas restart & multi-instance), dengan fallback in-memory per-proses bila Redis tidak tersedia.
 - `utils/csrf.go` — Generate token CSRF dan ekstraksi token sesi (prioritas cookie → Bearer).
 - `utils/audit.go` — Pencatatan audit log secara _async_ dengan retry terbatas.
 - `utils/notify.go` — Util notifikasi in-app (Fase 5.1): `NotifyUser`/`NotifyRole` — simpan `Notification` secara _async_ (pola `LogAudit`, retry terbatas) lalu broadcast event `NOTIFICATION_CREATED` secara terarah.
@@ -277,16 +279,17 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 
 ## 7. Konfigurasi Docker
 Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *deployment*:
-- Terdiri dari **4 services**:
+- Terdiri dari **5 services**:
   - `db` (berbasis `postgres:15-alpine`) — port `5432` **tidak dipublish** ke host; hanya dapat diakses dari dalam network.
+  - `redis` (berbasis `redis:7-alpine`, sejak Task 7.2) — port `6379` **tidak dipublish**; shared store untuk rate-limit counter & token blacklist (persisten lintas restart, multi-instance). Volume `redis_data` (AOF) untuk persistensi.
   - `api` (merupakan _executable binary_ aplikasi Go) — port `3000` **tidak dipublish**; hanya diakses via reverse proxy.
   - `frontend` (menjalankan aplikasi Next.js) — port `3000` internal, **tidak dipublish**.
   - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, serta routing sisanya ke `frontend`.
 - *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` yang didaftarkan sebagai trusted proxy).
-- *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; folder `./backend/uploads` di-*bind mount* untuk foto bukti.
-- **Secret management**: Kredensial DB dibaca dari root `.env` (dipaksa via `${VAR:?}`), secret aplikasi (JWT/AES) dari `backend/.env.docker`. Jangan pernah men-commit file `.env*`.
+- *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; `redis_data` untuk persistensi Redis; folder `./backend/uploads` di-*bind mount* untuk foto bukti.
+- **Secret management**: Kredensial DB dibaca dari root `.env` (dipaksa via `${VAR:?}`), secret aplikasi (JWT/AES) dari `backend/.env.docker`. `REDIS_PASSWORD` opsional — bila diisi harus sama di root `.env` (untuk container Redis) dan `backend/.env.docker` (untuk klien API). Jangan pernah men-commit file `.env*`.
 - Layanan API membutuhkan file spesifik `backend/.env.docker` (gandakan dari `backend/.env.docker.example`); sertifikat TLS di `nginx/certs/`.
-- Menggunakan *Health check* pada _service_ PostgreSQL: layanan API akan menunggu (`depends_on`) sampai _service_ basis data berstatus `healthy` sebelum memulai _boot sequence_-nya.
+- Menggunakan *Health check* pada _service_ PostgreSQL dan Redis: layanan API akan menunggu (`depends_on`) sampai _service_ basis data dan Redis berstatus `healthy` sebelum memulai _boot sequence_-nya. Bila Redis tidak tersedia saat startup, API tetap berjalan dengan fallback in-memory (hanya LOG WARNING — bukan fail-fast, aman untuk development tanpa Docker).
 - **Trusted proxy**: set `TRUSTED_PROXY_IPS=172.28.0.10` (IP Nginx) di `backend/.env.docker` agar header `X-Forwarded-For`/`X-Real-IP` hanya dipercaya dari proxy yang dikenal (anti-spoofing).
 
 ## 8. Swagger Documentation (API Docs)

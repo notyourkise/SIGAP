@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.19] — 2026-08-06 — Redis untuk Rate-Limit & Blacklist (Task 7.2)
+
+### Perubahan
+
+- **Backend** ([0.37.0]): blacklist token dipindah dari in-memory ke Redis SET (`SADD`/`SISMEMBER`/`SREM` + TTL otomatis sesuai sisa masa hidup token — persisten lintas restart, aman multi-instance); rate limiter memakai counter fixed-window Redis `INCR`/`EXPIRE` dengan key `limiter:{ip}:{endpoint}`; graceful fallback ke in-memory saat Redis tidak tersedia (development tanpa Docker — hanya LOG WARNING); env baru `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (opsional); unit test kontrak interface blacklist (mock `redisCommander` + in-memory) dan limiter (key format, window reset, isolasi per key).
+- **Infra**: service `redis` (redis:7-alpine) di `docker-compose.yml` — volume `redis_data` (AOF), health check adaptif, port tidak dipublish; `api` menunggu `redis` healthy; `.env.example` + `backend/.env.docker.example` menambah `REDIS_PASSWORD`/`REDIS_HOST`/`REDIS_PORT`.
+- **Dokumen**: ROADMAP Task 7.2 ✅ Selesai (Fase 7 2/6); plan Sprint 11 + rancangan teknis; matriks test; panduan agent.
+- Verifikasi: `go build`/`go test -count=1`/`go vet` PASS; uji live Redis 7 (docker): koneksi, revoke→deteksi, **persistensi blacklist lintas restart API (client baru)**, TTL key, remove, dan semantik INCR/EXPIRE batas 5/menit — seluruh 12 cek PASS; `docker compose config --quiet` VALID; container Redis healthy.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.37.0]
+
 ## [1.28.18] — 2026-08-06 — Migrasi DB Versioned (Task 7.1)
 
 ### Perubahan

@@ -47,6 +47,17 @@ func main() {
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
 
+	// 1.5. Koneksi Redis untuk rate-limit & blacklist (Task 7.2).
+	// Graceful fallback: bila Redis tidak tersedia (development tanpa Docker),
+	// hanya muncul LOG WARNING dan sistem memakai in-memory store.
+	config.ConnectRedis()
+	if config.RedisEnabled {
+		utils.SetTokenBlacklist(utils.NewRedisTokenBlacklist(config.RedisClient))
+		utils.Log.Info("🛡️ Token blacklist memakai Redis — persisten lintas restart & multi-instance")
+	} else {
+		utils.Log.Warn("⚠️ Token blacklist memakai in-memory — token tercabut akan hilang saat server restart")
+	}
+
 	// 1.5. Pastikan direktori uploads tersedia untuk lampiran foto pemeliharaan
 	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
 		utils.Log.Fatalf("❌ Gagal membuat direktori uploads: %v", err)
@@ -239,6 +250,15 @@ func main() {
 			utils.Log.Errorf("❌ Gagal menutup koneksi database: %v", err)
 		} else {
 			utils.Log.Info("✅ Koneksi database PostgreSQL ditutup secara aman.")
+		}
+	}
+
+	// Menutup koneksi Redis bila aktif (Task 7.2)
+	if config.RedisClient != nil {
+		if err := config.RedisClient.Close(); err != nil {
+			utils.Log.Errorf("❌ Gagal menutup koneksi Redis: %v", err)
+		} else {
+			utils.Log.Info("✅ Koneksi Redis ditutup secara aman.")
 		}
 	}
 

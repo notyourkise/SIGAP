@@ -110,8 +110,9 @@ sigap-monorepo/
 | 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | âœ… Selesai (2026-08-06, branch `feature/technician-performance`) â€” test struktur/filter/role + backend/frontend build dan lint PASS |
 | 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | âœ… Selesai (2026-08-06, branch `feature/field-maintenance-pdf`) |
 | 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | âœ… Selesai (2026-08-06, branch `feature/daily-digest`) |
-| 10 | 7 | 7.1 Migrasi DB Versioned | golang-migrate v4, file SQL terurut, `RunMigrations`, CLI up/down/version, AutoMigrate fase transisi, CI step, `docs/MIGRATION.md` | âœ… Selesai (2026-08-06, branch `feature/versioned-migration`) â€” build/test/vet PASS + uji live PostgreSQL up/down/up PASS |
-| 11â€“15 | 7 | 7.2â€“7.6 Kesiapan Produksi | Redis, backup, monitoring, hardening, logging | â¬œ Belum |
+| 10 | 7 | 7.1 Migrasi DB Versioned | golang-migrate v4, file SQL terurut, `RunMigrations`, CLI up/down/version, AutoMigrate fase transisi, CI step, `docs/MIGRATION.md` | ✅ Selesai (2026-08-06, branch `feature/versioned-migration`) — build/test/vet PASS + uji live PostgreSQL up/down/up PASS |
+| 11 | 7 | 7.2 Redis Rate-Limit & Blacklist | Container Redis 7 Alpine di compose, `config/redis.go`, blacklist → Redis SET (TTL), limiter → Redis INCR/EXPIRE key `limiter:{ip}:{endpoint}`, fallback in-memory, env `REDIS_*`, unit test interface | ✅ Selesai (2026-08-06, branch `feature/redis-integration`) — build/test/vet PASS + uji live Redis 12 cek PASS + `docker compose config` valid |
+| 12–15 | 7 | 7.3–7.6 Kesiapan Produksi | Backup, monitoring, hardening, logging | ⬜ Belum |
 | 16â€“19 | 8 | 8.1â€“8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | â¬œ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
@@ -228,3 +229,22 @@ sigap-monorepo/
 **Verifikasi**
 - `go build ./... && go test ./... -count=1 && go vet ./...` PASS.
 - Uji live PostgreSQL: `up` (10 tabel + 13 FK, versi 1) → `down` (semua tabel hilang) → `up` (versi 1) → `up` idempoten → `version`; skenario DB warisan AutoMigrate (tanpa `schema_migrations`) PASS; DB uji dihapus.
+
+### 6.10 Rancangan Teknis Sprint 11 (Redis untuk Rate-Limit & Blacklist)
+
+**Infra**
+- `docker-compose.yml`: service `redis` (redis:7-alpine) — `command` AOF (`--appendonly yes`) + `--requirepass ${REDIS_PASSWORD:-}`; volume `redis_data:/data`; health check adaptif (kosong = `redis-cli ping`, terisi = `redis-cli -a "$REDIS_PASSWORD" ping | grep -q PONG`); port 6379 **tidak dipublish**; `api.depends_on.redis` → `condition: service_healthy`; komentar service dinomori ulang (db, redis, api, frontend, nginx).
+- `.env.example` & `backend/.env.docker.example`: `REDIS_PASSWORD` (opsional, harus cocok antar file bila diisi); `REDIS_HOST=redis`, `REDIS_PORT=6379`.
+
+**Backend**
+- `config/redis.go` (baru): `ConnectRedis()` — `github.com/redis/go-redis/v9`, default `redis:6379`, password dari `REDIS_PASSWORD`; `Ping` ber-timeout 2 detik; gagal → LOG WARNING + `RedisClient=nil`/`RedisEnabled=false` (graceful fallback, bukan fail-fast — development tanpa Docker).
+- `utils/blacklist.go`: interface `TokenBlacklist` (`Add(token, expiry)` / `IsRevoked(token)` / `Remove(token)` / `CleanupExpired`) agar mudah di-mock;
+  `RedisTokenBlacklist` (key `sigap:blacklist:jwt`, `SADD`+`SISMEMBER`+`SREM`, `TTL` key mengikuti sisa masa hidup token **terpanjang** — menambah token ber-TTL pendek tidak mempersingkat token lain; `CleanupExpired` no-op karena EXPIRE otomatis) dan `memoryTokenBlacklist` (fallback, map + RWMutex). Facade lama (`RevokeToken`/`IsTokenRevoked`) dan `SetTokenBlacklist(b)` untuk pergantian backend; `StartBlacklistCleanup` tetap ada (no-op saat Redis).
+- `middleware/limiter.go`: limiter fixed-window kustom (bukan `fiber/middleware/limiter`) — `rateLimitCounter` interface (`Increment(key, window)`); implementasi Redis (`INCR` + `EXPIRE` saat INCR=1) dan in-memory per-proses (reset saat window habis); key `limiter:{ip}:{endpoint}` (endpoint = pola route `c.Route().Path`, fallback `c.Path()`); fail-open bila INCR error (jangan blokir layanan); `GlobalLimiter` (100/menit) & `AuthLimiter` (5/menit) signature sama.
+- `main.go`: `config.ConnectRedis()` setelah `ConnectDB`; `SetTokenBlacklist` (Redis bila aktif, else in-memory + peringatan); tutup koneksi Redis saat graceful shutdown.
+
+**Test & Verifikasi**
+- `utils/blacklist_test.go`: kontrak interface add→check→remove untuk **dua varian** (Redis via mock `redisCommander` — fake set/TTL — dan memory), TTL mengikuti token terpanjang, facade `RevokeToken`/`IsTokenRevoked`, cleanup expired memory, `SetTokenBlacklist`.
+- `middleware/limiter_test.go`: test lama (≤100 lolos, >100 → 429) tetap hijau (fallback memory) + format key `limiter:{ip}:{endpoint}`, reset counter memory setelah window, isolasi counter per key.
+- `go build ./... && go test ./... -count=1 && go vet ./...` PASS.
+- Uji live Redis 7 (Docker): ConnectRedis → Revoke → IsRevoked → **persistensi blacklist lintas restart API (client/instance baru)** → TTL key terpasang → Remove → INCR pertama 1 → EXPIRE window → batas 5/menit request ke-6 ditolak → key memakai TTL (12 cek PASS); `docker compose config --quiet` VALID; container Redis healthy.
