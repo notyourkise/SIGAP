@@ -41,7 +41,33 @@ services:
       - sigap_network
 
   # ==========================================
-  # Service 2: Go Fiber API Backend
+  # Service 2: Redis (Rate-Limit & Blacklist)
+  # ==========================================
+  # Task 7.2: shared store untuk rate limiter & token blacklist (multi-instance).
+  # Port 6379 TIDAK dipublish — hanya diakses dari dalam network (sama seperti DB).
+  redis:
+    image: redis:7-alpine
+    container_name: sigap_redis
+    restart: unless-stopped
+    # AOF untuk persistensi; requirepass opsional (kosong = tanpa AUTH).
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-}"]
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    volumes:
+      # Named Volume untuk persistensi data Redis lintas restart
+      - redis_data:/data
+    healthcheck:
+      # Health check menyesuaikan mode auth (kosong vs terisi REDIS_PASSWORD)
+      test: ["CMD-SHELL", "if [ -z \"$$REDIS_PASSWORD\" ]; then redis-cli ping; else redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG; fi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sigap_network
+
+  # ==========================================
+  # Service 3: Go Fiber API Backend
   # ==========================================
   api:
     build:
@@ -55,6 +81,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       # Bind mount untuk menyimpan foto lampiran di luar container
       - ./backend/uploads:/app/uploads
@@ -62,7 +90,7 @@ services:
       - sigap_network
 
   # ==========================================
-  # Service 3: Next.js Frontend
+  # Service 4: Next.js Frontend
   # ==========================================
   frontend:
     build:
@@ -85,7 +113,7 @@ services:
       - sigap_network
 
   # ==========================================
-  # Service 4: Reverse Proxy Nginx (TLS)
+  # Service 5: Reverse Proxy Nginx (TLS)
   # ==========================================
   # Menggantikan Cloudflare quick tunnel. Terminasi TLS, security headers,
   # dan routing: /api/* (termasuk /api/ws WebSocket) dan /swagger/* -> api, sisanya -> frontend.
@@ -114,6 +142,8 @@ services:
 # ==========================================
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
 
 # ==========================================

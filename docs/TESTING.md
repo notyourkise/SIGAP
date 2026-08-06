@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-06 (Task 7.1: test migrasi DB versioned `versioned_migration_test.go`).
+> Diperbarui: 2026-08-06 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable).
 
 ---
 
@@ -27,7 +27,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 |---------|-----------|-----------|
 | `utils` | `pagination_test.go` | default limit/page/sort, cap limit 100 & page 1.000.000, whitelist sort (anti SQL injection), `CalculatePagination`, `ParseDateRangeParams` (valid, one-sided, invalid/missing) |
 | `utils` | `encryption_test.go` | round-trip AES-256-GCM, nonce unik tiap enkripsi, hex invalid, input kosong |
-| `utils` | `blacklist_test.go` | `RevokeToken`/`IsTokenRevoked`, cleanup token kadaluarsa |
+| `utils` | `blacklist_test.go` | kontrak `TokenBlacklist` (add/check/remove) untuk varian Redis (mock `redisCommander`) & in-memory, TTL mengikuti token terpanjang, facade `RevokeToken`/`IsTokenRevoked`, cleanup expired, `SetTokenBlacklist` |
 | `utils` | `csrf_test.go` | `GenerateCSRFToken` (64 hex, unik), `ExtractTokenString` (prioritas cookie → Bearer → kosong) |
 | `utils` | `jwt_test.go` (lama + uniqueness) | generate & validate token, expiry, signature salah, klaim `jti`/`iat`, token selalu unik |
 | `utils` | `validator_test.go` (lama) | validator custom (`strongpassword`, dll) |
@@ -35,7 +35,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `notify_test.go` (Fase 5.1) | `persistNotification` (sukses, retry setelah kegagalan sementara, error setelah batas percobaan), guard clause `BroadcastToUser`/`BroadcastToRole` tanpa koneksi (tidak panic) |
 | `middleware` | `auth_test.go` | `Protected`: tanpa token 401, revoked 401, invalid, valid, token-version mismatch 401 → `Sesi telah dicabut...`; `RequireRole`: none/wrong/allowed |
 | `middleware` | `csrf_test.go` | metode aman dilewati, Bearer dilewati, tanpa cookie sesi dilewati, login/logout dengan sesi stale dilewati, mismatch/missing 403, matching lolos |
-| `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429 |
+| `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429, format key `limiter:{ip}:{endpoint}`, reset counter memory setelah window, isolasi counter per key |
 | `middleware` | `security_test.go` | header dasar selalu ada; CSP/HSTS hanya saat `APP_ENV=production` |
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |

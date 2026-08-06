@@ -1,5 +1,46 @@
 # Changelog - Backend SIGAP
 
+## [0.37.0] - 2026-08-06
+
+### Infrastruktur: Redis untuk Rate-Limit & Blacklist (Task 7.2)
+
+perubahan yang dilakukan: **Mengadopsi Redis sebagai shared store untuk rate limiter dan token blacklist (mendukung multi-instance API; blacklist persisten lintas restart). Blacklist dipindah dari map in-memory ke Redis SET (SADD/SISMEMBER/SREM + TTL otomatis), rate limiter diganti dari storage bawaan Fiber ke counter fixed-window berbasis Redis INCR/EXPIRE dengan key `limiter:{ip}:{endpoint}`, ditambah graceful fallback ke in-memory saat Redis tidak tersedia, container Redis 7 Alpine di docker-compose, dan env baru `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (opsional).**
+
+before: Token blacklist dan rate-limit counter tersimpan in-memory per proses — data hilang saat server restart dan tidak berfungsi lintas instance (multi-instance API rentan bypass rate limit & token ter-revoke bisa dipakai lagi setelah restart).
+
+after:
+- `config/redis.go` (baru): `ConnectRedis()` memakai `github.com/redis/go-redis/v9` — host/port/password dari env `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (default `redis:6379`); verifikasi `Ping` ber-timeout 2 detik; bila gagal hanya LOG WARNING + `RedisEnabled=false` (graceful fallback, tidak fail-fast).
+- `utils/blacklist.go`: interface `TokenBlacklist` (`Add`/`IsRevoked`/`Remove`/`CleanupExpired`) + dua implementasi — `RedisTokenBlacklist` (SET `sigap:blacklist:jwt`, TTL mengikuti token dengan sisa masa hidup terpanjang, `CleanupExpired` no-op) dan `memoryTokenBlacklist` (fallback). Facade `RevokeToken`/`IsTokenRevoked`/`SetTokenBlacklist`/`StartBlacklistCleanup` tetap kompatibel dengan pemanggil lama.
+- `middleware/limiter.go`: limiter fixed-window kustom menggantikan `fiber/middleware/limiter` — backend Redis (`INCR` + `EXPIRE` saat INCR=1) dengan fallback in-memory per-proses; key `limiter:{ip}:{endpoint}` (endpoint = pola route, fallback path aktual); `GlobalLimiter` 100/menit & `AuthLimiter` 5/menit tetap dengan signature sama.
+- `main.go`: `config.ConnectRedis()` setelah `ConnectDB`; `SetTokenBlacklist` memilih Redis atau in-memory; penutupan koneksi Redis pada graceful shutdown.
+- `docker-compose.yml`: service `redis` (redis:7-alpine) — volume `redis_data` (AOF), health check adaptif terhadap password, port 6379 tidak dipublish; `api` menunggu `redis` healthy; komentar service dinomori ulang.
+- `.env.example` & `backend/.env.docker.example`: `REDIS_PASSWORD` (opsional) + `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`.
+- `utils/blacklist_test.go`: test kontrak interface (add/check/remove) untuk varian Redis (mock `redisCommander`) & in-memory, TTL mengikuti token terpanjang, facade `RevokeToken`/`IsTokenRevoked`, cleanup expired, dan pergantian backend via `SetTokenBlacklist`.
+- `middleware/limiter_test.go`: test lama tetap hijau + format key `limiter:{ip}:{endpoint}`, reset counter in-memory setelah window, isolasi counter per key.
+- `go.mod`/`go.sum`: dependensi `github.com/redis/go-redis/v9 v9.22.0`.
+
+timestamp: 2026-08-06 17:50 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/config/redis.go
+- backend/utils/blacklist.go
+- backend/utils/blacklist_test.go
+- backend/middleware/limiter.go
+- backend/middleware/limiter_test.go
+- backend/main.go
+- backend/go.mod
+- backend/go.sum
+- backend/changelog.md
+- docker-compose.yml
+- .env.example
+- backend/.env.docker.example
+- docs/changelog.md
+- docs/ROADMAP.md
+- docs/plan.md
+- docs/TESTING.md
+- docs/AGENTS.md
+alasan perubahan: Task 7.2 ROADMAP (asal Fase 4.4) — kelemahan arsitektur in-memory blacklist (hilang saat restart) dan rate limit per-proses (tidak efektif multi-instance) harus diperbaiki sebelum go-live; Redis juga menjadi prasyarat shared state untuk fitur produksi berikutnya.
+
 ## [0.36.0] - 2026-08-06
 
 ### Infrastruktur: Migrasi DB Versioned (Task 7.1)
