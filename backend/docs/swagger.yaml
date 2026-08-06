@@ -1173,6 +1173,52 @@ paths:
       summary: Tugas & Notifikasi Teknisi
       tags:
       - Dashboard
+  /dashboard/technician-performance:
+    get:
+      description: Mengembalikan ringkasan tugas pemeliharaan dan pengecekan lapangan
+        per teknisi dalam rentang tanggal tertentu.
+      parameters:
+      - description: Tanggal mulai (YYYY-MM-DD, default 30 hari terakhir)
+        in: query
+        name: start_date
+        type: string
+      - description: Tanggal akhir (YYYY-MM-DD, inklusif, default hari ini)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar kinerja teknisi
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Rentang tanggal tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Hanya admin yang dapat mengakses dashboard kinerja
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat kinerja teknisi
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Kinerja Teknisi
+      tags:
+      - Dashboard
   /field-maintenance:
     get:
       consumes:

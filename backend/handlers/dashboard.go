@@ -6,6 +6,7 @@ import (
 
 	"sigap-backend/config"
 	"sigap-backend/models"
+	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -129,6 +130,7 @@ type DashboardTaskItem struct {
 // @Summary      Tugas & Notifikasi Teknisi
 // @Description  Mengembalikan tugas pemeliharaan berstatus terjadwal/berjalan milik teknisi
 //               (atau seluruh tugas bila Admin) beserta jumlah tugas yang melewati jadwal.
+//
 // @Tags         Dashboard
 // @Produce      json
 // @Security     BearerAuth
@@ -202,6 +204,177 @@ func DashboardTasks(c *fiber.Ctx) error {
 			"overdue_count": overdueCount,
 		},
 	})
+}
+
+// TechnicianPerformance adalah ringkasan kinerja satu teknisi pada rentang
+// waktu yang diminta admin.
+type TechnicianPerformance struct {
+	UserID             string  `json:"user_id"`
+	FullName           string  `json:"full_name"`
+	Username           string  `json:"username"`
+	TotalTasks         int64   `json:"total_tasks"`
+	Completed          int64   `json:"completed"`
+	Failed             int64   `json:"failed"`
+	Ongoing            int64   `json:"ongoing"`
+	CompletionRate     float64 `json:"completion_rate"`
+	AvgCompletionHours float64 `json:"avg_completion_hours"`
+	OverdueCount       int64   `json:"overdue_count"`
+	FieldCheckCount    int64   `json:"field_check_count"`
+	QualityScore       float64 `json:"quality_score"`
+}
+
+type technicianPerformanceRow struct {
+	UserID             string
+	FullName           string
+	Username           string
+	TotalTasks         int64
+	Completed          int64
+	Failed             int64
+	Ongoing            int64
+	AvgCompletionHours float64
+	OverdueCount       int64
+	FieldCheckCount    int64
+	OKCount            int64
+}
+
+// GetTechnicianPerformance mengembalikan statistik teknisi untuk dashboard admin.
+// Waktu penugasan memakai AssignedAt; log lama yang belum memiliki kolom itu
+// memakai CreatedAt sebagai fallback agar histori tetap dapat dianalisis.
+// @Summary      Kinerja Teknisi
+// @Description  Mengembalikan ringkasan tugas pemeliharaan dan pengecekan lapangan per teknisi dalam rentang tanggal tertentu.
+// @Tags         Dashboard
+// @Produce      json
+// @Security     BearerAuth
+// @Param        start_date query string false "Tanggal mulai (YYYY-MM-DD, default 30 hari terakhir)"
+// @Param        end_date query string false "Tanggal akhir (YYYY-MM-DD, inklusif, default hari ini)"
+// @Success      200 {object} map[string]interface{} "Daftar kinerja teknisi"
+// @Failure      400 {object} map[string]interface{} "Rentang tanggal tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Hanya admin yang dapat mengakses dashboard kinerja"
+// @Failure      500 {object} map[string]interface{} "Gagal memuat kinerja teknisi"
+// @Router       /dashboard/technician-performance [get]
+func GetTechnicianPerformance(c *fiber.Ctx) error {
+	if role, _ := c.Locals("role").(string); role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: dashboard kinerja teknisi hanya untuk admin",
+		})
+	}
+
+	now := time.Now()
+	start, end := utils.ParseDateRangeParams(c)
+	startDate := now.AddDate(0, 0, -30)
+	endDate := now
+	if start != nil {
+		startDate = *start
+	}
+	if end != nil {
+		endDate = *end
+	}
+	if !endDate.After(startDate) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Rentang tanggal tidak valid: tanggal akhir harus setelah tanggal mulai",
+		})
+	}
+
+	// Satu query agregat menjaga jumlah round-trip database tetap konstan.
+	// Filter tugas memakai waktu assign; COALESCE menjaga kompatibilitas dengan
+	// log lama yang dibuat sebelum kolom assigned_at tersedia.
+	query := `
+		SELECT
+			u.id AS user_id,
+			u.full_name,
+			u.username,
+			COALESCE(ml.total_tasks, 0) AS total_tasks,
+			COALESCE(ml.completed, 0) AS completed,
+			COALESCE(ml.failed, 0) AS failed,
+			COALESCE(ml.ongoing, 0) AS ongoing,
+			COALESCE(ml.avg_completion_hours, 0)::double precision AS avg_completion_hours,
+			COALESCE(ml.overdue_count, 0) AS overdue_count,
+			COALESCE(fm.field_check_count, 0) AS field_check_count,
+			COALESCE(fm.ok_count, 0) AS ok_count
+		FROM users AS u
+		LEFT JOIN (
+			SELECT
+				technician_id,
+				COUNT(*) AS total_tasks,
+				COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+				COUNT(*) FILTER (WHERE status = 'failed') AS failed,
+				COUNT(*) FILTER (WHERE status = 'ongoing') AS ongoing,
+				ROUND((AVG(EXTRACT(EPOCH FROM (completed_at - COALESCE(assigned_at, created_at))) / 3600.0)
+					FILTER (WHERE status = 'completed' AND completed_at IS NOT NULL))::numeric, 1) AS avg_completion_hours,
+				COUNT(*) FILTER (
+					WHERE (status IN ('scheduled', 'ongoing') AND scheduled_date IS NOT NULL AND scheduled_date < ?)
+					   OR (status = 'completed' AND scheduled_date IS NOT NULL AND completed_at IS NOT NULL AND scheduled_date < completed_at)
+				) AS overdue_count
+			FROM maintenance_logs
+			WHERE technician_id IS NOT NULL
+			  AND COALESCE(assigned_at, created_at) >= ?
+			  AND COALESCE(assigned_at, created_at) < ?
+			  AND deleted_at IS NULL
+			GROUP BY technician_id
+		) AS ml ON ml.technician_id = u.id
+		LEFT JOIN (
+			SELECT
+				technician_id,
+				COUNT(*) AS field_check_count,
+				COUNT(*) FILTER (WHERE overall_status = 'ok') AS ok_count
+			FROM field_maintenances
+			WHERE created_at >= ?
+			  AND created_at < ?
+			  AND deleted_at IS NULL
+			GROUP BY technician_id
+		) AS fm ON fm.technician_id = u.id
+		WHERE u.role = 'teknisi'
+		  AND u.deleted_at IS NULL
+		  AND (ml.technician_id IS NOT NULL OR fm.technician_id IS NOT NULL)
+		ORDER BY total_tasks DESC, field_check_count DESC, u.full_name ASC
+	`
+
+	var rows []technicianPerformanceRow
+	if err := config.DB.Raw(query, now, startDate, endDate, startDate, endDate).Scan(&rows).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memuat kinerja teknisi",
+		})
+	}
+
+	performance := make([]TechnicianPerformance, 0, len(rows))
+	for _, row := range rows {
+		completionRate := float64(0)
+		if row.TotalTasks > 0 {
+			completionRate = roundDashboardMetric(float64(row.Completed) / float64(row.TotalTasks) * 100)
+		}
+		qualityScore := float64(0)
+		if row.FieldCheckCount > 0 {
+			qualityScore = roundDashboardMetric(float64(row.OKCount) / float64(row.FieldCheckCount) * 100)
+		}
+
+		performance = append(performance, TechnicianPerformance{
+			UserID:             row.UserID,
+			FullName:           row.FullName,
+			Username:           row.Username,
+			TotalTasks:         row.TotalTasks,
+			Completed:          row.Completed,
+			Failed:             row.Failed,
+			Ongoing:            row.Ongoing,
+			CompletionRate:     completionRate,
+			AvgCompletionHours: roundDashboardMetric(row.AvgCompletionHours),
+			OverdueCount:       row.OverdueCount,
+			FieldCheckCount:    row.FieldCheckCount,
+			QualityScore:       qualityScore,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   performance,
+	})
+}
+
+func roundDashboardMetric(value float64) float64 {
+	return math.Round(value*10) / 10
 }
 
 // maintenanceTrend menghitung jumlah log pemeliharaan per status untuk 6 bulan

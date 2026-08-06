@@ -517,6 +517,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 	now := time.Now()
 	logEntry.TechnicianID = &techUUID
+	logEntry.AssignedAt = &now
 	logEntry.Status = "ongoing"
 	logEntry.UpdatedAt = now
 

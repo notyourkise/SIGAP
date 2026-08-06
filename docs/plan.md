@@ -107,7 +107,7 @@ sigap-monorepo/
 | 4 | 5 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ✅ Selesai (2026-08-06, branch `feature/recurring-schedule`) — build/test/vet PASS + lint/build PASS + swag init; generator idempotent per hari per jadwal, tanpa teknisi → log `scheduled`, dengan teknisi → `ongoing` + notifikasi |
 | 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine saat startup + tiap jam, notif admin/teknisi, reset saat reschedule | ✅ Selesai (2026-08-06, branch `feature/overdue-escalation`) — test checker + reset reschedule PASS |
 | 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, endpoint breakdown, badge tabel/peta, goroutine 6 jam, recalculation saat complete/field-check | ✅ Selesai (2026-08-06, branch `feature/health-score`) — test kalkulasi + endpoint, backend/frontend build PASS |
-| 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ⬜ Belum |
+| 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ✅ Selesai (2026-08-06, branch `feature/technician-performance`) — test struktur/filter/role + backend/frontend build dan lint PASS |
 | 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ⬜ Belum |
 | 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ⬜ Belum |
 | 10–15 | 7 | 7.1–7.6 Kesiapan Produksi | Versioned migration, Redis, backup, monitoring, hardening, logging | ⬜ Belum |
@@ -150,7 +150,25 @@ sigap-monorepo/
 - `handlers/health_score_test.go`: skenario tanpa riwayat, kombinasi faktor, ambang umur, clamp minimum, dan endpoint.
 - `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
 
-### 6.5 Konvensi Eksekusi Tiap Sprint
+### 6.5 Rancangan Teknis Sprint 7 (Dashboard Kinerja Teknisi)
+
+**Backend**
+- `models/setup.go`: `MaintenanceLog.AssignedAt` nullable untuk mencatat waktu assign/re-assign; log lama memakai `created_at` sebagai fallback.
+- `handlers/maintenance.go` dan `handlers/schedule_runner.go`: mengisi waktu penugasan untuk assign manual, re-assign, dan recurring log yang langsung memiliki teknisi.
+- `handlers/dashboard.go`: `GET /dashboard/technician-performance` memakai satu agregasi SQL; default rentang 30 hari, filter `start_date`/`end_date`, metrik tugas, completion rate, durasi assign → complete, overdue, field check, dan quality score.
+- `routes/dashboard.go`: endpoint berada di bawah `Protected()` dan `RequireRole("admin")`.
+
+**Frontend**
+- `app/kinerja-teknisi/page.tsx`: filter 7 hari/30 hari/kustom, tabel ranking sortable, state loading/error/empty, dan badge ambang completion/quality.
+- `components/TechnicianPerformanceChart.tsx`: chart batang horizontal SVG responsif tanpa dependency chart eksternal.
+- `components/DashboardLayout.tsx` dan `proxy.ts`: menu serta guard admin untuk `/kinerja-teknisi`.
+
+**Test & Verifikasi**
+- `handlers/technician_performance_test.go`: struktur respons, filter tanggal, dan role non-admin → 403.
+- `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
+- Uji manual di `docs/manual-test-technician-performance.md`.
+
+### 6.6 Konvensi Eksekusi Tiap Sprint
 
 1. Branch `feature/...` dari `main` terbaru → Conventional Commits → push → PR (user merge) → hapus branch lokal.
 2. Changelog: `backend/changelog.md`, `frontend/changelog.md`, `docs/changelog.md` (format before/after, timestamp WITA, kategori, daftar file, alasan teknis).

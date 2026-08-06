@@ -1193,6 +1193,74 @@
                 }
             }
         },
+        "/dashboard/technician-performance": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan ringkasan tugas pemeliharaan dan pengecekan lapangan per teknisi dalam rentang tanggal tertentu.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Kinerja Teknisi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tanggal mulai (YYYY-MM-DD, default 30 hari terakhir)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tanggal akhir (YYYY-MM-DD, inklusif, default hari ini)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar kinerja teknisi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Rentang tanggal tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Hanya admin yang dapat mengakses dashboard kinerja",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat kinerja teknisi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/field-maintenance": {
             "get": {
                 "security": [

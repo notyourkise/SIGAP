@@ -1,5 +1,30 @@
 # Changelog - Frontend SIGAP
 
+## [1.29.0] - 2026-08-06
+
+### Fitur: Dashboard Kinerja Teknisi (Task 6.2)
+
+perubahan yang dilakukan: **Menambahkan halaman admin `/kinerja-teknisi` dengan filter 7 hari, 30 hari, dan kustom; chart SVG completion rate per teknisi; tabel ranking yang dapat diurutkan pada setiap kolom; serta badge persentase berwarna sesuai ambang kinerja.**
+
+before: Admin belum memiliki halaman khusus untuk membandingkan beban tugas, kecepatan penyelesaian, overdue, dan kualitas pengecekan teknisi.
+
+after:
+- `src/app/kinerja-teknisi/page.tsx`: halaman admin dengan filter rentang, state loading/error/empty, tabel ranking sortable, dan badge completion/quality.
+- `src/components/TechnicianPerformanceChart.tsx`: chart batang horizontal SVG responsif tanpa dependency chart baru.
+- `src/components/DashboardLayout.tsx`: menu `Kinerja Teknisi` dengan ikon `TrendingUp` di bawah Dashboard untuk admin.
+- `src/proxy.ts`: route `/kinerja-teknisi` ditambahkan ke guard admin server-side.
+- `frontend/changelog.md`: catatan versi fitur baru.
+
+timestamp: 2026-08-06 14:18 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/kinerja-teknisi/page.tsx
+- frontend/src/components/TechnicianPerformanceChart.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Menjadikan insight kinerja teknisi dapat dipindai dan dibandingkan admin tanpa mengorbankan akses mobile atau keterbacaan tabel operasional.
+
 ## [1.28.0] - 2026-08-06
 
 ### Fitur: Badge Skor Kesehatan CCTV (Task 6.1)
