@@ -758,6 +758,12 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		"maintenance-log", &refID)
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+
+	// Perbarui skor setelah transaksi penyelesaian berhasil. Kegagalan
+	// kalkulator tidak boleh membatalkan data checklist yang sudah tersimpan.
+	if err := RecalculateCCTVHealthScore(config.DB, logEntry.CCTVID); err != nil {
+		utils.Log.Errorf("Gagal memperbarui skor kesehatan CCTV %s: %v", logEntry.CCTVID.String(), err)
+	}
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{

@@ -29,7 +29,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 3 | Fitur (Kapabilitas) | 9/9 | ✅ Selesai |
 | 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa dilebur ke Fase 7 |
 | 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
-| 6 | Kecerdasan Operasional | 0/4 | ⬜ Belum |
+| 6 | Kecerdasan Operasional | 1/4 | 🚧 Berjalan |
 | 7 | Kesiapan Produksi | 0/6 | ⬜ Belum |
 | 8 | Pengalaman Lapangan | 0/4 | ⬜ Belum |
 
@@ -196,13 +196,13 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Mengubah data yang sudah terkumpul menjadi **insight yang actionable** bagi admin dan pimpinan.
 > Data pemeliharaan, pengecekan lapangan, dan tugas sudah tersedia — fase ini menarik nilai dari data tersebut.
-> **Status: ⬜ BELUM** — dikerjakan setelah Fase 5 tuntas.
+> **Status: 🚧 BERJALAN** — Task 6.1 selesai; task berikutnya dikerjakan setelah fondasi skor kesehatan tersedia.
 
 ### Task (berurutan — kerjakan dari atas ke bawah)
 
 | # | Task | Keterangan | Skala | Status |
 |---|------|-----------|-------|--------|
-| 6.1 | Skor Kesehatan CCTV | Skor 0–100 per CCTV dihitung otomatis dari 5 faktor: jumlah pemeliharaan gagal (bobot 30%), frekuensi pengecekan `attention` (25%), keterlambatan tugas (20%), umur sejak pemeliharaan terakhir berhasil (15%), jumlah item checklist `not_ok` (10%). Endpoint `GET /api/cctv/:id/health-score` + kolom `health_score` di list CCTV + badge visual (hijau ≥70 / kuning ≥40 / merah <40) di tabel & peta sebaran. Goroutine penghitungan ulang berkala (tiap 6 jam) atau saat event complete/field-check selesai. | Besar | ⬜ Belum |
+| 6.1 | Skor Kesehatan CCTV | Skor 0–100 per CCTV dihitung otomatis dari 5 faktor: jumlah pemeliharaan gagal (bobot 30%), frekuensi pengecekan `attention` (25%), keterlambatan tugas (20%), umur sejak pemeliharaan terakhir berhasil (15%), jumlah item checklist `not_ok` (10%). Endpoint `GET /api/cctv/:id/health-score` + kolom `health_score` di list CCTV + badge visual (hijau ≥70 / kuning ≥40 / merah <40) di tabel & peta sebaran. Goroutine penghitungan ulang berkala (tiap 6 jam) atau saat event complete/field-check selesai. | Besar | ✅ Selesai (2026-08-06) — test kalkulasi/endpoint + backend build/test/vet dan frontend lint/build PASS |
 | 6.2 | Dashboard Kinerja Teknisi | Endpoint `GET /api/dashboard/technician-performance` (admin): completion rate, rata-rata waktu penyelesaian (assign → complete), jumlah tugas overdue, jumlah pengecekan lapangan, kualitas (rasio 9/9 ok vs total). Halaman admin `/kinerja-teknisi` + menu sidebar, tabel ranking + bar chart per teknisi. Filter rentang waktu (7 hari / 30 hari / kustom). | Sedang | ⬜ Belum |
 | 6.3 | Laporan PDF Pengecekan Lapangan | Endpoint `GET /api/field-maintenance/:id/report-pdf`: laporan per-record dengan kop surat IKN (pola sama dengan laporan pemeliharaan), detail 9 item checklist (nama, hasil, catatan), foto bukti, identitas teknisi & CCTV, waktu pengecekan. Tombol "Cetak Laporan" di modal detail pengecekan lapangan (admin). | Sedang | ⬜ Belum |
 | 6.4 | Ringkasan Operasional Otomatis | Goroutine harian (06:00 WITA): hitung ringkasan 24 jam terakhir — tugas baru/selesai/gagal/overdue, pengecekan lapangan, CCTV berubah status — simpan di model `DailyDigest`. Endpoint `GET /api/dashboard/digest` (admin): daftar ringkasan harian. Halaman `/ringkasan` dengan timeline harian. Notifikasi in-app ke admin saat ringkasan tersedia. | Sedang | ⬜ Belum |

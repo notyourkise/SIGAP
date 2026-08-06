@@ -48,6 +48,7 @@ interface CCTV {
   ip_camera: string;
   keterangan: string;
   qr_payload: string;
+  health_score: number;
   created_at: string;
 }
 
@@ -297,6 +298,18 @@ export default function CCTVPage() {
     if (['MAINTENANCE', 'PEMELIHARAAN'].includes(normalized)) return 'Pemeliharaan';
     if (['BROKEN', 'RUSAK'].includes(normalized)) return 'Nonaktif';
     return status;
+  };
+
+  // Skor lama yang belum dikirim API dianggap sehat sesuai nilai default model.
+  const normalizedHealthScore = (score?: number) => {
+    if (typeof score !== 'number' || !Number.isFinite(score)) return 100;
+    return Math.max(0, Math.min(100, Math.round(score)));
+  };
+  const healthScoreClasses = (score?: number) => {
+    const value = normalizedHealthScore(score);
+    if (value >= 70) return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+    if (value >= 40) return 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400';
+    return 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400';
   };
   // Handlers
   const handleOpenDetail = async (id: string) => {
@@ -927,7 +940,7 @@ export default function CCTVPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-left">
+              <table className="w-full min-w-[980px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
                     {isAdmin && (
@@ -949,6 +962,7 @@ export default function CCTVPage() {
                     <th className="px-5 py-3.5">Koneksi</th>
                     <th className="px-5 py-3.5">Lokasi</th>
                     <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5">Kesehatan</th>
                     <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
@@ -1032,6 +1046,15 @@ export default function CCTVPage() {
                             isStatus(cctv.status, ['ACTIVE', 'AKTIF']) ? 'bg-emerald-500' : isStatus(cctv.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK']) ? 'bg-red-500' : isStatus(cctv.status, ['MAINTENANCE', 'PEMELIHARAAN']) ? 'bg-amber-500' : 'bg-gray-500'
                           }`} />
                           {statusLabel(cctv.status)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex min-w-14 items-center justify-center rounded-full border px-2.5 py-1 text-xs font-bold tabular-nums ${healthScoreClasses(cctv.health_score)}`}
+                          title={`Skor kesehatan ${normalizedHealthScore(cctv.health_score)} dari 100`}
+                          aria-label={`Skor kesehatan ${normalizedHealthScore(cctv.health_score)} dari 100`}
+                        >
+                          {normalizedHealthScore(cctv.health_score)}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
@@ -1130,6 +1153,7 @@ export default function CCTVPage() {
                     <option value="nama">Nama</option>
                     <option value="kode_cctv">Kode CCTV</option>
                     <option value="status">Status</option>
+                    <option value="health_score">Skor kesehatan</option>
                     <option value="lokasi_area">Lokasi area</option>
                   </select>
                 </div>

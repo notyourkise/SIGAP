@@ -35,10 +35,10 @@ func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 		"kode_cctv", "id_channel", "nama", "lokasi_area",
 		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
-		"ip_nvr", "ip_camera", "keterangan", "qr_payload",
+		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
 		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
-		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload")
+		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload", 100)
 	return rows, id
 }
 
@@ -158,6 +158,7 @@ func TestCreateCCTV_Success(t *testing.T) {
 	assert.Equal(t, "CCTV-009", data["kode_cctv"])
 	// QrPayload harus terisi (hasil enkripsi AES dari UUID)
 	assert.NotEmpty(t, data["qr_payload"])
+	assert.Equal(t, float64(100), data["health_score"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

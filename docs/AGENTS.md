@@ -49,10 +49,10 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `models/setup.go` — Definisi struktur `Base` (berisi UUID, timestamps, dan _soft delete_) yang di-_embed_ pada semua model, termasuk _hook_ `BeforeCreate` yang hanya men-generate UUID baru jika ID kosong (`uuid.Nil`). File ini juga mendefinisikan model `User` dan `MaintenanceLog`, termasuk flag nullable `OverdueNotifiedAt` untuk eskalasi overdue satu kali.
 - `models/maintenance_schedule.go` — Definisi struktur `MaintenanceSchedule` (Fase 5.4, jadwal pemeliharaan berulang): `CCTVID`, `TechnicianID` (opsional), `ActionTaken`, `Frequency` (`daily`/`weekly`/`monthly`), `NextRunAt`, `IsActive`, `LastGeneratedAt` + konstanta `FrequencyDaily/Weekly/Monthly`.
 - `models/notification.go` — Definisi struktur `Notification` (notifikasi in-app per-user, Fase 5.1): `UserID`, `Type`, `Title`, `Message`, `ReferenceID`, `ReferenceType`, `IsRead` + konstanta tipe (`MAINTENANCE_ASSIGNED`, `MAINTENANCE_REASSIGNED`, `MAINTENANCE_UNASSIGNED`, `MAINTENANCE_COMPLETED`, `MAINTENANCE_OVERDUE`, `FIELD_CHECK_ATTENTION`); index komposit `(user_id, is_read)`.
-- `models/cctv.go` — Definisi struktur `CCTV` (16 field), termasuk `QrPayload` yang dienkripsi menggunakan AES-256.
+- `models/cctv.go` — Definisi struktur `CCTV`, termasuk `QrPayload` yang dienkripsi menggunakan AES-256 dan `HealthScore` (skor kesehatan 0–100, default 100).
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv`, `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), dan `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule).
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `user`, `dashboard`, `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
@@ -82,7 +82,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/page.tsx` — Halaman akar yang hanya me-_redirect_ pengguna ke `/dashboard`.
 - `src/app/dashboard/page.tsx` — Halaman Dashboard utama: manajemen aset CCTV (tabel data, filter pencarian, CRUD modal, tombol quick maintenance) + komponen `DashboardAnalytics`.
 - `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
-- `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
+- `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap termasuk badge skor kesehatan, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, fitur unggah bukti foto pemeliharaan, penugasan ke teknisi (tombol "Tugaskan"), dan pengalihan tugas (tombol "Alihkan" untuk log `ongoing`, Fase 5.3 — menampilkan peringatan nama teknisi saat ini sebelum submit).
 - `src/app/schedules/page.tsx` — Halaman Jadwal Pemeliharaan (Fase 5.4, khusus admin): CRUD jadwal berulang, toggle aktif/nonaktif, filter status, paginasi; menu sidebar "Jadwal".
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
@@ -96,7 +96,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/components/NotificationBell.tsx` — Komponen lonceng notifikasi in-app (Fase 5.1): **hanya dirender di halaman Dashboard**; badge jumlah belum dibaca, dropdown 3 notifikasi teratas, tombol "Lihat lainnya" → `/pemberitahuan`, tandai semua dibaca, toast real-time via WebSocket `NOTIFICATION_CREATED`, fallback polling 60 detik.
 - `src/components/ProtectedRoute.tsx` — Komponen _High-Order Guard_ yang melakukan otomatisasi _redirect_ ke `/login` jika pengguna belum terautentikasi.
 - `src/components/DashboardAnalytics.tsx` — Komponen grafik/statistik dashboard.
-- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`.
+- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`; warna marker dan badge popup mengikuti skor kesehatan.
 - `src/components/AuthenticatedImage.tsx` — Komponen `<img>` yang memuat file gambar melalui endpoint yang dilindungi JWT.
 - `src/components/Pagination.tsx` — Komponen navigasi halaman reusable.
 - `src/context/AuthContext.tsx` — Manajemen state sesi dan pengambilan profil `/auth/me`.
@@ -147,6 +147,7 @@ Menyimpan data spesifik perangkat CCTV yang dienkripsi ID-nya untuk keperluan QR
 - `IPNVR`, `IPCamera`
 - `Keterangan`
 - `QrPayload` (unique, berisi format string dari UUID perangkat yang **dienkripsi menggunakan algoritma AES-256**).
+- `HealthScore` (integer 0–100, default 100; diperbarui kalkulator skor kesehatan Fase 6.1).
 
 ### MaintenanceLog
 Menyimpan data catatan pemeliharaan:
@@ -205,6 +206,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Otorisasi (Role Check)**: Gunakan _middleware_ `RequireRole("admin")` pada rute yang melibatkan operasi _write_ atau _delete_ (hanya admin yang dapat memodifikasi data inti). Ekspor/laporan untuk teknisi dibatasi ke data miliknya (Fase 3.9).
 - **WebSocket**: Koneksi `/api/ws` **wajib terautentikasi** — token diambil dari cookie `sigap_session` (dikirim otomatis browser same-origin) dengan fallback query parameter `token`. Hub mem-broadcast event `CCTV_UPDATED`, `MAINTENANCE_CREATED`, `MAINTENANCE_UPDATED`, `AUDIT_LOG_ADDED` (global), serta `NOTIFICATION_CREATED` (terarah per-user/per-role via `BroadcastToUser`/`BroadcastToRole` — Fase 5.1).
 - **Notifikasi In-App** (Fase 5.1): Endpoint `/api/notifications` — `GET /` (list + filter `unread` + paginasi), `GET /unread-count`, `PUT /:id/read` (ownership check → 403), `PUT /read-all`. Semua scope per-user dari klaim JWT; rute statis didaftarkan sebelum dinamis. Pembuatan notifikasi tidak dilakukan handler secara manual — gunakan `utils.NotifyUser`/`utils.NotifyRole`.
+- **Skor Kesehatan CCTV** (Fase 6.1): `GET /api/cctv/:id/health-score` protected untuk semua role; respons berisi `health_score`, `breakdown` lima metrik, dan `updated_at`. Kolom `health_score` juga tersedia pada list CCTV dan dapat dipakai sebagai `sort_by`.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
 ## 6. Gotchas & Catatan Teknis Penting
@@ -279,7 +281,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 - File yang secara otomatis di-generate akan tersimpan pada: `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`.
 
 ## 9. Testing
-- Matriks cakupan test lengkap (34 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
+- Matriks cakupan test lengkap (35 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
 - Untuk mengeksekusi tes & quality check:
   ```bash
   cd backend && go build ./... && go test ./... -count=1 && go vet ./...

@@ -19,4 +19,7 @@ type CCTV struct {
 	IPCamera      string `gorm:"type:varchar(45)" json:"ip_camera"`
 	Keterangan    string `gorm:"type:text" json:"keterangan"`
 	QrPayload     string `gorm:"type:text;unique" json:"qr_payload"`
+	// HealthScore menyimpan skor kesehatan terbaru dari kalkulator operasional.
+	// Nilai awal 100 dan dibatasi pada rentang 0 sampai 100 oleh kalkulator.
+	HealthScore int `gorm:"type:integer;not null;default:100" json:"health_score"`
 }

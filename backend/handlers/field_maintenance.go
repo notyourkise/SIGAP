@@ -191,6 +191,12 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 	// Muat ulang dengan relasi lengkap untuk respon JSON
 	config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").First(&entry, entry.ID)
 
+	// Hasil field-check mengubah salah satu faktor skor, jadi hitung ulang
+	// setelah seluruh header dan checklist berhasil disimpan.
+	if err := RecalculateCCTVHealthScore(config.DB, cctvUUID); err != nil {
+		utils.Log.Errorf("Gagal memperbarui skor kesehatan CCTV %s: %v", cctvUUID.String(), err)
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
 		"data":   entry,

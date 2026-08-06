@@ -988,6 +988,69 @@
                 }
             }
         },
+        "/cctv/{id}/health-score": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghitung skor kesehatan 0-100 berdasarkan kegagalan pemeliharaan, field-check attention, overdue, umur pemeliharaan berhasil, dan item checklist not_ok.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Ambil Skor Kesehatan CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Skor kesehatan CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menghitung skor kesehatan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/cctv/{id}/qrcode": {
             "get": {
                 "security": [
