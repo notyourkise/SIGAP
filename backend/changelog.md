@@ -1,5 +1,37 @@
 # Changelog - Backend SIGAP
 
+## [0.33.0] - 2026-08-06
+
+### Fitur: Dashboard Kinerja Teknisi (Task 6.2)
+
+perubahan yang dilakukan: **Menambahkan endpoint admin `GET /api/dashboard/technician-performance` dengan filter rentang tanggal, agregasi tugas pemeliharaan, waktu penyelesaian, overdue, pengecekan lapangan, dan quality score. Menambahkan `MaintenanceLog.AssignedAt` agar durasi completion dihitung dari waktu penugasan ke `completed_at`; log lama memakai `created_at` sebagai fallback.**
+
+before: SIGAP belum menyediakan ringkasan beban kerja dan kualitas teknisi yang dapat dibandingkan admin dalam satu rentang waktu. Waktu mulai tugas juga belum dicatat secara eksplisit.
+
+after:
+- `models/setup.go`: field nullable `MaintenanceLog.AssignedAt` untuk waktu mulai penugasan.
+- `handlers/maintenance.go`: waktu assign/re-assign disimpan pada `AssignedAt`.
+- `handlers/schedule_runner.go`: recurring log yang langsung memiliki teknisi menyimpan `AssignedAt` saat dibuat.
+- `handlers/dashboard.go`: handler `GetTechnicianPerformance`, agregasi satu query, filter default 30 hari, completion rate, rata-rata jam, overdue, field check, dan quality score.
+- `routes/dashboard.go`: endpoint kinerja teknisi dilindungi `Protected()` dan `RequireRole("admin")`.
+- `handlers/technician_performance_test.go`: test struktur respons, filter tanggal, dan penolakan role non-admin.
+- Swagger docs diregenerasi dengan `swag init`.
+
+timestamp: 2026-08-06 14:18 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/setup.go
+- backend/handlers/dashboard.go
+- backend/handlers/maintenance.go
+- backend/handlers/schedule_runner.go
+- backend/handlers/technician_performance_test.go
+- backend/routes/dashboard.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Memberikan dasar evaluasi beban kerja dan kualitas teknisi dari data operasional yang sudah tersimpan, tanpa query N+1 atau dependency baru.
+
 ## [0.32.0] - 2026-08-06
 
 ### Fitur: Skor Kesehatan CCTV (Task 6.1)

@@ -54,6 +54,10 @@ type MaintenanceLog struct {
 	// lewat endpoint assign (status berubah menjadi "ongoing").
 	TechnicianID *uuid.UUID `gorm:"type:uuid;index" json:"technician_id"`
 	User         *User      `gorm:"foreignKey:TechnicianID" json:"technician"`
+	// AssignedAt mencatat waktu tugas mulai menjadi tanggung jawab teknisi.
+	// Data lama yang belum memiliki nilai ini memakai CreatedAt sebagai fallback
+	// pada agregasi dashboard kinerja teknisi.
+	AssignedAt *time.Time `json:"assigned_at,omitempty"`
 	// MaintenanceResultID menunjuk ke catatan FieldMaintenance hasil pengecekan
 	// 9 tahap checklist yang diselesaikan teknisi (nil sebelum tugas selesai).
 	MaintenanceResultID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_result_id"`

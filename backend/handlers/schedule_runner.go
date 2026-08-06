@@ -89,13 +89,16 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 	// - tanpa teknisi → "scheduled" (menunggu ditugaskan admin)
 	// - dengan teknisi → "ongoing" (langsung menjadi tugas teknisi)
 	status := "scheduled"
+	var assignedAt *time.Time
 	if schedule.TechnicianID != nil {
 		status = "ongoing"
+		assignedAt = &now
 	}
 
 	logEntry := models.MaintenanceLog{
 		CCTVID:                schedule.CCTVID,
 		TechnicianID:          schedule.TechnicianID,
+		AssignedAt:            assignedAt,
 		ActionTaken:           schedule.ActionTaken,
 		Status:                status,
 		ScheduledDate:         &now,

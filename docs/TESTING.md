@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-06 (penambahan test kalkulator skor kesehatan CCTV).
+> Diperbarui: 2026-08-06 (penambahan test dashboard kinerja teknisi).
 
 ---
 
@@ -44,6 +44,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah; assign/re-assign (Fase 5.3): assign normal → 200, re-assign log `ongoing` ke teknisi baru → 200, assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` → 403 (RequireRole admin) |
 | `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif` |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong) |
+| `handlers` | `technician_performance_test.go` | Dashboard kinerja teknisi: struktur respons, filter rentang tanggal, kalkulasi rate/quality, dan role non-admin → 403 |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
 | `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
@@ -56,7 +57,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 35 file test** (8 utils, 4 middleware, 17 handlers, 2 models, 2 config, 2 routes, termasuk helper).
+**Total: 36 file test** (8 utils, 4 middleware, 18 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 

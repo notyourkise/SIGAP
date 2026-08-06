@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.15] — 2026-08-06 — Dashboard Kinerja Teknisi (Task 6.2)
+
+### Perubahan
+
+- **Backend** ([0.33.0]): endpoint admin `/api/dashboard/technician-performance` dengan filter rentang tanggal, agregasi tugas, completion rate, rata-rata durasi dari assign ke selesai, overdue, field check, dan quality score; `MaintenanceLog.AssignedAt` dicatat saat assign/re-assign.
+- **Frontend** ([1.29.0]): halaman admin `/kinerja-teknisi`, filter 7/30 hari atau kustom, chart completion rate SVG, tabel ranking sortable, menu sidebar, dan guard proxy admin.
+- **Dokumen**: Task 6.2 ditandai selesai pada Fase 6; matriks test, panduan agent, plan, dan panduan uji manual diperbarui.
+- `swag init`, backend build/test/vet, frontend lint/build diverifikasi pada branch fitur.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.33.0], `frontend/changelog.md` [1.29.0]
+
 ## [1.28.14] — 2026-08-06 — Skor Kesehatan CCTV (Task 6.1)
 
 ### Perubahan
