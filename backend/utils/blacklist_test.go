@@ -153,20 +153,32 @@ func TestRedisBlacklist_TTLMengikutiTokenTerpanjang(t *testing.T) {
 	fake := newFakeRedisCommander()
 	store := &RedisTokenBlacklist{client: fake}
 
+	// TTL yang tersimpan = time.Until(expiry), sedikit kurang dari TTL awal
+	// karena waktu berlalu antara time.Now().Add(...) dan pemanggilan Add.
+	// Karena itu perbandingan memakai toleransi ±1 detik.
 	longTTL := 5 * time.Hour
 	shortTTL := 30 * time.Minute
+	extendedTTL := 10 * time.Hour
+
+	assertTTLClose := func(label string, expected, actual time.Duration) {
+		t.Helper()
+		diff := expected - actual
+		if diff < 0 {
+			diff = -diff
+		}
+		assert.LessOrEqual(t, diff, time.Second, "%s: TTL expected ~%s, actual %s", label, expected, actual)
+	}
 
 	assert.NoError(t, store.Add("token-lama", time.Now().Add(longTTL)))
-	assert.Equal(t, longTTL, fake.expiry[tokenBlacklistKey])
+	assertTTLClose("setelah token long", longTTL, fake.expiry[tokenBlacklistKey])
 
 	// Token baru dengan TTL lebih pendek → TTL key TIDAK berkurang
 	assert.NoError(t, store.Add("token-baru", time.Now().Add(shortTTL)))
-	assert.Equal(t, longTTL, fake.expiry[tokenBlacklistKey])
+	assertTTLClose("setelah token short (tidak berkurang)", longTTL, fake.expiry[tokenBlacklistKey])
 
 	// Token baru dengan TTL lebih panjang → TTL key diperpanjang
-	extendedTTL := 10 * time.Hour
 	assert.NoError(t, store.Add("token-panjang", time.Now().Add(extendedTTL)))
-	assert.Equal(t, extendedTTL, fake.expiry[tokenBlacklistKey])
+	assertTTLClose("setelah token extended", extendedTTL, fake.expiry[tokenBlacklistKey])
 }
 
 // TestBlacklist_RevokeAndCheck menguji facade publik RevokeToken/IsTokenRevoked
