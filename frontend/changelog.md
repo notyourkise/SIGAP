@@ -1,5 +1,24 @@
 # Changelog - Frontend SIGAP
 
+## [1.30.0] - 2026-08-06
+
+### Fitur: Cetak Laporan Pengecekan Lapangan (Task 6.3)
+
+perubahan yang dilakukan: **Menambahkan tombol "Cetak Laporan" dengan ikon `FileDown` pada modal detail halaman `/field-maintenance`. Tombol hanya terlihat untuk Admin dan mengunduh PDF melalui helper API dengan cookie sesi, respons blob, nama file dari header server, serta state loading/error.**
+
+before: Admin belum dapat mengunduh laporan PDF per-record dari modal detail pengecekan lapangan.
+
+after:
+- `src/app/field-maintenance/page.tsx`: integrasi `useAuth`, `downloadApiFile`, tombol `FileDown`, dan feedback toast saat download.
+- `frontend/changelog.md`: catatan versi fitur baru.
+
+timestamp: 2026-08-06 15:05 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/field-maintenance/page.tsx
+- frontend/changelog.md
+alasan perubahan: Memberi Admin cara cepat untuk mengarsipkan hasil pengecekan lapangan tanpa meninggalkan modal detail dan tetap mengikuti pola autentikasi frontend yang sudah ada.
+
 ## [1.29.0] - 2026-08-06
 
 ### Fitur: Dashboard Kinerja Teknisi (Task 6.2)

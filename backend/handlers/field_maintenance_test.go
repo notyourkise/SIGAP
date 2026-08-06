@@ -324,6 +324,107 @@ func TestGetFieldMaintenanceByID_NotFound(t *testing.T) {
 	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+func expectFieldMaintenanceReportQueries(mock sqlmock.Sqlmock, reportID, cctvID, techID uuid.UUID) {
+	now := time.Now()
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "maintenance_log_id", "overall_status", "notes", "completed_at",
+		}).AddRow(reportID, now, now, nil, cctvID, techID, nil, "ok", "Semua item normal", now))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"kode_cctv", "id_channel", "nama", "lokasi_area",
+			"longitude", "latitude", "jenis_cctv", "sumber_listrik",
+			"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
+			"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
+		}).AddRow(cctvID, now, now, nil, "CCTV-001", "CH-01", "Kamera Utama", "Plaza Seremoni",
+			"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "IKN", "aktif",
+			"192.168.1.10", "192.168.1.11", "Aman", "payload", 100))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"field_maintenance_id", "name", "result", "note",
+		}).AddRow(uuid.New(), now, now, nil, reportID, "Pengecekan jaringan", "ok", ""))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"field_maintenance_id", "image_url",
+		}).AddRow(uuid.New(), now, now, nil, reportID, "/api/uploads/bukti.jpg"))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "full_name", "username", "role"}).
+			AddRow(techID, "Teknisi Lapangan", "teknisi.ikn", "teknisi"))
+}
+
+func TestGenerateFieldMaintenanceReportPDF_Success(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	reportID := uuid.New()
+	cctvID := uuid.New()
+	techID := uuid.New()
+	expectFieldMaintenanceReportQueries(mock, reportID, cctvID, techID)
+
+	app := newTestApp()
+	app.Get("/field-maintenance/:id/report-pdf", withUserLocals(uuid.New().String(), "admin"), GenerateFieldMaintenanceReportPDF)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+reportID.String()+"/report-pdf", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	assert.Contains(t, resp.Header.Get("Content-Disposition"), "laporan_pengecekan_lapangan_")
+
+	prefix := make([]byte, 4)
+	n, _ := resp.Body.Read(prefix)
+	assert.Equal(t, "%PDF", string(prefix[:n]), "body harus berupa file PDF valid")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGenerateFieldMaintenanceReportPDF_TechnicianOwner(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	reportID := uuid.New()
+	cctvID := uuid.New()
+	techID := uuid.New()
+	expectFieldMaintenanceReportQueries(mock, reportID, cctvID, techID)
+
+	app := newTestApp()
+	app.Get("/field-maintenance/:id/report-pdf", withUserLocals(techID.String(), "teknisi"), GenerateFieldMaintenanceReportPDF)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+reportID.String()+"/report-pdf", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGenerateFieldMaintenanceReportPDF_TechnicianOwnershipDenied(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	reportID := uuid.New()
+	cctvID := uuid.New()
+	techID := uuid.New()
+	expectFieldMaintenanceReportQueries(mock, reportID, cctvID, techID)
+
+	app := newTestApp()
+	app.Get("/field-maintenance/:id/report-pdf", withUserLocals(uuid.New().String(), "teknisi"), GenerateFieldMaintenanceReportPDF)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+reportID.String()+"/report-pdf", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGenerateFieldMaintenanceReportPDF_NotFound(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	app := newTestApp()
+	app.Get("/field-maintenance/:id/report-pdf", withUserLocals(uuid.New().String(), "admin"), GenerateFieldMaintenanceReportPDF)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+uuid.New().String()+"/report-pdf", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDeleteFieldMaintenance_NotFound(t *testing.T) {
 	_, mock := setupMockGORM(t)
 

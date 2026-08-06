@@ -14,6 +14,8 @@ func SetupFieldMaintenanceRoutes(router fiber.Router) {
 
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	group.Get("/", handlers.GetAllFieldMaintenances)
+	// Rute statis report-pdf didaftarkan sebelum rute detail dinamis.
+	group.Get("/:id/report-pdf", handlers.GenerateFieldMaintenanceReportPDF)
 	group.Get("/:id", handlers.GetFieldMaintenanceByID)
 	group.Post("/", handlers.CreateFieldMaintenance)
 

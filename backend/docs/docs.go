@@ -1524,6 +1524,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/field-maintenance/{id}/report-pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengunduh laporan PDF satu catatan pengecekan lapangan lengkap dengan kop surat IKN, identitas CCTV dan teknisi, checklist, foto bukti, serta catatan umum.",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Pengecekan Lapangan"
+                ],
+                "summary": "Laporan Pengecekan Lapangan (PDF)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catatan UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File PDF laporan pengecekan lapangan",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Catatan tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membuat laporan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Memeriksa status keaktifan server API dan koneksi database PostgreSQL.",

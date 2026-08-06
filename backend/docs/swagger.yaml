@@ -1397,6 +1397,54 @@ paths:
       summary: Ambil Pengecekan Lapangan Detail
       tags:
       - Pengecekan Lapangan
+  /field-maintenance/{id}/report-pdf:
+    get:
+      description: Mengunduh laporan PDF satu catatan pengecekan lapangan lengkap
+        dengan kop surat IKN, identitas CCTV dan teknisi, checklist, foto bukti, serta
+        catatan umum.
+      parameters:
+      - description: Catatan UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: File PDF laporan pengecekan lapangan
+          schema:
+            type: file
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Catatan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membuat laporan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Laporan Pengecekan Lapangan (PDF)
+      tags:
+      - Pengecekan Lapangan
   /health:
     get:
       description: Memeriksa status keaktifan server API dan koneksi database PostgreSQL.

@@ -1,5 +1,33 @@
 # Changelog - Backend SIGAP
 
+## [0.34.0] - 2026-08-06
+
+### Fitur: Laporan PDF Pengecekan Lapangan (Task 6.3)
+
+perubahan yang dilakukan: **Menambahkan endpoint protected `GET /api/field-maintenance/:id/report-pdf` untuk menghasilkan laporan PDF per-record dengan kop surat IKN, informasi CCTV dan teknisi, status pengecekan, tabel checklist, foto bukti, serta catatan umum. Akses Admin mencakup seluruh record, sedangkan teknisi dibatasi pada record miliknya sendiri.**
+
+before: Catatan pengecekan lapangan hanya dapat dilihat melalui respons JSON dan belum memiliki laporan PDF per-record yang siap diarsipkan atau dicetak.
+
+after:
+- `handlers/field_maintenance.go`: handler PDF berbasis `go-pdf/fpdf`, ownership check, tabel checklist, embed foto lokal yang valid, dan fallback URL foto.
+- `routes/field_maintenance.go`: route `GET /field-maintenance/:id/report-pdf` protected didaftarkan sebelum route detail dinamis.
+- `handlers/field_maintenance_test.go`: test content type/prefix PDF, akses teknisi pemilik/non-pemilik, dan record tidak ditemukan.
+- `routes/routes_test.go`: test route field maintenance wajib autentikasi.
+- `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`: dokumentasi Swagger diregenerasi.
+
+timestamp: 2026-08-06 15:05 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/handlers/field_maintenance.go
+- backend/handlers/field_maintenance_test.go
+- backend/routes/field_maintenance.go
+- backend/routes/routes_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Melengkapi siklus dokumentasi pengecekan lapangan dengan berkas PDF yang dapat diarsipkan, sambil mempertahankan pembatasan akses berdasarkan peran dan kepemilikan data.
+
 ## [0.33.0] - 2026-08-06
 
 ### Fitur: Dashboard Kinerja Teknisi (Task 6.2)

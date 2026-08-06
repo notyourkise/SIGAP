@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, downloadApiFile } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
@@ -21,6 +22,7 @@ import {
   CheckCircle2,
   User as UserIcon,
   Camera,
+  FileDown,
   SlidersHorizontal,
   RotateCcw,
 } from 'lucide-react';
@@ -71,8 +73,10 @@ const STATUS_META = {
 } as const;
 
 export default function FieldMaintenancePage() {
+  const { user } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
+  const isAdmin = user?.role === 'admin';
 
   const [entries, setEntries] = useState<FieldMaintenance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,6 +182,21 @@ export default function FieldMaintenancePage() {
       }
     } catch (err: any) {
       toast.error(err.message || 'Catatan belum dapat dihapus. Coba lagi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadReport = async (entry: FieldMaintenance) => {
+    setActionLoading(`report-${entry.id}`);
+    try {
+      await downloadApiFile(
+        `/field-maintenance/${entry.id}/report-pdf`,
+        `laporan_pengecekan_lapangan_${entry.id}.pdf`,
+      );
+      toast.success('Laporan pengecekan berhasil diunduh.');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Laporan belum dapat diunduh. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -661,7 +680,7 @@ export default function FieldMaintenancePage() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setIsDetailOpen(false)}
@@ -669,6 +688,17 @@ export default function FieldMaintenancePage() {
               >
                 Tutup
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadReport(detailEntry)}
+                  disabled={actionLoading === `report-${detailEntry.id}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-5 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {actionLoading === `report-${detailEntry.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                  {actionLoading === `report-${detailEntry.id}` ? 'Menyiapkan…' : 'Cetak Laporan'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleDelete(detailEntry)}
