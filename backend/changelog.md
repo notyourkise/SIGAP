@@ -1,5 +1,34 @@
 # Changelog - Backend SIGAP
 
+## [0.31.0] - 2026-08-06
+
+### Fitur: Eskalasi Overdue Otomatis (Task 5.5)
+
+perubahan yang dilakukan: **Menambahkan flag nullable `OverdueNotifiedAt` pada `MaintenanceLog` dan goroutine checker overdue yang berjalan saat startup lalu setiap 1 jam. Checker memilih log berstatus `scheduled`/`ongoing` yang `scheduled_date`-nya telah lewat dan belum pernah dieskalasikan, mengirim notifikasi `MAINTENANCE_OVERDUE` ke seluruh admin serta teknisi untuk log `ongoing`, kemudian menyimpan timestamp agar tidak mengirim duplikat. Reschedule ke masa depan mengosongkan flag tersebut. Generator recurring dan checker kini benar-benar dijalankan sebagai goroutine agar server Fiber tetap dapat melakukan bootstrap**.
+
+before: Tidak ada timestamp eskalasi pada `MaintenanceLog` dan tidak ada proses background yang memberi tahu admin/teknisi saat tugas melewati jadwal. Perubahan tanggal jadwal tidak dapat membuka kembali siklus eskalasi. `RunScheduleGenerator` dipanggil sinkron sehingga ticker-nya memblokir inisialisasi server.
+
+after:
+- `models/setup.go`: `MaintenanceLog.OverdueNotifiedAt *time.Time` ditambahkan; `nil` berarti belum pernah dinotifikasi atau flag telah di-reset.
+- `handlers/overdue_checker.go` (baru): `RunOverdueChecker`, `ProcessOverdueMaintenance`, dan `ProcessOverdueMaintenanceAt`; query hanya mengambil log aktif yang overdue dan belum ditandai; pesan admin memuat nama/kode CCTV + tanggal, pesan teknisi memuat nama CCTV; update flag memakai kondisi `IS NULL`.
+- `handlers/maintenance.go`: `UpdateMaintenanceLog` me-reset `OverdueNotifiedAt` saat `scheduled_date` valid dipindahkan ke masa depan.
+- `utils/notify.go`: `NotifyUserSync`/`NotifyRoleSync` untuk job background yang harus menunggu persist notifikasi sebelum menandai sumber.
+- `main.go`: generator recurring dan checker overdue dijalankan dengan `go` saat startup.
+- `handlers/overdue_checker_test.go`: test sqlmock untuk eskalasi admin, eskalasi teknisi pada status `ongoing`, skip flag, skip status terminal, dan reset saat reschedule.
+- Swagger tidak memiliki anotasi endpoint baru sehingga tidak ada perubahan pada hasil `swag init`.
+
+timestamp: 2026-08-06 12:06 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/setup.go
+- backend/handlers/overdue_checker.go
+- backend/handlers/overdue_checker_test.go
+- backend/handlers/maintenance.go
+- backend/utils/notify.go
+- backend/main.go
+- backend/changelog.md
+alasan perubahan: Mencegah tugas terjadwal terlewat tanpa eskalasi, menjaga notifikasi hanya dikirim sekali per siklus jadwal, dan memastikan reschedule membuka kembali siklus tersebut tanpa memblokir startup API.
+
 ## [0.30.0] - 2026-08-06
 
 ### Fitur: Penjadwalan Pemeliharaan Berulang (Recurring) - Task 5.4

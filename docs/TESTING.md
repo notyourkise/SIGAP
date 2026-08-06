@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-03 (sinkronisasi matriks test dan coverage audit log).
+> Diperbarui: 2026-08-06 (penambahan test checker eskalasi overdue).
 
 ---
 
@@ -49,12 +49,13 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
 | `handlers` | `health_test.go` | HealthCheck Connected |
 | `handlers` | `notification_test.go` (Fase 5.1) | GetNotifications (sukses + paginasi, filter unread, tanpa identitas 401), GetUnreadNotificationCount (sukses, tanpa identitas 401), MarkNotificationRead (sukses, milik orang lain 403, not found 404, UUID invalid 400), MarkAllNotificationsRead (sukses, tanpa identitas 401) |
+| `handlers` | `overdue_checker_test.go` (Fase 5.5) | log overdue belum dinotifikasi → notifikasi admin + flag terisi, log ongoing → notifikasi teknisi, log sudah dinotifikasi → skip, status completed/failed → skip, reschedule ke masa depan → reset `overdue_notified_at` |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
-**Total: 31 file test** (8 utils, 4 middleware, 13 handlers, 2 models, 2 config, 2 routes, termasuk helper).
+**Total: 34 file test** (8 utils, 4 middleware, 16 handlers, 2 models, 2 config, 2 routes, termasuk helper).
 
 ---
 

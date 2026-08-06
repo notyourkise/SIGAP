@@ -71,7 +71,7 @@ sigap-monorepo/
         ├── components/
         └── lib/
 
-## 6. Rencana Pengembangan Aktif (per 2026-08-05)
+## 6. Rencana Pengembangan Aktif (per 2026-08-06)
 
 > Sumber kebenaran status & urutan pengerjaan: `docs/ROADMAP.md` (Fase 5–8).
 > Bagian ini mencatat konteks keputusan agar tidak hilang antar sesi pengembangan.
@@ -105,7 +105,7 @@ sigap-monorepo/
 | 2 | 5 | 5.2 Sinkron status CCTV | Helper dalam transaksi complete/field-check; tabel transisi konservatif | ✅ Selesai (2026-08-05, branch `feature/sync-cctv-status`) — build/test/vet PASS, uji manual S1–S8 di `docs/manual-test-sync-cctv.md` (3 bug ditemukan & ditindaklanjuti: pesan validasi [FE 1.25.11], normalisasi Inggris [BE 0.28.1], guard legacy uppercase [BE 0.28.2], dropdown status [FE 1.25.12]) + penggabungan `rusak`→`nonaktif` [BE 0.28.3 / FE 1.25.13] |
 | 3 | 5 | 5.3 Re-assign tugas | Perluas endpoint assign ke log `ongoing`, notif dua pihak, tombol "Alihkan" | ✅ Selesai (2026-08-05, branch `feature/reassign-maintenance`) — build/test/vet PASS + lint/build PASS + swag init; menunggu uji runtime Docker (teknisi lama dapat notif "dialihkan", teknisi baru dapat notif "tugas baru") |
 | 4 | 5 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ✅ Selesai (2026-08-06, branch `feature/recurring-schedule`) — build/test/vet PASS + lint/build PASS + swag init; generator idempotent per hari per jadwal, tanpa teknisi → log `scheduled`, dengan teknisi → `ongoing` + notifikasi |
-| 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine tiap jam, notif admin/teknisi | ⬜ Belum |
+| 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine saat startup + tiap jam, notif admin/teknisi, reset saat reschedule | ✅ Selesai (2026-08-06, branch `feature/overdue-escalation`) — test checker + reset reschedule PASS |
 | 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, badge visual, goroutine berkala | ⬜ Belum |
 | 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ⬜ Belum |
 | 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ⬜ Belum |

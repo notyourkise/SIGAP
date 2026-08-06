@@ -62,10 +62,14 @@ type MaintenanceLog struct {
 	// log dibuat manual. Kolom ini dipakai generator untuk menjamin idempotensi
 	// (satu log per hari per jadwal) dan untuk audit/penelusuran asal log.
 	MaintenanceScheduleID *uuid.UUID `gorm:"type:uuid;index" json:"maintenance_schedule_id"`
-	ActionTaken  string     `gorm:"type:text;not null" json:"action_taken"`
-	Notes        string     `gorm:"type:text" json:"notes"`
-	Status       string     `gorm:"type:varchar(20);not null" json:"status"`
-	ScheduledDate *time.Time `json:"scheduled_date"`
-	CompletedAt  *time.Time `json:"completed_at"`
-	ImageUrl     string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
+	ActionTaken           string     `gorm:"type:text;not null" json:"action_taken"`
+	Notes                 string     `gorm:"type:text" json:"notes"`
+	Status                string     `gorm:"type:varchar(20);not null" json:"status"`
+	// OverdueNotifiedAt menyimpan waktu terakhir eskalasi overdue dikirim.
+	// Nil berarti log belum pernah menerima notifikasi overdue, atau flag telah
+	// di-reset karena jadwalnya dipindahkan ke masa depan.
+	OverdueNotifiedAt *time.Time `json:"overdue_notified_at,omitempty"`
+	ScheduledDate     *time.Time `json:"scheduled_date"`
+	CompletedAt       *time.Time `json:"completed_at"`
+	ImageUrl          string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
 }

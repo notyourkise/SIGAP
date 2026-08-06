@@ -45,6 +45,29 @@ func NotifyUser(db *gorm.DB, userID uuid.UUID, notifType string, title string, m
 	}(notif, db)
 }
 
+// NotifyUserSync membuat notifikasi dan menunggu sampai penulisannya selesai.
+// Varian ini dipakai oleh job background yang harus memastikan notifikasi
+// berhasil sebelum menandai record sumber sebagai sudah diproses.
+func NotifyUserSync(db *gorm.DB, userID uuid.UUID, notifType string, title string, message string, refType string, refID *uuid.UUID) error {
+	if db == nil {
+		return fmt.Errorf("database notifikasi nil")
+	}
+
+	notif := models.Notification{
+		UserID:        userID,
+		Type:          notifType,
+		Title:         title,
+		Message:       message,
+		ReferenceType: refType,
+		ReferenceID:   refID,
+	}
+	if err := persistNotification(db, &notif); err != nil {
+		return err
+	}
+	BroadcastToUser(notif.UserID.String(), EventNotifCreated, notif)
+	return nil
+}
+
 // NotifyRole membuat notifikasi in-app untuk setiap user berperan tertentu lalu
 // mem-broadcast NOTIFICATION_CREATED ke seluruh koneksi role tersebut. Query
 // user dilakukan di goroutine agar tidak memblokir request pemanggil.
@@ -63,6 +86,26 @@ func NotifyRole(db *gorm.DB, role string, notifType string, title string, messag
 			NotifyUser(database, u.ID, notifType, title, message, refType, refID)
 		}
 	}(db)
+}
+
+// NotifyRoleSync mengirimkan notifikasi ke semua user aktif dengan role
+// tertentu secara sinkron. Ini dipakai oleh proses terjadwal agar kegagalan
+// menulis salah satu notifikasi dapat dilaporkan sebelum flag sumber diubah.
+func NotifyRoleSync(db *gorm.DB, role string, notifType string, title string, message string, refType string, refID *uuid.UUID) error {
+	if db == nil {
+		return fmt.Errorf("database notifikasi nil")
+	}
+
+	var users []models.User
+	if err := db.Select("id").Where("role = ? AND deleted_at IS NULL", role).Find(&users).Error; err != nil {
+		return err
+	}
+	for _, user := range users {
+		if err := NotifyUserSync(db, user.ID, notifType, title, message, refType, refID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func persistNotification(database *gorm.DB, notif *models.Notification) error {
