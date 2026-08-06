@@ -1,5 +1,31 @@
 # Changelog - Frontend SIGAP
 
+## [1.31.0] - 2026-08-06
+
+### Fitur: Timeline Ringkasan Operasional (Task 6.4)
+
+perubahan yang dilakukan: **Menambahkan halaman Admin `/ringkasan` yang menampilkan timeline kartu digest harian, summary naratif, metrik tugas baru/selesai/gagal/overdue, pengecekan lapangan beserta attention, perubahan status CCTV, serta paginasi. Menu sidebar `Ringkasan` memakai ikon `ClipboardList` dan route dijaga oleh proxy admin.**
+
+before: Admin belum memiliki halaman timeline untuk membaca ringkasan operasional harian dari satu tempat.
+
+after:
+- `src/app/ringkasan/page.tsx`: halaman timeline dengan loading/error/empty state, metrik ringkas, dan paginasi melalui `/dashboard/digest`.
+- `src/components/DashboardLayout.tsx`: menu `Ringkasan` khusus Admin dengan ikon `ClipboardList`.
+- `src/proxy.ts`: route `/ringkasan` ditambahkan ke guard admin server-side.
+- `src/components/NotificationBell.tsx` dan `src/app/pemberitahuan/page.tsx`: tipe `DAILY_DIGEST_AVAILABLE` diberi aksen dan diarahkan ke `/ringkasan` saat dibuka.
+- `frontend/changelog.md`: catatan versi fitur baru.
+
+timestamp: 2026-08-06 15:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/ringkasan/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/src/components/NotificationBell.tsx
+- frontend/src/app/pemberitahuan/page.tsx
+- frontend/changelog.md
+alasan perubahan: Memberi Admin tampilan kronologis yang cepat dipindai untuk memahami kondisi operasional harian tanpa membuka banyak modul.
+
 ## [1.30.0] - 2026-08-06
 
 ### Fitur: Cetak Laporan Pengecekan Lapangan (Task 6.3)

@@ -40,6 +40,7 @@ const typeStyles: Record<string, string> = {
   MAINTENANCE_COMPLETED: 'bg-success',
   MAINTENANCE_OVERDUE: 'bg-red-500',
   FIELD_CHECK_ATTENTION: 'bg-accent',
+  DAILY_DIGEST_AVAILABLE: 'bg-primary',
 };
 
 // Halaman Pemberitahuan menampilkan notifikasi milik user yang login saja —
@@ -47,6 +48,7 @@ const typeStyles: Record<string, string> = {
 // sehingga teknisi A tidak akan pernah melihat notifikasi teknisi B.
 function getTargetRoute(item: NotificationItem): string {
   if (item.reference_type === 'field-maintenance') return '/field-maintenance';
+  if (item.reference_type === 'daily-digest') return '/ringkasan';
   return '/maintenance';
 }
 

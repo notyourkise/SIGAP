@@ -37,6 +37,15 @@ func TestFieldMaintenanceRoutesRequireAuthentication(t *testing.T) {
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }
 
+func TestDashboardDigestRouteRequiresAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupDashboardRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/dashboard/digest", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
 func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
 	app := fiber.New()
 	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())

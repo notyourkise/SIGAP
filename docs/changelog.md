@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.17] — 2026-08-06 — Ringkasan Operasional Otomatis (Task 6.4)
+
+### Perubahan
+
+- **Backend** ([0.35.0]): model `DailyDigest`, generator 06:00 WITA dengan agregasi 24 jam dan idempotensi tanggal, endpoint Admin `/api/dashboard/digest`, serta notifikasi `DAILY_DIGEST_AVAILABLE`.
+- **Frontend** ([1.31.0]): halaman Admin `/ringkasan` berbentuk timeline harian dengan statistik dan paginasi; menu sidebar `Ringkasan` serta guard proxy admin.
+- **Dokumen**: Fase 6 ditandai selesai (4/4); README, plan, roadmap, matriks test, panduan agent, Swagger, dan uji manual diperbarui.
+- `swag init`, test backend, backend build/vet, frontend lint, dan frontend build diverifikasi pada branch fitur.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.35.0], `frontend/changelog.md` [1.31.0]
+
 ## [1.28.16] — 2026-08-06 — Laporan PDF Pengecekan Lapangan (Task 6.3)
 
 ### Perubahan

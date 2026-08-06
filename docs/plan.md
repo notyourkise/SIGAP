@@ -109,7 +109,7 @@ sigap-monorepo/
 | 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, endpoint breakdown, badge tabel/peta, goroutine 6 jam, recalculation saat complete/field-check | ✅ Selesai (2026-08-06, branch `feature/health-score`) — test kalkulasi + endpoint, backend/frontend build PASS |
 | 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ✅ Selesai (2026-08-06, branch `feature/technician-performance`) — test struktur/filter/role + backend/frontend build dan lint PASS |
 | 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ✅ Selesai (2026-08-06, branch `feature/field-maintenance-pdf`) |
-| 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ⬜ Belum |
+| 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ✅ Selesai (2026-08-06, branch `feature/daily-digest`) |
 | 10–15 | 7 | 7.1–7.6 Kesiapan Produksi | Versioned migration, Redis, backup, monitoring, hardening, logging | ⬜ Belum |
 | 16–19 | 8 | 8.1–8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | ⬜ Belum |
 
@@ -184,7 +184,25 @@ sigap-monorepo/
 - `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
 - Uji manual di `docs/manual-test-field-maintenance-pdf.md`.
 
-### 6.7 Konvensi Eksekusi Tiap Sprint
+### 6.7 Rancangan Teknis Sprint 9 (Ringkasan Operasional Otomatis)
+
+**Backend**
+- `models/daily_digest.go`: model `DailyDigest` dengan tanggal unik WITA, tujuh metrik operasional, dan summary naratif.
+- `handlers/digest_generator.go`: scheduler timer menuju 06:00 WITA, agregasi tugas/field-check/audit dalam jendela 24 jam, idempotensi tanggal, penyimpanan digest, dan notifikasi `DAILY_DIGEST_AVAILABLE` ke Admin.
+- `main.go`: `DailyDigest` didaftarkan ke `AutoMigrate` dan generator dijalankan sebagai goroutine saat startup.
+- `handlers/dashboard.go`/`routes/dashboard.go`: endpoint admin `GET /dashboard/digest` dengan paginasi dan urutan tanggal terbaru.
+- `handlers/digest_generator_test.go`: test agregasi/pembuatan, idempotensi, jadwal WITA, notifikasi, paginasi endpoint, dan role non-admin.
+
+**Frontend**
+- `app/ringkasan/page.tsx`: timeline kartu harian dengan summary, metrik tugas, pengecekan, perhatian, perubahan status, loading/error/empty state, dan paginasi.
+- `components/DashboardLayout.tsx`: menu Admin "Ringkasan" dengan ikon `ClipboardList`.
+- `proxy.ts`: `/ringkasan` ditambahkan ke guard admin server-side.
+
+**Test & Verifikasi**
+- `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
+- Uji manual di `docs/manual-test-daily-digest.md`.
+
+### 6.8 Konvensi Eksekusi Tiap Sprint
 
 1. Branch `feature/...` dari `main` terbaru → Conventional Commits → push → PR (user merge) → hapus branch lokal.
 2. Changelog: `backend/changelog.md`, `frontend/changelog.md`, `docs/changelog.md` (format before/after, timestamp WITA, kategori, daftar file, alasan teknis).

@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   CalendarClock,
   TrendingUp,
+  ClipboardList,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -74,7 +75,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     ...(user?.role === 'admin'
-      ? [{ name: 'Kinerja Teknisi', href: '/kinerja-teknisi', icon: TrendingUp }]
+      ? [
+          { name: 'Kinerja Teknisi', href: '/kinerja-teknisi', icon: TrendingUp },
+          { name: 'Ringkasan', href: '/ringkasan', icon: ClipboardList },
+        ]
       : []),
     { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
