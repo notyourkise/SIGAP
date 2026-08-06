@@ -91,6 +91,7 @@ SIGAP/
 ├── docs/
 │   ├── changelog.md            # Changelog milestrone monorepo
 │   ├── ROADMAP.md              # Rencana pengembangan & status fase
+│   ├── MIGRATION.md            # Prosedur migrasi DB versioned (golang-migrate)
 │   ├── SECURITY-AUDIT.md       # Hasil audit keamanan & status perbaikan
 │   ├── PRODUCT.md              # Visi & prinsip produk
 │   ├── DESIGN.md               # Panduan desain sistem
@@ -102,9 +103,11 @@ SIGAP/
 │   ├── go.mod / go.sum
 │   ├── .env.example               # Template env lokal
 │   ├── .env.docker.example        # Template env Docker
+│   ├── migrations/                # File migration SQL versioned (golang-migrate)
+│   ├── cmd/migrate/               # CLI manual: go run cmd/migrate/main.go up|down|version
 │   ├── config/
 │   │   ├── database.go            # Koneksi PostgreSQL + connection pooling
-│   │   └── migrate.go             # Migrasi legacy asset_id → cctv_id
+│   │   └── migrate.go             # Migrasi versioned + legacy asset_id → cctv_id
 │   ├── models/
 │   │   ├── setup.go               # Base, User, MaintenanceLog structs
 │   │   ├── cctv.go                # CCTV struct (sumber kebenaran aset)

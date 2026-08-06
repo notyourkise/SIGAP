@@ -1,9 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga kecerdasan operasional.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-06
-
----
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-06---
 
 ## Visi & Prinsip Prioritas
 
@@ -30,7 +28,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa dilebur ke Fase 7 |
 | 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
-| 7 | Kesiapan Produksi | 0/6 | ⬜ Belum |
+| 7 | Kesiapan Produksi | 1/6 | 🚧 Sedang berjalan |
 | 8 | Pengalaman Lapangan | 0/4 | ⬜ Belum |
 
 > **Urutan pengerjaan:**
@@ -227,13 +225,14 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Memastikan sistem siap untuk **operasi nyata (go-live)**. Menyerap sisa Fase 4 (4.3–4.7) dengan
 > scope yang disesuaikan, ditambah pengerasan baru yang kritis untuk deployment produksi.
-> **Status: ⬜ BELUM** — bisa dikerjakan **paralel** dengan Fase 6 (infrastruktur vs fitur).
+> **Status: 🚧 SEDANG BERJALAN** — Task 7.1 selesai (2026-08-06); 7.2–7.6 belum dikerjakan.
+> Fase 7 bisa dikerjakan **paralel** dengan Fase 6 (infrastruktur vs fitur).
 
 ### Task (berurutan — kerjakan dari atas ke bawah)
 
 | # | Task | Keterangan | Skala | Asal | Status |
 |---|------|-----------|-------|------|--------|
-| 7.1 | Migrasi DB Versioned | Adopsi `golang-migrate` atau Atlas; konversi `AutoMigrate` → migration files terurut; skrip rollback; integrasi CI. Fase transisi: migration files + `AutoMigrate` berdampingan, lalu `AutoMigrate` dihapus setelah stabil. | Besar | Fase 4.3 | ⬜ Belum |
+| 7.1 | Migrasi DB Versioned | Adopsi `golang-migrate` v4 (driver pgx v5); skema dikelola file SQL terurut di `backend/migrations/` (000001 init schema: 10 tabel + index + FK, idempoten terhadap DB eksisting); `config.RunMigrations` otomatis saat startup; CLI `go run cmd/migrate/main.go up/down/version`; AutoMigrate dikomentari (fase transisi, akan dihapus setelah stabil); verifikasi `up→down→up` di CI (service PostgreSQL); prosedur di `docs/MIGRATION.md`. Branch: `feature/versioned-migration` | Besar | Fase 4.3 | ✅ Selesai (2026-08-06) — build/test/vet PASS; uji live PostgreSQL 18 lokal up/down/up + skenario DB warisan AutoMigrate PASS |
 | 7.2 | Redis untuk Rate-Limit & Blacklist | Tambah container Redis di `docker-compose.yml`; `RateLimiter` dan `TokenBlacklist` memakai Redis; blacklist token tidak hilang saat restart; mendukung multi-instance API. Scope awal: hanya rate-limit + blacklist, belum caching data. | Sedang | Fase 4.4 | ⬜ Belum |
 | 7.3 | Backup Otomatis & Restore | Skrip `scripts/backup.sh`: `pg_dump` database + tar uploads → simpan dengan rotasi (7 hari); skrip `scripts/restore.sh` untuk pemulihan. Cron job di container atau host. Dokumentasi prosedur backup & disaster recovery di `docs/BACKUP.md`. | Sedang | Fase 4.5 | ⬜ Belum |
 | 7.4 | Monitoring & Alerting | Endpoint `/api/metrics` (Prometheus format): request count, latency histogram, error rate, DB pool stats, WebSocket connections, upload storage usage. `docker-compose.yml` tambah Prometheus + Grafana (opsional). Health check diperluas: cek Redis, disk space upload. | Sedang | Fase 4.6 | ⬜ Belum |

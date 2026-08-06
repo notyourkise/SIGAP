@@ -1,10 +1,17 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"log"
 
+	"sigap-backend/migrations"
 	"sigap-backend/models"
+	"sigap-backend/utils"
 
+	"github.com/golang-migrate/migrate/v4"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -13,6 +20,116 @@ import (
 type legacyAssetRef struct {
 	ID      uuid.UUID
 	AssetID uuid.UUID
+}
+
+// RunMigrations menerapkan seluruh migration DB versioned (golang-migrate v4)
+// yang belum berjalan pada database (m.Up()). Dipanggil otomatis saat startup
+// aplikasi di main.go — sejak Task 7.1 migration versioned menjadi sumber
+// skema resmi, sedangkan AutoMigrate GORM hanya fase transisi (dikomentari).
+func RunMigrations(db *gorm.DB) error {
+	m, err := newMigrateInstance(db)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("menerapkan migration: %w", err)
+	}
+	logMigrationVersion(m)
+	return nil
+}
+
+// MigrationUp menerapkan semua migration yang belum berjalan. Dipakai CLI
+// manual: go run cmd/migrate/main.go up.
+func MigrationUp(db *gorm.DB) error {
+	m, err := newMigrateInstance(db)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migration up: %w", err)
+	}
+	logMigrationVersion(m)
+	return nil
+}
+
+// MigrationDown melakukan rollback seluruh migration (kembali ke versi 0).
+// Dipakai CLI manual: go run cmd/migrate/main.go down.
+func MigrationDown(db *gorm.DB) error {
+	m, err := newMigrateInstance(db)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migration down: %w", err)
+	}
+	logMigrationVersion(m)
+	return nil
+}
+
+// MigrationVersion mengembalikan versi migration aktif dan status dirty.
+// Dipakai CLI manual: go run cmd/migrate/main.go version.
+func MigrationVersion(db *gorm.DB) (uint, bool, error) {
+	m, err := newMigrateInstance(db)
+	if err != nil {
+		return 0, false, err
+	}
+	defer m.Close()
+
+	version, dirty, err := m.Version()
+	if errors.Is(err, migrate.ErrNilVersion) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("membaca versi migration: %w", err)
+	}
+	return version, dirty, nil
+}
+
+// newMigrateInstance membangun instance golang-migrate dari koneksi GORM yang
+// sudah ada: sumber migration dari file SQL ter-embed (backend/migrations)
+// dan driver database PostgreSQL pgx v5. Riwayat versi disimpan di tabel
+// schema_migrations pada skema database yang sama.
+func newMigrateInstance(db *gorm.DB) (*migrate.Migrate, error) {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("mengambil sql.DB dari GORM: %w", err)
+	}
+
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return nil, fmt.Errorf("memuat sumber migration: %w", err)
+	}
+
+	driver, err := pgxmigrate.WithInstance(sqlDB, &pgxmigrate.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("inisialisasi driver migration pgx: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", src, "pgx/v5", driver)
+	if err != nil {
+		return nil, fmt.Errorf("inisialisasi migrate: %w", err)
+	}
+	return m, nil
+}
+
+// logMigrationVersion mencatat versi migration aktif pada logger aplikasi.
+func logMigrationVersion(m *migrate.Migrate) {
+	version, dirty, err := m.Version()
+	if errors.Is(err, migrate.ErrNilVersion) {
+		utils.Log.Info("🗄️ Migration DB versioned: belum ada migration diterapkan (versi 0)")
+		return
+	}
+	if err != nil {
+		utils.Log.Warnf("⚠️ Tidak dapat membaca versi migration: %v", err)
+		return
+	}
+	utils.Log.Infof("🗄️ Migration DB versioned aktif pada versi %d (dirty=%v)", version, dirty)
 }
 
 // MigrateMaintenanceToCCTV memigrasi kolom asset_id lama pada maintenance_logs

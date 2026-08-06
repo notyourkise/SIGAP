@@ -46,6 +46,21 @@ jobs:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
+    services:
+      # PostgreSQL sementara untuk verifikasi migrasi DB versioned (Task 7.1).
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: sigap
+          POSTGRES_PASSWORD: sigap
+          POSTGRES_DB: sigap_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sigap -d sigap_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -59,6 +74,22 @@ jobs:
       - name: Install Dependencies
         run: go mod download
         working-directory: ./backend
+
+      - name: Run DB Migration (up -> down -> up)
+        # Memverifikasi migration versioned end-to-end terhadap PostgreSQL
+        # nyata: terapkan semua migration, rollback semua, terapkan lagi.
+        run: |
+          go run cmd/migrate/main.go up
+          go run cmd/migrate/main.go down
+          go run cmd/migrate/main.go up
+          go run cmd/migrate/main.go version
+        working-directory: ./backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_USER: sigap
+          DB_PASSWORD: sigap
+          DB_NAME: sigap_test
 
       - name: Run Tests
         run: go test -v ./...

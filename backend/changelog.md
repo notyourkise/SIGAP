@@ -1,5 +1,42 @@
 # Changelog - Backend SIGAP
 
+## [0.36.0] - 2026-08-06
+
+### Infrastruktur: Migrasi DB Versioned (Task 7.1)
+
+perubahan yang dilakukan: **Mengadopsi golang-migrate v4 (driver pgx v5) untuk mengelola skema database dengan file migration SQL terurut di `backend/migrations/`. Menambahkan `config.RunMigrations` yang berjalan otomatis saat startup, CLI manual `go run cmd/migrate/main.go up|down|version`, fase transisi (AutoMigrate dikomentari dengan catatan akan dihapus setelah migration stabil), integrasi verifikasi migration di CI, dan dokumentasi prosedur di `docs/MIGRATION.md`.**
+
+before: Skema database hanya dikelola GORM AutoMigrate dari definisi struct — tanpa riwayat versi, tanpa rollback andal, dan perubahan skema produksi berisiko kehilangan data.
+
+after:
+- `migrations/migrations.go`: embed FS untuk seluruh file `*.sql` (kompilasi ke binary).
+- `migrations/000001_init_schema.up.sql`: skema awal — 10 tabel (users, cctvs, maintenance_logs, field_maintenances, field_maintenance_checks, field_maintenance_images, audit_logs, notifications, maintenance_schedules, daily_digests) + index + 13 foreign key. Seluruh pernyataan idempoten (IF NOT EXISTS / blok DO $$ pengecekan pg_constraint) sehingga aman dijalankan pada database eksisting hasil AutoMigrate (fase transisi).
+- `migrations/000001_init_schema.down.sql`: rollback seluruh tabel (CASCADE pada maintenance_logs untuk FK sirkular).
+- `config/migrate.go`: `RunMigrations(db)` (startup, `m.Up()` + toleransi ErrNoChange), `MigrationUp/MigrationDown/MigrationVersion` (CLI), `newMigrateInstance` (iofs + driver pgx/v5), `logMigrationVersion`.
+- `cmd/migrate/main.go`: CLI helper `go run cmd/migrate/main.go up|down|version`.
+- `main.go`: `RunMigrations` dijalankan sebelum operasi lain; blok `AutoMigrate` dikomentari dengan catatan "akan dihapus setelah migration stabil".
+- `.github/workflows/ci.yml`: job backend-ci kini menyediakan service PostgreSQL dan menjalankan verifikasi `up → down → up → version` end-to-end.
+- `config/versioned_migration_test.go`: test embed FS + konvensi penamaan, kelengkapan tabel up/down, kolom kunci, dan propagasi error driver tanpa PostgreSQL fisik.
+- `docs/MIGRATION.md`: dokumentasi prosedur (baru).
+- `go.mod`/`go.sum`: dependensi `github.com/golang-migrate/migrate/v4 v4.19.1` (+ `github.com/jackc/pgerrcode` indirect).
+
+timestamp: 2026-08-06 16:35 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/migrations/migrations.go
+- backend/migrations/000001_init_schema.up.sql
+- backend/migrations/000001_init_schema.down.sql
+- backend/config/migrate.go
+- backend/config/versioned_migration_test.go
+- backend/cmd/migrate/main.go
+- backend/main.go
+- backend/go.mod
+- backend/go.sum
+- backend/changelog.md
+- .github/workflows/ci.yml
+- docs/MIGRATION.md
+alasan perubahan: Menghilangkan ketergantungan pada AutoMigrate yang tidak memiliki riwayat versi dan rollback; migration versioned menjadi prasyarat Fase 7 sebelum go-live (ROADMAP Task 7.1, asal Fase 4.3) agar perubahan skema produksi terkontrol dan dapat dipulihkan.
+
 ## [0.35.0] - 2026-08-06
 
 ### Fitur: Ringkasan Operasional Otomatis (Task 6.4)

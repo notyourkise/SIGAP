@@ -43,9 +43,11 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `.gitignore` — Mengabaikan direktori seperti `node_modules`, file `.env`, hasil _build_ binary Go, dan folder _logs_.
 
 ### Backend `backend/`
-- `main.go` — Titik masuk (entry point) aplikasi Go. Berisi inisialisasi _logger_, validasi secret wajib (fail-fast), koneksi database, _migrations_ + migrasi data legacy, _seeders_, instansiasi Fiber app (termasuk _Trusted Proxies_ dan CORS), _middleware stack_, pendaftaran _routes_, dan _graceful shutdown_.
+- `main.go` — Titik masuk (entry point) aplikasi Go. Berisi inisialisasi _logger_, validasi secret wajib (fail-fast), koneksi database, _migrations_ versioned + migrasi data legacy, _seeders_, instansiasi Fiber app (termasuk _Trusted Proxies_ dan CORS), _middleware stack_, pendaftaran _routes_, dan _graceful shutdown_.
 - `config/database.go` — Konfigurasi koneksi ke PostgreSQL menggunakan GORM dengan pengaturan _connection pooling_.
-- `config/migrate.go` — Migrasi data satu kali (_one-time_) yang meresolusi _maintenance log_ legacy `asset_id` → `cctv_id` (unifikasi model, Fase 3.6).
+- `config/migrate.go` — Dua peran sejak Task 7.1: (1) **migrasi DB versioned** dengan golang-migrate v4 — `RunMigrations(db)` dijalankan otomatis saat startup, plus `MigrationUp/MigrationDown/MigrationVersion` untuk CLI; (2) **migrasi data satu kali** (_one-time_) yang meresolusi _maintenance log_ legacy `asset_id` → `cctv_id` (unifikasi model, Fase 3.6).
+- `migrations/` — Folder berisi **file migration SQL versioned** (embed FS via `migrations.go`, dikompilasi ke binary): `000001_init_schema.up.sql`/`.down.sql` membentuk skema awal (10 tabel + index + FK, idempoten). Skema kini dikelola migration files; `AutoMigrate` GORM hanya fase transisi (dikomentari di `main.go`, akan dihapus setelah stabil). Prosedur lengkap di `docs/MIGRATION.md`.
+- `cmd/migrate/main.go` — CLI helper manual: `go run cmd/migrate/main.go up|down|version` (env `DB_*` sama dengan aplikasi).
 - `models/setup.go` — Definisi struktur `Base` (berisi UUID, timestamps, dan _soft delete_) yang di-_embed_ pada semua model, termasuk _hook_ `BeforeCreate` yang hanya men-generate UUID baru jika ID kosong (`uuid.Nil`). File ini juga mendefinisikan model `User` dan `MaintenanceLog`, termasuk flag nullable `OverdueNotifiedAt` untuk eskalasi overdue satu kali.
 - `models/maintenance_schedule.go` — Definisi struktur `MaintenanceSchedule` (Fase 5.4, jadwal pemeliharaan berulang): `CCTVID`, `TechnicianID` (opsional), `ActionTaken`, `Frequency` (`daily`/`weekly`/`monthly`), `NextRunAt`, `IsActive`, `LastGeneratedAt` + konstanta `FrequencyDaily/Weekly/Monthly`.
 - `models/daily_digest.go` — Definisi struktur `DailyDigest` (Fase 6.4): tanggal ringkasan WITA yang unik, jumlah tugas/overdue/field-check/perubahan status CCTV, dan summary naratif.
@@ -111,7 +113,10 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 
 ## 4. Model Database
 
-Semua tabel database dikelola melalui GORM. Berikut adalah detail masing-masing struktur entitas:
+Semua tabel database dikelola melalui migration files (golang-migrate v4, sejak Task 7.1) yang
+bersumber dari definisi struct GORM di folder `models/`. Untuk perubahan skema, **jangan ubah
+AutoMigrate** (sudah dikomentari) — buat migration baru di `backend/migrations/` (panduan:
+`docs/MIGRATION.md`). Berikut detail masing-masing struktur entitas:
 
 ### Base (Embedded di semua model)
 Struktur bawaan yang ada pada semua model:
@@ -297,7 +302,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 - File yang secara otomatis di-generate akan tersimpan pada: `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`.
 
 ## 9. Testing
-- Matriks cakupan test lengkap (36 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
+- Matriks cakupan test lengkap (38 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
 - Untuk mengeksekusi tes & quality check:
   ```bash
   cd backend && go build ./... && go test ./... -count=1 && go vet ./...
