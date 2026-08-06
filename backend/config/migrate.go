@@ -31,7 +31,7 @@ func RunMigrations(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("menerapkan migration: %w", err)
@@ -47,7 +47,7 @@ func MigrationUp(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration up: %w", err)
@@ -63,7 +63,7 @@ func MigrationDown(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration down: %w", err)
@@ -79,7 +79,7 @@ func MigrationVersion(db *gorm.DB) (uint, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	version, dirty, err := m.Version()
 	if errors.Is(err, migrate.ErrNilVersion) {
