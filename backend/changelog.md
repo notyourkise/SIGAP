@@ -1,5 +1,38 @@
 # Changelog - Backend SIGAP
 
+## [0.30.0] - 2026-08-06
+
+### Fitur: Penjadwalan Pemeliharaan Berulang (Recurring) - Task 5.4
+
+perubahan yang dilakukan: **Modul baru `maintenance_schedules` untuk memjadwalkan pemeliharaan berulang: admin membuat jadwal (CCTV + tindakan + frekuensi daily/weekly/monthly + teknisi opsional), generator berjalan saat startup dan tiap 1 jam membuat `MaintenanceLog` otomatis untuk jadwal aktif yang `next_run_at`-nya sudah tiba — idempotent (satu log per hari per jadwal). Log tanpa teknisi dibuat berstatus `scheduled`; dengan teknisi langsung `ongoing` + notifikasi in-app. `MaintenanceLog` mendapat kolom `maintenance_schedule_id` untuk penelusuran asal log. Audit khusus: CREATE/UPDATE/DELETE/TOGGLE_SCHEDULE dari admin, CREATE_MAINTENANCE "Dibuat otomatis oleh jadwal [id]" oleh sistem**.
+
+before: Pemeliharaan hanya bisa dicatat manual oleh admin — tidak ada mekanisme pengingat maupun pembuatan log otomatis sehingga pemeliharaan berkala berisiko terlewat.
+
+after:
+- `models/maintenance_schedule.go` (baru): `MaintenanceSchedule` (CCTVID FK, TechnicianID FK opsional ke users, ActionTaken text, Frequency varchar(20), NextRunAt timestamptz, IsActive default true, LastGeneratedAt *time.Time) + konstanta `FrequencyDaily/Weekly/Monthly`; relasi `CCTV` & `Technician` (User).
+- `models/setup.go`: `MaintenanceLog` + kolom `MaintenanceScheduleID *uuid.UUID` (index) + relasi `MaintenanceSchedule`.
+- `handlers/maintenance_schedule.go` (baru): CRUD lengkap `CreateMaintenanceSchedule` (validasi CCTV ada & teknisi berperan `teknisi`, NextRunAt = now + frekuensi, audit CREATE_SCHEDULE), `GetAllMaintenanceSchedules` (paginasi + filter `is_active` + preload CCTV/Teknisi), `GetMaintenanceScheduleByID`, `UpdateMaintenanceSchedule` (reset NextRunAt saat frekuensi berubah; teknisi: `""` = lepas, UUID = ganti, tanpa field = tetap; audit UPDATE_SCHEDULE), `DeleteMaintenanceSchedule` (soft delete; audit DELETE_SCHEDULE), `ToggleMaintenanceSchedule` (aktif/nonaktif; audit TOGGLE_SCHEDULE) + helper `nextRunForFrequency` & `isValidFrequency`. Swagger tag "Jadwal Pemeliharaan".
+- `handlers/schedule_runner.go` (baru): `RunScheduleGenerator(db)` berjalan sekali saat startup lalu tiap 1 jam; `ProcessDueSchedulesAt(db, now)` mencari jadwal `is_active=true AND next_run_at <= now`; idempotensi per hari (maintenance_schedule_id + rentang hari); audit oleh sistem (identitas `system`, bukan HTTP); broadcast `MAINTENANCE_CREATED`; notifikasi `MAINTENANCE_ASSIGNED` ke teknisi saat jadwal berteknisi.
+- `routes/maintenance_schedule.go` (baru): grup `/maintenance-schedules` (Protected + RequireRole("admin")) — GET/POST `/`, GET/PUT `/`:id, PUT `/:id/toggle`, DELETE `/:id`.
+- `main.go`: `&models.MaintenanceSchedule{}` masuk AutoMigrate; `handlers.RunScheduleGenerator(config.DB)` dijalankan saat startup (interval 1 jam); `routes.SetupMaintenanceScheduleRoutes(api)`.
+- `handlers/maintenance_schedule_test.go` (baru): CRUD (success, CCTV tidak ditemukan, teknisi non-teknisi ditolak, not-found, update frekuensi, toggle, delete). `handlers/schedule_runner_test.go` (baru): jadwal aktif tanpa teknisi → log `scheduled`; tidak ada jadwal → skip; duplikat hari yang sama → skip; jadwal berteknisi → log `ongoing` + notifikasi.
+- Swagger docs di-regenerate (`swag init`).
+timestamp: 2026-08-06 10:50 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/maintenance_schedule.go
+- backend/models/setup.go
+- backend/handlers/maintenance_schedule.go
+- backend/handlers/schedule_runner.go
+- backend/routes/maintenance_schedule.go
+- backend/main.go
+- backend/handlers/maintenance_schedule_test.go
+- backend/handlers/schedule_runner_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+
 ## [0.29.0] - 2026-08-05
 
 ### Fitur: Re-assign Tugas oleh Admin — Task 5.3

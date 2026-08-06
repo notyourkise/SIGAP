@@ -62,6 +62,7 @@ func main() {
 		&models.CCTV{},
 		&models.AuditLog{},
 		&models.Notification{},
+		&models.MaintenanceSchedule{},
 	)
 	if err != nil {
 		utils.Log.Fatal("❌ Gagal melakukan migrasi database: ", err)
@@ -82,6 +83,11 @@ func main() {
 	// Jalankan goroutine cleanup file upload yatim (tidak direferensikan log) tiap 1 jam
 	handlers.StartUploadCleanup(config.DB, 1*time.Hour)
 	utils.Log.Info("🗂️ Upload orphan file cleanup goroutine diaktifkan (interval: 1 jam)")
+
+	// Jalankan goroutine generator jadwal pemeliharaan berulang (Fase 5.4).
+	// Berjalan sekali saat startup + tiap 1 jam; idempotent per hari per jadwal.
+	handlers.RunScheduleGenerator(config.DB)
+	utils.Log.Info("⏰ Generator jadwal pemeliharaan berulang diaktifkan (interval: 1 jam)")
 
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
@@ -156,6 +162,7 @@ func main() {
 	routes.SetupWebSocketRoutes(api)
 	routes.SetupDashboardRoutes(api)
 	routes.SetupNotificationRoutes(api)
+	routes.SetupMaintenanceScheduleRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)
