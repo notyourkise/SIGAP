@@ -1,5 +1,25 @@
 # Changelog - Frontend SIGAP
 
+## [1.27.0] - 2026-08-06
+
+### Fitur: Halaman Jadwal Pemeliharaan Berulang (Recurring) - Task 5.4
+
+perubahan yang dilakukan: **Halaman baru `/schedules` khusus admin untuk mengelola jadwal pemeliharaan berulang: tabel jadwal (CCTV, pekerjaan, teknisi, frekuensi Harian/Mingguan/Bulanan, jadwal berikutnya, status Aktif/Nonaktif) + tindakan toggle aktif/nonaktif (ikon `Power`), ubah (`Settings`), dan hapus (`Trash2`) dengan konfirmasi; tombol "Buat Jadwal" membuka modal form (pilih CCTV, tindakan, frekuensi, teknisi opsional — teknisi kosong berarti penugasan oleh admin). Filter status aktif/nonaktif dan paginasi disediakan. Menu sidebar "Jadwal" (ikon `CalendarClock`) ditambahkan khusus admin, dan `/schedules` terdaftar sebagai path admin di proxy middleware**.
+
+before: Tidak ada cara untuk mengelola pemeliharaan berulang dari antarmuka — pekerjaan pemeliharaan hanya dicatat manual per kejadian di halaman Pemeliharaan.
+
+after:
+- `app/schedules/page.tsx` (baru): `useState` untuk data, filter `is_active`, pagination, modal form tambah/ubah (select CCTV, textarea tindakan, select frekuensi dengan keterangan, select teknisi opsional), aksi toggle/ubah/hapus dengan `useConfirm`, toast umpan balik, dan refresh real-time via `MAINTENANCE_CREATED` websocket.
+- `components/DashboardLayout.tsx`: menu "Jadwal" (`CalendarClock`) ditambahkan di bagian admin.
+
+timestamp: 2026-08-06 10:50 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/app/schedules/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+
 ## [1.26.0] - 2026-08-05
 
 ### Fitur: Tombol "Alihkan" untuk Re-assign Tugas Pemeliharaan — Task 5.3
