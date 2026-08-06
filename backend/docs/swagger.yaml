@@ -918,6 +918,50 @@ paths:
       summary: Edit Data CCTV
       tags:
       - Master CCTV
+  /cctv/{id}/health-score:
+    get:
+      description: Menghitung skor kesehatan 0-100 berdasarkan kegagalan pemeliharaan,
+        field-check attention, overdue, umur pemeliharaan berhasil, dan item checklist
+        not_ok.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Skor kesehatan CCTV
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghitung skor kesehatan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Skor Kesehatan CCTV
+      tags:
+      - Master CCTV
   /cctv/{id}/qrcode:
     get:
       description: Membuat QR Code dalam format PNG berisi payload QR terenkripsi

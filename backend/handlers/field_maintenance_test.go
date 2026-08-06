@@ -118,6 +118,7 @@ func TestCreateFieldMaintenance_Success(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
@@ -182,6 +183,7 @@ func TestCreateFieldMaintenance_SyncCCTV_Attention(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
@@ -246,6 +248,7 @@ func TestCreateFieldMaintenance_SyncCCTV_Ok(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)

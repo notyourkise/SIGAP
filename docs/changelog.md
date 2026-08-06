@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.14] — 2026-08-06 — Skor Kesehatan CCTV (Task 6.1)
+
+### Perubahan
+
+- **Backend** ([0.32.0]): `CCTV.health_score` default 100; endpoint protected `/api/cctv/:id/health-score`; agregasi lima faktor 90 hari; kalkulator startup + tiap 6 jam; recalculation setelah complete maintenance/field-check; sorting `health_score` pada list CCTV.
+- **Frontend** ([1.28.0]): badge Kesehatan pada tabel Master CCTV; warna marker peta mengikuti rentang skor; popup, tooltip, dan legend menampilkan angka/rentang.
+- **Dokumen**: status Fase 6 menjadi 1/4 dan Task 6.1 ✅ Selesai; rancangan Sprint 6, matriks test, panduan agent, dan `docs/manual-test-health-score.md` diperbarui.
+- `swag init`, backend build/test/vet, frontend lint/build diverifikasi.
+
+Timestamp: 2026-08-06 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.32.0], `frontend/changelog.md` [1.28.0]
+
 ## [1.28.13] — 2026-08-06 — Eskalasi Overdue Otomatis (Task 5.5)
 
 ### Perubahan

@@ -8,6 +8,7 @@ import (
 	"sigap-backend/models"
 	"sigap-backend/utils"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -170,6 +171,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 		IPCamera:      req.IPCamera,
 		Keterangan:    req.Keterangan,
 		QrPayload:     encryptedPayload,
+		HealthScore:   100,
 	}
 	cctv.ID = newID // Set ID yang sudah dienkripsi tadi
 
@@ -228,7 +230,7 @@ func GetAllCCTV(c *fiber.Ctx) error {
 	}
 
 	// Paginasi & Sorting
-	allowedSort := []string{"id", "kode_cctv", "nama", "lokasi_area", "status", "created_at", "updated_at"}
+	allowedSort := []string{"id", "kode_cctv", "nama", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
 
 	var totalRows int64
@@ -290,6 +292,57 @@ func GetCCTVByID(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   cctv,
+	})
+}
+
+// GetCCTVHealthScore menghitung skor kesehatan satu CCTV dari lima faktor
+// operasional dalam 90 hari terakhir. Endpoint dapat diakses semua role.
+// @Summary      Ambil Skor Kesehatan CCTV
+// @Description  Menghitung skor kesehatan 0-100 berdasarkan kegagalan pemeliharaan, field-check attention, overdue, umur pemeliharaan berhasil, dan item checklist not_ok.
+// @Tags         Master CCTV
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "Skor kesehatan CCTV"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal menghitung skor kesehatan"
+// @Router       /cctv/{id}/health-score [get]
+func GetCCTVHealthScore(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.Select("id").First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	result, err := CalculateCCTVHealthScoreAt(config.DB, id, time.Now())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung skor kesehatan CCTV",
+		})
+	}
+	if err := config.DB.Model(&models.CCTV{}).Where("id = ?", id).Update("health_score", result.HealthScore).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan skor kesehatan CCTV",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   result,
 	})
 }
 
@@ -807,6 +860,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 			IPCamera:      ipCamera,
 			Keterangan:    keterangan,
 			QrPayload:     encryptedPayload,
+			HealthScore:   100,
 		}
 		cctv.ID = newID
 

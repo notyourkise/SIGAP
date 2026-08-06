@@ -580,6 +580,7 @@ func TestCompleteMaintenanceLog_Success(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
@@ -637,6 +638,7 @@ func TestCompleteMaintenanceLog_SyncCCTV_RusakUntouched(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
@@ -692,6 +694,7 @@ func TestCompleteMaintenanceLog_SyncCCTV_NonaktifUntouched(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
@@ -754,6 +757,7 @@ func TestCompleteMaintenanceLog_SyncCCTV_LegacyUppercaseUntouched(t *testing.T) 
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
@@ -811,6 +815,7 @@ func TestCompleteMaintenanceLog_NotAllOk(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
 
 	app := newTestApp()
 	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)

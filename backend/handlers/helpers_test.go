@@ -59,3 +59,14 @@ func setupMockGORM(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 	config.DB = gormDB
 	return gormDB, mock
 }
+
+// expectHealthScoreRecalculation menyiapkan ekspektasi query kalkulator yang
+// dipanggil setelah complete atau field-check berhasil.
+func expectHealthScoreRecalculation(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`^SELECT\s+\(SELECT COUNT\(\*\) FROM maintenance_logs`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"failed", "attention", "overdue", "not_ok_items", "last_completed_at",
+		}).AddRow(0, 0, 0, 0, nil))
+	mock.ExpectExec(`^UPDATE "cctvs" SET "health_score"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+}

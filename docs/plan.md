@@ -106,7 +106,7 @@ sigap-monorepo/
 | 3 | 5 | 5.3 Re-assign tugas | Perluas endpoint assign ke log `ongoing`, notif dua pihak, tombol "Alihkan" | ✅ Selesai (2026-08-05, branch `feature/reassign-maintenance`) — build/test/vet PASS + lint/build PASS + swag init; menunggu uji runtime Docker (teknisi lama dapat notif "dialihkan", teknisi baru dapat notif "tugas baru") |
 | 4 | 5 | 5.4 Jadwal berulang | Model `MaintenanceSchedule`, goroutine generator harian, CRUD + halaman admin `/schedules` | ✅ Selesai (2026-08-06, branch `feature/recurring-schedule`) — build/test/vet PASS + lint/build PASS + swag init; generator idempotent per hari per jadwal, tanpa teknisi → log `scheduled`, dengan teknisi → `ongoing` + notifikasi |
 | 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine saat startup + tiap jam, notif admin/teknisi, reset saat reschedule | ✅ Selesai (2026-08-06, branch `feature/overdue-escalation`) — test checker + reset reschedule PASS |
-| 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, badge visual, goroutine berkala | ⬜ Belum |
+| 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, endpoint breakdown, badge tabel/peta, goroutine 6 jam, recalculation saat complete/field-check | ✅ Selesai (2026-08-06, branch `feature/health-score`) — test kalkulasi + endpoint, backend/frontend build PASS |
 | 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ⬜ Belum |
 | 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ⬜ Belum |
 | 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ⬜ Belum |
@@ -134,7 +134,23 @@ sigap-monorepo/
 - `utils/notify_test.go`: persist sukses/gagal; `BroadcastToUser`/`BroadcastToRole` tanpa client (guard clause).
 - `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init` + uji runtime Docker (`https://localhost`).
 
-### 6.4 Konvensi Eksekusi Tiap Sprint
+### 6.4 Rancangan Teknis Sprint 6 (Skor Kesehatan CCTV)
+
+**Backend**
+- `models/cctv.go`: `HealthScore` integer default 100.
+- `handlers/health_score.go`: agregasi lima faktor dalam jendela 90 hari, pembulatan skor akhir, endpoint persistence helper, dan `RunHealthScoreCalculator` saat startup + tiap 6 jam.
+- `handlers/cctv.go`/`routes/cctv.go`: `GET /api/cctv/:id/health-score` protected semua role dan whitelist sorting `health_score` pada list CCTV.
+- `CompleteMaintenanceLog` dan `CreateFieldMaintenance`: recalculation setelah transaksi berhasil; error kalkulator dicatat tanpa membatalkan operasi utama.
+
+**Frontend**
+- `app/cctv/page.tsx`: kolom Kesehatan dengan angka dan badge hijau/kuning/merah.
+- `components/CCTVMap.tsx`: warna marker berdasarkan rentang skor; popup dan legend menampilkan angka/rentang sebagai cue non-warna.
+
+**Test & Verifikasi**
+- `handlers/health_score_test.go`: skenario tanpa riwayat, kombinasi faktor, ambang umur, clamp minimum, dan endpoint.
+- `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
+
+### 6.5 Konvensi Eksekusi Tiap Sprint
 
 1. Branch `feature/...` dari `main` terbaru → Conventional Commits → push → PR (user merge) → hapus branch lokal.
 2. Changelog: `backend/changelog.md`, `frontend/changelog.md`, `docs/changelog.md` (format before/after, timestamp WITA, kategori, daftar file, alasan teknis).

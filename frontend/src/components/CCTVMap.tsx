@@ -15,6 +15,7 @@ export interface CCTVMapItem {
   latitude?: string;
   longitude?: string;
   status: string;
+  health_score?: number;
   ip_camera?: string;
   ip_nvr?: string;
 }
@@ -30,19 +31,27 @@ const IKN_CENTER_LNG = 116.7083;
 const normalizeStatus = (s: string) => (s || '').trim().toUpperCase();
 const isStatusActive = (s: string) => ['ACTIVE', 'AKTIF'].includes(normalizeStatus(s));
 const isStatusMaintenance = (s: string) => ['MAINTENANCE', 'PEMELIHARAAN'].includes(normalizeStatus(s));
+const normalizeHealthScore = (score?: number) => {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return 100;
+  return Math.max(0, Math.min(100, Math.round(score)));
+};
+const healthScoreColor = (score?: number) => {
+  const value = normalizeHealthScore(score);
+  if (value >= 70) return '#10B981';
+  if (value >= 40) return '#F59E0B';
+  return '#EF4444';
+};
+const healthScoreClasses = (score?: number) => {
+  const value = normalizeHealthScore(score);
+  if (value >= 70) return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600';
+  if (value >= 40) return 'border-amber-500/20 bg-amber-500/10 text-amber-600';
+  return 'border-red-500/20 bg-red-500/10 text-red-600';
+};
 
-// Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan status CCTV
-const createCustomMarkerIcon = (status: string) => {
-  let color = '#EF4444'; // Red (Nonaktif / Rusak)
-  let shadowColor = 'rgba(239, 68, 68, 0.4)';
-
-  if (isStatusActive(status)) {
-    color = '#10B981'; // Green (Aktif)
-    shadowColor = 'rgba(16, 185, 129, 0.4)';
-  } else if (isStatusMaintenance(status)) {
-    color = '#F59E0B'; // Amber (Pemeliharaan)
-    shadowColor = 'rgba(245, 158, 11, 0.4)';
-  }
+// Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
+const createCustomMarkerIcon = (healthScore?: number) => {
+  const color = healthScoreColor(healthScore);
+  const shadowColor = `${color}66`;
 
   const svgHtml = `
     <div style="
@@ -171,11 +180,12 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
           <Marker
             key={item.id}
             position={[item.lat, item.lng]}
-            icon={createCustomMarkerIcon(item.status)}
+            icon={createCustomMarkerIcon(item.health_score)}
           >
             <Tooltip direction="top" offset={[0, -15]} opacity={0.95}>
               <div className="text-xs font-bold font-sans">
                 {item.nama} <span className="font-mono text-[10px] text-muted">({item.kode_cctv})</span>
+                <div className="mt-0.5 text-[10px] font-semibold text-muted">Kesehatan: {normalizeHealthScore(item.health_score)}/100</div>
               </div>
             </Tooltip>
 
@@ -186,15 +196,20 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
                     <h4 className="font-bold text-sm text-foreground leading-snug">{item.nama}</h4>
                     <p className="font-mono text-xs font-semibold text-primary mt-0.5">{item.kode_cctv}</p>
                   </div>
-                  <span className={`inline-block shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    isStatusActive(item.status)
-                      ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                      : isStatusMaintenance(item.status)
-                        ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                        : 'bg-red-500/10 text-red-600 border border-red-500/20'
-                  }`}>
-                    {isStatusActive(item.status) ? 'Aktif' : isStatusMaintenance(item.status) ? 'Pemeliharaan' : 'Nonaktif'}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      isStatusActive(item.status)
+                        ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+                        : isStatusMaintenance(item.status)
+                          ? 'border border-amber-500/20 bg-amber-500/10 text-amber-600'
+                          : 'border border-red-500/20 bg-red-500/10 text-red-600'
+                    }`}>
+                      {isStatusActive(item.status) ? 'Aktif' : isStatusMaintenance(item.status) ? 'Pemeliharaan' : 'Nonaktif'}
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${healthScoreClasses(item.health_score)}`}>
+                      Skor {normalizeHealthScore(item.health_score)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 text-xs text-muted">
@@ -225,22 +240,22 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
         ))}
       </MapContainer>
 
-      {/* Legend Card Overlay */}
+      {/* Legend skor kesehatan: angka tetap ditampilkan agar warna bukan satu-satunya cue. */}
       <div className="absolute bottom-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/90 px-4 py-2.5 shadow-lg backdrop-blur-md text-xs font-semibold text-foreground">
         <div className="flex items-center gap-1.5">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          <span>Sebaran CCTV IKN</span>
+          <span>Kesehatan CCTV</span>
         </div>
         <div className="h-3 w-px bg-border hidden sm:block" />
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Aktif
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> ≥70 Sehat
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Pemeliharaan
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> 40–69 Perhatian
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Nonaktif
+            <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> &lt;40 Kritis
           </span>
         </div>
       </div>

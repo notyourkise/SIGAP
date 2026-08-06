@@ -1,5 +1,25 @@
 # Changelog - Frontend SIGAP
 
+## [1.28.0] - 2026-08-06
+
+### Fitur: Badge Skor Kesehatan CCTV (Task 6.1)
+
+perubahan yang dilakukan: **Menambahkan kolom Kesehatan pada tabel Master CCTV dengan badge angka 0–100 dan warna semantik (hijau ≥70, kuning ≥40, merah <40). Marker pada peta sebaran kini memakai skor kesehatan sebagai warna utama; tooltip, popup, dan legend tetap menampilkan angka/rentang agar informasi tidak hanya bergantung pada warna. Sorting tabel mendukung Skor kesehatan**.
+
+before: Tabel Master CCTV dan marker peta hanya menampilkan status operasional (`aktif`, `pemeliharaan`, `nonaktif`), sehingga kondisi kesehatan berbasis riwayat pemeliharaan belum terlihat secara langsung.
+
+after:
+- `src/app/cctv/page.tsx`: field `health_score`, badge Kesehatan, helper normalisasi rentang, dan opsi sortir `health_score`.
+- `src/components/CCTVMap.tsx`: marker berdasarkan skor, badge skor pada popup, skor pada tooltip, dan legend rentang kesehatan.
+
+timestamp: 2026-08-06 13:22 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/changelog.md
+alasan perubahan: Membuat indikator kesehatan CCTV dapat dipindai cepat pada inventaris dan peta tanpa menghilangkan status operasional perangkat.
+
 ## [1.27.0] - 2026-08-06
 
 ### Fitur: Halaman Jadwal Pemeliharaan Berulang (Recurring) - Task 5.4

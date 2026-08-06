@@ -1,5 +1,44 @@
 # Changelog - Backend SIGAP
 
+## [0.32.0] - 2026-08-06
+
+### Fitur: Skor Kesehatan CCTV (Task 6.1)
+
+perubahan yang dilakukan: **Menambahkan `CCTV.HealthScore` (integer 0–100, default 100), endpoint protected `GET /api/cctv/:id/health-score`, dan kalkulator berkala yang berjalan saat startup lalu setiap 6 jam. Skor memakai lima faktor dalam 90 hari terakhir: failed, field-check attention, overdue, umur sejak MaintenanceLog completed terakhir, dan item checklist not_ok. Skor disimpan kembali ke CCTV, dipancarkan lewat event `CCTV_UPDATED`, serta dihitung ulang setelah complete maintenance atau field-check berhasil**.
+
+before: Data CCTV hanya memiliki status operasional dan belum mempunyai indikator gabungan yang menunjukkan kesehatan perangkat berdasarkan riwayat pemeliharaan, keterlambatan tugas, dan hasil pengecekan lapangan.
+
+after:
+- `models/cctv.go`: field `HealthScore int` dengan default database 100 dan JSON `health_score`.
+- `handlers/health_score.go` (baru): agregasi PostgreSQL lima faktor dari jendela 90 hari, bobot penalti, clamp 0–100, `CalculateCCTVHealthScoreAt`, `RecalculateCCTVHealthScore`, dan `RunHealthScoreCalculator` interval 6 jam.
+- `handlers/cctv.go`: handler `GetCCTVHealthScore` protected semua role; list CCTV menambahkan `health_score` ke whitelist sorting.
+- `routes/cctv.go`: rute `GET /cctv/:id/health-score` didaftarkan sebelum rute `/:id`.
+- `handlers/maintenance.go` dan `handlers/field_maintenance.go`: recalculation setelah transaksi complete/field-check sukses.
+- `handlers/health_score_test.go`: unit test default, kombinasi lima faktor, ambang umur, clamp, dan endpoint sqlmock.
+- `main.go`: kalkulator skor dijalankan sebagai goroutine saat startup.
+- Swagger docs diregenerasi (`swag init`) karena endpoint baru.
+
+timestamp: 2026-08-06 13:22 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/cctv.go
+- backend/handlers/health_score.go
+- backend/handlers/health_score_test.go
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/handlers/helpers_test.go
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/field_maintenance_test.go
+- backend/routes/cctv.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Memberikan indikator prioritas yang dapat dipindai admin dari data operasional yang sudah ada, tanpa menambah tabel baru atau ketergantungan pihak ketiga.
+
 ## [0.31.0] - 2026-08-06
 
 ### Fitur: Eskalasi Overdue Otomatis (Task 5.5)

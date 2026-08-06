@@ -94,6 +94,11 @@ func main() {
 	go handlers.RunOverdueChecker(config.DB)
 	utils.Log.Info("🚨 Checker eskalasi overdue diaktifkan (interval: 1 jam)")
 
+	// Jalankan kalkulator skor kesehatan CCTV (Fase 6.1). Proses pertama
+	// dilakukan saat startup, lalu diulang setiap 6 jam.
+	go handlers.RunHealthScoreCalculator(config.DB)
+	utils.Log.Info("🩺 Kalkulator skor kesehatan CCTV diaktifkan (interval: 6 jam)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
