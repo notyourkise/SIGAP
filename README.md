@@ -291,6 +291,15 @@ erDiagram
 | PUT | `/api/maintenance-logs/:id` | Update log pemeliharaan | JWT | Teknisi: log miliknya / Admin: semua |
 | DELETE | `/api/maintenance-logs/:id` | Hapus log (soft delete) | JWT | Admin |
 
+### Pengecekan Lapangan
+| Method | Endpoint | Deskripsi | Auth | Role |
+|--------|----------|-----------|------|------|
+| GET | `/api/field-maintenance/` | Daftar hasil pengecekan lapangan (paginasi, filter, search) | JWT | Teknisi: miliknya / Admin: semua |
+| GET | `/api/field-maintenance/:id` | Detail checklist dan foto bukti | JWT | Teknisi: miliknya / Admin: semua |
+| GET | `/api/field-maintenance/:id/report-pdf` | Unduh laporan PDF pengecekan lapangan | JWT | Teknisi: miliknya / Admin: semua |
+| POST | `/api/field-maintenance/` | Catat hasil pengecekan lapangan | JWT | Semua |
+| DELETE | `/api/field-maintenance/:id` | Hapus catatan (soft delete) | JWT | Admin |
+
 ### Manajemen Pengguna
 | Method | Endpoint | Deskripsi | Auth | Role |
 |--------|----------|-----------|------|------|

@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-06 (penambahan test dashboard kinerja teknisi).
+> Diperbarui: 2026-08-06 (penambahan test dashboard kinerja teknisi dan laporan PDF pengecekan lapangan).
 
 ---
 
@@ -42,7 +42,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
 | `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah; assign/re-assign (Fase 5.3): assign normal → 200, re-assign log `ongoing` ke teknisi baru → 200, assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` → 403 (RequireRole admin) |
-| `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif` |
+| `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif`; GenerateFieldMaintenanceReportPDF (content-type/prefix PDF, teknisi pemilik/non-pemilik, not found) |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong) |
 | `handlers` | `technician_performance_test.go` | Dashboard kinerja teknisi: struktur respons, filter rentang tanggal, kalkulasi rate/quality, dan role non-admin → 403 |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
@@ -54,7 +54,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `health_score_test.go` (Fase 6.1) | skor default tanpa riwayat, kombinasi lima faktor, ambang umur pemeliharaan, clamp 0, endpoint invalid UUID/sukses, persistence skor, dan kalkulator seluruh CCTV |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
-| `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
+| `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance/field-maintenance wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
 
 **Total: 36 file test** (8 utils, 4 middleware, 18 handlers, 2 models, 2 config, 2 routes, termasuk helper).

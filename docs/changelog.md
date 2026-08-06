@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.16] — 2026-08-06 — Laporan PDF Pengecekan Lapangan (Task 6.3)
+
+### Perubahan
+
+- **Backend** ([0.34.0]): endpoint protected `/api/field-maintenance/:id/report-pdf` dengan kop surat IKN, detail CCTV/teknisi/waktu, checklist, foto bukti, catatan umum, serta ownership scope untuk teknisi.
+- **Frontend** ([1.30.0]): tombol Admin "Cetak Laporan" dengan ikon `FileDown` pada modal detail field maintenance dan download PDF berbasis blob.
+- **Dokumen**: Task 6.3 ditandai selesai pada Fase 6; README, plan, roadmap, matriks test, panduan agent, Swagger, dan uji manual diperbarui.
+- `swag init`, test backend terarah, dan test route protected diverifikasi pada branch fitur.
+
+Timestamp: 2026-08-06 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.34.0], `frontend/changelog.md` [1.30.0]
+
 ## [1.28.15] — 2026-08-06 — Dashboard Kinerja Teknisi (Task 6.2)
 
 ### Perubahan

@@ -52,14 +52,14 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `models/cctv.go` — Definisi struktur `CCTV`, termasuk `QrPayload` yang dienkripsi menggunakan AES-256 dan `HealthScore` (skor kesehatan 0–100, default 100).
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `user`, `dashboard` (termasuk endpoint kinerja teknisi admin), `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi admin), `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
-- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, websocket).
+- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, field maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, websocket).
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
@@ -84,6 +84,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
 - `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap termasuk badge skor kesehatan, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, fitur unggah bukti foto pemeliharaan, penugasan ke teknisi (tombol "Tugaskan"), dan pengalihan tugas (tombol "Alihkan" untuk log `ongoing`, Fase 5.3 — menampilkan peringatan nama teknisi saat ini sebelum submit).
+- `src/app/field-maintenance/page.tsx` — Halaman Pengecekan Lapangan: daftar dan modal detail checklist/foto bukti, serta tombol "Cetak Laporan" untuk Admin yang mengunduh PDF per-record.
 - `src/app/schedules/page.tsx` — Halaman Jadwal Pemeliharaan (Fase 5.4, khusus admin): CRUD jadwal berulang, toggle aktif/nonaktif, filter status, paginasi; menu sidebar "Jadwal".
 - `src/app/kinerja-teknisi/page.tsx` — Dashboard Kinerja Teknisi (Fase 6.2, khusus admin): filter rentang tanggal, chart completion rate SVG, tabel ranking sortable, dan metrik overdue/field-check/quality.
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
@@ -174,6 +175,14 @@ Menyimpan jadwal pemeliharaan berulang:
 - `IsActive` (default `true`; jadwal nonaktif tidak diproses generator)
 - `LastGeneratedAt` (waktu terakhir generator membuat log)
 
+### FieldMaintenance (Pengecekan Lapangan)
+Menyimpan satu catatan pengecekan CCTV oleh teknisi di lapangan:
+- `CCTVID` (Foreign Key → `cctvs`), `TechnicianID` (Foreign Key → `users`)
+- `OverallStatus` (`ok` / `attention`), `Notes`, `CompletedAt`
+- `MaintenanceLogID` (nullable; penghubung bila pengecekan berasal dari tugas terjadwal)
+- `FieldMaintenanceCheck`: nama item, hasil (`ok` / `not_ok`), dan catatan per item
+- `FieldMaintenanceImage`: URL foto bukti yang dilindungi endpoint upload
+
 ### AuditLog
 Menyimpan riwayat aktivitas penting pengguna (dipakai pada halaman audit trail):
 - `UserID` (Foreign Key → `users`, nullable), `Username`, `UserRole`
@@ -210,6 +219,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Notifikasi In-App** (Fase 5.1): Endpoint `/api/notifications` — `GET /` (list + filter `unread` + paginasi), `GET /unread-count`, `PUT /:id/read` (ownership check → 403), `PUT /read-all`. Semua scope per-user dari klaim JWT; rute statis didaftarkan sebelum dinamis. Pembuatan notifikasi tidak dilakukan handler secara manual — gunakan `utils.NotifyUser`/`utils.NotifyRole`.
 - **Skor Kesehatan CCTV** (Fase 6.1): `GET /api/cctv/:id/health-score` protected untuk semua role; respons berisi `health_score`, `breakdown` lima metrik, dan `updated_at`. Kolom `health_score` juga tersedia pada list CCTV dan dapat dipakai sebagai `sort_by`.
 - **Kinerja Teknisi** (Fase 6.2): `GET /api/dashboard/technician-performance` hanya untuk admin; parameter `start_date`/`end_date` default 30 hari terakhir; respons berupa array metrik tugas, durasi assign → complete, overdue, field check, dan quality score.
+- **Laporan Pengecekan Lapangan** (Fase 6.3): `GET /api/field-maintenance/:id/report-pdf` protected untuk Admin dan teknisi pemilik record; mengembalikan PDF berkepala surat IKN dengan detail CCTV, teknisi, waktu, checklist, foto bukti, dan catatan umum.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
 ## 6. Gotchas & Catatan Teknis Penting

@@ -108,7 +108,7 @@ sigap-monorepo/
 | 5 | 5 | 5.5 Eskalasi overdue | Kolom `OverdueNotifiedAt`, goroutine saat startup + tiap jam, notif admin/teknisi, reset saat reschedule | ✅ Selesai (2026-08-06, branch `feature/overdue-escalation`) — test checker + reset reschedule PASS |
 | 6 | 6 | 6.1 Skor Kesehatan CCTV | Skor 0–100 dari 5 faktor, endpoint breakdown, badge tabel/peta, goroutine 6 jam, recalculation saat complete/field-check | ✅ Selesai (2026-08-06, branch `feature/health-score`) — test kalkulasi + endpoint, backend/frontend build PASS |
 | 7 | 6 | 6.2 Dashboard Kinerja Teknisi | Endpoint statistik per teknisi, halaman `/kinerja-teknisi` | ✅ Selesai (2026-08-06, branch `feature/technician-performance`) — test struktur/filter/role + backend/frontend build dan lint PASS |
-| 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ⬜ Belum |
+| 8 | 6 | 6.3 Laporan PDF Pengecekan | PDF per-record field-maintenance dengan kop surat IKN | ✅ Selesai (2026-08-06, branch `feature/field-maintenance-pdf`) |
 | 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | ⬜ Belum |
 | 10–15 | 7 | 7.1–7.6 Kesiapan Produksi | Versioned migration, Redis, backup, monitoring, hardening, logging | ⬜ Belum |
 | 16–19 | 8 | 8.1–8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | ⬜ Belum |
@@ -168,7 +168,23 @@ sigap-monorepo/
 - `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
 - Uji manual di `docs/manual-test-technician-performance.md`.
 
-### 6.6 Konvensi Eksekusi Tiap Sprint
+### 6.6 Rancangan Teknis Sprint 8 (Laporan PDF Pengecekan Lapangan)
+
+**Backend**
+- `handlers/field_maintenance.go`: handler `GenerateFieldMaintenanceReportPDF` memuat relasi CCTV, teknisi, checklist, dan foto; Admin dapat mengakses seluruh record, sedangkan teknisi dibatasi ke record miliknya.
+- PDF memakai `go-pdf/fpdf` dan helper kop surat dari `handlers/report.go`; isi laporan mencakup informasi CCTV, informasi pengecekan, tabel checklist, foto bukti yang di-embed bila file lokal tersedia, fallback URL foto, dan catatan umum.
+- `routes/field_maintenance.go`: rute `GET /field-maintenance/:id/report-pdf` protected dan didaftarkan sebelum rute `/:id`.
+- `handlers/field_maintenance_test.go`: test content type/prefix PDF, akses teknisi pemilik/non-pemilik, dan record tidak ditemukan; `routes/routes_test.go` memastikan route protected.
+- Swagger docs diregenerasi dengan `swag init`.
+
+**Frontend**
+- `app/field-maintenance/page.tsx`: hook `useAuth` membatasi tombol `FileDown`/"Cetak Laporan" untuk Admin; download memakai `downloadApiFile` dengan cookie sesi dan respons blob.
+
+**Test & Verifikasi**
+- `go build ./... && go test ./... -count=1 && go vet ./...` + `npm run lint && npm run build` + `swag init`.
+- Uji manual di `docs/manual-test-field-maintenance-pdf.md`.
+
+### 6.7 Konvensi Eksekusi Tiap Sprint
 
 1. Branch `feature/...` dari `main` terbaru → Conventional Commits → push → PR (user merge) → hapus branch lokal.
 2. Changelog: `backend/changelog.md`, `frontend/changelog.md`, `docs/changelog.md` (format before/after, timestamp WITA, kategori, daftar file, alasan teknis).

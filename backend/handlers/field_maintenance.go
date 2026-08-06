@@ -1,6 +1,14 @@
 package handlers
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -9,6 +17,7 @@ import (
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
+	"github.com/go-pdf/fpdf"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -341,6 +350,383 @@ func GetFieldMaintenanceByID(c *fiber.Ctx) error {
 		"status": "success",
 		"data":   entry,
 	})
+}
+
+// GenerateFieldMaintenanceReportPDF membuat laporan PDF satu catatan pengecekan
+// lapangan. Admin dapat membuka semua catatan, sedangkan teknisi hanya dapat
+// mengunduh catatan yang menjadi miliknya sendiri.
+// @Summary      Laporan Pengecekan Lapangan (PDF)
+// @Description  Mengunduh laporan PDF satu catatan pengecekan lapangan lengkap dengan kop surat IKN, identitas CCTV dan teknisi, checklist, foto bukti, serta catatan umum.
+// @Tags         Pengecekan Lapangan
+// @Produce      application/pdf
+// @Security     BearerAuth
+// @Param        id path string true "Catatan UUID"
+// @Success      200 {file} string "File PDF laporan pengecekan lapangan"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak"
+// @Failure      404 {object} map[string]interface{} "Catatan tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal membuat laporan"
+// @Router       /field-maintenance/{id}/report-pdf [get]
+func GenerateFieldMaintenanceReportPDF(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID pengecekan lapangan tidak valid",
+		})
+	}
+
+	var entry models.FieldMaintenance
+	if err := config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").
+		First(&entry, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Catatan pengecekan lapangan tidak ditemukan",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil data laporan pengecekan lapangan",
+		})
+	}
+
+	// SECURITY: scope teknisi tetap ditegakkan di backend walaupun tombol
+	// laporan pada frontend hanya ditampilkan untuk Admin.
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		userID, _ := c.Locals("user_id").(string)
+		if userID == "" || userID != entry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat mengunduh laporan pengecekan milik Anda sendiri",
+			})
+		}
+	}
+
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(pdfMarginX, 12, pdfMarginX)
+	pdf.SetAutoPageBreak(true, 16)
+	pdf.AddPage()
+	drawFieldMaintenanceReport(pdf, entry)
+
+	filename := fmt.Sprintf("laporan_pengecekan_lapangan_%s.pdf", entry.ID.String())
+	c.Set("Content-Type", "application/pdf")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	var out bytes.Buffer
+	if err := pdf.Output(&out); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghasilkan berkas laporan PDF",
+		})
+	}
+	return c.Send(out.Bytes())
+}
+
+// drawFieldMaintenanceReport menyusun seluruh bagian laporan pengecekan
+// lapangan menggunakan kop surat yang sama dengan laporan pemeliharaan.
+func drawFieldMaintenanceReport(pdf *fpdf.Fpdf, entry models.FieldMaintenance) {
+	drawLetterhead(pdf)
+
+	pdf.SetY(pdf.GetY() + 3)
+	pdf.SetFont("Helvetica", "B", 14)
+	pdf.SetTextColor(30, 30, 30)
+	pdf.CellFormat(pdfContentW, 8, "LAPORAN PENGECEKAN LAPANGAN", "", 1, "C", false, 0, "")
+	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetTextColor(110, 110, 110)
+	pdf.CellFormat(pdfContentW, 5, "Dihasilkan: "+time.Now().Format("2006-01-02 15:04:05"), "", 1, "C", false, 0, "")
+	pdf.SetTextColor(30, 30, 30)
+
+	drawFieldReportSectionTitle(pdf, "INFORMASI CCTV")
+	drawFieldReportInfoGrid(pdf, [][2]string{
+		{"Kode CCTV", pdfSafe(entry.CCTV.KodeCCTV, 30)},
+		{"Nama CCTV", pdfSafe(entry.CCTV.Nama, 42)},
+		{"Lokasi", pdfSafe(entry.CCTV.LokasiArea, 42)},
+		{"Status CCTV", fieldReportCCTVStatusLabel(entry.CCTV.Status)},
+	})
+
+	drawFieldReportSectionTitle(pdf, "INFORMASI PENGECEKAN")
+	technician := entry.User.FullName
+	if strings.TrimSpace(technician) == "" {
+		technician = entry.User.Username
+	}
+	checkTime := entry.CreatedAt
+	if entry.CompletedAt != nil {
+		checkTime = *entry.CompletedAt
+	}
+	drawFieldReportInfoGrid(pdf, [][2]string{
+		{"Teknisi", pdfSafe(technician, 42)},
+		{"Tanggal / waktu", checkTime.Format("2006-01-02 15:04:05")},
+		{"Status keseluruhan", fieldReportOverallStatusLabel(entry.OverallStatus)},
+		{"Jumlah item", fmt.Sprintf("%d item checklist", len(entry.Checks))},
+	})
+
+	drawFieldReportSectionTitle(pdf, "TABEL CHECKLIST")
+	drawFieldReportChecklist(pdf, entry.Checks)
+
+	drawFieldReportSectionTitle(pdf, "FOTO BUKTI")
+	drawFieldReportPhotos(pdf, entry.Images)
+
+	if strings.TrimSpace(entry.Notes) != "" {
+		drawFieldReportSectionTitle(pdf, "CATATAN UMUM")
+		ensureFieldReportSpace(pdf, 14)
+		pdf.SetFont("Helvetica", "", 9)
+		pdf.SetTextColor(45, 45, 45)
+		pdf.MultiCell(pdfContentW, 5, pdfSafe(entry.Notes, 2000), "1", "L", false)
+	}
+}
+
+func drawFieldReportSectionTitle(pdf *fpdf.Fpdf, title string) {
+	ensureFieldReportSpace(pdf, 12)
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetTextColor(64, 112, 56)
+	pdf.CellFormat(pdfContentW, 6, title, "", 1, "L", false, 0, "")
+	pdf.SetDrawColor(210, 210, 210)
+	pdf.SetLineWidth(0.2)
+	pdf.Line(pdfMarginX, pdf.GetY(), pdfMarginX+pdfContentW, pdf.GetY())
+	pdf.SetY(pdf.GetY() + 2)
+	pdf.SetTextColor(30, 30, 30)
+}
+
+func drawFieldReportInfoGrid(pdf *fpdf.Fpdf, rows [][2]string) {
+	const rowHeight = 8.0
+	colWidth := pdfContentW / 2
+	for i := 0; i < len(rows); i += 2 {
+		ensureFieldReportSpace(pdf, rowHeight)
+		y := pdf.GetY()
+		for col := 0; col < 2 && i+col < len(rows); col++ {
+			x := pdfMarginX + float64(col)*colWidth
+			pdf.SetFillColor(248, 248, 244)
+			pdf.SetDrawColor(220, 220, 210)
+			pdf.Rect(x, y, colWidth, rowHeight, "DF")
+			pdf.SetXY(x+3, y+1.2)
+			pdf.SetFont("Helvetica", "B", 7.5)
+			pdf.SetTextColor(105, 105, 105)
+			pdf.CellFormat(colWidth-6, 3.5, rows[i+col][0], "", 1, "L", false, 0, "")
+			pdf.SetFont("Helvetica", "", 8.5)
+			pdf.SetTextColor(35, 35, 35)
+			pdf.CellFormat(colWidth-6, 3.5, rows[i+col][1], "", 0, "L", false, 0, "")
+		}
+		pdf.SetY(y + rowHeight)
+	}
+	pdf.SetY(pdf.GetY() + 2)
+}
+
+func drawFieldReportChecklist(pdf *fpdf.Fpdf, checks []models.FieldMaintenanceCheck) {
+	colWidths := []float64{10, 57, 27, 88}
+	headers := []string{"No", "Nama Item", "Hasil", "Catatan"}
+
+	pdf.SetFont("Helvetica", "B", 8)
+	pdf.SetFillColor(64, 112, 56)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetX(pdfMarginX)
+	for i, header := range headers {
+		pdf.CellFormat(colWidths[i], 7, header, "1", 0, "C", true, 0, "")
+	}
+	pdf.Ln(-1)
+	pdf.SetTextColor(30, 30, 30)
+
+	for i, check := range checks {
+		name := pdfSafe(check.Name, 90)
+		note := pdfSafe(check.Note, 140)
+		nameLines := pdf.SplitLines([]byte(name), colWidths[1]-4)
+		noteLines := pdf.SplitLines([]byte(note), colWidths[3]-4)
+		lineCount := len(nameLines)
+		if len(noteLines) > lineCount {
+			lineCount = len(noteLines)
+		}
+		cellHeight := float64(lineCount)*4.5 + 3
+		if cellHeight < 8 {
+			cellHeight = 8
+		}
+
+		if pdf.GetY()+cellHeight > pdfBreakY {
+			pdf.AddPage()
+			drawLetterhead(pdf)
+			drawFieldReportSectionTitle(pdf, "TABEL CHECKLIST (LANJUTAN)")
+			pdf.SetFont("Helvetica", "B", 8)
+			pdf.SetFillColor(64, 112, 56)
+			pdf.SetTextColor(255, 255, 255)
+			pdf.SetX(pdfMarginX)
+			for j, header := range headers {
+				pdf.CellFormat(colWidths[j], 7, header, "1", 0, "C", true, 0, "")
+			}
+			pdf.Ln(-1)
+			pdf.SetTextColor(30, 30, 30)
+		}
+
+		y := pdf.GetY()
+		x := pdfMarginX
+		pdf.SetDrawColor(205, 205, 205)
+		for _, width := range colWidths {
+			pdf.Rect(x, y, width, cellHeight, "D")
+			x += width
+		}
+
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetXY(pdfMarginX, y+1.5)
+		pdf.CellFormat(colWidths[0], 5, fmt.Sprintf("%d", i+1), "", 0, "C", false, 0, "")
+		pdf.SetXY(pdfMarginX+colWidths[0]+2, y+1.5)
+		pdf.MultiCell(colWidths[1]-4, 4.5, name, "", "L", false)
+		pdf.SetXY(pdfMarginX+colWidths[0]+colWidths[1], y+1.5)
+		pdf.SetFont("Helvetica", "B", 8)
+		pdf.CellFormat(colWidths[2], 5, fieldReportCheckResultLabel(check.Result), "", 0, "C", false, 0, "")
+		pdf.SetXY(pdfMarginX+colWidths[0]+colWidths[1]+colWidths[2]+2, y+1.5)
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.MultiCell(colWidths[3]-4, 4.5, note, "", "L", false)
+		pdf.SetY(y + cellHeight)
+	}
+	pdf.SetY(pdf.GetY() + 2)
+}
+
+func drawFieldReportPhotos(pdf *fpdf.Fpdf, images []models.FieldMaintenanceImage) {
+	if len(images) == 0 {
+		pdf.SetFont("Helvetica", "I", 9)
+		pdf.SetTextColor(110, 110, 110)
+		pdf.CellFormat(pdfContentW, 7, "Tidak ada foto bukti.", "", 1, "L", false, 0, "")
+		pdf.SetTextColor(30, 30, 30)
+		return
+	}
+
+	const (
+		photoWidth  = 87.0
+		photoHeight = 48.0
+		photoGap    = 8.0
+	)
+	for i := 0; i < len(images); i += 2 {
+		ensureFieldReportSpace(pdf, photoHeight+8)
+		y := pdf.GetY()
+		for col := 0; col < 2 && i+col < len(images); col++ {
+			x := pdfMarginX + float64(col)*(photoWidth+photoGap)
+			drawFieldReportPhoto(pdf, images[i+col], i+col+1, x, y, photoWidth, photoHeight)
+		}
+		pdf.SetY(y + photoHeight + 7)
+	}
+}
+
+func drawFieldReportPhoto(pdf *fpdf.Fpdf, imageRecord models.FieldMaintenanceImage, number int, x, y, width, height float64) {
+	pdf.SetDrawColor(205, 205, 205)
+	pdf.Rect(x, y, width, height, "D")
+
+	imagePath, imageType := fieldReportImagePath(imageRecord.ImageUrl)
+	if imagePath != "" {
+		imageWidth, imageHeight, ok := fieldReportImageDimensions(imagePath)
+		if ok {
+			pdf.RegisterImage(imagePath, imageType)
+			if !pdf.Err() {
+				const padding = 2.0
+				maxWidth := width - padding*2
+				maxHeight := height - 8
+				ratio := float64(imageWidth) / float64(imageHeight)
+				drawWidth := maxWidth
+				drawHeight := drawWidth / ratio
+				if drawHeight > maxHeight {
+					drawHeight = maxHeight
+					drawWidth = drawHeight * ratio
+				}
+				pdf.Image(imagePath, x+(width-drawWidth)/2, y+2+(maxHeight-drawHeight)/2, drawWidth, drawHeight, false, "", 0, "")
+				if !pdf.Err() {
+					pdf.SetFont("Helvetica", "", 7)
+					pdf.SetTextColor(110, 110, 110)
+					pdf.SetXY(x+2, y+height-5.5)
+					pdf.CellFormat(width-4, 4, fmt.Sprintf("Foto bukti %d", number), "", 0, "C", false, 0, "")
+					pdf.SetTextColor(30, 30, 30)
+					return
+				}
+			}
+		}
+	}
+
+	// Bila file lokal tidak tersedia, tetap sertakan URL agar bukti dapat
+	// ditelusuri dari laporan tanpa membuat proses generate PDF gagal.
+	pdf.SetFont("Helvetica", "", 7.5)
+	pdf.SetTextColor(90, 90, 90)
+	pdf.SetXY(x+3, y+8)
+	pdf.MultiCell(width-6, 4, "Foto bukti "+fmt.Sprintf("%d", number)+"\nURL: "+pdfSafe(imageRecord.ImageUrl, 42), "", "L", false)
+	pdf.SetTextColor(30, 30, 30)
+}
+
+func fieldReportImagePath(imageURL string) (string, string) {
+	path := strings.TrimSpace(imageURL)
+	var filename string
+	switch {
+	case strings.HasPrefix(path, "/api/uploads/"):
+		filename = strings.TrimPrefix(path, "/api/uploads/")
+	case strings.HasPrefix(path, "/uploads/"):
+		filename = strings.TrimPrefix(path, "/uploads/")
+	default:
+		return "", ""
+	}
+
+	if filename == "" || filepath.Base(filename) != filename || strings.Contains(filename, "..") {
+		return "", ""
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	imageType := strings.TrimPrefix(ext, ".")
+	if imageType == "jpeg" {
+		imageType = "jpg"
+	}
+	if imageType != "jpg" && imageType != "png" {
+		return "", ""
+	}
+
+	filePath := filepath.Join("uploads", filename)
+	info, err := os.Stat(filePath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", ""
+	}
+	return filePath, imageType
+}
+
+func fieldReportImageDimensions(filePath string) (int, int, bool) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer func() { _ = file.Close() }()
+
+	config, _, err := image.DecodeConfig(file)
+	if err != nil || config.Width <= 0 || config.Height <= 0 {
+		return 0, 0, false
+	}
+	return config.Width, config.Height, true
+}
+
+func ensureFieldReportSpace(pdf *fpdf.Fpdf, height float64) {
+	if pdf.GetY()+height <= pdfBreakY {
+		return
+	}
+	pdf.AddPage()
+	drawLetterhead(pdf)
+}
+
+func fieldReportCheckResultLabel(result string) string {
+	if strings.EqualFold(strings.TrimSpace(result), "ok") {
+		return "OK"
+	}
+	return "Tidak OK"
+}
+
+func fieldReportOverallStatusLabel(status string) string {
+	if strings.EqualFold(strings.TrimSpace(status), "ok") {
+		return "OK"
+	}
+	return "ATTENTION"
+}
+
+func fieldReportCCTVStatusLabel(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "aktif", "active":
+		return "Aktif"
+	case "pemeliharaan", "maintenance":
+		return "Pemeliharaan"
+	case "nonaktif", "inactive", "rusak", "broken":
+		return "Nonaktif"
+	default:
+		return pdfSafe(status, 24)
+	}
 }
 
 // DeleteFieldMaintenance menghapus catatan pengecekan lapangan (Admin saja)

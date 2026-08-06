@@ -28,11 +28,21 @@ func TestMaintenanceRoutesRequireAuthentication(t *testing.T) {
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }
 
+func TestFieldMaintenanceRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupFieldMaintenanceRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+"00000000-0000-0000-0000-000000000000"+"/report-pdf", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
 func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
 	app := fiber.New()
 	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
 	SetupAuthRoutes(api)
 	SetupMaintenanceRoutes(api)
+	SetupFieldMaintenanceRoutes(api)
 	SetupUserRoutes(api)
 	SetupCCTVRoutes(api)
 	SetupUploadRoutes(api)
