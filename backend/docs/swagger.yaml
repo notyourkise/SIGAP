@@ -41,6 +41,8 @@ definitions:
     type: object
   handlers.CreateCCTVRequest:
     properties:
+      channel_port:
+        type: integer
       id_channel:
         maxLength: 50
         type: string
@@ -80,12 +82,16 @@ definitions:
       pemilik:
         maxLength: 100
         type: string
+      rtsp_password:
+        type: string
       status:
         enum:
         - aktif
         - pemeliharaan
         - nonaktif
         type: string
+      stream_enabled:
+        type: boolean
       sumber_listrik:
         maxLength: 50
         type: string
@@ -263,6 +269,8 @@ definitions:
     type: object
   handlers.UpdateCCTVRequest:
     properties:
+      channel_port:
+        type: integer
       id_channel:
         maxLength: 50
         type: string
@@ -302,12 +310,16 @@ definitions:
       pemilik:
         maxLength: 100
         type: string
+      rtsp_password:
+        type: string
       status:
         enum:
         - aktif
         - pemeliharaan
         - nonaktif
         type: string
+      stream_enabled:
+        type: boolean
       sumber_listrik:
         maxLength: 50
         type: string

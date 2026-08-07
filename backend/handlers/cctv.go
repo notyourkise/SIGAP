@@ -57,6 +57,9 @@ type CreateCCTVRequest struct {
 	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
 	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
 	Keterangan    string `json:"keterangan" validate:"omitempty"`
+	ChannelPort   int    `json:"channel_port"`
+	RTSPPassword  string `json:"rtsp_password"`
+	StreamEnabled bool   `json:"stream_enabled"`
 }
 
 // Request body untuk update data CCTV
@@ -76,6 +79,9 @@ type UpdateCCTVRequest struct {
 	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
 	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
 	Keterangan    string `json:"keterangan" validate:"omitempty"`
+	ChannelPort   *int   `json:"channel_port"`
+	RTSPPassword  string `json:"rtsp_password"`
+	StreamEnabled *bool  `json:"stream_enabled"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -175,6 +181,19 @@ func CreateCCTV(c *fiber.Ctx) error {
 	}
 	cctv.ID = newID // Set ID yang sudah dienkripsi tadi
 
+	cctv.ChannelPort = req.ChannelPort
+	cctv.StreamEnabled = req.StreamEnabled
+	if req.RTSPPassword != "" {
+		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengenkripsi password RTSP",
+			})
+		}
+		cctv.RTSPPassword = encrypted
+	}
+
 	if err := config.DB.Create(&cctv).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -184,6 +203,9 @@ func CreateCCTV(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "CREATE_CCTV", "CCTV", "Membuat data CCTV baru: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
 	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	cctv.RTSPPassword = ""
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -249,6 +271,11 @@ func GetAllCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	for i := range cctvs {
+		cctvs[i].RTSPPassword = ""
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
@@ -288,6 +315,9 @@ func GetCCTVByID(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	cctv.RTSPPassword = ""
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -454,6 +484,22 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	if req.Keterangan != "" {
 		cctv.Keterangan = req.Keterangan
 	}
+	if req.ChannelPort != nil {
+		cctv.ChannelPort = *req.ChannelPort
+	}
+	if req.RTSPPassword != "" {
+		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengenkripsi password RTSP",
+			})
+		}
+		cctv.RTSPPassword = encrypted
+	}
+	if req.StreamEnabled != nil {
+		cctv.StreamEnabled = *req.StreamEnabled
+	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -464,6 +510,9 @@ func UpdateCCTV(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "UPDATE_CCTV", "CCTV", "Memperbarui data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
 	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	cctv.RTSPPassword = ""
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -579,6 +628,9 @@ func ScanCCTV(c *fiber.Ctx) error {
 			"message": "Terjadi kesalahan internal saat membaca data",
 		})
 	}
+
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	cctv.RTSPPassword = ""
 
 	return c.JSON(fiber.Map{
 		"status": "success",

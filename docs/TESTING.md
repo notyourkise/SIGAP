@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-06 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable).
+> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`).
 
 ---
 
@@ -66,8 +66,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `push_test.go` (Task 8.3) | `SendPushToSubscription` meneruskan subscription/payload ke sender mock (VAPID), `SendPush` no-op bila VAPID kosong, kirim ke semua subscription user, format payload JSON |
 | `handlers` | `push_test.go` (Task 8.3) | `SubscribePush` (create, upsert idempotent, validasi 400, unauthorized 401), `UnsubscribePush` (success, missing endpoint 400) |
 | `handlers` | `field_maintenance_test.go` (Task 8.4, diperluas) | `CreateFieldMaintenance` geotag: `check_latitude` di luar rentang → 400, `check_longitude` bukan angka → 400, geotag valid → 201 + koordinat tersimpan |
+| `utils` | `rtsp_test.go` (Task 9.1) | `BuildRTSPURL` (sub/main stream — channel id `channel_port × 100 + stream_type`), `BuildStreamPath`, `GetRTSPPort` default, edge cases (channel 0/negatif, stream type tidak dikenal) |
+| `handlers` | `cctv_test.go` (Task 9.1, diperluas) | `CreateCCTV`/`UpdateCCTV` menerima field streaming baru (`channel_port`, `rtsp_password`, `stream_enabled`); `rtsp_password` tidak muncul di response JSON (excluded) |
 
-**Total: 45 file test** (11 utils, 5 middleware, 21 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
+**Total: 46 file test** (12 utils, 5 middleware, 21 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
 ---
 

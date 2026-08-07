@@ -1,5 +1,36 @@
 # Changelog - Backend SIGAP
 
+## [0.43.0] - 2026-08-07
+
+### Fitur: Model & Migrasi Streaming CCTV (Task 9.1)
+
+perubahan yang dilakukan: **Menambahkan fondasi data streaming CCTV — field `channel_port` (int), `rtsp_password` (text, AES-256 encrypted), `stream_enabled` (bool, default false) pada model `CCTV` (migrasi `000004_add_cctv_streaming`); util `utils/rtsp.go` (tipe `StreamType` `MainStream=1`/`SubStream=2`, fungsi `BuildRTSPURL`, `BuildStreamPath`, `GetRTSPPort`) untuk membangun URL RTSP Hikvision ISAPI; update `CreateCCTVRequest`/`UpdateCCTVRequest`; `rtsp_password` di-exclude dari response JSON; konfigurasi NVR global di `.env`; serta unit test `utils/rtsp_test.go`.**
+
+before: Model `CCTV` belum memiliki data koneksi streaming (channel port, password RTSP, status stream) sehingga peta sebaran hanya view-only; URL RTSP dibangun manual/inline tanpa helper; tidak ada konfigurasi terpusat untuk host/port/user NVR maupun MediaMTX.
+
+after:
+- `models/cctv.go`: tambah `ChannelPort int` (`json:"channel_port"`), `RTSPPassword string` (text, `json:"-"` — di-exclude dari response; AES-256 encrypted), `StreamEnabled bool` (`json:"stream_enabled"`, default `false`).
+- `migrations/000004_add_cctv_streaming.up.sql`/`.down.sql`: `ALTER TABLE cctvs ADD/DROP COLUMN channel_port integer NOT NULL DEFAULT 1, rtsp_password text NOT NULL DEFAULT '', stream_enabled boolean NOT NULL DEFAULT false` (idempoten).
+- `utils/rtsp.go` (baru): tipe `StreamType` (`MainStream=1`/`SubStream=2`); `BuildRTSPURL(host, port, user, pass, channelPort, streamType)` — `rtsp://user:pass@host:port/Streaming/channels/{ChannelID}` dengan `ChannelID = channelPort × 100 + streamType`; `BuildStreamPath(channelPort, streamType)`; `GetRTSPPort(streamType)` (default ke sub stream bila tidak dikenal). Edge cases channel ≤ 0 ditangani.
+- `handlers/cctv.go`: `CreateCCTVRequest`/`UpdateCCTVRequest` tambah `channel_port` (validasi 1–35), `rtsp_password` (di-encrypt via `utils.EncryptAES256` saat simpan), `stream_enabled`; `rtsp_password` tidak pernah dikembalikan ke response (JSON tag `-`).
+- `.env.example` & `backend/.env.docker.example`: `RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL`.
+- Test: `utils/rtsp_test.go` (baru) — `BuildRTSPURL` sub/main stream, `BuildStreamPath`, `GetRTSPPort` default, edge cases channel 0/negatif; `handlers/cctv_test.go` diperluas untuk field streaming baru.
+
+timestamp: 2026-08-07 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/cctv.go
+- backend/migrations/000004_add_cctv_streaming.up.sql
+- backend/migrations/000004_add_cctv_streaming.down.sql
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/changelog.md
+- .env.example
+- backend/.env.docker.example
+alasan perubahan: Task 9.1 ROADMAP (Fase 9 — Sprint 20) — membangun fondasi streaming CCTV real-time: model menyimpan data koneksi streaming, util RTSP membangun URL Hikvision ISAPI secara konsisten, password disimpan terenkripsi AES-256 dan di-exclude dari response, serta konfigurasi NVR dipusatkan di env sebagai prasyarat sprint berikutnya (MediaMTX client & stream handler).
+
 ## [0.42.0] - 2026-08-07
 
 ### Fitur: Geotag Pengecekan Lapangan (Task 8.4)

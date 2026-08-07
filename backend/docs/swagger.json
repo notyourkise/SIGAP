@@ -3720,6 +3720,9 @@
                 "status"
             ],
             "properties": {
+                "channel_port": {
+                    "type": "integer"
+                },
                 "id_channel": {
                     "type": "string",
                     "maxLength": 50
@@ -3772,6 +3775,9 @@
                     "type": "string",
                     "maxLength": 100
                 },
+                "rtsp_password": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -3779,6 +3785,9 @@
                         "pemeliharaan",
                         "nonaktif"
                     ]
+                },
+                "stream_enabled": {
+                    "type": "boolean"
                 },
                 "sumber_listrik": {
                     "type": "string",
@@ -4022,6 +4031,9 @@
         "handlers.UpdateCCTVRequest": {
             "type": "object",
             "properties": {
+                "channel_port": {
+                    "type": "integer"
+                },
                 "id_channel": {
                     "type": "string",
                     "maxLength": 50
@@ -4074,6 +4086,9 @@
                     "type": "string",
                     "maxLength": 100
                 },
+                "rtsp_password": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -4081,6 +4096,9 @@
                         "pemeliharaan",
                         "nonaktif"
                     ]
+                },
+                "stream_enabled": {
+                    "type": "boolean"
                 },
                 "sumber_listrik": {
                     "type": "string",

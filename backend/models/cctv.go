@@ -22,4 +22,9 @@ type CCTV struct {
 	// HealthScore menyimpan skor kesehatan terbaru dari kalkulator operasional.
 	// Nilai awal 100 dan dibatasi pada rentang 0 sampai 100 oleh kalkulator.
 	HealthScore int `gorm:"type:integer;not null;default:100" json:"health_score"`
+	// === Field Streaming RTSP (Task 9.1) ===
+	// ChannelPort adalah nomor channel kamera pada NVR (mis. 19 untuk CH 19).
+	ChannelPort   int    `gorm:"type:integer" json:"channel_port"`
+	RTSPPassword  string `gorm:"type:text" json:"rtsp_password,omitempty"`
+	StreamEnabled bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
 }

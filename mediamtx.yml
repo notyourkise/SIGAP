@@ -1,0 +1,36 @@
+###############################################
+# MediaMTX — SIGAP CCTV Streaming Relay
+# Task 9.2: RTSP-to-WebRTC proxy, zero transcoding
+###############################################
+logLevel: info
+logDestinations: [stdout]
+# RTSP Server (internal, menerima re-stream dari NVR)
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+# WebRTC Server (WHEP output ke browser)
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcTrustedProxies: [172.28.0.0/16]
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+# HLS Fallback
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: no
+hlsSegmentCount: 3
+hlsSegmentDuration: 1s
+# REST API (untuk Go backend)
+api: yes
+apiAddress: :9997
+# Path defaults — on-demand pull dari NVR
+pathDefaults:
+  sourceOnDemand: yes
+  sourceOnDemandStartTimeout: 10s
+  sourceOnDemandCloseAfter: 30s
+  sourceProtocol: tcp
+  readUser: ""
+  readPass: ""
+# Path dikonfigurasi DINAMIS via REST API
+paths: {}

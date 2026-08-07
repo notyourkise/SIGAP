@@ -3723,6 +3723,9 @@ const docTemplate = `{
                 "status"
             ],
             "properties": {
+                "channel_port": {
+                    "type": "integer"
+                },
                 "id_channel": {
                     "type": "string",
                     "maxLength": 50
@@ -3775,6 +3778,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100
                 },
+                "rtsp_password": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -3782,6 +3788,9 @@ const docTemplate = `{
                         "pemeliharaan",
                         "nonaktif"
                     ]
+                },
+                "stream_enabled": {
+                    "type": "boolean"
                 },
                 "sumber_listrik": {
                     "type": "string",
@@ -4025,6 +4034,9 @@ const docTemplate = `{
         "handlers.UpdateCCTVRequest": {
             "type": "object",
             "properties": {
+                "channel_port": {
+                    "type": "integer"
+                },
                 "id_channel": {
                     "type": "string",
                     "maxLength": 50
@@ -4077,6 +4089,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100
                 },
+                "rtsp_password": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -4084,6 +4099,9 @@ const docTemplate = `{
                         "pemeliharaan",
                         "nonaktif"
                     ]
+                },
+                "stream_enabled": {
+                    "type": "boolean"
                 },
                 "sumber_listrik": {
                     "type": "string",

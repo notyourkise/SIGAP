@@ -36,9 +36,10 @@ func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
+		"channel_port", "rtsp_password", "stream_enabled",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
 		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
-		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload", 100)
+		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload", 100, 19, "encrypted-rtsp", true)
 	return rows, id
 }
 

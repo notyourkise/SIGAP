@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.28] — 2026-08-07 — Sprint 20: Fondasi Streaming (Task 9.1 + 9.2) — Fase 9
+
+### Perubahan
+
+- **Backend** ([0.43.0]): model `CCTV` bertambah field `channel_port`, `rtsp_password` (AES-256 encrypted), `stream_enabled` (migrasi `000004_add_cctv_streaming`); util `utils/rtsp.go` (`StreamType` Main/Sub, `BuildRTSPURL`, `BuildStreamPath`, `GetRTSPPort`) + unit test `utils/rtsp_test.go`; `CreateCCTVRequest`/`UpdateCCTVRequest` diperbarui; `rtsp_password` di-exclude dari response JSON; env NVR global (`RTSP_NVR_HOST`/`RTSP_NVR_PORT`/`RTSP_NVR_USER`/`MEDIAMTX_API_URL`).
+- **Infra**: file `mediamtx.yml` (RTSP→WebRTC relay, sourceOnDemand); service `mediamtx` di `docker-compose.yml` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU/1024M, health check, UDP `8189`); `nginx/nginx.conf` upstream `sigap_mediamtx` + location `/stream/*` → `mediamtx:8889` dan `/hls/*` → `mediamtx:8888`.
+- **Dokumen**: ROADMAP Fase 9 progress 0/6 → **2/6**, Sprint 20 ✅ Selesai; TESTING matriks menambah `utils/rtsp_test.go` (+1 total).
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS; `docker compose config --quiet` VALID.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.43.0]
+
 ## [1.28.27] — 2026-08-07 — Geotag Pengecekan Lapangan (Task 8.4) — Fase 8 Selesai
 
 ### Perubahan
