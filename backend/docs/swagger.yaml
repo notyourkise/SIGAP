@@ -1488,7 +1488,8 @@ paths:
       - Pengecekan Lapangan
   /health:
     get:
-      description: Memeriksa status keaktifan server API dan koneksi database PostgreSQL.
+      description: Memeriksa status keaktifan server API, koneksi database PostgreSQL
+        (beserta response time), Redis (bila aktif), dan penggunaan folder uploads.
       produces:
       - application/json
       responses:
@@ -2240,6 +2241,21 @@ paths:
       summary: Aktifkan / Nonaktifkan Jadwal
       tags:
       - Jadwal Pemeliharaan
+  /metrics:
+    get:
+      description: Mengembalikan metrik aplikasi (request count, durasi histogram,
+        DB pool, WebSocket aktif, ukuran uploads) dalam format text exposition Prometheus
+        untuk di-scrape oleh Prometheus.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Metrik Prometheus text format
+          schema:
+            type: string
+      summary: Metrik Prometheus
+      tags:
+      - Monitoring
   /notifications:
     get:
       description: Mengembalikan daftar notifikasi in-app milik user yang sedang login,

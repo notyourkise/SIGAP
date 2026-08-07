@@ -50,6 +50,14 @@ func (h *WSHubStore) Unregister(conn *websocket.Conn) {
 	}
 }
 
+// ActiveConnections mengembalikan jumlah koneksi WebSocket aktif saat ini
+// (thread-safe). Dipakai oleh metrik `sigap_ws_active_connections` (Task 7.4).
+func (h *WSHubStore) ActiveConnections() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
 // BroadcastEvent mempublikasikan event notifikasi JSON ke seluruh client WebSocket yang terhubung
 func BroadcastEvent(eventType string, payload interface{}) {
 	Hub.mu.RLock()

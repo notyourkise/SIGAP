@@ -225,7 +225,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Memastikan sistem siap untuk **operasi nyata (go-live)**. Menyerap sisa Fase 4 (4.3–4.7) dengan
 > scope yang disesuaikan, ditambah pengerasan baru yang kritis untuk deployment produksi.
-> **Status: 🚧 SEDANG BERJALAN** — Task 7.1, 7.2, & 7.3 selesai (2026-08-06/07); 7.4–7.6 belum dikerjakan.
+> **Status: 🚧 SEDANG BERJALAN** — Task 7.1–7.4 selesai (2026-08-06/07); 7.5–7.6 belum dikerjakan.
 > Fase 7 bisa dikerjakan **paralel** dengan Fase 6 (infrastruktur vs fitur).
 
 ### Task (berurutan — kerjakan dari atas ke bawah)
@@ -235,7 +235,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 7.1 | Migrasi DB Versioned | Adopsi `golang-migrate` v4 (driver pgx v5); skema dikelola file SQL terurut di `backend/migrations/` (000001 init schema: 10 tabel + index + FK, idempoten terhadap DB eksisting); `config.RunMigrations` otomatis saat startup; CLI `go run cmd/migrate/main.go up/down/version`; AutoMigrate dikomentari (fase transisi, akan dihapus setelah stabil); verifikasi `up→down→up` di CI (service PostgreSQL); prosedur di `docs/MIGRATION.md`. Branch: `feature/versioned-migration` | Besar | Fase 4.3 | ✅ Selesai (2026-08-06) — build/test/vet PASS; uji live PostgreSQL 18 lokal up/down/up + skenario DB warisan AutoMigrate PASS |
 | 7.2 | Redis untuk Rate-Limit & Blacklist | Container Redis 7 Alpine di `docker-compose.yml` (volume `redis_data`, health check adaptif, port tidak dipublish); `config.ConnectRedis()` dari env `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (default `redis:6379`); blacklist via interface `TokenBlacklist` → Redis SET (`SADD`/`SISMEMBER`/`SREM`) + TTL sesuai sisa masa hidup token (persisten lintas restart, tanpa cleanup goroutine); rate limiter fixed-window kustom memakai Redis `INCR`/`EXPIRE` key `limiter:{ip}:{endpoint}`; graceful fallback in-memory saat Redis tidak tersedia (LOG WARNING, bukan fail-fast); unit test kontrak interface (mock `redisCommander` + in-memory) & limiter (key format, window reset, isolasi key). Branch: `feature/redis-integration` | Sedang | Fase 4.4 | ✅ Selesai (2026-08-06) — build/test/vet PASS; uji live Redis 7: 12 cek PASS termasuk blacklist persisten setelah restart (client baru); `docker compose config` valid |
 | 7.3 | Backup Otomatis & Restore | Skrip `scripts/backup.sh`: `pg_dump` database + tar uploads → simpan dengan rotasi (7 hari); skrip `scripts/restore.sh` untuk pemulihan. Cron job di container atau host. Dokumentasi prosedur backup & disaster recovery di `docs/BACKUP.md`. | Sedang | Fase 4.5 | ✅ Selesai (2026-08-07, branch `feature/backup-restore`) — `backup.sh` (pg_dump→gzip + tar uploads + rotasi 7 hari), `restore.sh` (drop/recreate DB + uploads), container `backup` (cron dcron, `postgres:15-alpine`, volume `backups_data`), opsi cron host di `docs/BACKUP.md`, `docker compose config` valid & `bash -n` lulus |
-| 7.4 | Monitoring & Alerting | Endpoint `/api/metrics` (Prometheus format): request count, latency histogram, error rate, DB pool stats, WebSocket connections, upload storage usage. `docker-compose.yml` tambah Prometheus + Grafana (opsional). Health check diperluas: cek Redis, disk space upload. | Sedang | Fase 4.6 | ⬜ Belum |
+| 7.4 | Monitoring & Alerting | Endpoint `/api/metrics` (Prometheus format): request count, latency histogram, error rate, DB pool stats, WebSocket connections, upload storage usage. `docker-compose.yml` tambah Prometheus + Grafana (opsional). Health check diperluas: cek Redis, disk space upload. | Sedang | Fase 4.6 | ✅ Selesai (2026-08-07, branch `feature/monitoring`) — collector Prometheus tanpa library pihak ketiga (`monitoring`): counter `sigap_http_requests_total{method,path,status}`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`; middleware `metrics.go`; `GET /api/metrics` publik text/plain; health diperluas (response time DB, Redis, ukuran uploads); `monitoring/prometheus` + `docker-compose.override.yml` (Prometheus & Grafana opsional); build/test/vet + `docker compose config` valid |
 | 7.5 | Container Hardening | Dockerfile non-root user; `docker-compose.yml` resource limits (CPU/memory); read-only rootfs; drop capabilities; secret management via Docker secrets (bukan env file). | Kecil | Fase 4.7 | ⬜ Belum |
 | 7.6 | Logging Terstruktur & Rotasi | Zap logger memakai `lumberjack` untuk rotasi file log otomatis (maks 100 MB/file, 30 hari retensi, 5 backup); format JSON untuk kemudahan parsing; log level konfigurasi via env (`LOG_LEVEL`). | Kecil | Baru | ⬜ Belum |
 
@@ -253,7 +253,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 - `docker compose up -d --build` berjalan lancar dengan Redis dan konfigurasi baru.
 - Skrip backup berjalan (`scripts/backup.sh`) dan restore berhasil di environment bersih
   (`scripts/restore.sh`); verifikasi end-to-end di `docs/BACKUP.md` bagian 7.
-- Endpoint `/api/metrics` mengembalikan data Prometheus valid.
+- Endpoint `/api/metrics` mengembalikan data Prometheus valid (format text exposition, `text/plain; version=0.0.4`), terverifikasi unit test di `backend/monitoring/metrics_test.go` & `backend/middleware/metrics_test.go`.
 - Container berjalan sebagai non-root; secret tidak terexpose di `docker inspect`.
 - Log file ter-rotate dan terbaca di format JSON.
 

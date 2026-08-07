@@ -1,0 +1,62 @@
+# ==========================================
+# SIGAP — Monitoring Override (Task 7.4, OPSIONAL)
+# ==========================================
+# File ini di-merge otomatis oleh `docker compose` ke docker-compose.yml utama.
+# Menambahkan Prometheus (scraper metrik) & Grafana (dashboard).
+#
+# OPSIONAL — jangan diaktifkan bila belum dibutuhkan. Untuk memakai:
+#   docker compose up -d --build
+#
+# Akses:
+#   - Prometheus: http://localhost:9090
+#   - Grafana:    http://localhost:3000 (login default admin/admin)
+#
+# DASHBOARD PROMETHEUS 9090
+# DASHBOARD GRAFANA 3000
+# NOTE: Bila port 3000 bentrok dengan service frontend internal, ganti host port
+# Grafana (mis. "3001:3000") karena hanya nginx yang mem-publish 80/443 di main.
+services:
+  # Prometheus: mengumpulkan metrik dari service `api` (/api/metrics).
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: sigap_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    networks:
+      - sigap_network
+
+  # Grafana: visualisasi metrik (sumber data default disediakan via provisioning).
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: sigap_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - sigap_network
+
+# Volume tambahan untuk monitoring (tidak mengganggu volume utama).
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

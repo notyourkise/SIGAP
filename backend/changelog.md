@@ -1,5 +1,52 @@
 # Changelog - Backend SIGAP
 
+## [0.39.0] - 2026-08-07
+
+### Infrastruktur: Monitoring & Alerting (Task 7.4)
+
+perubahan yang dilakukan: **Menambahkan endpoint `GET /api/metrics` (format text exposition Prometheus) dan collector metrik tanpa library pihak ketiga, middleware pencatatan request, serta memperluas `GET /api/health` (response time DB, cek Redis, ukuran folder uploads). Menyediakan gauge DB pool, WebSocket aktif, dan ukuran uploads; menambah konfigurasi Prometheus & Grafana opsional di `docker-compose.override.yml`.**
+
+before: Tidak ada observabilitas runtime — masalah (lonjakan latensi, koneksi DB/WS, pertumbuhan storage uploads) baru terdeteksi setelah user melapor. `GET /api/health` hanya mengecek koneksi database, tanpa Redis, disk/ukuran uploads, maupun response time.
+
+after:
+- `monitoring/metrics.go` (baru): collector Prometheus ringan tanpa library pihak ketiga (sesuai konvensi proyek) — counter `sigap_http_requests_total{method,path,status}`, histogram `sigap_http_request_duration_seconds{method,path}` (bucket kumulatif + _sum/_count), gauge `sigap_db_pool_open_connections`, `sigap_db_pool_idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. `Render()` menghasilkan text exposition Prometheus valid; `Handler` Fiber untuk `GET /api/metrics` (`text/plain; version=0.0.4`). Thread-safe (RWMutex); `Reset()` untuk pengujian.
+- `monitoring/collector.go` (baru): `StartCollector(uploadsDir, interval)` goroutine memperbarui gauge DB pool (`sql.DB.Stats()`), WS aktif (`utils.Hub.ActiveConnections()`), dan ukuran uploads (rekursif).
+- `middleware/metrics.go` (baru): mencatat setiap request — increment counter (method, path pola route, status) + observe durasi histogram; endpoint `/api/metrics` dikecualikan agar tidak mencemari statistik.
+- `handlers/health.go`: diperluas — `db_response_time_ms`, `redis_status`/`redis_response_time_ms` (bila Redis aktif), `uploads{status,path,size_bytes}`; helper `dirSize` (ukuran folder rekursif).
+- `utils/websocket.go`: tambah `ActiveConnections()` (jumlah koneksi WebSocket aktif, thread-safe).
+- `main.go`: pasang `middleware.Metrics()`; rute `GET /api/metrics` (publik); jalankan `monitoring.StartCollector("./uploads", 15*time.Second)`.
+- `monitoring/prometheus/prometheus.yml` (baru): scrape `api:3000/api/metrics` tiap 15 detik.
+- `docker-compose.override.yml` (baru): service `prometheus` (port 9090) & `grafana` (port 3000, datasource auto-provision) + volume `prometheus_data`/`grafana_data` — opsional, tidak diwajibkan di compose utama.
+- `monitoring/grafana/provisioning/datasources/prometheus.yml` (baru): auto-register datasource Prometheus.
+- Test: `monitoring/metrics_test.go` (counter/histogram/HELP-TYPE/gauge/empty/reset/escape/format angka), `middleware/metrics_test.go` (observasi, exclude /api/metrics, status non-200, Content-Type), `handlers/health_test.go` diperluas (+ `dirSize`).
+- Swagger: `swag init` — endpoint `/metrics` & deskripsi health baru.
+
+timestamp: 2026-08-07 12:50 WITA
+kategori: Sedang, Backend & Infrastruktur
+file yang diubah:
+- backend/monitoring/metrics.go
+- backend/monitoring/metrics_test.go
+- backend/monitoring/collector.go
+- backend/middleware/metrics.go
+- backend/middleware/metrics_test.go
+- backend/handlers/health.go
+- backend/handlers/health_test.go
+- backend/utils/websocket.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docker-compose.override.yml
+- monitoring/prometheus/prometheus.yml
+- monitoring/grafana/provisioning/datasources/prometheus.yml
+- docs/changelog.md
+- docs/ROADMAP.md
+- docs/plan.md
+- docs/TESTING.md
+- docs/AGENTS.md
+alasan perubahan: Task 7.4 ROADMAP (asal Fase 4.6) — observabilitas runtime wajib sebelum go-live agar masalah (latensi, koneksi, storage) terdeteksi secara proaktif, bukan menunggu laporan user; endpoint metrik Prometheus menjadi dasar alerting & dashboard.
+
 ## [0.38.0] - 2026-08-07
 
 ### Infrastruktur: Backup Otomatis & Restore (Task 7.3)

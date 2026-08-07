@@ -113,7 +113,8 @@ sigap-monorepo/
 | 10 | 7 | 7.1 Migrasi DB Versioned | golang-migrate v4, file SQL terurut, `RunMigrations`, CLI up/down/version, AutoMigrate fase transisi, CI step, `docs/MIGRATION.md` | ✅ Selesai (2026-08-06, branch `feature/versioned-migration`) — build/test/vet PASS + uji live PostgreSQL up/down/up PASS |
 | 11 | 7 | 7.2 Redis Rate-Limit & Blacklist | Container Redis 7 Alpine di compose, `config/redis.go`, blacklist → Redis SET (TTL), limiter → Redis INCR/EXPIRE key `limiter:{ip}:{endpoint}`, fallback in-memory, env `REDIS_*`, unit test interface | ✅ Selesai (2026-08-06, branch `feature/redis-integration`) — build/test/vet PASS + uji live Redis 12 cek PASS + `docker compose config` valid |
 | 12 | 7 | 7.3 Backup Otomatis & Restore | Skrip `backup.sh`/`restore.sh`, container `backup` (cron), volume `backups_data`, `docs/BACKUP.md` | ✅ Selesai (2026-08-07, branch `feature/backup-restore`) — `bash -n` + `docker compose config` valid; uji fungsional backup/uploads/rotasi & restore lulus |
-| 13–15 | 7 | 7.4–7.6 Kesiapan Produksi | Monitoring, hardening, logging | ⬜ Belum |
+| 13 | 7 | 7.4 Monitoring & Alerting | Endpoint `/api/metrics` Prometheus (counter/histogram/gauge), middleware `metrics.go`, health diperluas, collector tanpa library pihak ketiga, `docker-compose.override.yml` (Prometheus & Grafana opsional) | ✅ Selesai (2026-08-07, branch `feature/monitoring`) — build/test/vet PASS + `docker compose config` valid; unit test metrik/middleware/health |
+| 14–15 | 7 | 7.5–7.6 Kesiapan Produksi | Hardening, logging | ⬜ Belum |
 | 16â€“19 | 8 | 8.1â€“8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | â¬œ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
@@ -267,3 +268,28 @@ sigap-monorepo/
 - `bash -n scripts/backup.sh scripts/restore.sh backup/entrypoint.sh` PASS; `docker compose config --quiet` VALID.
 - Uji fungsional: nama file `sigap_<TS>.sql.gz`/`uploads_<TS>.tar.gz`, struktur `backups/db`+`backups/uploads`, rotasi `-mtime +7` menghapus backup tua, restore drop/recreate berjalan.
 - Uji end-to-end (environment bersih): backup → verifikasi file → restore ke DB kosong → data utuh (langkah di `docs/BACKUP.md` bagian 7).
+
+### 6.12 Rancangan Teknis Sprint 13 (Monitoring & Alerting)
+
+**Backend**
+- `monitoring/metrics.go` (baru): collector Prometheus ringan **tanpa library pihak ketiga** (sesuai konvensi proyek). Menyediakan: counter `sigap_http_requests_total{method,path,status}`, histogram `sigap_http_request_duration_seconds{method,path}` (bucket 0.005–10 + Inf + _sum/_count), gauge `sigap_db_pool_open_connections`, `sigap_db_pool_idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Semua thread-safe (RWMutex). `Handler` Fiber untuk `GET /api/metrics` (text/plain; version=0.0.4). `Render()` menghasilkan text exposition valid.
+- `monitoring/collector.go` (baru): `StartCollector(uploadsDir, interval)` goroutine memperbarui gauge DB pool (`sql.DB.Stats()`), WS aktif (`utils.Hub.ActiveConnections()`), dan ukuran uploads (rekursif).
+- `middleware/metrics.go` (baru): mencatat setiap request — counter `(method, path pola, status)` + durasi histogram; endpoint `/api/metrics` dikecualikan.
+- `handlers/health.go`: diperluas — `db_response_time_ms`, `redis_status`/`redis_response_time_ms` (bila Redis aktif), `uploads{status,path,size_bytes}`; helper `dirSize`.
+- `utils/websocket.go`: tambah `ActiveConnections()`.
+- `main.go`: pasang `middleware.Metrics()`, rute `GET /api/metrics` (publik), jalankan `monitoring.StartCollector("./uploads", 15s)`; `swag init`.
+
+**Infra (opsional)**
+- `monitoring/prometheus/prometheus.yml`: scrape `api:3000/api/metrics` tiap 15 detik.
+- `docker-compose.override.yml`: service `prometheus` (port 9090) & `grafana` (port 3000, datasource auto-provision), volume `prometheus_data`/`grafana_data` — tidak diwajibkan di compose utama.
+- `monitoring/grafana/provisioning/datasources/prometheus.yml`: auto-register datasource.
+
+**Test**
+- `monitoring/metrics_test.go`: counter + histogram (nilai bucket kumulatif), HELP/TYPE untuk semua metrik, gauge, empty state, Reset, escape label, format angka tetap (tanpa eksponensial).
+- `middleware/metrics_test.go`: observasi request (counter & count), exclude `/api/metrics`, status non-200, Content-Type text/plain.
+- `handlers/health_test.go`: diperluas — `db_response_time_ms`, `redis_status=Disabled`, `uploads{status,path,size_bytes}`; `dirSize`.
+
+**Verifikasi**
+- `go build ./...`, `go test ./... -count=1`, `go vet ./...` PASS (seluruh package hijau).
+- `docker compose config --quiet` VALID (base + override Prometheus/Grafana ter-resolve).
+- Uji manual: `GET /api/metrics` mengembalikan text/plain Prometheus valid; `GET /api/health` memuat field baru.

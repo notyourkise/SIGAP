@@ -1656,7 +1656,7 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "Memeriksa status keaktifan server API dan koneksi database PostgreSQL.",
+                "description": "Memeriksa status keaktifan server API, koneksi database PostgreSQL (beserta response time), Redis (bila aktif), dan penggunaan folder uploads.",
                 "produces": [
                     "application/json"
                 ],
@@ -2742,6 +2742,26 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/metrics": {
+            "get": {
+                "description": "Mengembalikan metrik aplikasi (request count, durasi histogram, DB pool, WebSocket aktif, ukuran uploads) dalam format text exposition Prometheus untuk di-scrape oleh Prometheus.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Monitoring"
+                ],
+                "summary": "Metrik Prometheus",
+                "responses": {
+                    "200": {
+                        "description": "Metrik Prometheus text format",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }

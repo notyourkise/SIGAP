@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.21] — 2026-08-07 — Monitoring & Alerting (Task 7.4)
+
+### Perubahan
+
+- **Backend** ([0.39.0]): endpoint publik `GET /api/metrics` (format text exposition Prometheus) dengan collector ringan **tanpa library pihak ketiga** — counter `sigap_http_requests_total{method,path,status}`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Middleware `metrics.go` mencatat setiap request (endpoint `/api/metrics` dikecualikan). `GET /api/health` diperluas: response time DB, cek Redis, ukuran folder uploads. Goroutine `StartCollector` memperbarui gauge DB pool / WS aktif / ukuran uploads tiap 15 detik.
+- **Infra (opsional)**: `docker-compose.override.yml` menambah Prometheus (port 9090) & Grafana (port 3000, datasource auto-provision) — tidak diwajibkan di compose utama; `monitoring/prometheus/prometheus.yml` scrape `api:3000/api/metrics`.
+- **Dokumen**: ROADMAP Task 7.4 ✅ Selesai (Fase 7 4/6); plan Sprint 13 + rancangan teknis; matriks test; panduan agent; Swagger di-regenerate (`/api/metrics` + deskripsi health).
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS (semua package hijau); `docker compose config --quiet` VALID (base + override); unit test metrik/middleware/health lulus.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.39.0]
+
 ## [1.28.20] — 2026-08-07 — Backup Otomatis & Restore (Task 7.3)
 
 ### Perubahan
