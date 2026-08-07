@@ -3,6 +3,16 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.24] — 2026-08-07 — Progressive Web App (PWA) (Task 8.1)
+
+### Perubahan
+
+- **Frontend** ([1.32.0]): SIGAP kini installable + offline shell via PWA — web manifest `public/manifest.json` (SIGAP, `standalone`, `#162218`/`#467235`, ikon 192/512), service worker `public/sw.js` (cache-first shell, network-first API, `sigap-shell-v1`), ikon PNG dari logo, registrasi SW + meta tags di `layout.tsx`, header cache di `next.config.ts`.
+- **Dokumen**: `docs/manual-test-pwa.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); ROADMAP Task 8.1 ✅ Selesai (Fase 8 1/4); plan Sprint 16 + rancangan teknis; AGENTS.md (aturan manual test per sprint).
+- Verifikasi: `npm run lint` (0 error) & `npm run build` (exit 0) PASS; manual test installability/offline shell/Lighthouse di `docs/manual-test-pwa.md`.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` [1.32.0]
+
 ## [1.28.23] — 2026-08-07 — Fix CI: Deprecation Node 20
 
 ### Perubahan

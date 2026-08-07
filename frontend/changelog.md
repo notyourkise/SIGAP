@@ -1,5 +1,34 @@
 # Changelog - Frontend SIGAP
 
+## [1.32.0] - 2026-08-07
+
+### Fitur: Progressive Web App (PWA) (Task 8.1)
+
+perubahan yang dilakukan: **Menjadikan SIGAP installable dan menyediakan offline shell via PWA: menambah web manifest (`public/manifest.json`), service worker (`public/sw.js`) dengan strategi cache-first untuk shell dan network-first untuk API, ikon aplikasi 192×192 & 512×512 dari logo, registrasi service worker + meta tags PWA di `layout.tsx`, serta header cache untuk `sw.js`/`manifest.json` di `next.config.ts`.**
+
+before: SIGAP hanya aplikasi web browser; tidak bisa di-install ke home screen HP teknisi dan tidak ada cache shell untuk mempercepat loading / akses offline dasar.
+
+after:
+- `public/manifest.json` (baru): `name`/`short_name` "SIGAP", `start_url "/dashboard"`, `display "standalone"`, `background_color "#162218"` (Kanopi Malam), `theme_color "#467235"` (Hijau Komando), ikon 192/512 (purpose `any` + `maskable`), `lang "id"`.
+- `public/icons/icon-192x192.png` & `public/icons/icon-512x512.png` (baru): ikon PNG di-generate dari `public/nusantara-logo.png` (canvas persegi, latar Kanopi Malam).
+- `public/sw.js` (baru): service worker — pre-cache shell (`/`, `/dashboard`, `/login`, manifest, ikon); navigasi HTML network-first (fallback cache offline), aset statis cache-first (pembaruan latar belakang), API (`/api/*`) network-first (fallback cache, else 503 JSON "offline"); `CACHE_VERSION = sigap-shell-v1`; `skipWaiting` + `clients.claim`.
+- `src/components/ServiceWorkerRegister.tsx` (baru): client component yang mendaftarkan service worker di `useEffect` (aman SSR).
+- `src/app/layout.tsx`: `metadata.manifest`, ikon (incl. apple-touch-icon), `appleWebApp`; export `viewport` (theme-color); render `<ServiceWorkerRegister />`.
+- `next.config.ts`: header `Cache-Control: no-cache` + `Service-Worker-Allowed: /` untuk `/sw.js`, dan `public, max-age=3600` untuk `/manifest.json`.
+
+timestamp: 2026-08-07 15:30 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/public/manifest.json
+- frontend/public/sw.js
+- frontend/public/icons/icon-192x192.png
+- frontend/public/icons/icon-512x512.png
+- frontend/src/components/ServiceWorkerRegister.tsx
+- frontend/src/app/layout.tsx
+- frontend/next.config.ts
+- frontend/changelog.md
+alasan perubahan: Task 8.1 ROADMAP (Fase 8) — memberi teknisi akses cepat dari home screen dan loading lebih cepat via cache shell; scope installability + offline shell (bukan full offline dengan IndexedDB).
+
 ## [1.31.0] - 2026-08-06
 
 ### Fitur: Timeline Ringkasan Operasional (Task 6.4)

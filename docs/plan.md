@@ -116,7 +116,8 @@ sigap-monorepo/
 | 13 | 7 | 7.4 Monitoring & Alerting | Endpoint `/api/metrics` Prometheus (counter/histogram/gauge), middleware `metrics.go`, health diperluas, collector tanpa library pihak ketiga, `docker-compose.override.yml` (Prometheus & Grafana opsional) | ✅ Selesai (2026-08-07, branch `feature/monitoring`) — build/test/vet PASS + `docker compose config` valid; unit test metrik/middleware/health |
 | 14 | 7 | 7.5 Container Hardening | Dockerfile non-root, resource limits, read-only rootfs + tmpfs, drop capabilities, Docker secrets (DB_PASSWORD/JWT_SECRET/AES_SECRET_KEY) + fallback env | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS + `docker compose config` valid |
 | 15 | 7 | 7.6 Logging Terstruktur | lumberjack rotasi (100 MB/5 backup/30 hari), `LOG_LEVEL`, log JSON | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS |
-| 16â€“19 | 8 | 8.1â€“8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | â¬œ Belum |
+| 16 | 8 | 8.1 Progressive Web App (PWA) | `public/manifest.json` (standalone, warna tema), `public/sw.js` (cache-first shell, network-first API), ikon 192/512, registrasi SW + meta di `layout.tsx`, header cache di `next.config.ts` | ✅ Selesai (2026-08-07, branch `feature/pwa`) — lint & build PASS; manual test `docs/manual-test-pwa.md` |
+| 17–19 | 8 | 8.2–8.4 Pengalaman Lapangan | Kalender, push notification, geotag | ⬜ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 
@@ -317,3 +318,21 @@ sigap-monorepo/
 - `go build ./...`, `go test ./... -count=1`, `go vet ./...` PASS (seluruh package hijau).
 - `docker compose config --quiet` VALID (base + override); `api` punya `read_only`, `cap_drop`, resource limits, secrets `/run/secrets`, tmpfs `/app/logs`.
 - Manual (environment Docker): `docker exec ... whoami` → non-root; `docker inspect` tidak menampilkan nilai secret; log ter-rotate di `/app/logs`.
+
+### 6.14 Rancangan Teknis Sprint 16 (Progressive Web App)
+
+**Frontend**
+- `public/manifest.json`: web manifest — `name`/`short_name` "SIGAP", `start_url "/dashboard"`, `scope "/"`, `display "standalone"`, `orientation "portrait"`, `background_color "#162218"` (Kanopi Malam), `theme_color "#467235"` (Hijau Komando), ikon `192x192` & `512x512` (purpose `any` + `maskable`), `lang "id"`.
+- `public/icons/icon-192x192.png` & `icon-512x512.png`: ikon PNG di-generate dari `public/nusantara-logo.png` (canvas persegi 192/512 dengan latar Kanopi Malam, logo ditengahkan).
+- `public/sw.js`: service worker — pre-cache shell (`/`, `/dashboard`, `/login`, manifest, ikon); strategi cache: navigasi HTML **network-first** (fallback cache offline), aset statis **cache-first** (dengan pembaruan latar belakang), API (`/api/*`) **network-first** (fallback cache, else 503 JSON "offline"); `CACHE_VERSION = sigap-shell-v1`; `skipWaiting` + `clients.claim`.
+- `src/components/ServiceWorkerRegister.tsx` (baru, client component): registrasi `navigator.serviceWorker.register('/sw.js', { scope: '/' })` dalam `useEffect` (aman SSR), hanya di Secure Context.
+- `src/app/layout.tsx`: `metadata.manifest`, ikon (incl. apple), `appleWebApp`; `viewport` export (theme-color, device-width, viewportFit); render `<ServiceWorkerRegister />`.
+- `next.config.ts`: header `Cache-Control: no-cache` + `Service-Worker-Allowed: /` untuk `/sw.js`, dan `public, max-age=3600` untuk `/manifest.json`.
+
+**Dokumen**
+- `docs/manual-test-pwa.md` (baru): manual test blackbox (P1–P9, S1–S9) sesuai format manual test lain — prasyarat, pengujian otomatis, skenario installability/offline shell/strategi cache/update SW/Lighthouse, kriteria lulus.
+- ROADMAP Task 8.1 ✅ Selesai (Fase 8 1/4); plan Sprint 16; `frontend/changelog.md`; `docs/changelog.md`; AGENTS.md (aturan manual test per sprint).
+
+**Verifikasi**
+- `cd frontend && npm run lint` (0 error) dan `npm run build` (exit 0) PASS.
+- Manual: install di desktop/Android, ikon muncul, shell termuat offline, API network-first, update SW membersihkan cache lama; Lighthouse PWA score ≥ 80 (panduan `docs/manual-test-pwa.md`).

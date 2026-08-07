@@ -88,7 +88,9 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `docs/` — Direktori yang berisi dokumentasi Swagger yang di-generate secara otomatis. Jalankan `swag init` setelah Anda memodifikasi anotasi pada _handlers_.
 
 ### Frontend `frontend/`
-- `src/app/layout.tsx` — _Root layout_ yang mencakup `ThemeProvider` dan `AuthProvider`.
+- `src/app/layout.tsx` — _Root layout_ yang mencakup `ThemeProvider`, `AuthProvider`, dan registrasi PWA (`ServiceWorkerRegister`). Sejak Task 8.1 mengekspor `metadata.manifest`, ikon, `appleWebApp`, dan `viewport` (theme-color).
+- `public/manifest.json`, `public/sw.js`, `public/icons/` (Task 8.1 PWA) — web manifest (SIGAP, standalone, warna tema, ikon 192/512) dan service worker (cache-first shell, network-first API) untuk installability + offline shell.
+- `src/components/ServiceWorkerRegister.tsx` (Task 8.1) — komponen client yang mendaftarkan service worker (`/sw.js`) di `useEffect` (aman SSR).
 - `src/app/globals.css` — Konfigurasi Tailwind CSS v4 (melalui directive `@theme`), custom CSS variables (untuk _dark/light mode_), animasi UI saat scan, dan _style override_ khusus untuk `html5-qrcode`.
 - `src/app/page.tsx` — Halaman akar yang hanya me-_redirect_ pengguna ke `/dashboard`.
 - `src/app/dashboard/page.tsx` — Halaman Dashboard utama: manajemen aset CCTV (tabel data, filter pencarian, CRUD modal, tombol quick maintenance) + komponen `DashboardAnalytics`.
@@ -314,6 +316,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 - File yang secara otomatis di-generate akan tersimpan pada: `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`.
 
 ## 9. Testing
+- **WAJIB — Manual Test per Sprint:** Setiap sprint/task yang dikerjakan **HARUS** menyertakan dokumen uji manual (blackbox) yang diletakkan di folder **`docs/`** dengan nama pola `manual-test-<nama-fitur>.md` (contoh: `docs/manual-test-pwa.md`, `docs/manual-test-health-score.md`). Format dokumen mengikuti file manual test lainnya: header (Task/Branch/Versi), **1. Prasyarat**, **2. Pengujian Otomatis**, **3. Skenario Uji** (tabel Langkah → Hasil yang diharapkan → Hasil nyata), **4. Kriteria Lulus**, dan **Catatan**. Buat dokumen ini untuk memudahkan user melakukan verifikasi blackbox.
 - Matriks cakupan test lengkap (38 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
 - Untuk mengeksekusi tes & quality check:
   ```bash
