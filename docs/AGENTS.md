@@ -3,7 +3,7 @@
 Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codebase SIGAP. Bacalah dokumen ini secara saksama agar Anda dapat memahami arsitektur, konvensi, dan aturan proyek ini sebelum mulai berkontribusi.
 
 > [!NOTE]
-> Dokumen ini diperbarui menyusul Fase 2 (hardening keamanan: migrasi token ke cookie httpOnly + CSRF) dan Fase 3 (fitur: unifikasi model `assets` → `cctv`, dashboard, profil, laporan PDF, dll). Status terbaru setiap item perbaikan & pengembangan ada di `docs/ROADMAP.md` dan `docs/SECURITY-AUDIT.md`.
+> Dokumen ini diperbarui menyusul Fase 2 (hardening keamanan: migrasi token ke cookie httpOnly + CSRF), Fase 3 (fitur: unifikasi model `assets` → `cctv`, dashboard, profil, laporan PDF, dll), dan Fase 9 (streaming CCTV real-time: MediaMTX service, API stream admin-only, komponen WHEPPlayer/StreamModal/StreamGridView). Status terbaru setiap item perbaikan & pengembangan ada di `docs/ROADMAP.md` dan `docs/SECURITY-AUDIT.md`.
 
 ## 1. Gambaran Umum Sistem
 - **Nama**: SIGAP (Sistem Informasi & Inventaris CCTV Terpadu)
@@ -39,7 +39,8 @@ Setiap pengembangan fitur atau perbaikan _bug_ HARUS menggunakan branch baru.
 Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam repositori ini:
 
 ### Root `/`
-- `docker-compose.yml` — Orkestrasi 6 _service_ (db, redis, api, frontend, nginx, backup) di dalam _network_ `sigap_network`. Sejak Task 7.3 ada service `backup` (cron otomatis) + volume `backups_data`.
+- `docker-compose.yml` — Orkestrasi 7 _service_ (db, redis, api, frontend, nginx, backup, mediamtx) di dalam _network_ `sigap_network`. Sejak Task 7.3 ada service `backup` (cron otomatis) + volume `backups_data`; sejak Task 9.2 (Fase 9) ada service `mediamtx` (streaming CCTV).
+- `mediamtx.yml` (Task 9.2) — Konfigurasi MediaMTX: RTSP→WebRTC/WHEP relay, `sourceOnDemand: yes`, `protocols: [tcp]`, REST API `:9997`. Dipakai service `mediamtx` untuk proxy streaming CCTV real-time.
 - `docker-compose.override.yml` — **Opsional** (Task 7.4): menambah Prometheus (port 9090) & Grafana (port 3000) untuk visualisasi metrik `/api/metrics`. Di-merge otomatis oleh `docker compose`; lepas/tidak perlu bila monitoring tidak dibutuhkan.
 - `scripts/backup.sh` & `scripts/restore.sh` — Backup & restore otomatis database + uploads (Task 7.3). Prosedur lengkap di `docs/BACKUP.md`.
 - `backup/Dockerfile` & `backup/entrypoint.sh` — Container `backup` (image `postgres:15-alpine` + `dcron`) yang menjalankan `backup.sh` via cron.
@@ -61,7 +62,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `models/cctv.go` — Definisi struktur `CCTV`, termasuk `QrPayload` yang dienkripsi menggunakan AES-256 dan `HealthScore` (skor kesehatan 0–100, default 100).
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi dan daftar digest admin), `digest_generator` (goroutine ringkasan operasional harian pukul 06:00 WITA), `upload`, `audit`, `report`, `notification`, `health` (diperluas sejak Task 7.4: response time DB, cek Redis, ukuran folder uploads), `push` (Task 8.3: `POST /api/push/subscribe` & `DELETE /api/push/unsubscribe` untuk Web Push), `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi dan daftar digest admin), `digest_generator` (goroutine ringkasan operasional harian pukul 06:00 WITA), `upload`, `audit`, `report`, `notification`, `health` (diperluas sejak Task 7.4: response time DB, cek Redis, ukuran folder uploads), `push` (Task 8.3: `POST /api/push/subscribe` & `DELETE /api/push/unsubscribe` untuk Web Push), `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam), dan `stream` (Task 9.3b — `StartStream`/`StopStream`/`StartAllStreams`/`StopAllStreams`/`GetStreamStatus`/`GetStreamURL` untuk streaming CCTV real-time via MediaMTX; `rtsp_password` terenkripsi & tidak pernah dikembalikan ke response).
 - `monitoring/` (Task 7.4) — Collector metrik Prometheus ringan **tanpa library pihak ketiga**: `metrics.go` (counter request, histogram durasi, gauge DB pool/WS aktif/ukuran uploads + `Handler` untuk `GET /api/metrics` dalam format text exposition), `collector.go` (`StartCollector` goroutine memperbarui gauge tiap interval).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
@@ -70,7 +71,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
 - `middleware/metrics.go` (Task 7.4) — Mencatat setiap request: increment counter `sigap_http_requests_total{method,path,status}` + observe durasi ke histogram `sigap_http_request_duration_seconds`; endpoint `/api/metrics` dikecualikan.
-- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, field maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, websocket).
+- `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, field maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, stream, websocket).
+  > `routes/stream.go` (Task 9.3b) — grup `/streams` admin-only (`Protected()` + `RequireRole("admin")`): `GET /status`, `POST /start-all`, `POST /stop-all`, `POST /:id/start`, `POST /:id/stop`, `GET /:id/url` (rute statis didaftarkan sebelum dinamis). Registrasi di `main.go` + goroutine auto-start stream aktif saat boot.
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
 - `utils/encryption.go` — Fungsi `EncryptAES256` dan `DecryptAES256` berbasis AES-256-GCM. Kunci diderivasi menggunakan _hash_ SHA-256 dari _environment variable_ `AES_SECRET_KEY`.
@@ -86,6 +88,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `utils/validator.go` — Validator kustom (mis. kebijakan password kuat).
 - `utils/logger.go` — Sistem logging ganda menggunakan Zap (menyimpan log ke file JSON dan menampilkannya di konsol dengan warna). Sejak Task 7.6 memakai `lumberjack` untuk rotasi otomatis (100 MB/file, 5 backup, 30 hari) dan level log dari env `LOG_LEVEL` (default `info`).
 - `utils/secrets.go` (Task 7.5) — Helper `GetSecret`/`RequireSecret`: membaca Docker secret sebagai FILE (`/run/secrets/<nama>`) dengan fallback ke environment variable; dipakai untuk `DB_PASSWORD`, `JWT_SECRET`, `AES_SECRET_KEY`.
+- `utils/rtsp.go` (Task 9.1) — Tipe `StreamType` (`MainStream=1`/`SubStream=2`); fungsi `BuildRTSPURL` (URL Hikvision ISAPI dengan `ChannelID = channel_port × 100 + stream_type`), `BuildStreamPath`, `GetRTSPPort` (default sub-stream); menangani edge case channel ≤ 0. Env NVR global: `RTSP_NVR_HOST`/`RTSP_NVR_PORT`/`RTSP_NVR_USER`.
+- `utils/mediamtx.go` (Task 9.3a) — Struct `MediaMTXClient`: HTTP client ke `MEDIAMTX_API_URL` (`http://mediamtx:9997/v3/`) dengan method `AddPath`, `RemovePath`, `GetPath`, `ListPaths` untuk mengelola path streaming RTSP→WHEP/HLS di MediaMTX.
 - `uploads/` — Direktori penyimpanan foto bukti pemeliharaan (hasil normalisasi JPEG, tanpa EXIF). Akses via endpoint yang dilindungi JWT. Di-backup otomatis oleh `scripts/backup.sh` (Task 7.3); prosedur backup & restore di `docs/BACKUP.md`.
 - `docs/` — Direktori yang berisi dokumentasi Swagger yang di-generate secara otomatis. Jalankan `swag init` setelah Anda memodifikasi anotasi pada _handlers_.
 
@@ -96,8 +100,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/globals.css` — Konfigurasi Tailwind CSS v4 (melalui directive `@theme`), custom CSS variables (untuk _dark/light mode_), animasi UI saat scan, dan _style override_ khusus untuk `html5-qrcode`.
 - `src/app/page.tsx` — Halaman akar yang hanya me-_redirect_ pengguna ke `/dashboard`.
 - `src/app/dashboard/page.tsx` — Halaman Dashboard utama: manajemen aset CCTV (tabel data, filter pencarian, CRUD modal, tombol quick maintenance) + komponen `DashboardAnalytics`.
-- `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
-- `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap termasuk badge skor kesehatan, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
+- `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket. Sejak Task 9.5 (Fase 9) mendukung toggle view Peta/Grid, filter "Streaming Aktif", status bar "N/35 kamera streaming aktif", dan membuka `StreamModal` saat marker diklik (admin).
+- `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap termasuk badge skor kesehatan, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_. Sejak Task 9.6 (Fase 9) mendukung section form "Konfigurasi Streaming" di modal edit CCTV (`channel_port` 1–35, `rtsp_password` dengan toggle visibility, `stream_enabled` checkbox, preview URI RTSP) + kolom tabel master ikon streaming aktif.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, fitur unggah bukti foto pemeliharaan, penugasan ke teknisi (tombol "Tugaskan"), dan pengalihan tugas (tombol "Alihkan" untuk log `ongoing`, Fase 5.3 — menampilkan peringatan nama teknisi saat ini sebelum submit).
 - `src/app/field-maintenance/page.tsx` — Halaman Pengecekan Lapangan: daftar dan modal detail checklist/foto bukti, tombol "Cetak Laporan" untuk Admin yang mengunduh PDF per-record, serta (Task 8.4) bagian "Lokasi Pengecekan" berupa mini-map bila koordinat tersedia.
 - `src/components/FieldCheckLocationMap.tsx` (Task 8.4) — mini-map react-leaflet yang menampilkan marker CCTV (biru) + marker "Lokasi Pengecekan" (oranye) untuk membandingkan posisi teknisi dengan CCTV.
@@ -119,7 +123,10 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/components/NotificationBell.tsx` — Komponen lonceng notifikasi in-app (Fase 5.1): **hanya dirender di halaman Dashboard**; badge jumlah belum dibaca, dropdown 3 notifikasi teratas, tombol "Lihat lainnya" → `/pemberitahuan`, tandai semua dibaca, toast real-time via WebSocket `NOTIFICATION_CREATED`, fallback polling 60 detik.
 - `src/components/ProtectedRoute.tsx` — Komponen _High-Order Guard_ yang melakukan otomatisasi _redirect_ ke `/login` jika pengguna belum terautentikasi.
 - `src/components/DashboardAnalytics.tsx` — Komponen grafik/statistik dashboard.
-- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`; warna marker dan badge popup mengikuti skor kesehatan.
+- `src/components/CCTVMap.tsx` — Visualisasi lokasi CCTV pada peta, dirender di halaman `/sebaran-cctv`; warna marker dan badge popup mengikuti skor kesehatan; sejak Task 9.5 (Fase 9) mendukung prop `onMarkerClick` + indikator streaming aktif pada marker.
+- `src/components/WHEPPlayer.tsx` (Task 9.4) — player WebRTC/WHEP untuk video live CCTV (browser-native `RTCPeerConnection`, zero SDK); WHEP signaling via `POST /stream/{path}/whep`; auto-reconnect exponential backoff; status overlay (connecting/live/error/reconnecting); toggle fullscreen; toggle kualitas SD sub-stream ↔ HD main-stream; indikator 🔴 LIVE; SSR-safe (dynamic import).
+- `src/components/StreamModal.tsx` (Task 9.4b) — modal overlay saat marker CCTV diklik: header nama/kode/badge status + skor kesehatan, body `WHEPPlayer` embed, footer lokasi/IP/channel port, tombol Start/Stop stream, link ke Master CCTV.
+- `src/components/StreamGridView.tsx` (Task 9.5) — grid view multi-stream responsif; setiap sel berisi `WHEPPlayer` mini; sel tanpa streaming menampilkan placeholder.
 - `src/components/AuthenticatedImage.tsx` — Komponen `<img>` yang memuat file gambar melalui endpoint yang dilindungi JWT.
 - `src/components/Pagination.tsx` — Komponen navigasi halaman reusable.
 - `src/context/AuthContext.tsx` — Manajemen state sesi dan pengambilan profil `/auth/me`.
@@ -174,6 +181,9 @@ Menyimpan data spesifik perangkat CCTV yang dienkripsi ID-nya untuk keperluan QR
 - `Keterangan`
 - `QrPayload` (unique, berisi format string dari UUID perangkat yang **dienkripsi menggunakan algoritma AES-256**).
 - `HealthScore` (integer 0–100, default 100; diperbarui kalkulator skor kesehatan Fase 6.1).
+- `ChannelPort` (integer, JSON `channel_port`) — port channel NVR (1–35) untuk streaming (Task 9.1).
+- `RTSPPassword` (text, JSON `-` / tidak dikembalikan) — password RTSP **terenkripsi AES-256** (Task 9.1).
+- `StreamEnabled` (boolean, JSON `stream_enabled`, default `false`) — tanda CCTV aktif streaming (Task 9.1).
 
 ### MaintenanceLog
 Menyimpan data catatan pemeliharaan:
@@ -246,6 +256,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Kinerja Teknisi** (Fase 6.2): `GET /api/dashboard/technician-performance` hanya untuk admin; parameter `start_date`/`end_date` default 30 hari terakhir; respons berupa array metrik tugas, durasi assign → complete, overdue, field check, dan quality score.
 - **Laporan Pengecekan Lapangan** (Fase 6.3): `GET /api/field-maintenance/:id/report-pdf` protected untuk Admin dan teknisi pemilik record; mengembalikan PDF berkepala surat IKN dengan detail CCTV, teknisi, waktu, checklist, foto bukti, dan catatan umum.
 - **Ringkasan Operasional** (Fase 6.4): `GET /api/dashboard/digest` hanya untuk admin; respons paginasi `DailyDigest` terbaru dahulu. Generator berjalan setiap pukul 06:00 WITA untuk jendela 24 jam dan mengirim notifikasi `DAILY_DIGEST_AVAILABLE` ke admin.
+- **Streaming CCTV** (Fase 9, Task 9.3): seluruh endpoint streaming **admin-only** (`Protected()` + `RequireRole("admin")`) di bawah grup `/api/streams` — `POST /api/streams/:id/start` (decrypt `rtsp_password` → build URL RTSP → register path MediaMTX → return WHEP URL), `POST /api/streams/:id/stop`, `GET /api/streams/status` (gabung data DB + info path MediaMTX), `GET /api/streams/:id/url` (WHEP + HLS), `POST /api/streams/start-all`, `POST /api/streams/stop-all`. `rtsp_password` disimpan terenkripsi (AES-256) dan **tidak pernah** dikembalikan di respons.
 - **Metrik Prometheus** (Task 7.4): `GET /api/metrics` **publik** mengembalikan metrik dalam format text exposition Prometheus (`text/plain; version=0.0.4`) — counter `sigap_http_requests_total`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Implementasi di `monitoring/` (tanpa library pihak ketiga); jangan menambah library prometheus kecuali disetujui.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
@@ -296,18 +307,20 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 
 ## 7. Konfigurasi Docker
 Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *deployment*:
-- Terdiri dari **6 services**:
+- Terdiri dari **7 services**:
   - `db` (berbasis `postgres:15-alpine`) — port `5432` **tidak dipublish** ke host; hanya dapat diakses dari dalam network.
   - `redis` (berbasis `redis:7-alpine`, sejak Task 7.2) — port `6379` **tidak dipublish**; shared store untuk rate-limit counter & token blacklist (persisten lintas restart, multi-instance). Volume `redis_data` (AOF) untuk persistensi.
   - `api` (merupakan _executable binary_ aplikasi Go) — port `3000` **tidak dipublish**; hanya diakses via reverse proxy.
   - `frontend` (menjalankan aplikasi Next.js) — port `3000` internal, **tidak dipublish**.
-  - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, serta routing sisanya ke `frontend`.
+  - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, routing `/stream/*` & `/hls/*` ke `mediamtx`, serta routing sisanya ke `frontend`.
   - `backup` (Task 7.3) — image `postgres:15-alpine` + `dcron`; menjalankan `scripts/backup.sh` via cron (default tiap hari 06:00 WITA) untuk mem-backup database + uploads ke volume `backups_data`. Port **tidak dipublish**; hanya berkomunikasi dengan `db` di dalam network.
-- *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` yang didaftarkan sebagai trusted proxy).
+  - `mediamtx` (Task 9.2, Fase 9) — image `bluenviron/mediamtx:latest-ffmpeg`, IP statis `172.28.0.11`; proxy RTSP→WebRTC/WHEP streaming CCTV real-time. Port internal `8554` (RTSP), `8889` (HTTP/WebRTC), `8888` (HLS), `9997` (REST API) + UDP `8189`; resource limits 2 CPU / 1024M; health check; port **tidak dipublish** ke host — diakses hanya via Nginx (`/stream/*` → `:8889`, `/hls/*` → `:8888`) dan API (`http://mediamtx:9997/v3/`).
+- *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` dan MediaMTX memakai IP statis `172.28.0.11`; IP Nginx didaftarkan sebagai trusted proxy).
 - *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; `redis_data` untuk persistensi Redis; `backups_data` (Task 7.3) untuk hasil backup db/uploads; folder `./backend/uploads` di-*bind mount* untuk foto bukti (di-mount read-only ke service `backup`).
 - **Secret management (Task 7.5)**: Secret aplikasi (`DB_PASSWORD`, `JWT_SECRET`, `AES_SECRET_KEY`) dikirim sebagai **Docker secret** (file `./secrets/*` → `/run/secrets/<nama>`), dibaca di Go via `utils.secrets.GetSecret` dengan fallback env. `REDIS_PASSWORD` opsional — harus sama di root `.env` & `backend/.env.docker`. Jangan pernah men-commit file `.env*` atau folder `secrets/`.
 - **Container hardening (Task 7.5)**: service `api` berjalan **non-root** (`USER sigap`), rootfs **read-only** (`read_only: true`) dengan tmpfs `/tmp` & `/app/logs`, `cap_drop: [ALL]`, dan resource limits (`cpus`/`mem_limit`). Jika menambah fitur yang menulis ke disk container, pastikan target writable (uploads/logs) ter-mount.
 - Layanan API membutuhkan file spesifik `backend/.env.docker` (gandakan dari `backend/.env.docker.example`); sertifikat TLS di `nginx/certs/`.
+- **Env NVR / MediaMTX** (Task 9.1): `RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER` (kredensial NVR Hikvision global) dan `MEDIAMTX_API_URL` (base URL REST MediaMTX, default `http://mediamtx:9997/v3/`) — didokumentasikan di `.env.example` & `backend/.env.docker.example`.
 - Menggunakan *Health check* pada _service_ PostgreSQL dan Redis: layanan API akan menunggu (`depends_on`) sampai _service_ basis data dan Redis berstatus `healthy` sebelum memulai _boot sequence_-nya. Bila Redis tidak tersedia saat startup, API tetap berjalan dengan fallback in-memory (hanya LOG WARNING — bukan fail-fast, aman untuk development tanpa Docker).
 - **Trusted proxy**: set `TRUSTED_PROXY_IPS=172.28.0.10` (IP Nginx) di `backend/.env.docker` agar header `X-Forwarded-For`/`X-Real-IP` hanya dipercaya dari proxy yang dikenal (anti-spoofing).
 

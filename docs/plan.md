@@ -120,6 +120,10 @@ sigap-monorepo/
 | 17 | 8 | 8.2 Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin+teknisi), `CalendarGrid` (grid bulanan, dot status, navigasi), panel detail hari, filter teknisi admin | ✅ Selesai (2026-08-07, branch `feature/calendar-view`) — lint & build PASS; manual test `docs/manual-test-calendar.md` |
 | 18 | 8 | 8.3 Notifikasi Push Browser | Model `PushSubscription`+migrasi, `POST /push/subscribe` & `DELETE /push/unsubscribe`, `utils/push.go` (webpush VAPID), integrasi ke `NotifyUser`, SW push/notificationclick, opt-in `PushNotificationOptIn` di `/profile` | ✅ Selesai (2026-08-07, branch `feature/push-notification`) — build/test/vet + lint/build PASS; manual test `docs/manual-test-push-notification.md` |
 | 19 | 8 | 8.4 Geotag Pengecekan Lapangan | Kolom `check_latitude`/`check_longitude` + migrasi, validasi backend, GPS wizard + indikator, mini-map admin | ✅ Selesai (2026-08-07, branch `feature/geotag-field-check`) — build/test/vet + lint/build PASS; manual test `docs/manual-test-geotag.md` |
+| 20 | 9 | 9.1 Model & Migrasi Streaming + 9.2 Infra MediaMTX | Field `channel_port`/`rtsp_password`(AES-256)/`stream_enabled` + migrasi `000004`; `utils/rtsp.go`; service `mediamtx` di compose + `mediamtx.yml`; nginx `/stream/*` & `/hls/*`; env NVR/MediaMTX | ✅ Selesai (2026-08-07, branch `feature/cctv-streaming-foundation`) — build/test/vet PASS + `docker compose config --quiet` VALID; `backend/changelog.md` [0.43.0] |
+| 21 | 9 | 9.3 Backend API & MediaMTX Client | `utils/mediamtx.go` (MediaMTXClient), `handlers/stream.go` + `routes/stream.go` (`/api/streams` admin-only), registrasi `main.go` + goroutine auto-start, Swagger, test | ✅ Selesai (2026-08-07, branch `feature/stream-api`) — build/test/vet/golangci-lint PASS + `swag init`; `backend/changelog.md` [0.44.0] |
+| 22 | 9 | 9.4+9.5+9.6 Frontend Player & UI Streaming | `WHEPPlayer.tsx`, `StreamModal.tsx`, `StreamGridView.tsx`, integrasi `CCTVMap` + `sebaran-cctv` Peta/Grid toggle, admin config streaming di `cctv/page.tsx` | ✅ Selesai (2026-08-07, branch `feature/stream-frontend`) — lint & build PASS; `frontend/changelog.md` [1.36.0] |
+| 23 | 9 | Integrasi E2E + Manual Test Streaming | `docs/manual-test-streaming.md` (S1–S9); Docker E2E 8 service; update dokumentasi (AGENTS/TESTING/plan) | ✅ Selesai (2026-08-07) — `docs/changelog.md` [1.28.30]; Fase 9 = 6/6 SELESAI |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 
@@ -402,3 +406,47 @@ sigap-monorepo/
 **Verifikasi**
 - `go build`/`go test ./... -count=1`/`go vet` + `golangci-lint run` PASS; `npm run lint` (0 error)/`npm run build` (exit 0) PASS.
 - Manual: koordinat tercatat di DB saat GPS diizinkan, wizard tetap jalan saat ditolak, admin melihat marker "Lokasi Pengecekan" di peta (panduan `docs/manual-test-geotag.md`).
+
+### 6.18 Rancangan Teknis Sprint 20–23 (Fase 9 — Streaming CCTV Real-Time)
+
+> Mengubah peta sebaran CCTV dari view-only menjadi **interactive live monitoring center**. Teknologi: **MediaMTX** (RTSP-to-WebRTC proxy) + **WHEP** (browser playback) + Nginx reverse proxy. Keputusan arsitektur streaming disepakati 2026-08-07 (lihat ROADMAP Fase 9).
+
+#### Sprint 20 — Fondasi Streaming (Task 9.1 + 9.2)
+
+**Backend (Task 9.1)**
+- `models/cctv.go`: tambah `ChannelPort int` (`channel_port`, validasi 1–35), `RTSPPassword string` (`rtsp_password`, JSON `-`, **terenkripsi AES-256**), `StreamEnabled bool` (`stream_enabled`, default `false`).
+- `migrations/000004_add_cctv_streaming.up/down.sql`: `ALTER TABLE cctvs ADD/DROP COLUMN channel_port integer NOT NULL DEFAULT 1, rtsp_password text NOT NULL DEFAULT '', stream_enabled boolean NOT NULL DEFAULT false` (idempoten).
+- `utils/rtsp.go` (baru): tipe `StreamType` (`MainStream=1`/`SubStream=2`); `BuildRTSPURL` — `rtsp://user:pass@host:port/Streaming/channels/{ChannelID}` dengan `ChannelID = channel_port × 100 + stream_type`; `BuildStreamPath`; `GetRTSPPort` (default sub-stream); edge cases channel ≤ 0.
+- `handlers/cctv.go`: `CreateCCTVRequest`/`UpdateCCTVRequest` + `channel_port`/`rtsp_password`/`stream_enabled`; encrypt `rtsp_password` saat simpan; `rtsp_password` tidak pernah dikembalikan ke response.
+- Env NVR global: `RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL` di `.env.example` & `backend/.env.docker.example`.
+
+**Infra (Task 9.2)**
+- `mediamtx.yml`: RTSP→WebRTC relay, `sourceOnDemand: yes`, `protocols: [tcp]`, REST API `:9997`.
+- `docker-compose.yml`: service `mediamtx` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU/1024M, health check, UDP `8189`).
+- `nginx/nginx.conf`: upstream `sigap_mediamtx` + location `/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`.
+
+#### Sprint 21 — Backend API & MediaMTX Client (Task 9.3)
+
+- `utils/mediamtx.go` (baru): struct `MediaMTXClient` — HTTP client ke `MEDIAMTX_API_URL` (`http://mediamtx:9997/v3/`); method `AddPath`, `RemovePath`, `GetPath`, `ListPaths`.
+- `handlers/stream.go` (baru): `StartStream` (decrypt `rtsp_password` → build RTSP URL → register path MediaMTX → return WHEP URL; validasi `stream_enabled=false`/tanpa `channel_port` → 400, CCTV not found → 404), `StopStream`, `StartAllStreams`, `StopAllStreams`, `GetStreamStatus` (gabung data DB + info path MediaMTX), `GetStreamURL` (WHEP + HLS). Swagger annotations.
+- `routes/stream.go` (baru): grup `/streams` admin-only (`Protected()` + `RequireRole("admin")`) — `GET /status`, `POST /start-all`, `POST /stop-all`, `POST /:id/start`, `POST /:id/stop`, `GET /:id/url` (rute statis sebelum dinamis).
+- `main.go`: `SetupStreamRoutes` + goroutine auto-start stream aktif saat boot.
+
+#### Sprint 22 — Frontend: Player & Streaming UI (Task 9.4 + 9.5 + 9.6)
+
+- `components/WHEPPlayer.tsx` (baru): WebRTC player browser-native `RTCPeerConnection` (zero SDK); WHEP signaling via `POST /stream/{path}/whep`; auto-reconnect exponential backoff; status overlay (connecting/live/error/reconnecting); toggle fullscreen; toggle SD sub-stream ↔ HD main-stream; indikator 🔴 LIVE; SSR-safe (dynamic import).
+- `components/StreamModal.tsx` (baru): modal overlay saat marker diklik — header nama/kode/badge status + skor kesehatan, body `WHEPPlayer` embed, footer lokasi/IP/channel port, tombol Start/Stop, link Master CCTV.
+- `components/StreamGridView.tsx` (baru): grid view multi-stream responsif (tiap sel berisi `WHEPPlayer` mini; sel tanpa streaming placeholder).
+- `components/CCTVMap.tsx`: prop `onMarkerClick` + indikator streaming aktif pada marker; interface `CCTVMapItem` + `stream_enabled`/`channel_port`.
+- `app/sebaran-cctv/page.tsx`: state `selectedCctv` + `StreamModal`; toggle view Peta/Grid; filter "Streaming Aktif"; status bar "N/35 kamera streaming aktif".
+- `app/cctv/page.tsx`: section "Konfigurasi Streaming" di modal edit CCTV (`channel_port` 1–35, `rtsp_password` toggle visibility, `stream_enabled` checkbox, preview URI RTSP); kolom tabel master ikon streaming aktif.
+
+#### Sprint 23 — Integrasi End-to-End & Manual Test Streaming
+
+- `docs/manual-test-streaming.md` (baru): manual test blackbox S1–S9 sesuai format manual test lain.
+- Docker E2E: `docker compose up -d --build` → 8 service running; health check semua PASS; MediaMTX API reachable.
+- Dokumentasi: `docs/AGENTS.md`, `docs/TESTING.md`, `docs/plan.md`, `docs/changelog.md` [1.28.30].
+
+**Verifikasi**
+- `go build`/`go test ./... -count=1`/`go vet` + `golangci-lint run` + `swag init` PASS; `npm run lint` (0 error)/`npm run build` (exit 0) PASS; `docker compose config --quiet` VALID.
+- Manual: `docs/manual-test-streaming.md`.

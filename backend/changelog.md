@@ -1,5 +1,40 @@
 # Changelog - Backend SIGAP
 
+## [0.45.0] - 2026-08-07
+
+### Fitur: Fase 9 Streaming CCTV — Selesai (Task 9.1–9.6)
+
+perubahan yang dilakukan: **Melengkapi & menutup seluruh backend streaming CCTV real-time (Fase 9). Menyimpulkan hasil dari Sprint 20–23: model & migrasi streaming CCTV, util RTSP, service MediaMTX, client MediaMTX, serta handler & route stream admin-only — sehingga peta sebaran CCTV dapat menampilkan video live via WHEP/WebRTC. Backend naik `0.44.0` → `0.45.0` sebagai penutup Fase 9.**
+
+before: Backend streaming (Sprint 20–21) sudah menyediakan model, migrasi `000004`, `utils/rtsp.go`, `utils/mediamtx.go`, serta `handlers/stream.go`/`routes/stream.go`; namun Fase 9 belum ditandai selesai dan dokumentasi serta versi rilis belum menutup milestone.
+
+after:
+- Fase 9 ditandai **6/6 ✅ Selesai** (Task 9.1–9.6) di ROADMAP; seluruh endpoint streaming `/api/streams/*` admin-only (`Protected()` + `RequireRole("admin")`).
+- `models/cctv.go` + `migrations/000004_add_cctv_streaming`: `channel_port`, `rtsp_password` (AES-256 encrypted, tidak dikembalikan), `stream_enabled`.
+- `utils/rtsp.go` (BuildRTSPURL/BuildStreamPath/GetRTSPPort), `utils/mediamtx.go` (MediaMTXClient AddPath/RemovePath/GetPath/ListPaths), `handlers/stream.go` (StartStream/StopStream/StartAllStreams/StopAllStreams/GetStreamStatus/GetStreamURL), `routes/stream.go` (grup `/streams`), registrasi `main.go` + goroutine auto-start.
+- Swagger annotations + `swag init`; unit test `utils/rtsp_test.go`, `utils/mediamtx_test.go`, `handlers/stream_test.go`, `routes/stream_test.go`.
+
+timestamp: 2026-08-07 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/cctv.go
+- backend/migrations/000004_add_cctv_streaming.up.sql
+- backend/migrations/000004_add_cctv_streaming.down.sql
+- backend/utils/rtsp.go
+- backend/utils/mediamtx.go
+- backend/handlers/stream.go
+- backend/routes/stream.go
+- backend/main.go
+- backend/utils/rtsp_test.go
+- backend/utils/mediamtx_test.go
+- backend/handlers/stream_test.go
+- backend/routes/stream_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Menutup Fase 9 (Streaming CCTV Real-Time) — menyatukan fondasi model/migrasi/infra (Task 9.1/9.2), API & client MediaMTX (Task 9.3) menjadi rilis backend final Fase 9; seluruh endpoint streaming bersifat admin-only sesuai keputusan arsitektur streaming dan `rtsp_password` terenkripsi tidak pernah diekspos.
+
 ## [0.44.0] - 2026-08-07
 
 ### Fitur: Backend API & MediaMTX Client (Task 9.3)

@@ -30,7 +30,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
-| **9** | **Streaming CCTV Real-Time** | **3/6** | **🚧 Berjalan (Sprint 21 selesai)** |
+| **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **0/4** | **🔲 Belum dimulai** |
 | **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
@@ -327,7 +327,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Mengubah peta sebaran CCTV dari **view-only** menjadi **interactive live monitoring center**.
 > Teknologi: **MediaMTX** (RTSP-to-WebRTC proxy) + **WHEP** (browser playback) + Nginx reverse proxy.
-> **Status: 🚧 Berjalan** — Sprint 20 (Task 9.1 + 9.2) & Sprint 21 (Task 9.3) **✅ Selesai** (2026-08-07); sisa 3 task dalam 2 sprint, estimasi ~6–8 hari kerja.
+> **Status: ✅ Selesai** — seluruh 6 task (9.1–9.6) dalam 4 sprint (20–23) **selesai** (2026-08-07).
 
 ### Arsitektur Streaming
 
@@ -403,13 +403,21 @@ swag init
 
 > **Branch:** `feature/stream-frontend`
 > **Prasyarat:** Sprint 21 selesai (API stream tersedia)
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Frontend** | Agent-FE-1 | **9.4** Komponen WHEPPlayer | `components/WHEPPlayer.tsx`: WebRTC player menggunakan browser-native `RTCPeerConnection` (zero SDK). WHEP signaling via `POST /stream/{path}/whep`. Auto-reconnect exponential backoff. Status overlay (connecting/live/error/reconnecting). Toggle fullscreen. Toggle kualitas (SD sub-stream ↔ HD main-stream). Indikator 🔴 LIVE. Cleanup saat unmount. SSR-safe (dynamic import). |
-| **Frontend** | Agent-FE-1 | **9.4b** Komponen StreamModal | `components/StreamModal.tsx`: modal overlay saat marker diklik. Header: nama CCTV, kode, badge status + skor kesehatan. Body: `WHEPPlayer` embed. Footer: lokasi, IP, channel port. Tombol Start/Stop stream (panggil API). Link ke Master CCTV. |
-| **Frontend** | Agent-FE-2 | **9.5** Integrasi Peta Sebaran + Grid View | Modifikasi `CCTVMap.tsx`: tambah prop `onMarkerClick`, indikator streaming aktif pada marker. Interface `CCTVMapItem` tambah `stream_enabled`, `channel_port`. Modifikasi `sebaran-cctv/page.tsx`: state `selectedCctv` + `StreamModal`. Toggle view Peta/Grid. Filter "Streaming Aktif". Status bar "N/35 kamera streaming aktif". `components/StreamGridView.tsx`: grid layout responsif, setiap sel berisi `WHEPPlayer` mini. |
-| **Frontend** | Agent-FE-2 | **9.6** Admin Config UI Streaming | Modifikasi `cctv/page.tsx`: section form "Konfigurasi Streaming" di modal edit CCTV. Field: `channel_port` (number 1–35), `rtsp_password` (password + toggle visibility), `stream_enabled` (checkbox). Preview URI RTSP. Kolom tabel master: ikon streaming aktif. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Frontend** | Agent-FE-1 | **9.4** Komponen WHEPPlayer | `components/WHEPPlayer.tsx`: WebRTC player menggunakan browser-native `RTCPeerConnection` (zero SDK). WHEP signaling via `POST /stream/{path}/whep`. Auto-reconnect exponential backoff. Status overlay (connecting/live/error/reconnecting). Toggle fullscreen. Toggle kualitas (SD sub-stream ↔ HD main-stream). Indikator 🔴 LIVE. Cleanup saat unmount. SSR-safe (dynamic import). | ✅ Selesai |
+| **Frontend** | Agent-FE-1 | **9.4b** Komponen StreamModal | `components/StreamModal.tsx`: modal overlay saat marker diklik. Header: nama CCTV, kode, badge status + skor kesehatan. Body: `WHEPPlayer` embed. Footer: lokasi, IP, channel port. Tombol Start/Stop stream (panggil API). Link ke Master CCTV. | ✅ Selesai |
+| **Frontend** | Agent-FE-2 | **9.5** Integrasi Peta Sebaran + Grid View | Modifikasi `CCTVMap.tsx`: tambah prop `onMarkerClick`, indikator streaming aktif pada marker. Interface `CCTVMapItem` tambah `stream_enabled`, `channel_port`. Modifikasi `sebaran-cctv/page.tsx`: state `selectedCctv` + `StreamModal`. Toggle view Peta/Grid. Filter "Streaming Aktif". Status bar "N/35 kamera streaming aktif". `components/StreamGridView.tsx`: grid layout responsif, setiap sel berisi `WHEPPlayer` mini. | ✅ Selesai |
+| **Frontend** | Agent-FE-2 | **9.6** Admin Config UI Streaming | Modifikasi `cctv/page.tsx`: section form "Konfigurasi Streaming" di modal edit CCTV. Field: `channel_port` (number 1–35), `rtsp_password` (password + toggle visibility), `stream_enabled` (checkbox). Preview URI RTSP. Kolom tabel master: ikon streaming aktif. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 22:** UI streaming CCTV real-time selesai (Task 9.4 + 9.5 + 9.6).
+- **Task 9.4 / 9.4b (Player & Modal)**: `WHEPPlayer.tsx` (WebRTC player browser-native `RTCPeerConnection`, WHEP signaling, auto-reconnect exponential backoff, status overlay, toggle SD/HD, indikator 🔴 LIVE, SSR-safe dynamic import) + `StreamModal.tsx` (modal overlay saat marker diklik; header nama/kode/badge status + skor kesehatan; body `WHEPPlayer`; footer lokasi/IP/channel port; tombol Start/Stop; link Master CCTV).
+- **Task 9.5 (Peta + Grid)**: `CCTVMap.tsx` prop `onMarkerClick` + indikator streaming aktif pada marker; `sebaran-cctv/page.tsx` state `selectedCctv` + `StreamModal`, toggle view Peta/Grid, filter "Streaming Aktif", status bar "N/35 kamera streaming aktif"; `StreamGridView.tsx` (grid responsif, tiap sel berisi `WHEPPlayer` mini).
+- **Task 9.6 (Admin Config)**: `cctv/page.tsx` section "Konfigurasi Streaming" di modal edit — `channel_port` (1–35), `rtsp_password` (toggle visibility), `stream_enabled` (checkbox), preview URI RTSP; kolom tabel master ikon streaming aktif.
+
+Detail: `frontend/changelog.md` [1.36.0].
 
 #### Verifikasi Sprint 22
 
@@ -423,12 +431,18 @@ cd frontend && npm run lint && npm run build
 
 > **Branch:** sama dengan Sprint 22 (merge semua ke satu PR)
 > **Prasyarat:** Sprint 20–22 selesai
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **QA/Docs** | Agent-QA | Manual Test Document | `docs/manual-test-streaming.md`: header, prasyarat, pengujian otomatis, skenario uji S1–S9 (edit config streaming, start stream, klik marker → video live, toggle SD/HD, stop stream, grid view, role enforcement 403, reconnect saat NVR down, start-all). Kriteria lulus. |
-| **Infra** | Agent-Infra | Docker E2E Verification | `docker compose up -d --build` → verifikasi 8 service running. Health check semua PASS. MediaMTX API reachable. |
-| **Docs** | Agent-Docs | Update Dokumentasi | Update `docs/AGENTS.md` (MediaMTX service, streaming endpoints, env vars). Update `docs/TESTING.md` (test matrix stream/rtsp/mediamtx). Update `docs/plan.md` (Sprint 20–23). |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **QA/Docs** | Agent-QA | Manual Test Document | `docs/manual-test-streaming.md`: header, prasyarat, pengujian otomatis, skenario uji S1–S9 (edit config streaming, start stream, klik marker → video live, toggle SD/HD, stop stream, grid view, role enforcement 403, reconnect saat NVR down, start-all). Kriteria lulus. | ✅ Selesai |
+| **Infra** | Agent-Infra | Docker E2E Verification | `docker compose up -d --build` → verifikasi 8 service running. Health check semua PASS. MediaMTX API reachable. | ✅ Selesai |
+| **Docs** | Agent-Docs | Update Dokumentasi | Update `docs/AGENTS.md` (MediaMTX service, streaming endpoints, env vars). Update `docs/TESTING.md` (test matrix stream/rtsp/mediamtx). Update `docs/plan.md` (Sprint 20–23). | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 23:** Integrasi end-to-end & dokumentasi streaming selesai.
+- **Manual Test**: `docs/manual-test-streaming.md` — dokumen uji manual blackbox S1–S9 sesuai format manual test lain.
+- **Docker E2E**: `docker compose up -d --build` → verifikasi 8 service (db, redis, api, frontend, nginx, backup, mediamtx, + health) running; health check semua PASS; MediaMTX API reachable.
+- **Dokumentasi**: `docs/AGENTS.md` (MediaMTX service, streaming endpoints, env vars, file baru), `docs/TESTING.md` (matriks test stream/rtsp/mediamtx), `docs/plan.md` (Sprint 20–23), `docs/changelog.md` [1.28.30].
 
 #### Verifikasi Sprint 23 (Full)
 
@@ -588,10 +602,10 @@ Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
 ═══════════════════════════════════════════════════════════════
 SEGERA (Agustus – September 2026)
 ───────────────────────────────────────────────────────────────
-Sprint 20: Fondasi Streaming (9.1 + 9.2) ......... 2 hari
-Sprint 21: Backend API Stream (9.3) ............... 2–3 hari
-Sprint 22: Frontend Player + UI (9.4–9.6) ........ 3–4 hari
-Sprint 23: Integrasi E2E + Manual Test ............ 1–2 hari
+Sprint 20: Fondasi Streaming (9.1 + 9.2) ✅ ......... 2 hari
+Sprint 21: Backend API Stream (9.3) ✅ .............. 2–3 hari
+Sprint 22: Frontend Player + UI (9.4–9.6) ✅ ....... 3–4 hari
+Sprint 23: Integrasi E2E + Manual Test ✅ ........... 1–2 hari
 Sprint 26: Inventaris Suku Cadang (11.1) .......... 3–4 hari
 ───────────────────────────────────────────────────────────────
 

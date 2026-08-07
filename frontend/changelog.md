@@ -1,5 +1,35 @@
 # Changelog - Frontend SIGAP
 
+## [1.37.0] - 2026-08-07
+
+### Fitur: Fase 9 Streaming CCTV — Selesai (Frontend Task 9.4 / 9.5 / 9.6)
+
+perubahan yang dilakukan: **Menutup milestone Fase 9 streaming CCTV real-time pada sisi frontend. Menyimpulkan hasil Sprint 22 (Task 9.4/9.5/9.6): player WHEP, modal stream, grid multi-stream, integrasi marker CCTV di peta sebaran, dan konfigurasi streaming pada Master CCTV. Frontend naik `1.36.0` → `1.37.0` sebagai penutup Fase 9.**
+
+before: UI streaming (Sprint 22) sudah menyediakan `WHEPPlayer`, `StreamModal`, `StreamGridView`, integrasi peta/guard admin, serta konfigurasi streaming di Master CCTV; namun Fase 9 belum ditandai selesai dan versi rilis belum menutup milestone.
+
+after:
+- `src/components/WHEPPlayer.tsx` (baru): player WebRTC/WHEP video live (indikator 🔴 LIVE, toggle kualitas SD/HD).
+- `src/components/StreamModal.tsx` (baru): modal pemutaran stream saat marker CCTV diklik di peta.
+- `src/components/StreamGridView.tsx` (baru): grid view multi-stream; sel tanpa streaming menampilkan placeholder.
+- `src/components/CCTVMap.tsx`: integrasi marker CCTV dengan aksi klik → buka `StreamModal`.
+- `src/app/sebaran-cctv/page.tsx`: toggle view Peta/Grid, status bar "N kamera streaming aktif", guard role admin.
+- `src/app/cctv/page.tsx`: konfigurasi streaming (channel port 1–35, password RTSP toggle visibility, preview URI, checkbox aktifkan) + kolom ikon "Stream" pada tabel master.
+- Fase 9 ditandai **6/6 ✅ Selesai** di ROADMAP.
+
+timestamp: 2026-08-07 20:00 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamModal.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/lib/api.ts
+- frontend/changelog.md
+alasan perubahan: Menutup Fase 9 (Streaming CCTV Real-Time) dari sisi frontend — mewujudkan streaming live yang dapat diakses langsung dari peta sebaran & grid view bagi admin, dengan dukungan konfigurasi streaming terpadu pada Master CCTV; versi rilis naik sebagai penutup milestone.
+
 ## [1.36.0] - 2026-08-07
 
 ### Fitur: Streaming CCTV Real-Time (Task 9.4 / 9.5 / 9.6)
