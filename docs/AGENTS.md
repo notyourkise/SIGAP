@@ -40,6 +40,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 
 ### Root `/`
 - `docker-compose.yml` — Orkestrasi 6 _service_ (db, redis, api, frontend, nginx, backup) di dalam _network_ `sigap_network`. Sejak Task 7.3 ada service `backup` (cron otomatis) + volume `backups_data`.
+- `docker-compose.override.yml` — **Opsional** (Task 7.4): menambah Prometheus (port 9090) & Grafana (port 3000) untuk visualisasi metrik `/api/metrics`. Di-merge otomatis oleh `docker compose`; lepas/tidak perlu bila monitoring tidak dibutuhkan.
 - `scripts/backup.sh` & `scripts/restore.sh` — Backup & restore otomatis database + uploads (Task 7.3). Prosedur lengkap di `docs/BACKUP.md`.
 - `backup/Dockerfile` & `backup/entrypoint.sh` — Container `backup` (image `postgres:15-alpine` + `dcron`) yang menjalankan `backup.sh` via cron.
 - `makefile` — Kumpulan _script_ untuk menjalankan backend dan frontend secara bersamaan di lingkungan lokal.
@@ -59,13 +60,15 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `models/cctv.go` — Definisi struktur `CCTV`, termasuk `QrPayload` yang dienkripsi menggunakan AES-256 dan `HealthScore` (skor kesehatan 0–100, default 100).
 - `models/audit_log.go` — Definisi struktur `AuditLog` (riwayat aktivitas penting pengguna).
 - `models/seeder.go` — _Script_ untuk me-seed admin _default_ (hanya jika belum ada, tidak me-reset password tiap startup).
-- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi dan daftar digest admin), `digest_generator` (goroutine ringkasan operasional harian pukul 06:00 WITA), `upload`, `audit`, `report`, `notification`, `health`, `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
+- `handlers/` — Berisi _handler_ untuk setiap modul: `auth`, `cctv` (termasuk endpoint skor kesehatan), `maintenance`, `field_maintenance` (termasuk laporan PDF per pengecekan), `user`, `dashboard` (termasuk endpoint kinerja teknisi dan daftar digest admin), `digest_generator` (goroutine ringkasan operasional harian pukul 06:00 WITA), `upload`, `audit`, `report`, `notification`, `health` (diperluas sejak Task 7.4: response time DB, cek Redis, ukuran folder uploads), `maintenance_schedule` (CRUD jadwal berulang, Fase 5.4), `schedule_runner` (goroutine generator jadwal — berjalan sekali saat startup lalu tiap jam membuat `MaintenanceLog` otomatis, idempotent per hari per jadwal), `overdue_checker` (goroutine eskalasi tugas overdue — berjalan saat startup lalu tiap jam, satu kali per log sampai reschedule), dan `health_score` (kalkulator skor kesehatan CCTV saat startup lalu tiap 6 jam).
+- `monitoring/` (Task 7.4) — Collector metrik Prometheus ringan **tanpa library pihak ketiga**: `metrics.go` (counter request, histogram durasi, gauge DB pool/WS aktif/ukuran uploads + `Handler` untuk `GET /api/metrics` dalam format text exposition), `collector.go` (`StartCollector` goroutine memperbarui gauge tiap interval).
 - `middleware/auth.go` — Fungsi `Protected()` untuk memvalidasi JWT token, pengecekan blacklist,
   validasi versi token, dan `RequireRole()` untuk pengecekan _Role-Based Access Control_ (RBAC).
 - `middleware/limiter.go` — Pembatasan laju _request_ (Rate Limiter). Sejak Task 7.2 memakai counter fixed-window kustom berbasis Redis `INCR`/`EXPIRE` (key `limiter:{ip}:{endpoint}`) dengan fallback in-memory. Terdapat `GlobalLimiter` (100 req/menit) dan `AuthLimiter` (khusus _endpoint_ autentikasi, 5 req/menit).
 - `middleware/csrf.go` — Perlindungan CSRF pola _double-submit_ untuk permintaan mutasi yang terautentikasi via cookie.
 - `middleware/security.go` — _Security headers_ (CSP & HSTS aktif hanya di produksi).
 - `middleware/logger.go` & `middleware/recovery.go` — Logging terstruktur (Zap) dan pemulihan dari _panic_.
+- `middleware/metrics.go` (Task 7.4) — Mencatat setiap request: increment counter `sigap_http_requests_total{method,path,status}` + observe durasi ke histogram `sigap_http_request_duration_seconds`; endpoint `/api/metrics` dikecualikan.
 - `routes/` — Registrasi rute untuk masing-masing modul (auth, cctv, maintenance, field maintenance, user, upload, audit, dashboard, notification, maintenance_schedule, websocket).
   > [!IMPORTANT]
   > **PENTING:** Rute statis (seperti `/template`, `/import`, `/bulk-delete`) HARUS dideklarasikan SEBELUM rute dinamis (seperti `/:id`) untuk menghindari _collision_ atau tertimpa oleh parameter Fiber.
@@ -232,6 +235,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **Kinerja Teknisi** (Fase 6.2): `GET /api/dashboard/technician-performance` hanya untuk admin; parameter `start_date`/`end_date` default 30 hari terakhir; respons berupa array metrik tugas, durasi assign → complete, overdue, field check, dan quality score.
 - **Laporan Pengecekan Lapangan** (Fase 6.3): `GET /api/field-maintenance/:id/report-pdf` protected untuk Admin dan teknisi pemilik record; mengembalikan PDF berkepala surat IKN dengan detail CCTV, teknisi, waktu, checklist, foto bukti, dan catatan umum.
 - **Ringkasan Operasional** (Fase 6.4): `GET /api/dashboard/digest` hanya untuk admin; respons paginasi `DailyDigest` terbaru dahulu. Generator berjalan setiap pukul 06:00 WITA untuk jendela 24 jam dan mengirim notifikasi `DAILY_DIGEST_AVAILABLE` ke admin.
+- **Metrik Prometheus** (Task 7.4): `GET /api/metrics` **publik** mengembalikan metrik dalam format text exposition Prometheus (`text/plain; version=0.0.4`) — counter `sigap_http_requests_total`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Implementasi di `monitoring/` (tanpa library pihak ketiga); jangan menambah library prometheus kecuali disetujui.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
 ## 6. Gotchas & Catatan Teknis Penting

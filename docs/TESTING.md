@@ -58,8 +58,11 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `config` | `versioned_migration_test.go` (Task 7.1) | embed FS migration (konvensi nama golang-migrate), kelengkapan 10 tabel di up/down, kolom kunci tiap tabel, CASCADE pada rollback FK sirkular, propagasi error driver (tanpa PostgreSQL) |
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance/field-maintenance/dashboard digest wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
+| `monitoring` | `metrics_test.go` (Task 7.4) | counter `sigap_http_requests_total{method,path,status}`, histogram kumulatif (bucket le + _sum/_count), HELP/TYPE untuk semua metrik, gauge (DB pool, WS aktif, upload storage), empty state, `Reset`, escape label, format angka tetap (tanpa eksponensial) |
+| `middleware` | `metrics_test.go` (Task 7.4) | observasi request (counter & count), exclude endpoint `/api/metrics`, pencatatan status non-200, Content-Type `text/plain` |
+| `handlers` | `health_test.go` (Task 7.4, diperluas) | HealthCheck Connected, field baru `db_response_time_ms`, `redis_status=Disabled`, `uploads{status,path,size_bytes}`, `dirSize` (folder tak ada → 0, jumlah ukuran file) |
 
-**Total: 38 file test** (8 utils, 4 middleware, 19 handlers, 2 models, 3 config, 2 routes, termasuk helper).
+**Total: 41 file test** (8 utils, 5 middleware, 20 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
 ---
 

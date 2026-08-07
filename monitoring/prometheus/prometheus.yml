@@ -1,0 +1,19 @@
+# ==========================================
+# SIGAP — Prometheus Scrape Config (Task 7.4)
+# ==========================================
+# Digunakan oleh docker-compose.override.yml (opsional). Prometheus melakukan
+# scraping metrik dari service `api` pada endpoint /api/metrics (format text
+# exposition Prometheus, publik).
+#
+# Catatan: /api/metrics berada di bawah /api yang juga dikenai GlobalLimiter
+# (100 req/menit/IP). Frekuensi scrape default 15 detik dari satu instance
+# Prometheus aman berada di bawah batas tersebut.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "sigap-api"
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["api:3000"]

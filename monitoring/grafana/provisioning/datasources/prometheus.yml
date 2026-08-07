@@ -1,0 +1,15 @@
+# ==========================================
+# SIGAP — Grafana Datasource Provisioning (Task 7.4)
+# ==========================================
+# Mendaftarkan Prometheus sebagai sumber data secara otomatis pada container
+# Grafana (mount ke /etc/grafana/provisioning). Nama service Prometheus di
+# docker-compose.override.yml adalah `prometheus`.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

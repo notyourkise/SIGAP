@@ -8,6 +8,7 @@ import (
 	"sigap-backend/handlers"
 	"sigap-backend/middleware"
 	"sigap-backend/models"
+	"sigap-backend/monitoring"
 	"sigap-backend/routes"
 	"sigap-backend/utils"
 	"strings"
@@ -129,6 +130,10 @@ func main() {
 	go handlers.RunDailyDigestGenerator(config.DB)
 	utils.Log.Info("🗓️ Generator ringkasan operasional harian diaktifkan (jadwal: 06:00 WITA)")
 
+	// Jalankan collector metrik (Task 7.4): memperbarui gauge DB pool, WS aktif,
+	// dan ukuran folder uploads secara berkala (interval 15 detik).
+	monitoring.StartCollector("./uploads", 15*time.Second)
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
@@ -175,6 +180,10 @@ func main() {
 	// Pasang Security Headers (X-Content-Type-Options, X-Frame-Options, dll)
 	app.Use(middleware.SecurityHeaders())
 
+	// Pasang Middleware Metrics (Task 7.4): mencatat counter request & durasi
+	// histogram ke collector Prometheus. Endpoint /api/metrics dikecualikan.
+	app.Use(middleware.Metrics())
+
 	// SECURITY: Swagger UI hanya tersedia di environment non-production.
 	// Set APP_ENV=production di .env untuk menonaktifkan Swagger di production.
 	appEnv := os.Getenv("APP_ENV")
@@ -206,6 +215,10 @@ func main() {
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)
+
+	// Rute Metrik Prometheus (publik untuk monitoring / scraping). Mengembalikan
+	// format text exposition Prometheus (Task 7.4).
+	api.Get("/metrics", monitoring.Handler)
 
 	// Rute root API
 	app.Get("/", func(c *fiber.Ctx) error {
