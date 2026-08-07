@@ -3,6 +3,16 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.25] — 2026-08-07 — Kalender Jadwal Pemeliharaan (Task 8.2)
+
+### Perubahan
+
+- **Frontend** ([1.33.0]): halaman `/kalender` (admin & teknisi) — kalender bulanan CSS mandiri (`components/CalendarGrid.tsx`): grid 7 kolom, navigasi bulan, dot warna status per hari, panel detail tugas, filter per teknisi (admin); menu sidebar "Kalender". Data dari `/maintenance-logs?start_date=&end_date=`, dikelompokkan per `scheduled_date`.
+- **Dokumen**: `docs/manual-test-calendar.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); ROADMAP Task 8.2 ✅ Selesai (Fase 8 2/4); plan Sprint 17 + rancangan teknis.
+- Verifikasi: `npm run lint` (0 error) & `npm run build` (exit 0) PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `frontend/changelog.md` [1.33.0]
+
 ## [1.28.24] — 2026-08-07 — Progressive Web App (PWA) (Task 8.1)
 
 ### Perubahan

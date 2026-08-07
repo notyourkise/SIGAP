@@ -101,6 +101,8 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/schedules/page.tsx` — Halaman Jadwal Pemeliharaan (Fase 5.4, khusus admin): CRUD jadwal berulang, toggle aktif/nonaktif, filter status, paginasi; menu sidebar "Jadwal".
 - `src/app/kinerja-teknisi/page.tsx` — Dashboard Kinerja Teknisi (Fase 6.2, khusus admin): filter rentang tanggal, chart completion rate SVG, tabel ranking sortable, dan metrik overdue/field-check/quality.
 - `src/app/ringkasan/page.tsx` — Timeline Ringkasan Operasional (Fase 6.4, khusus admin): kartu per tanggal, metrik tugas/field-check/perubahan status, summary naratif, dan paginasi.
+- `src/app/kalender/page.tsx` — Kalender Jadwal Pemeliharaan (Task 8.2, admin + teknisi): kalender bulanan (grid 7 kolom), dot warna status per hari, panel detail tugas, filter per teknisi (admin). Data dari `/maintenance-logs?start_date=&end_date=` dikelompokkan per `scheduled_date`.
+- `src/components/CalendarGrid.tsx` (Task 8.2) — komponen grid kalender bulanan CSS mandiri (tanpa dependency chart eksternal): navigasi bulan, dot status, legend; helper `toDayKey`/`formatLongDate`/`STATUS_DOT_CLASS`/`STATUS_META`.
 - `src/app/users/page.tsx` — Halaman manajemen pengguna (khusus admin): CRUD user, reset password.
 - `src/app/audit-logs/page.tsx` — Halaman audit trail (khusus admin): daftar aktivitas + ekspor CSV.
 - `src/app/profile/page.tsx` — Halaman profil pengguna (data diri + tautan ganti password).

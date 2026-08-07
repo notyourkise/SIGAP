@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   ClipboardCheck,
   CalendarClock,
+  Calendar,
   TrendingUp,
   ClipboardList,
 } from 'lucide-react';
@@ -83,6 +84,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
     { name: 'Aset CCTV', href: '/cctv', icon: Database },
     { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
+    { name: 'Kalender', href: '/kalender', icon: Calendar },
     ...(user?.role === 'admin'
       ? [
           { name: 'Jadwal', href: '/schedules', icon: CalendarClock },

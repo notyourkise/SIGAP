@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.33.0] - 2026-08-07
+
+### Fitur: Kalender Jadwal Pemeliharaan (Task 8.2)
+
+perubahan yang dilakukan: **Menambahkan halaman `/kalender` (admin & teknisi) yang menampilkan jadwal pemeliharaan CCTV sebagai kalender bulanan (implementasi CSS mandiri, tanpa dependency chart eksternal) dengan grid 7 kolom, navigasi bulan, dot warna status per hari, panel detail tugas per hari, dan filter per teknisi untuk admin. Menambah menu sidebar "Kalender".**
+
+before: Teknisi dan admin hanya melihat jadwal pemeliharaan dalam bentuk tabel di halaman `/maintenance` / `/schedules`; belum ada visualisasi kalender bulanan yang intuitif.
+
+after:
+- `src/components/CalendarGrid.tsx` (baru): grid kalender bulanan (header Senin–Minggu, 7 kolom × 5-6 baris), navigasi prev/next + "Hari ini", dot status (hijau completed, biru scheduled, kuning ongoing, merah failed/overdue), max 3 dot + "+N", legend; helper `toDayKey`/`formatLongDate`/`formatMonthTitle`/`STATUS_DOT_CLASS`/`STATUS_META`.
+- `src/app/kalender/page.tsx` (baru): halaman `/kalender` — ambil data `GET /api/maintenance-logs?start_date=&end_date=&page=1&limit=100` untuk bulan berjalan, kelompokkan per `scheduled_date` (fallback `created_at`); filter teknisi (dropdown admin dari `/users?role=teknisi`; teknisi di-scope backend); panel detail hari (nama CCTV, kode, status badge, tindakan, teknisi); loading/error/empty state.
+- `src/components/DashboardLayout.tsx`: menu sidebar "Kalender" (`/kalender`) dengan ikon `Calendar` untuk admin & teknisi.
+
+timestamp: 2026-08-07 16:30 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/CalendarGrid.tsx
+- frontend/src/app/kalender/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/changelog.md
+alasan perubahan: Task 8.2 ROADMAP (Fase 8) — melengkapi fitur jadwal berulang (5.4) dengan visualisasi kalender yang lebih intuitif daripada tabel, memudahkan admin/teknisi melihat jadwal per hari dan per teknisi.
+
 ## [1.32.0] - 2026-08-07
 
 ### Fitur: Progressive Web App (PWA) (Task 8.1)
