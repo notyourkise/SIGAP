@@ -30,7 +30,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
-| **9** | **Streaming CCTV Real-Time** | **0/6** | **🔲 Belum dimulai** |
+| **9** | **Streaming CCTV Real-Time** | **2/6** | **🚧 Berjalan (Sprint 20 selesai)** |
 | **10** | **Kecerdasan Visual & Snapshot** | **0/4** | **🔲 Belum dimulai** |
 | **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
@@ -327,7 +327,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Mengubah peta sebaran CCTV dari **view-only** menjadi **interactive live monitoring center**.
 > Teknologi: **MediaMTX** (RTSP-to-WebRTC proxy) + **WHEP** (browser playback) + Nginx reverse proxy.
-> **Status: 🔲 Belum dimulai** — 6 task, 4 sprint, estimasi ~10–12 hari kerja.
+> **Status: 🚧 Berjalan** — Sprint 20 (Task 9.1 + 9.2) **✅ Selesai** (2026-08-07); sisa 4 task dalam 3 sprint, estimasi ~8–10 hari kerja.
 
 ### Arsitektur Streaming
 
@@ -351,11 +351,18 @@ Contoh: CH 19 Sub → 19×100 + 2 = 1902 → /Streaming/channels/1902
 ### Sprint 20 — Fondasi Streaming (Task 9.1 + 9.2)
 
 > **Branch:** `feature/cctv-streaming-foundation`
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **9.1** Model & Migrasi: Data Streaming CCTV | Tambah field `channel_port` (int), `rtsp_password` (text, AES-256 encrypted), `stream_enabled` (boolean) ke model `CCTV`. Migrasi `000004_add_cctv_streaming.up/down.sql`. Util `utils/rtsp.go` (BuildRTSPURL, BuildStreamPath). Konfigurasi NVR global di `.env` (`RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL`). Enkripsi password via `utils.EncryptAES256()`. Update `CreateCCTVRequest`/`UpdateCCTVRequest` di `handlers/cctv.go`. Exclude `rtsp_password` dari response JSON. Unit test `utils/rtsp_test.go`. |
-| **Infra** | Agent-Infra | **9.2** Infrastruktur MediaMTX Docker | File `mediamtx.yml` (RTSP→WebRTC relay, `sourceOnDemand: yes`, `protocols: [tcp]`, REST API `:9997`). Service `mediamtx` di `docker-compose.yml` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU / 1024M, health check, port UDP `8189`). Nginx location block `/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`. Upstream `sigap_mediamtx`. Dependency nginx→mediamtx. `docker compose config --quiet` PASS. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **9.1** Model & Migrasi: Data Streaming CCTV | Tambah field `channel_port` (int), `rtsp_password` (text, AES-256 encrypted), `stream_enabled` (boolean) ke model `CCTV`. Migrasi `000004_add_cctv_streaming.up/down.sql`. Util `utils/rtsp.go` (BuildRTSPURL, BuildStreamPath). Konfigurasi NVR global di `.env` (`RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL`). Enkripsi password via `utils.EncryptAES256()`. Update `CreateCCTVRequest`/`UpdateCCTVRequest` di `handlers/cctv.go`. Exclude `rtsp_password` dari response JSON. Unit test `utils/rtsp_test.go`. | ✅ Selesai |
+| **Infra** | Agent-Infra | **9.2** Infrastruktur MediaMTX Docker | File `mediamtx.yml` (RTSP→WebRTC relay, `sourceOnDemand: yes`, `protocols: [tcp]`, REST API `:9997`). Service `mediamtx` di `docker-compose.yml` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU / 1024M, health check, port UDP `8189`). Nginx location block `/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`. Upstream `sigap_mediamtx`. Dependency nginx→mediamtx. `docker compose config --quiet` PASS. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 20:** Fondasi streaming CCTV selesai.
+- **Backend (Task 9.1, `0.43.0`)**: model `CCTV` bertambah field `channel_port` (int), `rtsp_password` (text, AES-256 encrypted), `stream_enabled` (bool, default false); migrasi `000004_add_cctv_streaming.up/down.sql`; util `utils/rtsp.go` (tipe `StreamType` `MainStream=1`/`SubStream=2`, fungsi `BuildRTSPURL`, `BuildStreamPath`, `GetRTSPPort`) + unit test `utils/rtsp_test.go`; `CreateCCTVRequest`/`UpdateCCTVRequest` diperbarui; `rtsp_password` di-exclude dari response JSON; konfigurasi NVR global di `.env` (`RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL`).
+- **Infra (Task 9.2)**: file `mediamtx.yml`; service `mediamtx` di `docker-compose.yml` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU/1024M, health check, UDP `8189`); `nginx/nginx.conf` upstream `sigap_mediamtx` + location `/stream/*` → `mediamtx:8889` dan `/hls/*` → `mediamtx:8888`.
+
+Detail: `backend/changelog.md` [0.43.0] · `docs/changelog.md` [1.28.28].
 
 #### Verifikasi Sprint 20
 

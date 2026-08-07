@@ -171,6 +171,7 @@ services:
     depends_on:
       - api
       - frontend
+      - mediamtx
     networks:
       sigap_network:
         # IP statis untuk daftar trusted proxy backend (lihat .env.docker →
@@ -222,6 +223,42 @@ services:
         condition: service_healthy
     networks:
       - sigap_network
+
+  # ==========================================
+  # Service 7: MediaMTX — RTSP to WebRTC Proxy (Task 9.2)
+  # ==========================================
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    container_name: sigap_mediamtx
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8189:8189/udp"
+    environment:
+      - MTX_PROTOCOLS=tcp
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    mem_limit: 1024M
+    cpus: '2.0'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9997/v3/config/global/get"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      sigap_network:
+        ipv4_address: 172.28.0.11
 
 # ==========================================
 # Named Volumes
