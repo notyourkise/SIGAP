@@ -36,6 +36,9 @@ Thumbs.db
 # Backup runtime (Task 7.3) — hasil backup db/uploads, bukan aset repo
 /backups/
 
+# Docker secrets (Task 7.5) — file secret lokal JANGAN pernah di-commit
+/secrets/
+
 # TLS Certificates (private keys jangan pernah di-commit)
 /nginx/certs/*.crt
 /nginx/certs/*.key

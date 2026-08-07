@@ -38,6 +38,12 @@ RUN apk add --no-cache ca-certificates tzdata
 # Set timezone default ke Asia/Makassar (WITA) agar log konsisten
 ENV TZ=Asia/Makassar
 
+# --- Container Hardening (Task 7.5): non-root user ---
+# Buat user sistem non-root 'sigap' untuk menjalankan aplikasi.
+# Ini memastikan container tidak berjalan sebagai root sehingga
+# mengurangi dampak bila aplikasi berhasil dieksploitasi.
+RUN addgroup -S sigap && adduser -S -G sigap sigap
+
 # Tetapkan direktori kerja aplikasi di dalam runner
 WORKDIR /app
 
@@ -50,11 +56,21 @@ COPY --from=builder /build/docs ./docs
 # Salin aset statis (logo kop surat, dll.) yang dibutuhkan saat runtime
 COPY --from=builder /build/assets ./assets
 
-# Buat direktori uploads untuk lampiran foto pemeliharaan CCTV
-RUN mkdir -p /app/uploads
+# Buat direktori yang perlu ditulis aplikasi saat runtime:
+#   - /app/uploads : lampiran foto pemeliharaan CCTV (bind mount dari host)
+#   - /app/logs    : file log terstruktur (Task 7.6; via tmpfs di compose)
+# Direktori ini dimiliki user 'sigap' agar dapat ditulis oleh user non-root.
+RUN mkdir -p /app/uploads /app/logs \
+    && chown -R sigap:sigap /app/uploads /app/logs
+
+# Pastikan binary dapat dieksekusi (dan dibaca) oleh user non-root.
+RUN chmod +x /app/sigap-api
+
+# Beralih ke user non-root 'sigap' sebelum menjalankan aplikasi.
+USER sigap
 
 # Expose port 3000 yang digunakan aplikasi Fiber
 EXPOSE 3000
 
-# Jalankan binary aplikasi SIGAP
+# Jalankan binary aplikasi SIGAP sebagai user 'sigap'
 CMD ["./sigap-api"]

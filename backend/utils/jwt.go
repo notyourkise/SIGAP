@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"os"
 	"time"
 
 	"sigap-backend/models"
@@ -12,11 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// getJWTSecret mengembalikan kunci JWT dari environment variable.
-// Tidak ada fallback hardcoded: kunci wajib disediakan via env (divalidasi di startup oleh requireEnv).
+// getJWTSecret mengembalikan kunci JWT dari Docker secret (file /run/secrets/jwt_secret)
+// dengan fallback ke environment variable JWT_SECRET.
+// Tidak ada fallback hardcoded: kunci wajib disediakan (divalidasi di startup oleh RequireSecret).
 // Mengembalikan slice kosong jika tidak diset agar signing/validasi gagal alih-alih memakai kunci publik yang diketahui.
 func getJWTSecret() []byte {
-	return []byte(os.Getenv("JWT_SECRET"))
+	return []byte(GetSecret("JWT_SECRET", "/run/secrets/jwt_secret"))
 }
 
 // GenerateToken membuat token JWT baru berisi user_id, role, dan versi token.

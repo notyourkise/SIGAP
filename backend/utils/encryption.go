@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"os"
 	"sync"
 )
 
@@ -19,12 +18,14 @@ var (
 	aesKeyOnce sync.Once
 )
 
-// deriveKey menghasilkan kunci 32-byte (AES-256) menggunakan SHA-256 dari AES_SECRET_KEY env.
-// Secret wajib disediakan via environment (divalidasi di startup oleh requireEnv).
+// deriveKey menghasilkan kunci 32-byte (AES-256) menggunakan SHA-256 dari
+// AES_SECRET_KEY. Secret dibaca dari Docker secret (file /run/secrets/aes_secret_key)
+// dengan fallback ke environment variable AES_SECRET_KEY.
+// Secret wajib disediakan (divalidasi di startup oleh RequireSecret).
 // Hasil derivasi di-cache menggunakan sync.Once untuk efisiensi.
 func deriveKey() []byte {
 	aesKeyOnce.Do(func() {
-		secret := os.Getenv("AES_SECRET_KEY")
+		secret := GetSecret("AES_SECRET_KEY", "/run/secrets/aes_secret_key")
 		hash := sha256.Sum256([]byte(secret))
 		aesKey = hash[:]
 	})

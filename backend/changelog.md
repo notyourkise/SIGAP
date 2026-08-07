@@ -1,5 +1,71 @@
 # Changelog - Backend SIGAP
 
+## [0.40.1] - 2026-08-07
+
+### Infrastruktur: Fix CI — Deprecation Node 20 & errcheck pada test logger
+
+perubahan yang dilakukan: **Memperbaiki error job CI backend: (1) deprecation runtime Node 20 di GitHub Actions (upgrade `golangci/golangci-lint-action@v7` → `@v9` memakai Node runtime 24, dan `node-version` frontend 20 → 24); (2) error lint `errcheck` di `backend/utils/logger_test.go` karena `os.Setenv`/`os.Unsetenv` tidak dicek.**
+
+before: Job CI backend (`Run Go Linter`) memakai `golangci/golangci-lint-action@v7` (runtime Node 20 — sudah di-deprecate di runner, muncul warning/error). Job frontend memakai `node-version: '20'`. Selain itu `TestInitLogger` memakai `os.Setenv`/`os.Unsetenv` tanpa memeriksa error sehingga linter `errcheck` gagal.
+
+after:
+- `.github/workflows/ci.yml`: `golangci/golangci-lint-action@v7` → `@v9` (v9.0.0+ memakai Node runtime 24; `version: v2.12.2` & `working-directory: ./backend` tetap valid). `node-version: '20'` → `'24'` pada job `frontend-ci`.
+- `backend/utils/logger_test.go`: ganti `os.Setenv`/`os.Unsetenv` dengan `t.Setenv("LOG_LEVEL", "info")` (idiomatik, auto-cleanup, mem-fail test bila gagal) dan hapus import `os` yang tak terpakai.
+- Verifikasi lokal: `golangci-lint run ./...` → **0 issues**; `go build`, `go test ./... -count=1`, `go vet` → PASS.
+
+timestamp: 2026-08-07 14:20 WITA
+kategori: Kecil, Infrastruktur CI
+file yang diubah:
+- .github/workflows/ci.yml
+- backend/utils/logger_test.go
+- backend/changelog.md
+alasan perubahan: Node 20 sudah di-deprecate di GitHub Actions runner (github.blog/changelog/2025-09-19); gunakan action/runtime terbaru (Node 24) dan perbaiki `errcheck` pada test agar CI backend tetap hijau.
+
+## [0.40.0] - 2026-08-07
+
+### Infrastruktur: Container Hardening (Task 7.5) & Logging Terstruktur (Task 7.6)
+
+perubahan yang dilakukan: **Mengeraskan container produksi (non-root user, read-only rootfs + tmpfs, drop capabilities, resource limits, Docker secrets untuk DB_PASSWORD/JWT_SECRET/AES_SECRET_KEY) dan meningkatkan observabilitas log (rotasi via lumberjack, level dari LOG_LEVEL, format JSON konsisten).**
+
+before: Container api berjalan sebagai root tanpa batasan resource/capability dan tanpa read-only rootfs; secret (DB_PASSWORD, JWT_SECRET, AES_SECRET_KEY) dikirim sebagai env var sehingga terexpose di `docker inspect`/proses env. Logger menulis ke satu file `logs/server.log` tanpa rotasi (berisiko membengkak) dan level log tidak bisa dikonfigurasi.
+
+after:
+- `backend/Dockerfile`: user non-root `sigap` (`addgroup -S sigap && adduser -S -G sigap sigap`); kepemilikan `/app/uploads` & `/app/logs` oleh `sigap`; `USER sigap` sebelum `CMD`; `chmod +x` binary.
+- `docker-compose.yml` (service `api`): `read_only: true` + tmpfs `/tmp` & `/app/logs`; `cap_drop: [ALL]`; resource limits (`deploy.resources.limits` cpus 1.0 / mem 512M + `mem_limit`/`cpus` untuk kompatibilitas lokal); Docker secrets `db_password`/`jwt_secret`/`aes_secret_key` dari `./secrets/*` di-mount ke `/run/secrets/`; env `LOG_LEVEL`; `nginx` diberi resource limits.
+- `backend/utils/secrets.go` (baru): `GetSecret(env, file)` — baca file `/run/secrets/<nama>` bila ada (trim whitespace) dengan fallback ke env var; `RequireSecret` versi fail-fast (fatal bila kosong, tanpa fallback hardcoded).
+- Wiring secret: `config/database.go` `databaseDSN()` → `utils.GetSecret("DB_PASSWORD", "/run/secrets/db_password")`; `utils/jwt.go` `getJWTSecret()` → `GetSecret("JWT_SECRET", "/run/secrets/jwt_secret")`; `utils/encryption.go` `deriveKey()` → `GetSecret("AES_SECRET_KEY", "/run/secrets/aes_secret_key")`; `main.go` → `utils.RequireSecret(...)` menggantikan `requireEnv`.
+- `backend/go.mod`/`go.sum`: `gopkg.in/natefinch/lumberjack.v2 v2.2.1`.
+- `backend/utils/logger.go`: `parseLogLevel(env LOG_LEVEL, default info)`; file core memakai `lumberjack.Logger` (`MaxSize 100 MB`, `MaxBackups 5`, `MaxAge 30 hari`, `Compress true`); level diterapkan konsisten di core file (JSON) & console; file encoder tetap JSON.
+- Konsistensi logging: `middleware/logger.go`, `utils/audit.go`, `middleware/recovery.go` sudah memakai `utils.Log` terstruktur (JSON) — diverifikasi tanpa `fmt.Println`/`log.Printf`.
+- Test: `utils/secrets_test.go` (baru: file menang atas env, fallback env, kosong bila keduanya hilang, trim whitespace); `utils/logger_test.go` (baru: `parseLogLevel` valid/invalid/empty/case-insensitive, `InitLogger` non-nil).
+- Env docs: `.env.example`, `backend/.env.docker.example` (LOG_LEVEL + catatan secrets); `.gitignore` tambah `/secrets/`.
+
+timestamp: 2026-08-07 13:40 WITA
+kategori: Sedang, Backend & Infrastruktur
+file yang diubah:
+- backend/Dockerfile
+- docker-compose.yml
+- backend/utils/secrets.go
+- backend/utils/secrets_test.go
+- backend/utils/logger.go
+- backend/utils/logger_test.go
+- backend/config/database.go
+- backend/utils/jwt.go
+- backend/utils/encryption.go
+- backend/main.go
+- backend/go.mod
+- backend/go.sum
+- backend/changelog.md
+- .env.example
+- backend/.env.docker.example
+- .gitignore
+- docs/changelog.md
+- docs/ROADMAP.md
+- docs/plan.md
+- docs/TESTING.md
+- docs/AGENTS.md
+alasan perubahan: Task 7.5 & 7.6 ROADMAP (asal Fase 4.7) — container hardening (non-root, read-only, cap_drop, resource limits, secrets) dan observabilitas log (rotasi + level) wajib sebelum go-live untuk memperkecil permukaan serangan dan memastikan log tidak membengkak serta mudah diparsing.
+
 ## [0.39.0] - 2026-08-07
 
 ### Infrastruktur: Monitoring & Alerting (Task 7.4)

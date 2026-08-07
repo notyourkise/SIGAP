@@ -28,7 +28,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa dilebur ke Fase 7 |
 | 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
-| 7 | Kesiapan Produksi | 2/6 | 🚧 Sedang berjalan |
+| 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 0/4 | ⬜ Belum |
 
 > **Urutan pengerjaan:**
@@ -225,7 +225,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Memastikan sistem siap untuk **operasi nyata (go-live)**. Menyerap sisa Fase 4 (4.3–4.7) dengan
 > scope yang disesuaikan, ditambah pengerasan baru yang kritis untuk deployment produksi.
-> **Status: 🚧 SEDANG BERJALAN** — Task 7.1–7.4 selesai (2026-08-06/07); 7.5–7.6 belum dikerjakan.
+> **Status: ✅ SELESAI** — seluruh Task 7.1–7.6 selesai (2026-08-06/07).
 > Fase 7 bisa dikerjakan **paralel** dengan Fase 6 (infrastruktur vs fitur).
 
 ### Task (berurutan — kerjakan dari atas ke bawah)
@@ -236,8 +236,8 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 7.2 | Redis untuk Rate-Limit & Blacklist | Container Redis 7 Alpine di `docker-compose.yml` (volume `redis_data`, health check adaptif, port tidak dipublish); `config.ConnectRedis()` dari env `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` (default `redis:6379`); blacklist via interface `TokenBlacklist` → Redis SET (`SADD`/`SISMEMBER`/`SREM`) + TTL sesuai sisa masa hidup token (persisten lintas restart, tanpa cleanup goroutine); rate limiter fixed-window kustom memakai Redis `INCR`/`EXPIRE` key `limiter:{ip}:{endpoint}`; graceful fallback in-memory saat Redis tidak tersedia (LOG WARNING, bukan fail-fast); unit test kontrak interface (mock `redisCommander` + in-memory) & limiter (key format, window reset, isolasi key). Branch: `feature/redis-integration` | Sedang | Fase 4.4 | ✅ Selesai (2026-08-06) — build/test/vet PASS; uji live Redis 7: 12 cek PASS termasuk blacklist persisten setelah restart (client baru); `docker compose config` valid |
 | 7.3 | Backup Otomatis & Restore | Skrip `scripts/backup.sh`: `pg_dump` database + tar uploads → simpan dengan rotasi (7 hari); skrip `scripts/restore.sh` untuk pemulihan. Cron job di container atau host. Dokumentasi prosedur backup & disaster recovery di `docs/BACKUP.md`. | Sedang | Fase 4.5 | ✅ Selesai (2026-08-07, branch `feature/backup-restore`) — `backup.sh` (pg_dump→gzip + tar uploads + rotasi 7 hari), `restore.sh` (drop/recreate DB + uploads), container `backup` (cron dcron, `postgres:15-alpine`, volume `backups_data`), opsi cron host di `docs/BACKUP.md`, `docker compose config` valid & `bash -n` lulus |
 | 7.4 | Monitoring & Alerting | Endpoint `/api/metrics` (Prometheus format): request count, latency histogram, error rate, DB pool stats, WebSocket connections, upload storage usage. `docker-compose.yml` tambah Prometheus + Grafana (opsional). Health check diperluas: cek Redis, disk space upload. | Sedang | Fase 4.6 | ✅ Selesai (2026-08-07, branch `feature/monitoring`) — collector Prometheus tanpa library pihak ketiga (`monitoring`): counter `sigap_http_requests_total{method,path,status}`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`; middleware `metrics.go`; `GET /api/metrics` publik text/plain; health diperluas (response time DB, Redis, ukuran uploads); `monitoring/prometheus` + `docker-compose.override.yml` (Prometheus & Grafana opsional); build/test/vet + `docker compose config` valid |
-| 7.5 | Container Hardening | Dockerfile non-root user; `docker-compose.yml` resource limits (CPU/memory); read-only rootfs; drop capabilities; secret management via Docker secrets (bukan env file). | Kecil | Fase 4.7 | ⬜ Belum |
-| 7.6 | Logging Terstruktur & Rotasi | Zap logger memakai `lumberjack` untuk rotasi file log otomatis (maks 100 MB/file, 30 hari retensi, 5 backup); format JSON untuk kemudahan parsing; log level konfigurasi via env (`LOG_LEVEL`). | Kecil | Baru | ⬜ Belum |
+| 7.5 | Container Hardening | Dockerfile non-root user; `docker-compose.yml` resource limits (CPU/memory); read-only rootfs; drop capabilities; secret management via Docker secrets (bukan env file). | Kecil | Fase 4.7 | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — `backend/Dockerfile` non-root `USER sigap` + kepemilikan dir uploads/logs; `api` `read_only: true` + tmpfs `/tmp` & `/app/logs`, `cap_drop: [ALL]`, resource limits (`cpus`/`mem_limit`), Docker secrets `DB_PASSWORD`/`JWT_SECRET`/`AES_SECRET_KEY` di `/run/secrets`; Go membaca secret via file dengan fallback env (`utils/secrets.go`); `docker compose config` valid & build/test/vet PASS |
+| 7.6 | Logging Terstruktur & Rotasi | Zap logger memakai `lumberjack` untuk rotasi file log otomatis (maks 100 MB/file, 30 hari retensi, 5 backup); format JSON untuk kemudahan parsing; log level konfigurasi via env (`LOG_LEVEL`). | Kecil | Baru | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — `lumberjack.v2 v2.2.1` di `go.mod`; `utils/logger.go` rotasi (100 MB/file, 5 backup, 30 hari, gzip) + level dari `LOG_LEVEL` (default info) diterapkan konsisten di file & console; log JSON; test `parseLogLevel` & `InitLogger`; build/test/vet PASS |
 
 ### Alasan Urutan
 
@@ -254,8 +254,8 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 - Skrip backup berjalan (`scripts/backup.sh`) dan restore berhasil di environment bersih
   (`scripts/restore.sh`); verifikasi end-to-end di `docs/BACKUP.md` bagian 7.
 - Endpoint `/api/metrics` mengembalikan data Prometheus valid (format text exposition, `text/plain; version=0.0.4`), terverifikasi unit test di `backend/monitoring/metrics_test.go` & `backend/middleware/metrics_test.go`.
-- Container berjalan sebagai non-root; secret tidak terexpose di `docker inspect`.
-- Log file ter-rotate dan terbaca di format JSON.
+- Container berjalan sebagai non-root (`USER sigap`); rootfs read-only dengan tmpfs; secret tidak terexpose di `docker inspect` (dibaca dari `/run/secrets/...` via `utils/secrets.go`).
+- Log file ter-rotate (lumberjack 100 MB/file, 5 backup, 30 hari) dan terbaca di format JSON; level via `LOG_LEVEL`.
 
 ---
 

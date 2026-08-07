@@ -96,7 +96,9 @@ jobs:
         working-directory: ./backend
 
       - name: Run Go Linter
-        uses: golangci/golangci-lint-action@v7
+        # v9 menggunakan Node runtime 24 (Node 20 sudah di-deprecate di runner
+        # GitHub Actions — lihat github.blog/changelog/2025-09-19). Fix CI.
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: ./backend
@@ -114,7 +116,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 20 sudah di-deprecate di GitHub Actions; gunakan Node 24
+          # (runtime default baru) yang didukung penuh oleh Next.js 16.
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 

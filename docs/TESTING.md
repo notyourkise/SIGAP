@@ -61,8 +61,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `monitoring` | `metrics_test.go` (Task 7.4) | counter `sigap_http_requests_total{method,path,status}`, histogram kumulatif (bucket le + _sum/_count), HELP/TYPE untuk semua metrik, gauge (DB pool, WS aktif, upload storage), empty state, `Reset`, escape label, format angka tetap (tanpa eksponensial) |
 | `middleware` | `metrics_test.go` (Task 7.4) | observasi request (counter & count), exclude endpoint `/api/metrics`, pencatatan status non-200, Content-Type `text/plain` |
 | `handlers` | `health_test.go` (Task 7.4, diperluas) | HealthCheck Connected, field baru `db_response_time_ms`, `redis_status=Disabled`, `uploads{status,path,size_bytes}`, `dirSize` (folder tak ada → 0, jumlah ukuran file) |
+| `utils` | `secrets_test.go` (Task 7.5) | `GetSecret`: file `/run/secrets` menang atas env var, fallback ke env bila file tak ada, kosong bila keduanya hilang, trim whitespace file |
+| `utils` | `logger_test.go` (Task 7.6) | `parseLogLevel` (valid, invalid/empty → `info`, case-insensitive), `InitLogger` menghasilkan `Log` non-nil |
 
-**Total: 41 file test** (8 utils, 5 middleware, 20 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
+**Total: 43 file test** (10 utils, 5 middleware, 20 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
 ---
 

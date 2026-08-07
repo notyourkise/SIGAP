@@ -41,9 +41,11 @@ func main() {
 		_ = utils.Log.Sync() // Flush buffer log ke file
 	}()
 
-	// Validasi secret wajib sebelum server berjalan (tanpa fallback hardcoded)
-	requireEnv("JWT_SECRET")
-	requireEnv("AES_SECRET_KEY")
+	// Validasi secret wajib sebelum server berjalan (tanpa fallback hardcoded).
+	// Bila Docker secret tersedia di /run/secrets/..., nilainya dipakai;
+	// selain itu fallback ke environment variable. Fatal bila keduanya kosong.
+	utils.RequireSecret("JWT_SECRET", "/run/secrets/jwt_secret")
+	utils.RequireSecret("AES_SECRET_KEY", "/run/secrets/aes_secret_key")
 
 	// 1. Eksekusi Koneksi Database
 	config.ConnectDB()
@@ -276,13 +278,6 @@ func main() {
 	}
 
 	utils.Log.Info("👋 Server SIGAP berhasil dimatikan secara bersih.")
-}
-
-// requireEnv memastikan environment variable wajib tersedia; fatal jika kosong.
-func requireEnv(name string) {
-	if os.Getenv(name) == "" {
-		utils.Log.Fatalf("❌ Environment variable wajib tidak terisi: %s", name)
-	}
 }
 
 // TestPanic adalah handler pengujian sementara untuk memverifikasi fungsionalitas auto-recovery
