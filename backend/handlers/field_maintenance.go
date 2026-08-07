@@ -40,10 +40,49 @@ type FieldImageItem struct {
 }
 
 type CreateFieldMaintenanceRequest struct {
-	CCTVID string           `json:"cctv_id" validate:"required,uuid4"`
-	Notes  string           `json:"notes" validate:"omitempty,max=1000"`
-	Checks []FieldCheckItem `json:"checks" validate:"required,min=1,dive"`
-	Images []FieldImageItem `json:"images" validate:"required,min=1,max=5,dive"`
+	CCTVID         string           `json:"cctv_id" validate:"required,uuid4"`
+	Notes          string           `json:"notes" validate:"omitempty,max=1000"`
+	CheckLatitude  string           `json:"check_latitude"`
+	CheckLongitude string           `json:"check_longitude"`
+	Checks         []FieldCheckItem `json:"checks" validate:"required,min=1,dive"`
+	Images         []FieldImageItem `json:"images" validate:"required,min=1,max=5,dive"`
+}
+
+// validateCoordinates memvalidasi pasangan koordinat geotag (opsional).
+// Bila keduanya kosong maka geotag diabaikan (diizinkan). Bila salah satu
+// atau keduanya diisi, keduanya harus berupa angka valid: latitude dalam
+// rentang [-90, 90] dan longitude dalam rentang [-180, 180].
+func validateCoordinates(lat, lng string) error {
+	lat = strings.TrimSpace(lat)
+	lng = strings.TrimSpace(lng)
+
+	// Keduanya kosong → geotag opsional, tidak perlu divalidasi.
+	if lat == "" && lng == "" {
+		return nil
+	}
+
+	// Salah satu diisi tetapi yang lain kosong → tidak lengkap.
+	if lat == "" || lng == "" {
+		return errors.New("check_latitude dan check_longitude harus diisi bersamaan (keduanya wajib atau keduanya kosong)")
+	}
+
+	latVal, err := strconv.ParseFloat(lat, 64)
+	if err != nil {
+		return errors.New("check_latitude harus berupa angka yang valid")
+	}
+	if latVal < -90 || latVal > 90 {
+		return errors.New("check_latitude harus berada dalam rentang -90 sampai 90")
+	}
+
+	lngVal, err := strconv.ParseFloat(lng, 64)
+	if err != nil {
+		return errors.New("check_longitude harus berupa angka yang valid")
+	}
+	if lngVal < -180 || lngVal > 180 {
+		return errors.New("check_longitude harus berada dalam rentang -180 sampai 180")
+	}
+
+	return nil
 }
 
 // CreateFieldMaintenance mencatat hasil pengecekan lapangan teknisi (Admin & Teknisi)
@@ -86,6 +125,15 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Validasi input gagal",
 			"errors":  errs,
+		})
+	}
+
+	// Validasi koordinat geotag (opsional). Menghasilkan 400 bila koordinat
+	// diisi tetapi tidak valid secara format maupun rentang.
+	if err := validateCoordinates(req.CheckLatitude, req.CheckLongitude); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
 		})
 	}
 
@@ -132,11 +180,13 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 
 	now := time.Now()
 	entry := models.FieldMaintenance{
-		CCTVID:        cctvUUID,
-		TechnicianID:  techUUID,
-		OverallStatus: overall,
-		Notes:         strings.TrimSpace(req.Notes),
-		CompletedAt:   &now,
+		CCTVID:         cctvUUID,
+		TechnicianID:   techUUID,
+		OverallStatus:  overall,
+		Notes:          strings.TrimSpace(req.Notes),
+		CheckLatitude:  strings.TrimSpace(req.CheckLatitude),
+		CheckLongitude: strings.TrimSpace(req.CheckLongitude),
+		CompletedAt:    &now,
 	}
 
 	// Simpan header + checklist + gambar dalam satu transaksi agar konsisten

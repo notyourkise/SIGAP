@@ -1,5 +1,35 @@
 # Changelog - Backend SIGAP
 
+## [0.42.0] - 2026-08-07
+
+### Fitur: Geotag Pengecekan Lapangan (Task 8.4)
+
+perubahan yang dilakukan: **Menambahkan pencatatan koordinat GPS (geotag) pada pengecekan lapangan — kolom `check_latitude`/`check_longitude` pada `FieldMaintenance` (migrasi 000003), `CreateFieldMaintenance` menerima & memvalidasi koordinat opsional, dan respons list/detail menyertakan field geotag.**
+
+before: Catatan pengecekan lapangan tidak menyimpan posisi GPS teknisi, sehingga admin tidak bisa memverifikasi bahwa teknisi benar-benar berada di lokasi CCTV saat melakukan pengecekan.
+
+after:
+- `models/field_maintenance.go`: tambah `CheckLatitude`/`CheckLongitude` (string nullable, `json:"check_latitude,omitempty"`).
+- `migrations/000003_add_field_maintenance_geotag.up.sql`/`.down.sql`: `ALTER TABLE field_maintenances ADD/DROP COLUMN check_latitude/check_longitude varchar(30) NULL`.
+- `handlers/field_maintenance.go`: `CreateFieldMaintenanceRequest` + `check_latitude`/`check_longitude`; helper `validateCoordinates(lat, lng)` — keduanya wajib bersamaan, format angka valid, lat rentang -90..90, lng -180..180; bila kosong → di-skip (opsional); nilai disimpan pada record.
+- Respons `GetFieldMaintenanceList` & `GetFieldMaintenanceDetail` otomatis menyertakan `check_latitude`/`check_longitude` via model.
+- Test: `handlers/field_maintenance_test.go` — `TestCreateFieldMaintenance_InvalidLatitude` (400), `TestCreateFieldMaintenance_InvalidLongitude` (400), `TestCreateFieldMaintenance_WithValidGeotag` (201); update reload SELECT agar mencakup kolom baru.
+- Swagger: `swag init` (request struct kini memuat field geotag).
+
+timestamp: 2026-08-07 18:30 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/models/field_maintenance.go
+- backend/migrations/000003_add_field_maintenance_geotag.up.sql
+- backend/migrations/000003_add_field_maintenance_geotag.down.sql
+- backend/handlers/field_maintenance.go
+- backend/handlers/field_maintenance_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Task 8.4 ROADMAP (Fase 8) — menambah akuntabilitas pengecekan lapangan dengan mencatat posisi GPS teknisi (opsional), sehingga admin dapat memverifikasi teknisi berada di lokasi CCTV; persetujuan lokasi bersifat opsional sehingga tidak menghambat alur kerja.
+
 ## [0.41.1] - 2026-08-07
 
 ### Perbaikan: errcheck pada test push (CI backend)

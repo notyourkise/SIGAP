@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.27] — 2026-08-07 — Geotag Pengecekan Lapangan (Task 8.4) — Fase 8 Selesai
+
+### Perubahan
+
+- **Backend** ([0.42.0]): kolom `check_latitude`/`check_longitude` pada `FieldMaintenance` (migrasi `000003`); `CreateFieldMaintenance` menerima & memvalidasi koordinat opsional (format angka, rentang lat/lng); respons list/detail menyertakan geotag.
+- **Frontend** ([1.35.0]): wizard pengecekan menangkap GPS (indikator "Lokasi tercatat", opsional) & mengirim `check_latitude`/`check_longitude`; admin melihat mini-map `FieldCheckLocationMap` (marker CCTV + Lokasi Pengecekan) di modal detail.
+- **Dokumen**: `docs/manual-test-geotag.md` (baru — manual test blackbox S1–S6 sesuai format manual test lain); ROADMAP Task 8.4 ✅ Selesai (**Fase 8 = 4/4 SELESAI**); plan Sprint 19 + rancangan teknis.
+- Verifikasi: `go build`/`go test`/`go vet` + `golangci-lint` PASS; `npm run lint` (0 error)/`npm run build` PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Kecil | Detail: `backend/changelog.md` [0.42.0], `frontend/changelog.md` [1.35.0]
+
 ## [1.28.26] — 2026-08-07 — Notifikasi Push Browser (Task 8.3)
 
 ### Perubahan

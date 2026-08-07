@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.35.0] - 2026-08-07
+
+### Fitur: Geotag Pengecekan Lapangan (Task 8.4)
+
+perubahan yang dilakukan: **Menambahkan pencatatan posisi GPS pada wizard pengecekan lapangan (indikator "Lokasi tercatat", opsional) dan mini-map lokasi pengecekan untuk admin (marker CCTV + marker Lokasi Pengecekan).**
+
+before: Teknisi tidak mengirim koordinat saat pengecekan; admin tidak bisa memverifikasi lokasi pengecekan di peta.
+
+after:
+- `src/components/FieldMaintenanceModal.tsx`: saat wizard mode `field` dibuka, `navigator.geolocation.getCurrentPosition` (guard `'geolocation' in navigator`, timeout 10s); simpan `coords`; indikator "Lokasi tercatat" / "Lokasi belum tercatat (opsional)"; kirim `check_latitude`/`check_longitude` pada body `field` (opsional, di-omit bila null); mode `complete` tidak menangkap lokasi.
+- `src/components/FieldCheckLocationMap.tsx` (baru): mini-map react-leaflet — marker CCTV (biru) + marker "Lokasi Pengecekan" (oranye), legend, fallback pusat IKN.
+- `src/app/field-maintenance/page.tsx`: interface `FieldMaintenance` + `check_latitude`/`check_longitude` & `cctv.latitude|longitude`; bagian "Lokasi Pengecekan" di modal detail (render mini-map via `dynamic(..., { ssr: false })` bila koordinat ada, else "Tidak ada data lokasi").
+
+timestamp: 2026-08-07 18:35 WITA
+kategori: Kecil, Frontend
+file yang diubah:
+- frontend/src/components/FieldMaintenanceModal.tsx
+- frontend/src/components/FieldCheckLocationMap.tsx
+- frontend/src/app/field-maintenance/page.tsx
+- frontend/changelog.md
+alasan perubahan: Task 8.4 ROADMAP (Fase 8) — menambah akuntabilitas pengecekan lapangan dengan mencatat posisi GPS teknisi (opsional) dan menampilkan lokasi pengecekan di peta untuk admin.
+
 ## [1.34.0] - 2026-08-07
 
 ### Fitur: Notifikasi Push Browser (Task 8.3)

@@ -25,6 +25,12 @@ type FieldMaintenance struct {
 	// semua item berstatus ok, selain itu "attention" (perlu tindak lanjut).
 	OverallStatus string `gorm:"type:varchar(20);not null" json:"overall_status"`
 	Notes         string `gorm:"type:text" json:"notes"`
+	// CheckLatitude adalah koordinat latitude lokasi pengecekan lapangan (opsional).
+	// Nil string kosong berarti geotag tidak dilampirkan oleh teknisi.
+	CheckLatitude string `gorm:"type:varchar(30)" json:"check_latitude,omitempty"`
+	// CheckLongitude adalah koordinat longitude lokasi pengecekan lapangan (opsional).
+	// Nil string kosong berarti geotag tidak dilampirkan oleh teknisi.
+	CheckLongitude string `gorm:"type:varchar(30)" json:"check_longitude,omitempty"`
 	CompletedAt   *time.Time `json:"completed_at"`
 	Checks        []FieldMaintenanceCheck `gorm:"foreignKey:FieldMaintenanceID" json:"checks"`
 	Images        []FieldMaintenanceImage `gorm:"foreignKey:FieldMaintenanceID" json:"images"`

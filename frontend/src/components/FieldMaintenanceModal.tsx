@@ -12,6 +12,7 @@ import {
   Wrench,
   ImagePlus,
   FileCheck2,
+  MapPin,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
@@ -104,6 +105,10 @@ export default function FieldMaintenanceModal({
   const [uploading, setUploading] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Koordinat geolokasi saat modal dibuka (hanya untuk mode "field").
+  // Opsional: bila pengguna menolak izin / timeout, nilainya tetap null dan
+  // wizard tetap berjalan tanpa koordinat.
+  const [coords, setCoords] = useState<{ lat: string; lng: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalSteps = FIELD_CHECKLIST.length + 1; // item checklist + tahap foto bukti
@@ -120,6 +125,39 @@ export default function FieldMaintenanceModal({
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [open, onClose]);
 
+  // Tangkap koordinat geolokasi saat wizard dibuka — hanya untuk mode "field"
+  // (pengecekan lapangan spontan). Mode "complete" tidak memerlukan koordinat.
+  useEffect(() => {
+    if (!open || isCompleteMode) return;
+
+    // Guard SSR-safe: pastikan geolokasi tersedia di browser.
+    if (!('geolocation' in navigator)) return;
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          // Simpan koordinat sebagai string dengan presisi wajar (±6 desimal ~ ±11 cm).
+          setCoords({
+            lat: position.coords.latitude.toFixed(6),
+            lng: position.coords.longitude.toFixed(6),
+          });
+        },
+        () => {
+          // Pengguna menolak izin / terjadi error — biarkan coords null (opsional).
+          setCoords(null);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        }
+      );
+    } catch {
+      // Kegagalan tak terduga — jangan sampai merusak wizard.
+      setCoords(null);
+    }
+  }, [open, isCompleteMode]);
+
   const handleClose = () => {
     if (submitting || uploading) return;
     resetState();
@@ -133,6 +171,7 @@ export default function FieldMaintenanceModal({
     setNotes('');
     setSubmitting(false);
     setUploading(false);
+    setCoords(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -228,6 +267,8 @@ export default function FieldMaintenanceModal({
               note: a.note,
             })),
             images: images.map((url) => ({ image_url: url })),
+            // Kirim koordinat geolokasi hanya bila berhasil tercatat (opsional).
+            ...(coords ? { check_latitude: coords.lat, check_longitude: coords.lng } : {}),
           };
 
       const response = await apiRequest(
@@ -380,6 +421,19 @@ export default function FieldMaintenanceModal({
                   Foto ini merupakan tahapan akhir untuk menyelesaikan pengecekan.
                 </p>
               </div>
+
+              {!isCompleteMode && (
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                  <MapPin
+                    className={`h-4 w-4 ${coords ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted'}`}
+                  />
+                  <span className={`text-xs ${coords ? 'font-semibold text-emerald-700 dark:text-emerald-400' : 'text-muted'}`}>
+                    {coords
+                      ? 'Lokasi tercatat'
+                      : 'Lokasi belum tercatat (opsional)'}
+                  </span>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 {images.map((url, i) => (

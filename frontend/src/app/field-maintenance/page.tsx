@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { apiRequest, downloadApiFile } from '@/lib/api';
@@ -27,6 +28,23 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+// Peta mini lokasi pengecekan dimuat secara dinamis (ssr: false) karena
+// komponennya memakai Leaflet yang hanya berjalan di sisi klien (browser).
+const FieldCheckLocationMap = dynamic(
+  () => import('@/components/FieldCheckLocationMap'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[320px] w-full items-center justify-center rounded-2xl border border-border bg-card">
+        <div className="flex items-center gap-3 text-sm font-semibold text-muted">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          Memuat peta lokasi…
+        </div>
+      </div>
+    ),
+  },
+);
+
 interface FieldCheck {
   id: string;
   name: string;
@@ -48,6 +66,8 @@ interface FieldMaintenance {
     nama: string;
     lokasi_area: string;
     status: string;
+    latitude?: string;
+    longitude?: string;
   };
   technician_id: string;
   technician: { id: string; full_name: string; username: string };
@@ -57,6 +77,9 @@ interface FieldMaintenance {
   created_at: string;
   checks: FieldCheck[];
   images: FieldImage[];
+  // Koordinat titik lokasi pengecekan lapangan (dapat kosong)
+  check_latitude?: string;
+  check_longitude?: string;
 }
 
 const STATUS_META = {
@@ -676,6 +699,26 @@ export default function FieldMaintenancePage() {
                 <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background px-4 py-6 text-xs text-muted">
                   <Camera className="h-4 w-4" />
                   Tidak ada foto bukti.
+                </div>
+              )}
+            </div>
+
+            {/* Lokasi Pengecekan — tampil hanya jika koordinat pengecekan tersedia */}
+            <div>
+              <h4 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
+                <MapPin className="h-4 w-4 text-primary" />
+                Lokasi Pengecekan
+              </h4>
+              {detailEntry.check_latitude && detailEntry.check_longitude ? (
+                <FieldCheckLocationMap
+                  cctv={detailEntry.cctv}
+                  checkLatitude={detailEntry.check_latitude}
+                  checkLongitude={detailEntry.check_longitude}
+                />
+              ) : (
+                <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background px-4 py-6 text-xs text-muted">
+                  <MapPin className="h-4 w-4" />
+                  Tidak ada data lokasi.
                 </div>
               )}
             </div>

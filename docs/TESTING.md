@@ -65,6 +65,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `logger_test.go` (Task 7.6) | `parseLogLevel` (valid, invalid/empty → `info`, case-insensitive), `InitLogger` menghasilkan `Log` non-nil |
 | `utils` | `push_test.go` (Task 8.3) | `SendPushToSubscription` meneruskan subscription/payload ke sender mock (VAPID), `SendPush` no-op bila VAPID kosong, kirim ke semua subscription user, format payload JSON |
 | `handlers` | `push_test.go` (Task 8.3) | `SubscribePush` (create, upsert idempotent, validasi 400, unauthorized 401), `UnsubscribePush` (success, missing endpoint 400) |
+| `handlers` | `field_maintenance_test.go` (Task 8.4, diperluas) | `CreateFieldMaintenance` geotag: `check_latitude` di luar rentang → 400, `check_longitude` bukan angka → 400, geotag valid → 201 + koordinat tersimpan |
 
 **Total: 45 file test** (11 utils, 5 middleware, 21 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
