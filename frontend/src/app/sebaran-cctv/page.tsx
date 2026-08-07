@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
 import type { CCTVMapItem } from '@/components/CCTVMap';
+import { MonitorPlay, LayoutGrid, Map as MapIcon } from 'lucide-react';
 
 const CCTVMap = dynamic(() => import('@/components/CCTVMap'), {
   ssr: false,
@@ -17,6 +18,23 @@ const CCTVMap = dynamic(() => import('@/components/CCTVMap'), {
       </div>
     </div>
   ),
+});
+
+// Lazy load StreamGridView hanya ketika dibutuhkan (mode grid aktif) dan hanya di sisi klien.
+const StreamGridView = dynamic(() => import('@/components/StreamGridView'), {
+  ssr: false,
+  loading: () => (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="status" aria-label="Memuat grid streaming CCTV">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="h-64 animate-pulse rounded-2xl border border-border bg-card" />
+      ))}
+    </div>
+  ),
+});
+
+// StreamModal dibuat oleh agent lain — dimuat dinamis agar tidak memberatkan bundle awal.
+const StreamModal = dynamic(() => import('@/components/StreamModal'), {
+  ssr: false,
 });
 
 interface PaginationPayload<T> {
@@ -37,6 +55,8 @@ export default function SebaranCCTVPage() {
   const [health, setHealth] = useState<'Memeriksa' | 'Terhubung' | 'Tidak terhubung'>('Memeriksa');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedCctv, setSelectedCctv] = useState<CCTVMapItem | null>(null);
+  const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
 
   const loadMap = useCallback(async () => {
     setLoading(true);
@@ -81,6 +101,7 @@ export default function SebaranCCTVPage() {
   const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
   const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
   const maintenance = cctvs.filter((item) => isMaintenanceCCTV(item.status)).length;
+  const streamingCount = cctvs.filter((item) => item.stream_enabled === true).length;
 
   return (
     <DashboardLayout>
@@ -105,6 +126,36 @@ export default function SebaranCCTVPage() {
             >
               {loading ? 'Memuat…' : 'Muat ulang'}
             </button>
+            {/* Toggle tampilan Peta / Grid */}
+            <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('map')}
+                aria-label="Tampilan peta"
+                title="Tampilan peta"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  viewMode === 'map' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                <MapIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                aria-label="Tampilan grid"
+                title="Tampilan grid"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  viewMode === 'grid' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Status kamera streaming aktif */}
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600">
+              <MonitorPlay className="h-4 w-4" />
+              <span>{streamingCount} kamera streaming aktif</span>
+            </div>
           </div>
         </header>
 
@@ -150,9 +201,23 @@ export default function SebaranCCTVPage() {
               </div>
             </section>
 
-            <section aria-label="Peta GIS Sebaran CCTV IKN">
-              <CCTVMap cctvs={cctvs} />
-            </section>
+            {viewMode === 'map' ? (
+              <section aria-label="Peta GIS Sebaran CCTV IKN">
+                <CCTVMap
+                  cctvs={cctvs}
+                  onMarkerClick={(cctv) => cctv.stream_enabled && setSelectedCctv(cctv)}
+                />
+              </section>
+            ) : (
+              <section aria-label="Grid streaming CCTV IKN">
+                <StreamGridView
+                  cctvs={cctvs.filter((c) => c.stream_enabled)}
+                  onCctvClick={setSelectedCctv}
+                />
+              </section>
+            )}
+
+            {selectedCctv && <StreamModal cctv={selectedCctv} onClose={() => setSelectedCctv(null)} />}
           </>
         )}
       </div>

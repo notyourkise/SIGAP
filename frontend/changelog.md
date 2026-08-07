@@ -1,5 +1,35 @@
 # Changelog - Frontend SIGAP
 
+## [1.36.0] - 2026-08-07
+
+### Fitur: Streaming CCTV Real-Time (Task 9.4 / 9.5 / 9.6)
+
+perubahan yang dilakukan: **Menambahkan UI streaming CCTV real-time end-to-end: player WHEP (`WHEPPlayer`) untuk menonton video live, modal stream (`StreamModal`), grid multi-stream (`StreamGridView`), integrasi marker CCTV di peta sebaran, serta konfigurasi streaming (channel port, password RTSP, toggle aktifkan) pada Master CCTV untuk admin.**
+
+before: CCTV yang telah diset `stream_enabled`/`channel_port` di backend belum dapat ditonton langsung dari UI; admin tidak dapat melihat/mengonfigurasi parameter streaming pada formulir Master CCTV.
+
+after:
+- `src/components/WHEPPlayer.tsx` (baru): player WHEP untuk video live (indikator 🔴 LIVE, toggle kualitas SD/HD yang me-restart stream).
+- `src/components/StreamModal.tsx` (baru): modal pemutaran stream saat marker CCTV diklik di peta.
+- `src/components/StreamGridView.tsx` (baru): grid view multi-stream; sel tanpa streaming menampilkan placeholder.
+- `src/components/CCTVMap.tsx`: integrasi marker CCTV dengan aksi klik → buka StreamModal untuk CCTV ber-streaming.
+- `src/app/sebaran-cctv/page.tsx`: toggle view Peta/Grid, status bar "N kamera streaming aktif", guard role admin.
+- `src/app/cctv/page.tsx`: interface CCTV + `channel_port`/`stream_enabled`; formulir "Konfigurasi Streaming" (channel port NVR 1–35, password RTSP dengan toggle visibilitas, preview URI sub stream, checkbox aktifkan streaming); kolom ikon "Stream" (MonitorPlay hijau/abu) pada tabel Master CCTV; kirim `channel_port`/`rtsp_password`/`stream_enabled` saat simpan; edit mengisi `channel_port`/`stream_enabled` dari data dan membiarkan `rtsp_password` kosong.
+- `src/lib/api.ts`: tambah label validasi `channel_port`/`rtsp_password`/`stream_enabled` pada `FIELD_LABELS`.
+
+timestamp: 2026-08-07 19:30 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamModal.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/lib/api.ts
+- frontend/changelog.md
+alasan perubahan: Task 9.4/9.5/9.6 ROADMAP (Fase 9) — mewujudkan streaming CCTV real-time yang dapat diakses langsung dari peta sebaran dan grid view bagi admin, dengan dukungan konfigurasi streaming terpadu pada Master CCTV.
+
 ## [1.35.0] - 2026-08-07
 
 ### Fitur: Geotag Pengecekan Lapangan (Task 8.4)

@@ -18,10 +18,13 @@ export interface CCTVMapItem {
   health_score?: number;
   ip_camera?: string;
   ip_nvr?: string;
+  stream_enabled?: boolean;
+  channel_port?: number;
 }
 
 interface CCTVMapProps {
   cctvs: CCTVMapItem[];
+  onMarkerClick?: (cctv: CCTVMapItem) => void;
 }
 
 // Koordinat Pusat IKN Nusantara (KIPP IKN)
@@ -49,9 +52,29 @@ const healthScoreClasses = (score?: number) => {
 };
 
 // Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
-const createCustomMarkerIcon = (healthScore?: number) => {
+// Param tambahan `isStreaming` menambah cincin hijau ganda (double-pulse) sebagai penanda kamera yang sedang streaming.
+const createCustomMarkerIcon = (healthScore?: number, isStreaming?: boolean) => {
   const color = healthScoreColor(healthScore);
   const shadowColor = `${color}66`;
+
+  const streamingRing = isStreaming
+    ? `
+      <div style="
+        position: absolute;
+        inset: -7px;
+        border-radius: 50%;
+        border: 3px solid rgba(16, 185, 129, 0.7);
+        animation: streamPulse 1.6s ease-out infinite;
+      "></div>
+      <div style="
+        position: absolute;
+        inset: -13px;
+        border-radius: 50%;
+        border: 2px solid rgba(16, 185, 129, 0.35);
+        animation: streamPulse 1.6s ease-out 0.6s infinite;
+      "></div>
+    `
+    : '';
 
   const svgHtml = `
     <div style="
@@ -62,6 +85,7 @@ const createCustomMarkerIcon = (healthScore?: number) => {
       align-items: center;
       justify-content: center;
     ">
+      ${streamingRing}
       <div style="
         position: absolute;
         width: 32px;
@@ -101,9 +125,30 @@ const createCustomMarkerIcon = (healthScore?: number) => {
   });
 };
 
-export default function CCTVMap({ cctvs }: CCTVMapProps) {
+// Definisi animasi untuk peta (ring streaming ganda & ping) — dimuat sekali di sisi klien.
+const markerKeyframesStyle = `
+  @keyframes streamPulse {
+    0% { transform: scale(0.6); opacity: 0.9; }
+    70% { transform: scale(1.25); opacity: 0; }
+    100% { transform: scale(1.25); opacity: 0; }
+  }
+  .custom-cctv-marker { background: transparent; border: none; }
+`;
+
+export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Injeksi animasi marker streaming (ring hijau ganda) ke dalam <head> hanya di sisi klien.
+  useEffect(() => {
+    const styleId = 'cctv-map-marker-keyframes';
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      styleEl.textContent = markerKeyframesStyle;
+      document.head.appendChild(styleEl);
+    }
+  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -180,7 +225,15 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
           <Marker
             key={item.id}
             position={[item.lat, item.lng]}
-            icon={createCustomMarkerIcon(item.health_score)}
+            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled)}
+            eventHandlers={{
+              click: () => {
+                // Jika ada handler klik & kamera streaming aktif → buka modal stream, jangan buka Popup.
+                if (onMarkerClick && item.stream_enabled === true) {
+                  onMarkerClick(item);
+                }
+              },
+            }}
           >
             <Tooltip direction="top" offset={[0, -15]} opacity={0.95}>
               <div className="text-xs font-bold font-sans">
@@ -189,7 +242,9 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
               </div>
             </Tooltip>
 
-            <Popup className="cctv-leaflet-popup">
+            {/* Untuk kamera streaming dengan handler klik, Popup tidak dirender agar tidak terbuka saat diklik (buka modal stream). */}
+            {!(onMarkerClick && item.stream_enabled === true) && (
+              <Popup className="cctv-leaflet-popup">
               <div className="p-1 max-w-[260px] space-y-3 font-sans text-foreground">
                 <div className="flex items-start justify-between gap-2 border-b border-border pb-2">
                   <div>
@@ -235,7 +290,8 @@ export default function CCTVMap({ cctvs }: CCTVMapProps) {
                   </Link>
                 </div>
               </div>
-            </Popup>
+              </Popup>
+            )}
           </Marker>
         ))}
       </MapContainer>

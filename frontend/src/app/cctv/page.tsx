@@ -23,6 +23,8 @@ import {
   X, 
   AlertTriangle, 
   Eye, 
+  EyeOff,
+  MonitorPlay,
   Printer,
   LoaderCircle,
   ClipboardCheck,
@@ -50,6 +52,8 @@ interface CCTV {
   qr_payload: string;
   health_score: number;
   created_at: string;
+  channel_port: number;
+  stream_enabled: boolean;
 }
 
 interface QRPrintItem {
@@ -110,6 +114,9 @@ export default function CCTVPage() {
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
+  // State untuk toggle visibilitas password RTSP pada form streaming
+  const [showRtspPassword, setShowRtspPassword] = useState(false);
+
   // Form State
   const [formData, setFormData] = useState({
     kode_cctv: '',
@@ -126,7 +133,10 @@ export default function CCTVPage() {
     status: 'ACTIVE',
     ip_nvr: '',
     ip_camera: '',
-    keterangan: ''
+    keterangan: '',
+    channel_port: 0,
+    rtsp_password: '',
+    stream_enabled: false
   });
 
   // Scanner State
@@ -346,7 +356,11 @@ export default function CCTVPage() {
         status: toStatusValue(cctv.status),
         ip_nvr: cctv.ip_nvr || '',
         ip_camera: cctv.ip_camera || '',
-        keterangan: cctv.keterangan || ''
+        keterangan: cctv.keterangan || '',
+        // rtsp_password tidak pernah dikembalikan API — selalu dikosongkan; hanya terisi bila user mengetik ulang
+        channel_port: typeof cctv.channel_port === 'number' ? cctv.channel_port : 0,
+        rtsp_password: '',
+        stream_enabled: !!cctv.stream_enabled
       });
     } else {
       setCurrentCCTV(null);
@@ -365,7 +379,10 @@ export default function CCTVPage() {
         status: 'aktif',
         ip_nvr: '',
         ip_camera: '',
-        keterangan: ''
+        keterangan: '',
+        channel_port: 0,
+        rtsp_password: '',
+        stream_enabled: false
       });
     }
     setIsFormModalOpen(true);
@@ -963,6 +980,7 @@ export default function CCTVPage() {
                     <th className="px-5 py-3.5">Lokasi</th>
                     <th className="px-5 py-3.5">Status</th>
                     <th className="px-5 py-3.5">Kesehatan</th>
+                    <th className="px-5 py-3.5 text-center">Stream</th>
                     <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
@@ -1056,6 +1074,12 @@ export default function CCTVPage() {
                         >
                           {normalizedHealthScore(cctv.health_score)}
                         </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <MonitorPlay
+                          className={`mx-auto h-4 w-4 ${cctv.stream_enabled ? 'text-emerald-500' : 'text-muted/40'}`}
+                          aria-label={cctv.stream_enabled ? 'Streaming aktif' : 'Streaming nonaktif'}
+                        />
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -1286,6 +1310,65 @@ export default function CCTVPage() {
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-semibold text-muted">Keterangan</label>
                       <textarea value={formData.keterangan} onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Tambahkan kondisi atau informasi teknis CCTV" rows={3} className="w-full resize-none rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                    </div>
+
+                    {/* Konfigurasi Streaming */}
+                    <div className="space-y-3 rounded-xl border border-border bg-background/40 p-4 md:col-span-2">
+                      <p className="text-sm font-bold text-foreground">Konfigurasi Streaming</p>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted">Channel Port NVR</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={35}
+                          value={formData.channel_port}
+                          onChange={(e) => setFormData({ ...formData, channel_port: Number(e.target.value) || 0 })}
+                          placeholder="Nomor channel (1-35)"
+                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted">Password RTSP</label>
+                        <div className="relative">
+                          <input
+                            type={showRtspPassword ? 'text' : 'password'}
+                            value={formData.rtsp_password}
+                            onChange={(e) => setFormData({ ...formData, rtsp_password: e.target.value })}
+                            placeholder="Password akses NVR"
+                            className="w-full rounded-lg border border-input-border bg-input px-3 py-2 pr-10 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRtspPassword((v) => !v)}
+                            aria-label={showRtspPassword ? 'Sembunyikan password RTSP' : 'Tampilkan password RTSP'}
+                            title={showRtspPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted transition-colors hover:text-foreground"
+                          >
+                            {showRtspPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted">Preview URI</label>
+                        <p className="w-full truncate rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-muted" title={`rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`}>
+                          {formData.channel_port > 0
+                            ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
+                            : 'Isi channel port untuk melihat URI RTSP (sub stream).'}
+                        </p>
+                      </div>
+
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={formData.stream_enabled}
+                          onChange={(e) => setFormData({ ...formData, stream_enabled: e.target.checked })}
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        Aktifkan Streaming
+                      </label>
                     </div>
                   </div>
                 </details>
