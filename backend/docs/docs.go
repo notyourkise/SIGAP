@@ -3804,6 +3804,12 @@ const docTemplate = `{
                 "cctv_id": {
                     "type": "string"
                 },
+                "check_latitude": {
+                    "type": "string"
+                },
+                "check_longitude": {
+                    "type": "string"
+                },
                 "checks": {
                     "type": "array",
                     "minItems": 1,

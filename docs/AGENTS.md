@@ -99,7 +99,9 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `src/app/sebaran-cctv/page.tsx` — Halaman Peta Sebaran CCTV: visualisasi lokasi perangkat CCTV di kawasan IKN beserta ringkasan status (total/aktif/pemeliharaan), diperbarui real-time via WebSocket.
 - `src/app/cctv/page.tsx` — Halaman Master Data CCTV. Berisi tabel detail lengkap termasuk badge skor kesehatan, _checkbox_ untuk seleksi massal (bulk select), modal penampil QR Code, fitur cetak QR, pemindai QR berbasis kamera, fitur _import_ via Excel, dan _download template_.
 - `src/app/maintenance/page.tsx` — Halaman Log Pemeliharaan. Berisi tabel data historis, filter, CRUD modal, fitur unggah bukti foto pemeliharaan, penugasan ke teknisi (tombol "Tugaskan"), dan pengalihan tugas (tombol "Alihkan" untuk log `ongoing`, Fase 5.3 — menampilkan peringatan nama teknisi saat ini sebelum submit).
-- `src/app/field-maintenance/page.tsx` — Halaman Pengecekan Lapangan: daftar dan modal detail checklist/foto bukti, serta tombol "Cetak Laporan" untuk Admin yang mengunduh PDF per-record.
+- `src/app/field-maintenance/page.tsx` — Halaman Pengecekan Lapangan: daftar dan modal detail checklist/foto bukti, tombol "Cetak Laporan" untuk Admin yang mengunduh PDF per-record, serta (Task 8.4) bagian "Lokasi Pengecekan" berupa mini-map bila koordinat tersedia.
+- `src/components/FieldCheckLocationMap.tsx` (Task 8.4) — mini-map react-leaflet yang menampilkan marker CCTV (biru) + marker "Lokasi Pengecekan" (oranye) untuk membandingkan posisi teknisi dengan CCTV.
+- `src/components/FieldMaintenanceModal.tsx` — wizard pengecekan lapangan; sejak Task 8.4 menangkap GPS (`navigator.geolocation`, opsional) dengan indikator "Lokasi tercatat" dan mengirim `check_latitude`/`check_longitude`.
 - `src/app/schedules/page.tsx` — Halaman Jadwal Pemeliharaan (Fase 5.4, khusus admin): CRUD jadwal berulang, toggle aktif/nonaktif, filter status, paginasi; menu sidebar "Jadwal".
 - `src/app/kinerja-teknisi/page.tsx` — Dashboard Kinerja Teknisi (Fase 6.2, khusus admin): filter rentang tanggal, chart completion rate SVG, tabel ranking sortable, dan metrik overdue/field-check/quality.
 - `src/app/ringkasan/page.tsx` — Timeline Ringkasan Operasional (Fase 6.4, khusus admin): kartu per tanggal, metrik tugas/field-check/perubahan status, summary naratif, dan paginasi.
@@ -201,6 +203,7 @@ Menyimpan jadwal pemeliharaan berulang:
 Menyimpan satu catatan pengecekan CCTV oleh teknisi di lapangan:
 - `CCTVID` (Foreign Key → `cctvs`), `TechnicianID` (Foreign Key → `users`)
 - `OverallStatus` (`ok` / `attention`), `Notes`, `CompletedAt`
+- `CheckLatitude` / `CheckLongitude` (Task 8.4, nullable string) — koordinat GPS lokasi pengecekan (opsional; `check_latitude`/`check_longitude` dalam JSON)
 - `MaintenanceLogID` (nullable; penghubung bila pengecekan berasal dari tugas terjadwal)
 - `FieldMaintenanceCheck`: nama item, hasil (`ok` / `not_ok`), dan catatan per item
 - `FieldMaintenanceImage`: URL foto bukti yang dilindungi endpoint upload

@@ -119,7 +119,7 @@ sigap-monorepo/
 | 16 | 8 | 8.1 Progressive Web App (PWA) | `public/manifest.json` (standalone, warna tema), `public/sw.js` (cache-first shell, network-first API), ikon 192/512, registrasi SW + meta di `layout.tsx`, header cache di `next.config.ts` | ✅ Selesai (2026-08-07, branch `feature/pwa`) — lint & build PASS; manual test `docs/manual-test-pwa.md` |
 | 17 | 8 | 8.2 Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin+teknisi), `CalendarGrid` (grid bulanan, dot status, navigasi), panel detail hari, filter teknisi admin | ✅ Selesai (2026-08-07, branch `feature/calendar-view`) — lint & build PASS; manual test `docs/manual-test-calendar.md` |
 | 18 | 8 | 8.3 Notifikasi Push Browser | Model `PushSubscription`+migrasi, `POST /push/subscribe` & `DELETE /push/unsubscribe`, `utils/push.go` (webpush VAPID), integrasi ke `NotifyUser`, SW push/notificationclick, opt-in `PushNotificationOptIn` di `/profile` | ✅ Selesai (2026-08-07, branch `feature/push-notification`) — build/test/vet + lint/build PASS; manual test `docs/manual-test-push-notification.md` |
-| 19 | 8 | 8.4 Pengalaman Lapangan | Geotag pengecekan | ⬜ Belum |
+| 19 | 8 | 8.4 Geotag Pengecekan Lapangan | Kolom `check_latitude`/`check_longitude` + migrasi, validasi backend, GPS wizard + indikator, mini-map admin | ✅ Selesai (2026-08-07, branch `feature/geotag-field-check`) — build/test/vet + lint/build PASS; manual test `docs/manual-test-geotag.md` |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 
@@ -379,3 +379,26 @@ sigap-monorepo/
 **Verifikasi**
 - `go build`/`go test ./... -count=1`/`go vet` PASS; `npm run lint` (0 error)/`npm run build` (exit 0) PASS.
 - Manual: notifikasi OS muncul saat tugas baru ditugaskan / eskalasi overdue / hasil attention; opt-out berfungsi; fallback in-app bila VAPID tidak dikonfigurasi (panduan `docs/manual-test-push-notification.md`).
+
+### 6.17 Rancangan Teknis Sprint 19 (Geotag Pengecekan Lapangan)
+
+> Dikerjakan paralel oleh tiga sub-agent pada branch `feature/geotag-field-check`.
+
+**Backend**
+- `models/field_maintenance.go`: tambah `CheckLatitude`/`CheckLongitude` (string nullable, `json:"check_latitude,omitempty"`).
+- `migrations/000003_add_field_maintenance_geotag.up/down.sql`: `ALTER TABLE field_maintenances ADD/DROP COLUMN check_latitude/check_longitude varchar(30) NULL`.
+- `handlers/field_maintenance.go`: `CreateFieldMaintenanceRequest` + `check_latitude`/`check_longitude`; helper `validateCoordinates(lat, lng)` (keduanya wajib bersamaan, format angka valid, lat -90..90, lng -180..180); set pada record; respons list/detail otomatis menyertakan field via model.
+- Test: `field_maintenance_test.go` (invalid lat 400, invalid lng 400, valid geotag 201 + create/reload kolom).
+
+**Frontend**
+- `components/FieldMaintenanceModal.tsx`: saat wizard `field` dibuka, `navigator.geolocation.getCurrentPosition` (enableHighAccuracy, timeout 10s; guard `'geolocation' in navigator`); simpan `coords`; indikator "Lokasi tercatat" / "Lokasi belum tercatat (opsional)"; kirim `check_latitude`/`check_longitude` pada body `field` (opsional); mode `complete` tidak menangkap lokasi.
+- `components/FieldCheckLocationMap.tsx` (baru): mini-map react-leaflet dengan marker CCTV (biru) + marker "Lokasi Pengecekan" (oranye), legend, fallback pusat IKN.
+- `app/field-maintenance/page.tsx`: interface + `check_latitude`/`check_longitude`/`cctv.latitude|longitude`; bagian "Lokasi Pengecekan" di modal detail (render mini-map bila koordinat ada, else "Tidak ada data lokasi"); `dynamic(..., { ssr: false })`.
+
+**Dokumen**
+- `docs/manual-test-geotag.md` (baru): manual test blackbox (P1–P6, S1–S6) — GPS diizinkan/ditolak, validasi koordinat, mini-map admin, mode complete, konsistensi, kriteria lulus.
+- ROADMAP Task 8.4 ✅ Selesai (Fase 8 **4/4 SELESAI**); plan Sprint 19; `backend/changelog.md`; `frontend/changelog.md`; `docs/changelog.md`; TESTING.md; AGENTS.md.
+
+**Verifikasi**
+- `go build`/`go test ./... -count=1`/`go vet` + `golangci-lint run` PASS; `npm run lint` (0 error)/`npm run build` (exit 0) PASS.
+- Manual: koordinat tercatat di DB saat GPS diizinkan, wizard tetap jalan saat ditolak, admin melihat marker "Lokasi Pengecekan" di peta (panduan `docs/manual-test-geotag.md`).
