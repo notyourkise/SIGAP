@@ -1,0 +1,166 @@
+/* ==========================================
+   SIGAP — Service Worker (Task 8.1 PWA)
+   ==========================================
+   Scope: installability + offline shell saja.
+   Strategi cache:
+     - Shell (HTML navigasi, CSS, JS chunks, ikon/font): disimpan di cache.
+     - Navigasi HTML   : network-first, fallback ke cache (offline shell).
+     - Aset statis     : cache-first dengan pembaruan latar belakang
+                         (hashed oleh Next.js sehingga aman di-cache).
+     - API calls       : network-first, fallback ke cache (bila ada), selain itu
+                         respons JSON ringan "offline".
+   BUKAN full offline (tanpa IndexedDB) — data tetap butuh jaringan/API.
+   ========================================== */
+
+// Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
+const CACHE_VERSION = 'sigap-shell-v1';
+const SHELL_CACHE = CACHE_VERSION;
+
+// Aset inti shell yang di-pre-cache saat install (diperbarui saat activate).
+const PRECACHE_URLS = [
+  '/',
+  '/dashboard',
+  '/login',
+  '/manifest.json',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+];
+
+// Batas waktu (detik) sebelum permintaan jaringan dianggap gagal pada
+// strategi network-first (mencegah layar kosong saat koneksi lambat).
+const NETWORK_TIMEOUT = 5000;
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(SHELL_CACHE)
+      .then((cache) => cache.addAll(PRECACHE_URLS))
+      // Langsung aktif tanpa menunggu tab lama ditutup.
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== SHELL_CACHE)
+            .map((key) => caches.delete(key))
+        )
+      )
+      // Segera menguasai halaman yang sudah terbuka.
+      .then(() => self.clients.claim())
+  );
+});
+
+// ---- Helper: apakah ini navigasi halaman (request HTML utama) ----
+function isNavigationRequest(request) {
+  return request.mode === 'navigate';
+}
+
+// ---- Helper: apakah ini panggilan API ----
+function isApiRequest(url) {
+  return url.pathname.startsWith('/api/');
+}
+
+// ---- Helper: apakah ini aset statis yang aman di-cache-first ----
+function isStaticAsset(url) {
+  const path = url.pathname;
+  // CSS/JS chunk (biasanya ber-hash), gambar, font, dll.
+  return /\.(?:css|js|png|jpg|jpeg|webp|svg|ico|woff2?|ttf|eot|json)$/i.test(path);
+}
+
+// ---- Strategi: network-first (untuk navigasi & API) ----
+async function networkFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    // Beri batas waktu agar tidak menggantung saat offline.
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT)
+    );
+    const fetchPromise = fetch(request);
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    if (response && response.ok) {
+      // Simpan salinan untuk offline / fallback.
+      cache.put(request, response.clone());
+      return response;
+    }
+    throw new Error('response not ok');
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    // Fallback khusus navigasi ke shell utama (halaman dashboard).
+    if (isNavigationRequest(request)) {
+      const index = await cache.match('/dashboard');
+      if (index) return index;
+    }
+    throw err;
+  }
+}
+
+// ---- Strategi: cache-first (untuk aset statis shell) ----
+async function cacheFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
+  if (cached) {
+    // Pembaruan latar belakang tanpa memblokir respons cache.
+    fetch(request)
+      .then((resp) => {
+        if (resp && resp.ok) cache.put(request, resp);
+      })
+      .catch(() => {});
+    return cached;
+  }
+  const response = await fetch(request);
+  if (response && response.ok) cache.put(request, response.clone());
+  return response;
+}
+
+// ---- Fallback kecil bila permintaan API gagal & tidak ada cache ----
+function offlineApiResponse() {
+  return new Response(
+    JSON.stringify({
+      status: 'error',
+      message: 'Anda sedang offline. Periksa koneksi internet untuk memuat data terbaru.',
+      errors: [],
+    }),
+    {
+      status: 503,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    }
+  );
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Jangan tangani permintaan lintas-origin (hanya same-origin untuk shell & API).
+  if (url.origin !== self.location.origin) return;
+
+  // Permintaan bukan GET tidak di-cache (biarkan jaringan normal).
+  if (request.method !== 'GET') return;
+
+  // API calls: network-first (data selalu segar), fallback cache/offline.
+  if (isApiRequest(url)) {
+    event.respondWith(networkFirst(request).catch(() => offlineApiResponse()));
+    return;
+  }
+
+  // Navigasi halaman (HTML shell): network-first, fallback cache offline.
+  if (isNavigationRequest(request)) {
+    event.respondWith(networkFirst(request).catch(() => caches.match(request)));
+    return;
+  }
+
+  // Aset statis shell: cache-first dengan pembaruan latar belakang.
+  if (isStaticAsset(url)) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // Lainnya: biarkan jaringan normal.
+});

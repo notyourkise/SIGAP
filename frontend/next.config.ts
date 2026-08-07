@@ -12,6 +12,23 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    // PWA (Task 8.1): pastikan service worker & manifest tidak di-cache agresif
+    // sehingga pembaruan SW/manifest cepat tersebar ke browser.
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
+        source: '/manifest.json',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=3600' }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
