@@ -2507,6 +2507,255 @@ paths:
       summary: Berhenti Berlangganan Push
       tags:
       - Push Notification
+  /streams/{id}/start:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan aliran RTSP kamera ke MediaMTX agar dapat diakses
+        melalui WHEP/HLS. Kualitas default sub, dapat diubah menjadi main via query
+        ?quality=main.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Kualitas stream: main atau sub (default sub)'
+        in: query
+        name: quality
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Stream berhasil dimulai
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid / streaming belum diaktifkan / konfigurasi
+            belum lengkap
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mendekripsi password RTSP
+          schema:
+            additionalProperties: true
+            type: object
+        "502":
+          description: Gagal menghubungi server streaming
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mulai Stream CCTV
+      tags:
+      - Streaming
+  /streams/{id}/stop:
+    post:
+      consumes:
+      - application/json
+      description: Menghapus path stream suatu CCTV dari MediaMTX sehingga aliran
+        tidak lagi aktif.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Stream berhasil dihentikan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "502":
+          description: Gagal menghubungi server streaming
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hentikan Stream CCTV
+      tags:
+      - Streaming
+  /streams/{id}/url:
+    get:
+      consumes:
+      - application/json
+      description: Mengembalikan URL WHEP dan HLS serta status kesiapan stream suatu
+        CCTV.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail URL stream
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil URL Stream CCTV
+      tags:
+      - Streaming
+  /streams/start-all:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan stream RTSP seluruh CCTV dengan stream_enabled=true
+        ke MediaMTX sekaligus.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ringkasan total/sukses/gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mulai Semua Stream
+      tags:
+      - Streaming
+  /streams/status:
+    get:
+      consumes:
+      - application/json
+      description: Menampilkan daftar status streaming setiap CCTV termasuk ketersediaan
+        path dan jumlah penonton (viewers). Bila MediaMTX tidak dapat dihubungi, semua
+        dianggap tidak siap.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar status stream
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat data CCTV
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Status Seluruh Stream
+      tags:
+      - Streaming
+  /streams/stop-all:
+    post:
+      consumes:
+      - application/json
+      description: Menghapus path stream seluruh CCTV dengan stream_enabled=true dari
+        MediaMTX sekaligus.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ringkasan total/sukses/gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hentikan Semua Stream
+      tags:
+      - Streaming
   /test-panic:
     get:
       description: Endpoint uji coba untuk memastikan Recovery Middleware bekerja

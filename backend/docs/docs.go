@@ -3099,6 +3099,367 @@ const docTemplate = `{
                 }
             }
         },
+        "/streams/start-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendaftarkan stream RTSP seluruh CCTV dengan stream_enabled=true ke MediaMTX sekaligus.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Mulai Semua Stream",
+                "responses": {
+                    "200": {
+                        "description": "Ringkasan total/sukses/gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menampilkan daftar status streaming setiap CCTV termasuk ketersediaan path dan jumlah penonton (viewers). Bila MediaMTX tidak dapat dihubungi, semua dianggap tidak siap.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Status Seluruh Stream",
+                "responses": {
+                    "200": {
+                        "description": "Daftar status stream",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat data CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/stop-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus path stream seluruh CCTV dengan stream_enabled=true dari MediaMTX sekaligus.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Hentikan Semua Stream",
+                "responses": {
+                    "200": {
+                        "description": "Ringkasan total/sukses/gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/{id}/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendaftarkan aliran RTSP kamera ke MediaMTX agar dapat diakses melalui WHEP/HLS. Kualitas default sub, dapat diubah menjadi main via query ?quality=main.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Mulai Stream CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kualitas stream: main atau sub (default sub)",
+                        "name": "quality",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Stream berhasil dimulai",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid / streaming belum diaktifkan / konfigurasi belum lengkap",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mendekripsi password RTSP",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "502": {
+                        "description": "Gagal menghubungi server streaming",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/{id}/stop": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus path stream suatu CCTV dari MediaMTX sehingga aliran tidak lagi aktif.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Hentikan Stream CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Stream berhasil dihentikan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "502": {
+                        "description": "Gagal menghubungi server streaming",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/{id}/url": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan URL WHEP dan HLS serta status kesiapan stream suatu CCTV.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Ambil URL Stream CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail URL stream",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/test-panic": {
             "get": {
                 "description": "Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).",

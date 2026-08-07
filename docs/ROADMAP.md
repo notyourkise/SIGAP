@@ -30,7 +30,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
-| **9** | **Streaming CCTV Real-Time** | **2/6** | **🚧 Berjalan (Sprint 20 selesai)** |
+| **9** | **Streaming CCTV Real-Time** | **3/6** | **🚧 Berjalan (Sprint 21 selesai)** |
 | **10** | **Kecerdasan Visual & Snapshot** | **0/4** | **🔲 Belum dimulai** |
 | **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
@@ -327,7 +327,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 > Mengubah peta sebaran CCTV dari **view-only** menjadi **interactive live monitoring center**.
 > Teknologi: **MediaMTX** (RTSP-to-WebRTC proxy) + **WHEP** (browser playback) + Nginx reverse proxy.
-> **Status: 🚧 Berjalan** — Sprint 20 (Task 9.1 + 9.2) **✅ Selesai** (2026-08-07); sisa 4 task dalam 3 sprint, estimasi ~8–10 hari kerja.
+> **Status: 🚧 Berjalan** — Sprint 20 (Task 9.1 + 9.2) & Sprint 21 (Task 9.3) **✅ Selesai** (2026-08-07); sisa 3 task dalam 2 sprint, estimasi ~6–8 hari kerja.
 
 ### Arsitektur Streaming
 
@@ -377,11 +377,18 @@ cd .. && docker compose config --quiet
 
 > **Branch:** `feature/stream-api`
 > **Prasyarat:** Sprint 20 selesai (model + infrastruktur tersedia)
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **9.3a** MediaMTX REST Client | `utils/mediamtx.go`: struct `MediaMTXClient` dengan method `AddPath`, `RemovePath`, `GetPath`, `ListPaths`. HTTP client ke `http://mediamtx:9997/v3/`. Unit test `utils/mediamtx_test.go` dengan HTTP mock. |
-| **Backend** | Agent-BE | **9.3b** Stream Handler & Routes | `handlers/stream.go`: `StartStream` (decrypt password → build RTSP URL → register path di MediaMTX → return WHEP URL), `StopStream`, `StartAllStreams`, `StopAllStreams`, `GetStreamStatus` (gabung data DB + MediaMTX path info), `GetStreamURL`. `routes/stream.go`: registrasi route dengan `Protected()` + `RequireRole("admin")`. Rute statis sebelum dinamis. Registrasi di `main.go`. Goroutine auto-start saat boot. Unit test `handlers/stream_test.go`. Swagger annotations + `swag init`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **9.3a** MediaMTX REST Client | `utils/mediamtx.go`: struct `MediaMTXClient` dengan method `AddPath`, `RemovePath`, `GetPath`, `ListPaths`. HTTP client ke `http://mediamtx:9997/v3/`. Unit test `utils/mediamtx_test.go` dengan HTTP mock. | ✅ Selesai |
+| **Backend** | Agent-BE | **9.3b** Stream Handler & Routes | `handlers/stream.go`: `StartStream` (decrypt password → build RTSP URL → register path di MediaMTX → return WHEP URL), `StopStream`, `StartAllStreams`, `StopAllStreams`, `GetStreamStatus` (gabung data DB + MediaMTX path info), `GetStreamURL`. `routes/stream.go`: registrasi route dengan `Protected()` + `RequireRole("admin")`. Rute statis sebelum dinamis. Registrasi di `main.go`. Goroutine auto-start saat boot. Unit test `handlers/stream_test.go`. Swagger annotations + `swag init`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 21:** Backend streaming CCTV selesai.
+- **Task 9.3a (MediaMTX Client)**: `utils/mediamtx.go` — struct `MediaMTXClient` (HTTP client ke `http://mediamtx:9997/v3/`) dengan method `AddPath`, `RemovePath`, `GetPath`, `ListPaths` untuk mengelola path streaming RTSP→WHEP/HLS di MediaMTX; unit test `utils/mediamtx_test.go` memakai HTTP mock (sukses + kasus error/404/response tidak valid).
+- **Task 9.3b (Stream Handler & Routes)**: `handlers/stream.go` — `StartStream` (decrypt `rtsp_password` → build URL RTSP → register path di MediaMTX → return WHEP URL), `StopStream`, `StartAllStreams`, `StopAllStreams`, `GetStreamStatus` (gabung data DB + info path MediaMTX), `GetStreamURL` (WHEP + HLS); `routes/stream.go` — grup `/streams` admin-only (`Protected()` + `RequireRole("admin")`): `/status`, `/start-all`, `/stop-all`, `/:id/start`, `/:id/stop`, `/:id/url` (rute statis sebelum dinamis); registrasi di `main.go` + goroutine auto-start stream aktif saat boot; Swagger annotations + `swag init`; unit test `handlers/stream_test.go` (StartStream sukses/404/disabled/no-channel-port, StopStream, GetStreamStatus, GetStreamURL, enforcement admin → 403 untuk teknisi).
+
+Detail: `backend/changelog.md` [0.44.0] · `docs/changelog.md` [1.28.29].
 
 #### Verifikasi Sprint 21
 

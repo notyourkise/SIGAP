@@ -29,6 +29,8 @@ Thumbs.db
 
 # Logs
 /backend/logs/
+# Log file test artifact yang dibuat saat menjalankan test di package utils
+/backend/utils/logs/
 
 # Foto bukti upload runtime (bind mount Docker, bukan aset repo)
 /backend/uploads/

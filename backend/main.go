@@ -136,6 +136,14 @@ func main() {
 	// dan ukuran folder uploads secara berkala (interval 15 detik).
 	monitoring.StartCollector("./uploads", 15*time.Second)
 
+	// Auto-register stream CCTV yang aktif ke MediaMTX (Task 9.3). Dijalankan
+	// sebagai goroutine dengan jeda awal 5 detik agar server sudah siap.
+	go func() {
+		time.Sleep(5 * time.Second)
+		handlers.RegisterActiveStreams(config.DB)
+	}()
+	utils.Log.Info("📡 Auto-register stream CCTV ke MediaMTX dijadwalkan (tunda 5 detik)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
@@ -215,6 +223,7 @@ func main() {
 	routes.SetupNotificationRoutes(api)
 	routes.SetupPushRoutes(api)
 	routes.SetupMaintenanceScheduleRoutes(api)
+	routes.SetupStreamRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)

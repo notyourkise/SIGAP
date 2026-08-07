@@ -3,6 +3,16 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.29] — 2026-08-07 — Sprint 21: Backend API & MediaMTX Client (Task 9.3) — Fase 9
+
+### Perubahan
+
+- **Backend** ([0.44.0]): client REST MediaMTX `utils/mediamtx.go` (`MediaMTXClient` — `AddPath`, `RemovePath`, `GetPath`, `ListPaths` ke `http://mediamtx:9997/v3/`) + unit test `utils/mediamtx_test.go` (HTTP mock); handler streaming `handlers/stream.go` (`StartStream` — decrypt `rtsp_password` → build URL RTSP → register path MediaMTX → return WHEP URL; `StopStream`; `StartAllStreams`; `StopAllStreams`; `GetStreamStatus` — gabung data DB + info path MediaMTX; `GetStreamURL` — WHEP + HLS) + unit test `handlers/stream_test.go`; `routes/stream.go` (grup `/streams` admin-only: `/status`, `/start-all`, `/stop-all`, `/:id/start`, `/:id/stop`, `/:id/url`, rute statis sebelum dinamis); registrasi di `main.go` + goroutine auto-start stream aktif saat boot; Swagger `swag init`.
+- **Dokumen**: ROADMAP Fase 9 progress 2/6 → **3/6**, Sprint 21 ✅ Selesai; `docs/manual-test-streaming.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); TESTING matriks menambah `utils/mediamtx_test.go` + `handlers/stream_test.go` (+2 total).
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet`/`golangci-lint run ./...` + `swag init` PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.44.0]
+
 ## [1.28.28] — 2026-08-07 — Sprint 20: Fondasi Streaming (Task 9.1 + 9.2) — Fase 9
 
 ### Perubahan
