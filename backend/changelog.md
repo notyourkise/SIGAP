@@ -1,5 +1,24 @@
 # Changelog - Backend SIGAP
 
+## [0.41.1] - 2026-08-07
+
+### Perbaikan: errcheck pada test push (CI backend)
+
+perubahan yang dilakukan: **Mengganti `os.Setenv`/`os.Unsetenv` yang return value-nya tidak dicek dengan `t.Setenv` pada `backend/utils/push_test.go` agar linter `errcheck` lulus di CI (golangci-lint).**
+
+before: `backend/utils/push_test.go` memakai `os.Setenv`/`os.Unsetenv` tanpa memeriksa error sehingga golangci-lint memunculkan 15 issue `errcheck` dan job backend CI gagal.
+
+after:
+- `backend/utils/push_test.go`: ganti seluruh `os.Setenv`/`os.Unsetenv` dengan `t.Setenv` (idiomatik, auto-cleanup, mem-fail test bila gagal) pada `TestSendPushToSubscriptionCallsInjectedSender`, `TestSendPushNoopWhenVapidMissing`, dan `TestSendPushSendsToAllSubscriptions`; hapus import `os` yang tak terpakai.
+- Verifikasi lokal: `golangci-lint run ./...` → **0 issues**; `go build`, `go test ./... -count=1`, `go vet` → PASS.
+
+timestamp: 2026-08-07 18:00 WITA
+kategori: Kecil, Backend & CI
+file yang diubah:
+- backend/utils/push_test.go
+- backend/changelog.md
+alasan perubahan: Menjaga CI backend tetap hijau — golangci-lint (errcheck) menolak `os.Setenv`/`os.Unsetenv` yang tidak memeriksa error; `t.Setenv` adalah pola yang benar dan mem-fail test bila pengaturan env gagal.
+
 ## [0.41.0] - 2026-08-07
 
 ### Fitur: Notifikasi Push Browser (Task 8.3)

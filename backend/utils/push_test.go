@@ -2,7 +2,6 @@
 
 import (
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -48,13 +47,11 @@ func TestSendPushToSubscriptionCallsInjectedSender(t *testing.T) {
 	})
 	defer SetSendNotificationFn(func(*webpush.Subscription, []byte, *webpush.Options) error { return nil })
 
-	// Set VAPID env agar opsi terisi.
-	os.Setenv("VAPID_PUBLIC_KEY", "PUB")
-	os.Setenv("VAPID_PRIVATE_KEY", "PRIV")
-	os.Setenv("VAPID_EMAIL", "ops@sigap.id")
-	defer os.Unsetenv("VAPID_PUBLIC_KEY")
-	defer os.Unsetenv("VAPID_PRIVATE_KEY")
-	defer os.Unsetenv("VAPID_EMAIL")
+	// Set VAPID env agar opsi terisi. t.Setenv otomatis membersihkan env var
+	// setelah test & mem-fail test bila pengaturan env gagal (hindari errcheck).
+	t.Setenv("VAPID_PUBLIC_KEY", "PUB")
+	t.Setenv("VAPID_PRIVATE_KEY", "PRIV")
+	t.Setenv("VAPID_EMAIL", "ops@sigap.id")
 
 	err := SendPushToSubscription(sub, raw)
 	assert.NoError(t, err)
@@ -71,9 +68,10 @@ func TestSendPushToSubscriptionCallsInjectedSender(t *testing.T) {
 // TestSendPushNoopWhenVapidMissing memastikan SendPush tidak melakukan query
 // DB maupun pengiriman bila VAPID tidak dikonfigurasi (graceful no-op).
 func TestSendPushNoopWhenVapidMissing(t *testing.T) {
-	os.Unsetenv("VAPID_PUBLIC_KEY")
-	os.Unsetenv("VAPID_PRIVATE_KEY")
-	os.Unsetenv("VAPID_EMAIL")
+	// Pastikan VAPID kosong (t.Setenv dengan nilai kosong, auto-cleanup).
+	t.Setenv("VAPID_PUBLIC_KEY", "")
+	t.Setenv("VAPID_PRIVATE_KEY", "")
+	t.Setenv("VAPID_EMAIL", "")
 
 	db, mock := newPushTestDB(t)
 	// Tidak ada ekspektasi query â€” bila ada query, ExpectationsWereMet gagal.
@@ -84,12 +82,9 @@ func TestSendPushNoopWhenVapidMissing(t *testing.T) {
 // TestSendPushSendsToAllSubscriptions memverifikasi SendPush memuat subscription
 // user dan mengirim payload ke masing-masing (melalui sender mock).
 func TestSendPushSendsToAllSubscriptions(t *testing.T) {
-	os.Setenv("VAPID_PUBLIC_KEY", "PUB")
-	os.Setenv("VAPID_PRIVATE_KEY", "PRIV")
-	os.Setenv("VAPID_EMAIL", "ops@sigap.id")
-	defer os.Unsetenv("VAPID_PUBLIC_KEY")
-	defer os.Unsetenv("VAPID_PRIVATE_KEY")
-	defer os.Unsetenv("VAPID_EMAIL")
+	t.Setenv("VAPID_PUBLIC_KEY", "PUB")
+	t.Setenv("VAPID_PRIVATE_KEY", "PRIV")
+	t.Setenv("VAPID_EMAIL", "ops@sigap.id")
 
 	db, mock := newPushTestDB(t)
 	userID := uuid.New()
