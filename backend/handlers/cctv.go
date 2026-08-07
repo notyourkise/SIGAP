@@ -274,6 +274,8 @@ func GetAllCCTV(c *fiber.Ctx) error {
 	// Password RTSP tidak boleh bocor ke klien pada respons.
 	for i := range cctvs {
 		cctvs[i].RTSPPassword = ""
+		// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
+		cctvs[i].SnapshotURL = snapshotURLFor(cctvs[i].ID.String())
 	}
 
 	return c.JSON(fiber.Map{
@@ -318,6 +320,8 @@ func GetCCTVByID(c *fiber.Ctx) error {
 
 	// Password RTSP tidak boleh bocor ke klien pada respons.
 	cctv.RTSPPassword = ""
+	// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
+	cctv.SnapshotURL = snapshotURLFor(cctv.ID.String())
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -409,6 +413,9 @@ func UpdateCCTV(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+
+	// Catat status awal sebelum update untuk mendeteksi perubahan status.
+	oldStatus := normalizeCCTVStatus(cctv.Status)
 
 	var req UpdateCCTVRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -510,6 +517,15 @@ func UpdateCCTV(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "UPDATE_CCTV", "CCTV", "Memperbarui data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
 	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+
+	// Hook Task 10.1: bila status benar-benar berubah, ambil snapshot otomatis
+	// secara asinkron agar tidak memblokir respons API.
+	if oldStatus != normalizeCCTVStatus(cctv.Status) {
+		reason := "status CCTV diubah ke " + cctv.Status
+		go func(cctv models.CCTV, reason string) {
+			_, _ = CaptureSnapshot(cctv, EventStatusChanged, reason)
+		}(cctv, reason)
+	}
 
 	// Password RTSP tidak boleh bocor ke klien pada respons.
 	cctv.RTSPPassword = ""

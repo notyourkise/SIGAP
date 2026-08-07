@@ -153,3 +153,15 @@ func (c *MediaMTXClient) ListPaths() ([]PathInfo, error) {
 	}
 	return paths, nil
 }
+
+// GetSnapshot mengambil snapshot JPEG sebuah path dari MediaMTX. Endpoint
+// snapshot mengembalikan gambar berformat JPEG (Content-Type image/jpeg).
+// Mengembalikan error pada status non-2xx atau bila client tidak valid.
+func (c *MediaMTXClient) GetSnapshot(name string) ([]byte, error) {
+	endpoint := "/v3/paths/get/" + url.PathEscape(name) + "/snapshot"
+	_, body, err := c.doRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}

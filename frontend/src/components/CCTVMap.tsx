@@ -4,8 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Eye, Maximize, Minimize, Network, ShieldCheck } from 'lucide-react';
+import { MapPin, Eye, Maximize, Minimize, Network, ShieldCheck, Camera } from 'lucide-react';
 import Link from 'next/link';
+import AuthenticatedImage from '@/components/AuthenticatedImage';
 
 export interface CCTVMapItem {
   id: string;
@@ -20,6 +21,7 @@ export interface CCTVMapItem {
   ip_nvr?: string;
   stream_enabled?: boolean;
   channel_port?: number;
+  snapshot_url?: string;
 }
 
 interface CCTVMapProps {
@@ -239,6 +241,19 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
               <div className="text-xs font-bold font-sans">
                 {item.nama} <span className="font-mono text-[10px] text-muted">({item.kode_cctv})</span>
                 <div className="mt-0.5 text-[10px] font-semibold text-muted">Kesehatan: {normalizeHealthScore(item.health_score)}/100</div>
+                {item.snapshot_url ? (
+                  <div className="mt-1.5 h-[48px] w-[64px] overflow-hidden rounded-lg border border-border">
+                    <AuthenticatedImage
+                      imageUrl={item.snapshot_url}
+                      alt={`Snapshot ${item.nama}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-1.5 flex h-[48px] w-[64px] items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/40">
+                    <Camera className="h-4 w-4" aria-hidden="true" />
+                  </div>
+                )}
               </div>
             </Tooltip>
 
@@ -279,6 +294,20 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
                     </div>
                   )}
                 </div>
+
+                {item.snapshot_url ? (
+                  <div className="h-[48px] w-[64px] overflow-hidden rounded-lg border border-border">
+                    <AuthenticatedImage
+                      imageUrl={item.snapshot_url}
+                      alt={`Snapshot ${item.nama}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-[48px] w-[64px] items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/40">
+                    <Camera className="h-4 w-4" aria-hidden="true" />
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-border flex justify-end">
                   <Link

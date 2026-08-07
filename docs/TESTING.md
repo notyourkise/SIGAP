@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`).
+> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline).
 
 ---
 
@@ -71,8 +71,9 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `utils` | `mediamtx_test.go` (Task 9.3a) | `MediaMTXClient`: `AddPath`/`RemovePath`/`GetPath`/`ListPaths` (sukses 2xx, parsing body JSON, mapping path info), error/edge cases via `httptest` mock (status 404, respons non-2xx, body tidak valid, server error) |
 | `handlers` | `stream_test.go` (Task 9.3b) | `StartStream` (sukses → return `whep_url`; CCTV tidak ditemukan 404; `stream_enabled=false` → 400; tanpa `channel_port` → 400), `StopStream` (sukses → path dihapus), `GetStreamStatus` (list dengan `stream_active`/`stream_ready`/`viewers`), `GetStreamURL` (return `whep_url` + `hls_url`), enforcement role (`RequireRole("admin")` — teknisi → 403) |
 | `routes` | `stream_test.go` (Task 9.3b) | registrasi route `/api/streams` (grup admin-only: `Protected()` + `RequireRole("admin")`) — rute statis (`/status`, `/start-all`, `/stop-all`) tersedia sebelum dinamis (`/:id/start`, `/:id/stop`, `/:id/url`); endpoint stream wajib autentikasi |
+| `handlers` | `snapshot_test.go` (Task 10.1+10.2, Fase 10) | `GetCCTVSnapshot` (sukses → JPEG, belum ada snapshot → 404, CCTV not found → 404, tanpa identitas → 401), `GetCCTVTimeline` (sukses + paginasi, CCTV not found → 404, tanpa identitas → 401), rotasi snapshot (hanya menyimpan 10 terbaru) |
 
-**Total: 48 file test** (13 utils, 5 middleware, 21 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
+**Total: 49 file test** (13 utils, 5 middleware, 22 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -85,6 +86,14 @@ Ringkasan cakupan test streaming CCTV real-time:
 | `handlers/stream_test.go` | 9.3b | `StartStream` (sukses/404/disabled/no-channel-port), `StopStream`, `GetStreamStatus`, `GetStreamURL`, enforcement `RequireRole("admin")` — teknisi → 403 |
 | `routes/stream_test.go` | 9.3b | registrasi route `/api/streams` admin-only; rute statis sebelum dinamis; endpoint stream wajib autentikasi |
 | `handlers/cctv_test.go` (diperluas) | 9.1 | `CreateCCTV`/`UpdateCCTV` menerima field streaming baru (`channel_port`, `rtsp_password`, `stream_enabled`); `rtsp_password` tidak muncul di response JSON (excluded) |
+
+### Matriks Snapshot & Timeline (Fase 10)
+
+Ringkasan cakupan test snapshot & timeline:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/snapshot_test.go` | 10.1 + 10.2 | `GetCCTVSnapshot` (sukses → JPEG, belum ada snapshot → 404, CCTV not found → 404, tanpa identitas → 401), `GetCCTVTimeline` (sukses + paginasi, CCTV not found → 404, tanpa identitas → 401), rotasi snapshot (hanya menyimpan 10 terbaru) |
 
 ---
 

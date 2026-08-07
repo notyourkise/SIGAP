@@ -1,5 +1,40 @@
 # Changelog - Backend SIGAP
 
+## [0.46.0] - 2026-08-07
+
+### Fitur: Snapshot Otomatis & Timeline Event Visual (Task 10.1 + 10.2 — Fase 10)
+
+perubahan yang dilakukan: **Menambahkan snapshot otomatis dan timeline event visual CCTV untuk Fase 10 (Kecerdasan Visual & Snapshot). Backend naik `0.45.0` → `0.46.0`.**
+
+before: Fase 9 streaming sudah menampilkan video live, namun belum ada penyimpanan visual (snapshot frame) maupun riwayat event per CCTV; `utils/mediamtx.go` sudah memiliki `GetSnapshot` namun belum dipakai untuk snapshot terjadwal/endpoint.
+
+after:
+- Model `CCTVSnapshot` (cctv_id, timestamp, event_type, image_path, notes) + migrasi `000005_cctv_snapshots`.
+- Goroutine snapshot berkala (tiap 15 menit) mengambil frame dari stream aktif via `utils/mediamtx.go` `GetSnapshot` (endpoint MediaMTX `/v3/paths/get/{path}/snapshot`) → simpan JPEG di `uploads/snapshots/{cctv_id}/`; rotasi maksimal 10 snapshot per CCTV.
+- Endpoint `GET /api/cctv/:id/snapshot` (mengembalikan JPEG terbaru; 404 bila belum ada snapshot).
+- Endpoint `GET /api/cctv/:id/timeline` (paginasi, event kronologis terbaru dahulu).
+- Event hook `status_changed`, `maintenance_completed`, `field_check_attention`, `periodic_snapshot` (capture otomatis saat event penting).
+- Field computed `snapshot_url` (`gorm:"-"`, `json:"snapshot_url,omitempty"`) pada respons `GetAllCCTV`/`GetCCTVByID` — menunjuk ke endpoint snapshot.
+- Swagger annotations + `swag init`; unit test `handlers/snapshot_test.go` (GetCCTVSnapshot 404/success, GetCCTVTimeline 404/success, rotasi).
+
+timestamp: 2026-08-07 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/cctv_snapshot.go
+- backend/migrations/000005_cctv_snapshots.up.sql
+- backend/migrations/000005_cctv_snapshots.down.sql
+- backend/handlers/snapshot.go
+- backend/handlers/snapshot_test.go
+- backend/routes/cctv.go
+- backend/utils/mediamtx.go
+- backend/models/cctv.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Memperkaya data visual CCTV dengan snapshot otomatis (thumbnail untuk tabel master & peta) dan timeline event visual (riwayat status/pemeliharaan/field-check) — membuka Fase 10 (Kecerdasan Visual & Snapshot), Task 10.1 + 10.2.
+
 ## [0.45.0] - 2026-08-07
 
 ### Fitur: Fase 9 Streaming CCTV — Selesai (Task 9.1–9.6)

@@ -245,6 +245,11 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			"Pengecekan lapangan butuh perhatian",
 			"Pengecekan lapangan CCTV "+cctv.KodeCCTV+" menunjukkan ada item yang tidak ok ("+cctv.LokasiArea+").",
 			"field-maintenance", &refID)
+		// Hook Task 10.1: ambil snapshot secara asinkron saat field-check
+		// memerlukan perhatian agar tidak memblokir respons API.
+		go func(cctv models.CCTV) {
+			_, _ = CaptureSnapshot(cctv, EventFieldCheckAttention, "hasil pengecekan lapangan memerlukan perhatian")
+		}(cctv)
 	}
 
 	// Muat ulang dengan relasi lengkap untuk respon JSON
