@@ -3208,6 +3208,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/streams/health": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menampilkan ringkasan status kesehatan streaming setiap CCTV termasuk kesiapan path, jumlah penonton, status down, dan durasi down.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Status Kesehatan Stream",
+                "responses": {
+                    "200": {
+                        "description": "Daftar status kesehatan stream",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat data CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/streams/start-all": {
             "post": {
                 "security": [

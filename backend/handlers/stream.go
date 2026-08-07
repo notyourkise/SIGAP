@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"sync"
+	"time"
+
 	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
@@ -18,6 +21,42 @@ var streamClient = utils.NewMediaMTXClient()
 // pengujian untuk menyuntikkan mock yang tidak benar-benar memanggil server.
 func setStreamClient(c *utils.MediaMTXClient) {
 	streamClient = c
+}
+
+// streamHealthMu melindungi akses ke streamLastReady, streamDownSince, dan
+// streamDownNotified agar aman dipakai lintas goroutine (monitor & handler).
+var (
+	streamHealthMu sync.Mutex
+	// streamLastReady memetakan stream path → waktu terakhir diketahui Ready=true.
+	streamLastReady = map[string]time.Time{}
+	// streamDownSince memetakan stream path → waktu mulai dianggap down.
+	streamDownSince = map[string]time.Time{}
+	// streamDownNotified memetakan stream path → event STREAM_DOWN sudah dipublikasikan.
+	streamDownNotified = map[string]bool{}
+)
+
+// broadcastStreamEvent mempublikasikan event stream via WebSocket. Dipisahkan
+// lewat variabel fungsi agar pengujian dapat menangkap event tanpa koneksi
+// WebSocket nyata (di-override pada stream_health_test.go).
+var broadcastStreamEvent = func(event string, payload interface{}) {
+	utils.BroadcastEvent(event, payload)
+}
+
+// streamHealthMonitorInterval adalah interval iterasi monitor status stream.
+const streamHealthMonitorInterval = 5 * time.Minute
+
+// streamDownThreshold adalah durasi down (tanpa ready) sebelum dianggap
+// gangguan permanen yang memicu penalti health_score & event STREAM_DOWN.
+const streamDownThreshold = 15 * time.Minute
+
+// resetStreamHealthState membersihkan seluruh state kesehatan stream — dipakai
+// pengujian agar tidak terjadi polusi antar-test.
+func resetStreamHealthState() {
+	streamHealthMu.Lock()
+	defer streamHealthMu.Unlock()
+	streamLastReady = map[string]time.Time{}
+	streamDownSince = map[string]time.Time{}
+	streamDownNotified = map[string]bool{}
 }
 
 // loadCCTVByID memuat data CCTV dari database berdasarkan UUID. Mengembalikan
@@ -444,5 +483,196 @@ func RegisterActiveStreams(db *gorm.DB) {
 			continue
 		}
 		utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
+	}
+}
+
+// RunStreamHealthMonitor memantau status kesiapan stream tiap CCTV setiap 5
+// menit (Task 10.4). Berjalan sekali segera saat startup, lalu berulang. Tidak
+// crash bila MediaMTX tidak dapat dihubungi — cukup log peringatan & lanjut.
+func RunStreamHealthMonitor(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+
+	runStreamHealthCycle(db)
+
+	ticker := time.NewTicker(streamHealthMonitorInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		runStreamHealthCycle(db)
+	}
+}
+
+// runStreamHealthCycle mengambil daftar path dari MediaMTX lalu mengevaluasi
+// status seluruh CCTV stream_enabled pada satu siklus monitor. Bila MediaMTX
+// tidak dapat dihubungi, log peringatan & lanjut dengan peta kesiapan kosong.
+func runStreamHealthCycle(db *gorm.DB) {
+	ready := map[string]bool{}
+	if paths, err := streamClient.ListPaths(); err != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar path dari MediaMTX pada monitor status stream: %v", err)
+	} else {
+		for _, p := range paths {
+			ready[p.Name] = p.Ready
+		}
+	}
+	runStreamHealthOnce(db, ready)
+}
+
+// runStreamHealthOnce memproses satu siklus evaluasi status stream terhadap peta
+// kesiapan (readyMap). Dipakai oleh monitor dan langsung oleh pengujian agar
+// transisi down/restored dapat disimulasikan secara deterministik.
+func runStreamHealthOnce(db *gorm.DB, readyMap map[string]bool) {
+	var cctvs []models.CCTV
+	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
+		utils.Log.Errorf("❌ Gagal memuat CCTV untuk monitor status stream: %v", err)
+		return
+	}
+
+	now := time.Now()
+	for _, cctv := range cctvs {
+		path := utils.BuildStreamPath(cctv.ID.String())
+		evaluateStreamState(db, cctv, path, readyMap[path], now)
+	}
+}
+
+// evaluateStreamState memperbarui state kesehatan satu stream berdasarkan status
+// kesiapan saat ini (isReady) dan waktu kini (now). Transisi down melewati ambang
+// 15 menit memicu event STREAM_DOWN + penalti health_score 10 poin; pemulihan
+// memicu event STREAM_RESTORED. Akses state dilindungi mutex.
+func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady bool, now time.Time) {
+	streamHealthMu.Lock()
+	defer streamHealthMu.Unlock()
+
+	if isReady {
+		// Stream siap — catat waktu ready terakhir dan bersihkan status down.
+		_, wasDown := streamDownSince[path]
+		streamLastReady[path] = now
+		delete(streamDownSince, path)
+		if wasDown {
+			delete(streamDownNotified, path)
+			utils.Log.Infof("🟢 Stream CCTV %s (%s) pulih — path %s", cctv.Nama, cctv.KodeCCTV, path)
+			broadcastStreamEvent("STREAM_RESTORED", fiber.Map{
+				"cctv_id": cctv.ID.String(),
+				"path":    path,
+			})
+		}
+		return
+	}
+
+	// Path tidak siap. Abaikan bila stream belum pernah terlihat up (tidak ada
+	// durasi down untuk dihitung).
+	if _, wasUp := streamLastReady[path]; !wasUp {
+		return
+	}
+
+	if _, alreadyDown := streamDownSince[path]; !alreadyDown {
+		// Mulai menghitung durasi down.
+		streamDownSince[path] = now
+		return
+	}
+
+	// Sudah dalam status down — cek apakah melewati ambang 15 menit.
+	if now.Sub(streamDownSince[path]) > streamDownThreshold {
+		if streamDownNotified[path] {
+			return
+		}
+		streamDownNotified[path] = true
+		utils.Log.Warnf("🔴 Stream CCTV %s (%s) down lebih dari 15 menit — path %s", cctv.Nama, cctv.KodeCCTV, path)
+		broadcastStreamEvent("STREAM_DOWN", fiber.Map{
+			"cctv_id": cctv.ID.String(),
+			"path":    path,
+		})
+
+		// Kurangi skor kesehatan 10 poin (clamp min 0).
+		newScore := cctv.HealthScore - 10
+		if newScore < 0 {
+			newScore = 0
+		}
+		if err := db.Model(&models.CCTV{}).Where("id = ?", cctv.ID).Update("health_score", newScore).Error; err != nil {
+			utils.Log.Errorf("❌ Gagal memperbarui health_score CCTV %s: %v", cctv.ID.String(), err)
+		}
+	}
+}
+
+// GetStreamHealth menampilkan status kesehatan stream seluruh CCTV.
+// @Summary      Status Kesehatan Stream
+// @Description  Menampilkan ringkasan status kesehatan streaming setiap CCTV termasuk kesiapan path, jumlah penonton, status down, dan durasi down.
+// @Tags         Streaming
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{} "Daftar status kesehatan stream"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      500 {object} map[string]interface{} "Gagal memuat data CCTV"
+// @Router       /streams/health [get]
+func GetStreamHealth(c *fiber.Ctx) error {
+	var cctvs []models.CCTV
+	if err := config.DB.Find(&cctvs).Error; err != nil {
+		utils.Log.Errorf("❌ Gagal memuat CCTV untuk status kesehatan stream: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memuat data CCTV",
+		})
+	}
+
+	// Ambil daftar path dari MediaMTX untuk membangun peta path → PathInfo.
+	// Bila MediaMTX tidak dapat dihubungi, log peringatan & anggap semua tidak siap.
+	pathMap := map[string]utils.PathInfo{}
+	if paths, err := streamClient.ListPaths(); err != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar path dari MediaMTX untuk status kesehatan: %v", err)
+	} else {
+		for _, p := range paths {
+			pathMap[p.Name] = p
+		}
+	}
+
+	result := make([]fiber.Map, 0, len(cctvs))
+	now := time.Now()
+	for _, cctv := range cctvs {
+		result = append(result, streamHealthSnapshot(cctv, pathMap, now))
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   result,
+	})
+}
+
+// streamHealthSnapshot membangun ringkasan status kesehatan satu CCTV untuk
+// endpoint /streams/health. pathMap memetakan stream path → info dari MediaMTX.
+func streamHealthSnapshot(cctv models.CCTV, pathMap map[string]utils.PathInfo, now time.Time) fiber.Map {
+	path := utils.BuildStreamPath(cctv.ID.String())
+	info, exists := pathMap[path]
+	ready := exists && info.Ready
+	viewers := 0
+	if exists {
+		viewers = len(info.Readers)
+	}
+
+	streamHealthMu.Lock()
+	downSince, isDown := streamDownSince[path]
+	streamHealthMu.Unlock()
+
+	down := isDown
+	downDuration := int64(0)
+	if down {
+		downDuration = int64(now.Sub(downSince).Seconds())
+		if downDuration < 0 {
+			downDuration = 0
+		}
+	}
+
+	return fiber.Map{
+		"cctv_id":               cctv.ID.String(),
+		"nama":                  cctv.Nama,
+		"kode_cctv":             cctv.KodeCCTV,
+		"stream_enabled":        cctv.StreamEnabled,
+		"stream_active":         cctv.StreamEnabled && exists && ready,
+		"stream_ready":          ready,
+		"viewers":               viewers,
+		"down":                  down,
+		"down_duration_seconds": downDuration,
+		"whep_url":              "/stream/" + path + "/whep",
 	}
 }

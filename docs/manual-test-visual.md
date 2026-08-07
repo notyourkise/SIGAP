@@ -2,6 +2,8 @@
 
 Dokumen ini memverifikasi fitur **Snapshot Otomatis & Timeline Event Visual** secara end-to-end (Fase 10), mencakup: snapshot otomatis berkala (goroutine 15 menit via MediaMTX `GetSnapshot`), snapshot on-demand/endpoint `GET /api/cctv/:id/snapshot` (JPEG), rotasi maksimal 10 snapshot per CCTV, field computed `snapshot_url` pada respons CCTV, timeline kronologis terpaginasi `GET /api/cctv/:id/timeline`, event hook (`status_changed`, `maintenance_completed`, `field_check_attention`, `periodic_snapshot`), model `CCTVSnapshot` + migrasi `000005`, thumbnail snapshot di tabel Master CCTV & tooltip marker peta, timeline di detail CCTV, serta role enforcement. Branch yang dipakai: `feature/cctv-snapshot`. Backend versi `0.46.0` · frontend `1.38.0`.
 
+> **Sprint 25 — Monitor Grid & Stream Health (Task 10.3 + 10.4)** — Fase 10 selesai (4/4 ✅). Backend versi `0.47.0` · frontend `1.39.0`.
+
 ## 1. Prasyarat
 
 | # | Prasyarat | Keterangan |
@@ -52,3 +54,59 @@ cd frontend && npm run lint && npm run build
 - Event types & label UI: `status_changed` ("Status berubah"), `maintenance_completed` ("Pemeliharaan selesai"), `field_check_attention` ("Pengecekan butuh perhatian"), `periodic_snapshot` ("Snapshot berkala").
 - Endpoint terkait: `GET /api/cctv/:id/snapshot`, `GET /api/cctv/:id/timeline?page=&limit=`.
 - Endpoint backend terkait: `GET /api/cctv/:id/snapshot` (JPEG), `GET /api/cctv/:id/timeline` (paginasi), model `CCTVSnapshot` + migrasi `000005_cctv_snapshots`.
+
+---
+
+# Manual Test — Monitor Grid & Stream Health (Sprint 25, Fase 10)
+
+Dokumen ini memverifikasi fitur **Multi-View Monitor & Deteksi Status Stream** (Fase 10) secara end-to-end, mencakup: halaman `/monitor` (admin-only) grid multi-stream dengan preset layout 2×2/3×3/4×4, per-cell CCTV dropdown + WHEPPlayer, fullscreen per sel & seluruh grid, pop-out `window.open('/monitor/pop?path=...')` & halaman `/monitor/pop`, menu sidebar "Monitor CCTV", serta deteksi status stream: goroutine monitoring (tiap 5 menit) query MediaMTX `ListPaths()` — track per-path ready state, stream down > 15 menit → broadcast `STREAM_DOWN` + kurangi health_score -10, pulih → `STREAM_RESTORED`; endpoint `GET /api/streams/health` (admin-only). Branch yang dipakai: `feature/monitor-view`. Backend versi `0.47.0` · frontend `1.39.0`.
+
+## 1. Prasyarat
+
+| # | Prasyarat | Keterangan |
+|---|-----------|------------|
+| P1 | Aplikasi berjalan | `docker compose up -d --build` — seluruh service (db, redis, api, frontend, nginx, backup, mediamtx) healthy |
+| P2 | MediaMTX running + stream CCTV aktif | Service `mediamtx` berjalan; minimal beberapa CCTV dengan `stream_enabled=true` & `channel_port` terisi agar path RTSP tersedia untuk monitor grid |
+| P3 | Login admin | Login sebagai **admin** di `https://localhost` (Swagger memakai `Authorization: Bearer`) |
+| P4 | Akses Swagger | Swagger tersedia di `https://localhost/swagger/index.html` (atau `http://localhost:3000/swagger/index.html` tanpa Docker) |
+| P5 | Akun teknisi (uji role) | Akun **teknisi** tersedia untuk memverifikasi pembatasan akses admin-only pada `/monitor` & `/api/streams/health` |
+
+## 2. Pengujian Otomatis
+
+```
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+cd backend && golangci-lint run ./...
+cd backend && swag init
+cd frontend && npm run lint && npm run build
+```
+
+## 3. Skenario Uji
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|-----------------------|-------------|
+| S10 | Halaman `/monitor` admin-only — login sebagai **teknisi**, buka `/monitor` | Akses **ditolak/di-redirect** (guard proxy + middleware `RequireRole("admin")`); halaman tidak dirender untuk teknisi | |
+| S11 | Grid multi-view — login sebagai admin, buka `/monitor`, pilih CCTV pada beberapa sel via dropdown, pilih preset layout 2×2/3×3/4×4 | Grid menampilkan preset yang dipilih; tiap sel menampilkan **video live** CCTV yang dipilih via `WHEPPlayer` | |
+| S12 | Fullscreen per sel & seluruh grid — klik tombol fullscreen pada satu sel, lalu tombol fullscreen seluruh grid | Sel yang dipilih menjadi **fullscreen** (Fullscreen API); seluruh grid juga bisa masuk **fullscreen** dan kembali normal (Esc/tombol) | |
+| S13 | Pop-out — klik tombol pop pada sebuah sel | Window baru terbuka via `window.open('/monitor/pop?path=...')` menampilkan stream CCTV tersebut dalam **fullscreen** | |
+| S14 | Stream health — panggil `GET /api/streams/health` sebagai admin | Respons menampilkan daftar stream CCTV dengan status **ready/down** beserta **down_duration** per stream | |
+| S15 | Deteksi down — simulasi NVR/stream mati > 15 menit, lalu pulihkan | Saat stream down > 15 menit: notifikasi **`STREAM_DOWN`** ter-broadcast ke admin & **health_score turun 10**; saat stream pulih: notifikasi **`STREAM_RESTORED`** | |
+| S16 | Menu sidebar "Monitor CCTV" — buka dashboard sebagai admin, periksa sidebar | Menu sidebar **"Monitor CCTV"** (ikon `MonitorPlay`) tampil untuk admin, diposisikan **setelah "Peta Sebaran CCTV"** | |
+
+## 4. Kriteria Lulus
+
+- Halaman `/monitor` hanya dapat diakses admin (teknisi di-redirect/403); menu sidebar "Monitor CCTV" tampil untuk admin setelah "Peta Sebaran CCTV".
+- Grid multi-view mendukung preset layout 2×2/3×3/4×4 dengan video live per sel via `WHEPPlayer`.
+- Fullscreen per sel & seluruh grid berfungsi; pop-out membuka `/monitor/pop?path=...` menampilkan stream fullscreen.
+- `GET /api/streams/health` (admin-only) mengembalikan status ready/down + `down_duration`.
+- Stream down > 15 menit → notifikasi `STREAM_DOWN` + health_score -10; pulih → `STREAM_RESTORED`.
+- Build/test/lint PASS: `go build`, `go test ./... -count=1`, `go vet`, `golangci-lint run`, `swag init`; `npm run lint` & `npm run build`.
+
+## Catatan & Gotchas
+
+- **Goroutine monitoring** berjalan tiap 5 menit memakai `utils/mediamtx.go` `ListPaths()` untuk men-track ready state per path.
+- Ambang deteksi down adalah **> 15 menit** — setelan internal, bukan 5 menit siklus polling.
+- Notifikasi `STREAM_DOWN`/`STREAM_RESTORED` di-broadcast (in-app/admin) dan **mengurangi `health_score` sebesar 10** per kejadian down.
+- Endpoint `GET /api/streams/health` **admin-only** (`Protected()` + `RequireRole("admin")`).
+- Pop-out memakai `window.open('/monitor/pop?path=...')` — pastikan popup blocker tidak memblokir window baru.
+- Halaman `/monitor/pop` adalah single fullscreen stream yang membaca `path` dari query parameter.
+- Unit test backend: `handlers/stream_health_test.go` (Task 10.4).

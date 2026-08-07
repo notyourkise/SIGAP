@@ -1,5 +1,34 @@
 # Changelog - Backend SIGAP
 
+## [0.47.0] - 2026-08-07
+
+### Fitur: Deteksi Status Stream & Stream Health (Task 10.4 — Fase 10)
+
+perubahan yang dilakukan: **Menambahkan monitoring status stream & endpoint stream health untuk Fase 10 (Kecerdasan Visual & Snapshot). Backend naik `0.46.0` → `0.47.0`.**
+
+before: Stream CCTV sudah dapat di-start/stop via MediaMTX (Fase 9) dan snapshot/timeline tersedia (Task 10.1+10.2), namun belum ada pemantauan otomatis terhadap status ready/down per path maupun cara admin melihat kondisi health tiap stream.
+
+after:
+- Goroutine monitoring (tiap 5 menit) query MediaMTX `ListPaths()` — men-track ready state per path stream CCTV.
+- Stream down **> 15 menit** → broadcast notifikasi `STREAM_DOWN` ke admin + kurangi `health_score` CCTV sebesar 10.
+- Stream pulih → broadcast notifikasi `STREAM_RESTORED`.
+- Endpoint `GET /api/streams/health` (admin-only) — daftar stream + status `ready`/`down` + `down_duration`.
+- Unit test `handlers/stream_health_test.go` — `GetStreamHealth` (tanpa stream, unauthorized 401/403), `RunStreamHealthMonitor` (no MediaMTX, down > 15 menit → `STREAM_DOWN` + health -10, pulih → `STREAM_RESTORED`).
+- Swagger annotations + `swag init`.
+
+timestamp: 2026-08-07 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/handlers/stream.go
+- backend/handlers/stream_health_test.go
+- backend/routes/stream.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Memantau kesehatan stream CCTV secara otomatis dan menyediakan endpoint health (ready/down + down_duration) bagi admin — Task 10.4 (Deteksi Status Stream), Fase 10 (Kecerdasan Visual & Snapshot).
+
 ## [0.46.0] - 2026-08-07
 
 ### Fitur: Snapshot Otomatis & Timeline Event Visual (Task 10.1 + 10.2 — Fase 10)

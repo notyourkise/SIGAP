@@ -31,7 +31,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
-| **10** | **Kecerdasan Visual & Snapshot** | **2/4** | **🚧 Berjalan** |
+| **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
@@ -457,7 +457,7 @@ cd .. && docker compose config --quiet
 ## Fase 10 — Kecerdasan Visual & Snapshot
 
 > Memperkaya data visual CCTV dengan snapshot otomatis dan monitoring stream.
-> **Prasyarat:** Fase 9 selesai. **Status: 🚧 Berjalan** — 4 task, 2 sprint (Sprint 24 = Task 10.1 + 10.2 ✅ Selesai).
+> **Prasyarat:** Fase 9 selesai. **Status: ✅ Selesai** — 4 task, 2 sprint (Sprint 24 = Task 10.1 + 10.2 ✅ Selesai; Sprint 25 = Task 10.3 + 10.4 ✅ Selesai).
 
 ### Sprint 24 — Snapshot & Timeline (Task 10.1 + 10.2)
 
@@ -487,12 +487,27 @@ cd ../frontend && npm run lint && npm run build
 ### Sprint 25 — Multi-View Monitor & Stream Health (Task 10.3 + 10.4)
 
 > **Branch:** `feature/monitor-view`
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Frontend** | Agent-FE | **10.3** Multi-View Monitor | Halaman `/monitor` (admin only): grid 4/9/16 video stream bersamaan. Preset layout (2×2, 3×3, 4×4). Pilih CCTV per sel. Fullscreen per sel atau seluruh grid. Menu sidebar "Monitor" (`MonitorPlay`). |
-| **Backend** | Agent-BE | **10.4** Deteksi Status Stream | Goroutine monitoring (tiap 5 menit): query MediaMTX path list → cek `ready`. Stream mati > 15 menit → notifikasi admin `STREAM_DOWN` + turunkan health score (-10). Stream pulih → `STREAM_RESTORED`. Kolom "Stream" di tabel master CCTV. |
-| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-visual.md`: skenario snapshot, timeline, monitor grid, stream health detection. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Frontend** | Agent-FE | **10.3** Multi-View Monitor | Halaman `/monitor` (admin only): grid 4/9/16 video stream bersamaan. Preset layout (2×2, 3×3, 4×4). Pilih CCTV per sel. Fullscreen per sel atau seluruh grid. Menu sidebar "Monitor" (`MonitorPlay`). | ✅ Selesai |
+| **Backend** | Agent-BE | **10.4** Deteksi Status Stream | Goroutine monitoring (tiap 5 menit): query MediaMTX path list → cek `ready`. Stream mati > 15 menit → notifikasi admin `STREAM_DOWN` + turunkan health score (-10). Stream pulih → `STREAM_RESTORED`. Kolom "Stream" di tabel master CCTV. | ✅ Selesai |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-visual.md`: skenario snapshot, timeline, monitor grid, stream health detection. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 25:** Multi-View Monitor & Stream Health (Fase 10) selesai — Fase 10 kini **4/4 ✅ Selesai**.
+- **Frontend (Task 10.3, `1.39.0`)**: halaman `/monitor` (admin-only) grid multi-stream dengan preset layout 2×2/3×3/4×4; per-cell CCTV dropdown + `WHEPPlayer`; fullscreen per sel & seluruh grid; pop-out `window.open('/monitor/pop?path=...')`; halaman `/monitor/pop` (single fullscreen stream); menu sidebar "Monitor CCTV" (`MonitorPlay`) setelah "Peta Sebaran CCTV".
+- **Backend (Task 10.4, `0.47.0`)**: goroutine monitoring (tiap 5 menit) query MediaMTX `ListPaths()` — track per-path ready state; stream down > 15 menit → broadcast `STREAM_DOWN` + kurangi health_score -10; pulih → `STREAM_RESTORED`; endpoint `GET /api/streams/health` (admin-only) list stream + status ready/down + `down_duration`; unit test `handlers/stream_health_test.go`.
+- **Dokumen**: `docs/manual-test-visual.md` (tambah Sprint 25 S10–S16); `docs/TESTING.md` (matriks `handlers/stream_health_test.go`; total 49 → 50).
+
+Detail: `backend/changelog.md` [0.47.0] · `frontend/changelog.md` [1.39.0] · `docs/changelog.md` [1.28.32].
+
+#### Verifikasi Sprint 25
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && golangci-lint run ./... && swag init
+cd ../frontend && npm run lint && npm run build
+```
 
 ---
 
