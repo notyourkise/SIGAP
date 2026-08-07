@@ -39,9 +39,11 @@ Setiap pengembangan fitur atau perbaikan _bug_ HARUS menggunakan branch baru.
 Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam repositori ini:
 
 ### Root `/`
-- `docker-compose.yml` — Orkestrasi 5 _service_ (db, redis, api, frontend, nginx) di dalam _network_ `sigap_network`.
+- `docker-compose.yml` — Orkestrasi 6 _service_ (db, redis, api, frontend, nginx, backup) di dalam _network_ `sigap_network`. Sejak Task 7.3 ada service `backup` (cron otomatis) + volume `backups_data`.
+- `scripts/backup.sh` & `scripts/restore.sh` — Backup & restore otomatis database + uploads (Task 7.3). Prosedur lengkap di `docs/BACKUP.md`.
+- `backup/Dockerfile` & `backup/entrypoint.sh` — Container `backup` (image `postgres:15-alpine` + `dcron`) yang menjalankan `backup.sh` via cron.
 - `makefile` — Kumpulan _script_ untuk menjalankan backend dan frontend secara bersamaan di lingkungan lokal.
-- `.gitignore` — Mengabaikan direktori seperti `node_modules`, file `.env`, hasil _build_ binary Go, dan folder _logs_.
+- `.gitignore` — Mengabaikan direktori seperti `node_modules`, file `.env`, hasil _build_ binary Go, folder _logs_, dan folder _backups_.
 
 ### Backend `backend/`
 - `main.go` — Titik masuk (entry point) aplikasi Go. Berisi inisialisasi _logger_, validasi secret wajib (fail-fast), koneksi database, _migrations_ versioned + migrasi data legacy, _seeders_, instansiasi Fiber app (termasuk _Trusted Proxies_ dan CORS), _middleware stack_, pendaftaran _routes_, dan _graceful shutdown_.
@@ -78,7 +80,7 @@ Berikut adalah penjelasan mengenai struktur direktori dan file penting dalam rep
 - `utils/pagination.go` — Helper utilitas untuk fitur paginasi (dengan cap maksimum `MAX_PAGE_SIZE`) dan proteksi _SQL injection_ pada kolom _sorting_.
 - `utils/validator.go` — Validator kustom (mis. kebijakan password kuat).
 - `utils/logger.go` — Sistem logging ganda menggunakan Zap (menyimpan log ke file JSON dan menampilkannya di konsol dengan warna).
-- `uploads/` — Direktori penyimpanan foto bukti pemeliharaan (hasil normalisasi JPEG, tanpa EXIF). Akses via endpoint yang dilindungi JWT.
+- `uploads/` — Direktori penyimpanan foto bukti pemeliharaan (hasil normalisasi JPEG, tanpa EXIF). Akses via endpoint yang dilindungi JWT. Di-backup otomatis oleh `scripts/backup.sh` (Task 7.3); prosedur backup & restore di `docs/BACKUP.md`.
 - `docs/` — Direktori yang berisi dokumentasi Swagger yang di-generate secara otomatis. Jalankan `swag init` setelah Anda memodifikasi anotasi pada _handlers_.
 
 ### Frontend `frontend/`
@@ -279,14 +281,15 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 
 ## 7. Konfigurasi Docker
 Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *deployment*:
-- Terdiri dari **5 services**:
+- Terdiri dari **6 services**:
   - `db` (berbasis `postgres:15-alpine`) — port `5432` **tidak dipublish** ke host; hanya dapat diakses dari dalam network.
   - `redis` (berbasis `redis:7-alpine`, sejak Task 7.2) — port `6379` **tidak dipublish**; shared store untuk rate-limit counter & token blacklist (persisten lintas restart, multi-instance). Volume `redis_data` (AOF) untuk persistensi.
   - `api` (merupakan _executable binary_ aplikasi Go) — port `3000` **tidak dipublish**; hanya diakses via reverse proxy.
   - `frontend` (menjalankan aplikasi Next.js) — port `3000` internal, **tidak dipublish**.
   - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, serta routing sisanya ke `frontend`.
+  - `backup` (Task 7.3) — image `postgres:15-alpine` + `dcron`; menjalankan `scripts/backup.sh` via cron (default tiap hari 06:00 WITA) untuk mem-backup database + uploads ke volume `backups_data`. Port **tidak dipublish**; hanya berkomunikasi dengan `db` di dalam network.
 - *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` yang didaftarkan sebagai trusted proxy).
-- *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; `redis_data` untuk persistensi Redis; folder `./backend/uploads` di-*bind mount* untuk foto bukti.
+- *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; `redis_data` untuk persistensi Redis; `backups_data` (Task 7.3) untuk hasil backup db/uploads; folder `./backend/uploads` di-*bind mount* untuk foto bukti (di-mount read-only ke service `backup`).
 - **Secret management**: Kredensial DB dibaca dari root `.env` (dipaksa via `${VAR:?}`), secret aplikasi (JWT/AES) dari `backend/.env.docker`. `REDIS_PASSWORD` opsional — bila diisi harus sama di root `.env` (untuk container Redis) dan `backend/.env.docker` (untuk klien API). Jangan pernah men-commit file `.env*`.
 - Layanan API membutuhkan file spesifik `backend/.env.docker` (gandakan dari `backend/.env.docker.example`); sertifikat TLS di `nginx/certs/`.
 - Menggunakan *Health check* pada _service_ PostgreSQL dan Redis: layanan API akan menunggu (`depends_on`) sampai _service_ basis data dan Redis berstatus `healthy` sebelum memulai _boot sequence_-nya. Bila Redis tidak tersedia saat startup, API tetap berjalan dengan fallback in-memory (hanya LOG WARNING — bukan fail-fast, aman untuk development tanpa Docker).

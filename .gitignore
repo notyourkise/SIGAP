@@ -33,6 +33,9 @@ Thumbs.db
 # Foto bukti upload runtime (bind mount Docker, bukan aset repo)
 /backend/uploads/
 
+# Backup runtime (Task 7.3) — hasil backup db/uploads, bukan aset repo
+/backups/
+
 # TLS Certificates (private keys jangan pernah di-commit)
 /nginx/certs/*.crt
 /nginx/certs/*.key

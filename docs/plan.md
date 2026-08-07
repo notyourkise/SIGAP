@@ -112,7 +112,8 @@ sigap-monorepo/
 | 9 | 6 | 6.4 Ringkasan Operasional | Goroutine harian, model `DailyDigest`, halaman `/ringkasan` | âœ… Selesai (2026-08-06, branch `feature/daily-digest`) |
 | 10 | 7 | 7.1 Migrasi DB Versioned | golang-migrate v4, file SQL terurut, `RunMigrations`, CLI up/down/version, AutoMigrate fase transisi, CI step, `docs/MIGRATION.md` | ✅ Selesai (2026-08-06, branch `feature/versioned-migration`) — build/test/vet PASS + uji live PostgreSQL up/down/up PASS |
 | 11 | 7 | 7.2 Redis Rate-Limit & Blacklist | Container Redis 7 Alpine di compose, `config/redis.go`, blacklist → Redis SET (TTL), limiter → Redis INCR/EXPIRE key `limiter:{ip}:{endpoint}`, fallback in-memory, env `REDIS_*`, unit test interface | ✅ Selesai (2026-08-06, branch `feature/redis-integration`) — build/test/vet PASS + uji live Redis 12 cek PASS + `docker compose config` valid |
-| 12–15 | 7 | 7.3–7.6 Kesiapan Produksi | Backup, monitoring, hardening, logging | ⬜ Belum |
+| 12 | 7 | 7.3 Backup Otomatis & Restore | Skrip `backup.sh`/`restore.sh`, container `backup` (cron), volume `backups_data`, `docs/BACKUP.md` | ✅ Selesai (2026-08-07, branch `feature/backup-restore`) — `bash -n` + `docker compose config` valid; uji fungsional backup/uploads/rotasi & restore lulus |
+| 13–15 | 7 | 7.4–7.6 Kesiapan Produksi | Monitoring, hardening, logging | ⬜ Belum |
 | 16â€“19 | 8 | 8.1â€“8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | â¬œ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
@@ -248,3 +249,21 @@ sigap-monorepo/
 - `middleware/limiter_test.go`: test lama (≤100 lolos, >100 → 429) tetap hijau (fallback memory) + format key `limiter:{ip}:{endpoint}`, reset counter memory setelah window, isolasi counter per key.
 - `go build ./... && go test ./... -count=1 && go vet ./...` PASS.
 - Uji live Redis 7 (Docker): ConnectRedis → Revoke → IsRevoked → **persistensi blacklist lintas restart API (client/instance baru)** → TTL key terpasang → Remove → INCR pertama 1 → EXPIRE window → batas 5/menit request ke-6 ditolak → key memakai TTL (12 cek PASS); `docker compose config --quiet` VALID; container Redis healthy.
+
+### 6.11 Rancangan Teknis Sprint 12 (Backup Otomatis & Restore)
+
+**Skrip**
+- `scripts/backup.sh`: `pg_dump` (opsi `--no-owner --no-privileges`) → `gzip` → `backups/db/sigap_<TS>.sql.gz`; `tar`+`gzip` folder uploads → `backups/uploads/uploads_<TS>.tar.gz` (archive kosong bila folder kosong); rotasi `find -mtime +RETENTION_DAYS -delete` (default 7 hari); timestamp WITA (Asia/Makassar); konfigurasi via env `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME/UPLOADS_DIR/BACKUP_DIR/RETENTION_DAYS` (default menyesuaikan deployment Docker).
+- `scripts/restore.sh`: argumen `<sql_dump.gz>` [optional `<uploads.tar.gz>`]; validasi keberadaan file; restore DB = drop & recreate (`psql`) lalu `gunzip` dump → `psql`; restore uploads = hapus & buat ulang folder lalu `tar -xzf`.
+
+**Infra (Opsi 2 — utama)**
+- `docker-compose.yml`: service `backup` — image `postgres:15-alpine` + `dcron` (sudah ada klien PostgreSQL); `backup/entrypoint.sh` menulis crontab (`CRON_SCHEDULE` default `0 6 * * *`, `TZ=Asia/Makassar`) lalu `crond -f` di foreground; volume `backups_data:/backups`; folder uploads bind-mount read-only; `depends_on.db` healthy; kredensial dari root `.env`.
+- `.gitignore`: tambah `/backups/`.
+
+**Dokumen**
+- `docs/BACKUP.md` (baru): prosedur backup manual & restore, jadwal cron (opsi container & host), verifikasi (integritas + end-to-end data utuh), dan disaster recovery.
+
+**Verifikasi**
+- `bash -n scripts/backup.sh scripts/restore.sh backup/entrypoint.sh` PASS; `docker compose config --quiet` VALID.
+- Uji fungsional: nama file `sigap_<TS>.sql.gz`/`uploads_<TS>.tar.gz`, struktur `backups/db`+`backups/uploads`, rotasi `-mtime +7` menghapus backup tua, restore drop/recreate berjalan.
+- Uji end-to-end (environment bersih): backup → verifikasi file → restore ke DB kosong → data utuh (langkah di `docs/BACKUP.md` bagian 7).

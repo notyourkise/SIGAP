@@ -1,6 +1,7 @@
 # ==========================================
 # SIGAP — Docker Compose (Hardened, lihat docs/SECURITY-AUDIT.md temuan 12)
 # ==========================================
+# Task 7.3: menambahkan service `backup` (cron otomatis) + volume `backups_data`.
 # Perubahan keamanan (Fase 2.6):
 #   - Quick tunnel (cloudflared) DIHAPUS  -> diganti reverse proxy Nginx + TLS
 #   - Port database 5432 TIDAK dipublish  -> hanya diakses dari dalam network
@@ -137,6 +138,51 @@ services:
         # dipalsukan oleh container lain.
         ipv4_address: 172.28.0.10
 
+  # ==========================================
+  # Service 6: Backup Otomatis (Task 7.3)
+  # ==========================================
+  # Menjalankan cron yang memanggil scripts/backup.sh secara berkala:
+  #   - pg_dump database -> backups/db/sigap_YYYYMMDD_HHMMSS.sql.gz
+  #   - tar uploads      -> backups/uploads/uploads_YYYYMMDD_HHMMSS.tar.gz
+  #   - rotasi otomatis  -> hapus backup > 7 hari (RETENTION_DAYS)
+  #
+  # Konfigurasi:
+  #   - Kredensial DB dibaca dari root .env (POSTGRES_USER/PASSWORD/DB).
+  #   - Folder uploads di-bind mount read-only dari host (sama dengan service api).
+  #   - Hasil backup disimpan ke named volume `backups_data`.
+  #   - Jadwal default: tiap hari 06:00 WITA (override via CRON_SCHEDULE + TZ).
+  #
+  # Akses manual (mis. restore):
+  #   docker compose exec backup backup.sh           # jalankan sekali
+  #   docker compose exec backup sh                  # shell untuk restore
+  backup:
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    container_name: sigap_backup
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-sigap_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di root .env}
+      DB_NAME: ${POSTGRES_DB:-sigap_db}
+      UPLOADS_DIR: /app/uploads
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: "7"
+      TZ: Asia/Makassar
+      CRON_SCHEDULE: ${CRON_SCHEDULE:-0 6 * * *}
+    volumes:
+      # Hasil backup disimpan di named volume (persisten, bukan di host fs).
+      - backups_data:/backups
+      # Folder uploads di-mount read-only (backup hanya membaca).
+      - ./backend/uploads:/app/uploads:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sigap_network
+
 # ==========================================
 # Named Volumes
 # ==========================================
@@ -144,6 +190,9 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  # Task 7.3: volume tempat backup db & uploads disimpan.
+  backups_data:
     driver: local
 
 # ==========================================

@@ -1,5 +1,38 @@
 # Changelog - Backend SIGAP
 
+## [0.38.0] - 2026-08-07
+
+### Infrastruktur: Backup Otomatis & Restore (Task 7.3)
+
+perubahan yang dilakukan: **Menambahkan skrip backup otomatis (`scripts/backup.sh`) dan restore (`scripts/restore.sh`) untuk database PostgreSQL dan folder uploads, container `backup` di docker-compose dengan cron, volume `backups_data`, serta dokumentasi `docs/BACKUP.md`. Backup database memakai `pg_dump` (opsi `--no-owner --no-privileges`) yang dikompres gzip ke `backups/db/sigap_YYYYMMDD_HHMMSS.sql.gz`; uploads di-tar+gzip ke `backups/uploads/uploads_YYYYMMDD_HHMMSS.tar.gz`; rotasi otomatis menghapus backup lebih dari 7 hari. Restore mendukung pemulihan database (drop/recreate lalu feed dump) dan/atau uploads.**
+
+before: Tidak ada mekanisme backup/pemulihan — database dan foto bukti uploads rentan kehilangan data permanen bila terjadi kegagalan perangkat, penghapusan tak sengaja, atau korupsi data. Tidak ada disaster recovery tersedia di hari pertama go-live.
+
+after:
+- `scripts/backup.sh` (baru): `pg_dump` → `gzip` → `backups/db/sigap_<TS>.sql.gz`; tar+gzip folder uploads → `backups/uploads/uploads_<TS>.tar.gz` (archive kosong bila folder kosong agar restore konsisten); rotasi `find -mtime +RETENTION_DAYS -delete` (default 7 hari); timestamp WITA (Asia/Makassar); konfigurasi via env `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME/UPLOADS_DIR/BACKUP_DIR/RETENTION_DAYS` (default menyesuaikan deployment Docker).
+- `scripts/restore.sh` (baru): argumen `<sql_dump.gz>` [optional `<uploads.tar.gz>`]; validasi keberadaan file; restore DB = drop & recreate via `psql` lalu `gunzip` dump → `psql`; restore uploads = hapus & buat ulang folder lalu `tar -xzf`.
+- `backup/Dockerfile` (baru): image `postgres:15-alpine` (klien PostgreSQL bawaan) + `dcron` + `bash`; menyalin `scripts/backup.sh`, `scripts/restore.sh`, dan `backup/entrypoint.sh`.
+- `backup/entrypoint.sh` (baru): menulis crontab (`CRON_SCHEDULE` default `0 6 * * *`, `TZ=Asia/Makassar`) yang memanggil `/usr/local/bin/backup.sh`, lalu menjalankan `crond -f` di foreground.
+- `docker-compose.yml`: service `backup` (volume `backups_data:/backups`, uploads bind-mount read-only, `depends_on.db` healthy, kredensial dari root `.env`); volume `backups_data`.
+- `.gitignore`: tambah `/backups/`.
+
+timestamp: 2026-08-07 04:00 WITA
+kategori: Sedang, Backend & Infrastruktur
+file yang diubah:
+- scripts/backup.sh
+- scripts/restore.sh
+- backup/Dockerfile
+- backup/entrypoint.sh
+- docker-compose.yml
+- .gitignore
+- docs/BACKUP.md
+- docs/changelog.md
+- docs/ROADMAP.md
+- docs/plan.md
+- docs/AGENTS.md
+- backend/changelog.md
+alasan perubahan: Task 7.3 ROADMAP (asal Fase 4.5) — disaster recovery wajib tersedia sebelum data nyata masuk di hari pertama go-live; backup otomatis database + uploads dengan rotasi memastikan sistem dapat dipulihkan bila terjadi kegagalan.
+
 ## [0.37.0] - 2026-08-06
 
 ### Infrastruktur: Redis untuk Rate-Limit & Blacklist (Task 7.2)
