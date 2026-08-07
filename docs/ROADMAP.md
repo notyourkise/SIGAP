@@ -29,7 +29,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
-| 8 | Pengalaman Lapangan | 1/4 | 🚧 Sedang berjalan |
+| 8 | Pengalaman Lapangan | 2/4 | 🚧 Sedang berjalan |
 
 > **Urutan pengerjaan:**
 > ```
@@ -262,14 +262,14 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 ## Fase 8 — Pengalaman Lapangan
 
 > Meningkatkan **produktivitas teknisi** yang bekerja di lapangan kawasan IKN dengan perangkat mobile.
-> **Status: 🚧 SEDANG BERJALAN** — Task 8.1 selesai (2026-08-07); 8.2–8.4 belum dikerjakan.
+> **Status: 🚧 SEDANG BERJALAN** — Task 8.1 & 8.2 selesai (2026-08-07); 8.3–8.4 belum dikerjakan.
 
 ### Task (berurutan — kerjakan dari atas ke bawah)
 
 | # | Task | Keterangan | Skala | Status |
 |---|------|-----------|-------|--------|
 | 8.1 | Progressive Web App (PWA) | Service worker + web manifest → SIGAP bisa di-install di home screen HP teknisi; cache halaman shell agar loading cepat; badge ikon app. Scope: installability + offline shell (bukan full offline dengan IndexedDB). | Sedang | ✅ Selesai (2026-08-07, branch `feature/pwa`) — `public/manifest.json` (SIGAP, standalone, `#162218`/`#467235`, ikon 192/512), `public/sw.js` (cache-first shell, network-first API, versi cache `sigap-shell-v1`), ikon PNG 192/512 dari logo, registrasi SW + manifest/theme-color/apple-touch-icon di `layout.tsx`, header cache `sw.js`/`manifest.json` di `next.config.ts`; lint & build PASS; manual test `docs/manual-test-pwa.md` |
-| 8.2 | Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin + teknisi): tampilan kalender bulanan (implementasi SVG/CSS mandiri, tanpa dependency chart eksternal) dengan dot/bar per hari menunjukkan jadwal; klik hari → daftar tugas; warna sesuai status; filter per teknisi. Data dari endpoint maintenance-logs + maintenance-schedules (jika 5.4 sudah ada). | Sedang | ⬜ Belum |
+| 8.2 | Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin + teknisi): tampilan kalender bulanan (implementasi SVG/CSS mandiri, tanpa dependency chart eksternal) dengan dot/bar per hari menunjukkan jadwal; klik hari → daftar tugas; warna sesuai status; filter per teknisi. Data dari endpoint maintenance-logs + maintenance-schedules (jika 5.4 sudah ada). | Sedang | ✅ Selesai (2026-08-07, branch `feature/calendar-view`) — `src/app/kalender/page.tsx` + `components/CalendarGrid.tsx` (grid 7 kolom, navigasi bulan, dot status, panel detail hari, filter teknisi admin), menu sidebar "Kalender" (`Calendar`), data dari `/maintenance-logs?start_date=&end_date=` dikelompokkan per `scheduled_date`; lint & build PASS; manual test `docs/manual-test-calendar.md` |
 | 8.3 | Notifikasi Push Browser | Web Push API (VAPID keys) → notifikasi OS saat tugas baru ditugaskan, eskalasi overdue, atau hasil pengecekan `attention`; opt-in per user; fallback ke in-app jika push ditolak. Endpoint `POST /api/push/subscribe`, `DELETE /api/push/unsubscribe`; model `PushSubscription`. | Sedang | ⬜ Belum |
 | 8.4 | Geotag Pengecekan Lapangan | Saat teknisi mengisi wizard pengecekan, posisi GPS (`navigator.geolocation`) dicatat otomatis; koordinat disimpan di `FieldMaintenance` (`check_latitude`, `check_longitude`); admin bisa melihat lokasi pengecekan di peta (verifikasi: teknisi benar-benar di lokasi CCTV). Persetujuan lokasi bersifat opsional — wizard tetap bisa diselesaikan tanpa GPS. | Kecil | ⬜ Belum |
 
@@ -291,7 +291,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 - `cd backend && go build ./... && go test ./... -count=1 && go vet ./...` — PASS.
 - `cd frontend && npm run lint && npm run build` — PASS.
 - PWA: install di Chrome Android/desktop, ikon muncul, halaman shell termuat saat offline (panduan di `docs/manual-test-pwa.md`); Lighthouse PWA score ≥ 80.
-- Kalender: tampilan bulan benar, klik hari menampilkan tugas, warna status sesuai.
+- Kalender: tampilan bulan benar, klik hari menampilkan tugas, warna status sesuai (panduan di `docs/manual-test-calendar.md`).
 - Push: notifikasi OS muncul saat tugas baru ditugaskan; opt-out berfungsi.
 - Geotag: koordinat tercatat di database; admin melihat pin lokasi pengecekan di peta.
 

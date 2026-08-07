@@ -117,7 +117,8 @@ sigap-monorepo/
 | 14 | 7 | 7.5 Container Hardening | Dockerfile non-root, resource limits, read-only rootfs + tmpfs, drop capabilities, Docker secrets (DB_PASSWORD/JWT_SECRET/AES_SECRET_KEY) + fallback env | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS + `docker compose config` valid |
 | 15 | 7 | 7.6 Logging Terstruktur | lumberjack rotasi (100 MB/5 backup/30 hari), `LOG_LEVEL`, log JSON | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS |
 | 16 | 8 | 8.1 Progressive Web App (PWA) | `public/manifest.json` (standalone, warna tema), `public/sw.js` (cache-first shell, network-first API), ikon 192/512, registrasi SW + meta di `layout.tsx`, header cache di `next.config.ts` | ✅ Selesai (2026-08-07, branch `feature/pwa`) — lint & build PASS; manual test `docs/manual-test-pwa.md` |
-| 17–19 | 8 | 8.2–8.4 Pengalaman Lapangan | Kalender, push notification, geotag | ⬜ Belum |
+| 17 | 8 | 8.2 Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin+teknisi), `CalendarGrid` (grid bulanan, dot status, navigasi), panel detail hari, filter teknisi admin | ✅ Selesai (2026-08-07, branch `feature/calendar-view`) — lint & build PASS; manual test `docs/manual-test-calendar.md` |
+| 18–19 | 8 | 8.3–8.4 Pengalaman Lapangan | Push notification, geotag | ⬜ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 
@@ -336,3 +337,18 @@ sigap-monorepo/
 **Verifikasi**
 - `cd frontend && npm run lint` (0 error) dan `npm run build` (exit 0) PASS.
 - Manual: install di desktop/Android, ikon muncul, shell termuat offline, API network-first, update SW membersihkan cache lama; Lighthouse PWA score ≥ 80 (panduan `docs/manual-test-pwa.md`).
+
+### 6.15 Rancangan Teknis Sprint 17 (Kalender Jadwal Pemeliharaan)
+
+**Frontend**
+- `src/components/CalendarGrid.tsx` (baru): grid kalender bulanan CSS mandiri (tanpa dependency chart eksternal) — header Senin–Minggu, 7 kolom × 5-6 baris, navigasi prev/next bulan + "Hari ini", dot warna status per hari (hijau completed, biru scheduled, kuning ongoing, merah failed/overdue), maksimal 3 dot + "+N", legend status. Helper: `toDayKey`, `formatLongDate`, `formatMonthTitle`, `STATUS_DOT_CLASS`, `STATUS_META`, `CalendarTask`.
+- `src/app/kalender/page.tsx` (baru): halaman `/kalender` (admin + teknisi). Ambil data `GET /api/maintenance-logs?start_date=&end_date=&page=1&limit=100` untuk rentang bulan, kelompokkan per `scheduled_date` (fallback `created_at`); filter per teknisi (admin, dropdown dari `/users?role=teknisi`; teknisi di-scope backend); panel detail hari (nama CCTV, kode, status, tindakan, teknisi); ikon lucide; pattern loading/error/empty.
+- `src/components/DashboardLayout.tsx`: menu sidebar "Kalender" (`/kalender`) dengan ikon `Calendar` (terbuka untuk admin & teknisi).
+
+**Dokumen**
+- `docs/manual-test-calendar.md` (baru): manual test blackbox (P1–P5, S1–S9) sesuai format manual test lain — menu/akses, tampilan bulan, navigasi, dot status, detail hari, filter teknisi, scope non-admin, konsistensi data, responsif/aksesibilitas, kriteria lulus.
+- ROADMAP Task 8.2 ✅ Selesai (Fase 8 2/4); plan Sprint 17; `frontend/changelog.md`; `docs/changelog.md`.
+
+**Verifikasi**
+- `cd frontend && npm run lint` (0 error) dan `npm run build` (exit 0) PASS.
+- Manual: bulan benar, klik hari menampilkan tugas, warna status sesuai, filter teknisi admin berfungsi, teknisi hanya melihat miliknya (panduan `docs/manual-test-calendar.md`).
