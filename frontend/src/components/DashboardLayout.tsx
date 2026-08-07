@@ -23,6 +23,7 @@ import {
   Calendar,
   TrendingUp,
   ClipboardList,
+  MonitorPlay,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -87,6 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Kalender', href: '/kalender', icon: Calendar },
     ...(user?.role === 'admin'
       ? [
+          { name: 'Monitor CCTV', href: '/monitor', icon: MonitorPlay },
           { name: 'Jadwal', href: '/schedules', icon: CalendarClock },
           { name: 'Pengecekan Lapangan', href: '/field-maintenance', icon: ClipboardCheck },
           { name: 'Manajemen Pengguna', href: '/users', icon: Users },

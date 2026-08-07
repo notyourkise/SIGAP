@@ -3,6 +3,18 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.32] — 2026-08-07 — Sprint 25: Multi-View Monitor & Stream Health (Task 10.3 + 10.4) — Fase 10
+
+### Perubahan
+
+- **Fase 10 (Kecerdasan Visual & Snapshot) selesai** — Task 10.3 (Multi-View Monitor) + Task 10.4 (Deteksi Status Stream) selesai dalam Sprint 25. Progress ROADMAP Fase 10 **2/4 → 4/4 ✅ Selesai**, Sprint 25 **✅ Selesai**.
+- **Backend** ([0.47.0]): goroutine monitoring (tiap 5 menit) query MediaMTX `ListPaths()` — track per-path ready state; stream down > 15 menit → broadcast `STREAM_DOWN` + kurangi `health_score` -10; pulih → `STREAM_RESTORED`; endpoint `GET /api/streams/health` (admin-only) list stream + status ready/down + `down_duration`; unit test `handlers/stream_health_test.go` (`GetStreamHealth`, `RunStreamHealthMonitor`).
+- **Frontend** ([1.39.0]): halaman `/monitor` (admin-only) grid multi-stream dengan preset layout 2×2/3×3/4×4; per-cell CCTV dropdown + `WHEPPlayer`; fullscreen per sel & seluruh grid; pop-out `window.open('/monitor/pop?path=...')`; halaman `/monitor/pop` (single fullscreen stream); menu sidebar "Monitor CCTV" (`MonitorPlay`) setelah "Peta Sebaran CCTV".
+- **Dokumen**: `docs/manual-test-visual.md` (tambah Sprint 25 S10–S16 — monitor grid & stream health); `docs/TESTING.md` (matriks `handlers/stream_health_test.go`; total 49 → 50); ROADMAP Fase 10 **4/4 ✅ Selesai** + Sprint 25 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet`/`golangci-lint run` + `swag init` PASS; `npm run lint` (0 error)/`npm run build` PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.47.0], `frontend/changelog.md` [1.39.0]
+
 ## [1.28.31] — 2026-08-07 — Sprint 24: Snapshot & Timeline (Task 10.1 + 10.2) — Fase 10
 
 ### Perubahan

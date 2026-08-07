@@ -1,5 +1,29 @@
 # Changelog - Frontend SIGAP
 
+## [1.39.0] - 2026-08-07
+
+### Fitur: Multi-View Monitor & Pop-out (Task 10.3 — Fase 10)
+
+perubahan yang dilakukan: **Menambahkan halaman Monitor CCTV grid multi-stream untuk Fase 10 (Kecerdasan Visual & Snapshot). Frontend naik `1.38.0` → `1.39.0`.**
+
+before: Streaming CCTV hanya dapat dilihat per-stream (StreamModal/grid di peta sebaran) tanpa monitor grid multi-view terpusat maupun mode fullscreen/pop-out khusus.
+
+after:
+- `src/app/monitor/page.tsx` (baru): halaman `/monitor` (admin-only) — grid multi-stream dengan preset layout 2×2/3×3/4×4; pilih CCTV per sel via dropdown; tiap sel memuat `WHEPPlayer`; fullscreen per sel & seluruh grid; pop-out `window.open('/monitor/pop?path=...')`.
+- `src/app/monitor/pop/page.tsx` (baru): halaman `/monitor/pop` — single fullscreen stream dari query parameter `path`.
+- `src/components/DashboardLayout.tsx`: menu sidebar "Monitor CCTV" (ikon `MonitorPlay`) setelah "Peta Sebaran CCTV".
+- `src/proxy.ts`: route `/monitor` ditambahkan ke guard admin server-side.
+
+timestamp: 2026-08-07 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/app/monitor/page.tsx
+- frontend/src/app/monitor/pop/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Mewujudkan monitor CCTV multi-view (grid 4/9/16 stream, preset layout 2×2/3×3/4×4, fullscreen, pop-out) sebagai pusat pemantauan live bagi admin — Task 10.3, Fase 10.
+
 ## [1.38.0] - 2026-08-07
 
 ### Fitur: Snapshot & Timeline Visual (Task 10.1b + 10.2b — Fase 10)

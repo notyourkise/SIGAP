@@ -2736,6 +2736,40 @@ paths:
       summary: Ambil URL Stream CCTV
       tags:
       - Streaming
+  /streams/health:
+    get:
+      consumes:
+      - application/json
+      description: Menampilkan ringkasan status kesehatan streaming setiap CCTV termasuk
+        kesiapan path, jumlah penonton, status down, dan durasi down.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar status kesehatan stream
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat data CCTV
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Status Kesehatan Stream
+      tags:
+      - Streaming
   /streams/start-all:
     post:
       consumes:

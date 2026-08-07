@@ -149,6 +149,11 @@ func main() {
 	go handlers.RunSnapshotScheduler(config.DB)
 	utils.Log.Info("📸 Scheduler snapshot otomatis diaktifkan (interval: 15 menit)")
 
+	// Jalankan monitor status stream (Task 10.4). Berjalan sekali segera, lalu
+	// berulang setiap 5 menit; mendeteksi down >15 menit & pemulihan stream.
+	go handlers.RunStreamHealthMonitor(config.DB)
+	utils.Log.Info("🩺 Monitor status stream diaktifkan (interval: 5 menit)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
