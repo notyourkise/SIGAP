@@ -1,5 +1,25 @@
 # Changelog - Frontend SIGAP
 
+## [1.38.0] - 2026-08-07
+
+### Fitur: Snapshot & Timeline Visual (Task 10.1b + 10.2b — Fase 10)
+
+perubahan yang dilakukan: **Menambahkan thumbnail snapshot CCTV dan timeline event visual untuk Fase 10 (Kecerdasan Visual & Snapshot). Frontend naik `1.37.0` → `1.38.0`.**
+
+before: Master CCTV & peta sebaran belum menampilkan snapshot frame; detail CCTV belum memiliki riwayat event visual.
+
+after:
+- `src/app/cctv/page.tsx`: kolom/thumbnail snapshot di tabel Master CCTV memakai `snapshot_url` via `AuthenticatedImage`, placeholder ikon `ImageOff` bila belum ada; timeline kronologis di detail CCTV (state `timeline`, `EVENT_TYPE_LABELS` untuk label event — `status_changed`, `maintenance_completed`, `field_check_attention`, `periodic_snapshot`); interface CCTV bertambah `snapshot_url?`.
+- `src/components/CCTVMap.tsx`: tooltip & popup marker peta menampilkan gambar snapshot kecil (64×48) via `AuthenticatedImage`, placeholder ikon `Camera` bila belum ada; interface `CCTVMapItem` bertambah `snapshot_url?`.
+
+timestamp: 2026-08-07 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/changelog.md
+alasan perubahan: Mewujudkan antarmuka visual snapshot (thumbnail di tabel master & tooltip marker peta) dan timeline kronologis di detail CCTV — Task 10.1b + 10.2b, Fase 10.
+
 ## [1.37.0] - 2026-08-07
 
 ### Fitur: Fase 9 Streaming CCTV — Selesai (Frontend Task 9.4 / 9.5 / 9.6)

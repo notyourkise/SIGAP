@@ -27,4 +27,8 @@ type CCTV struct {
 	ChannelPort   int    `gorm:"type:integer" json:"channel_port"`
 	RTSPPassword  string `gorm:"type:text" json:"rtsp_password,omitempty"`
 	StreamEnabled bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
+	// SnapshotURL adalah path URL snapshot terbaru (computed, tidak disimpan di DB).
+	// Diisi saat handler mengembalikan data CCTV agar frontend dapat langsung
+	// mengambil snapshot terbaru melalui endpoint /cctv/{id}/snapshot.
+	SnapshotURL string `gorm:"-" json:"snapshot_url,omitempty"`
 }

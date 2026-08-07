@@ -1034,6 +1034,79 @@ paths:
       summary: Unduh QR Code CCTV
       tags:
       - Master CCTV
+  /cctv/{id}/snapshot:
+    get:
+      description: Mengembalikan gambar JPEG snapshot terbaru dari sebuah CCTV yang
+        diambil dari MediaMTX.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: Gambar JPEG snapshot
+          schema:
+            type: string
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV atau snapshot tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Snapshot CCTV
+      tags:
+      - Snapshot
+  /cctv/{id}/timeline:
+    get:
+      description: Menampilkan daftar snapshot / event visual CCTV terpaginasi (urutan
+        terbaru dulu) dengan metadata paginasi.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar timeline snapshot terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Timeline CCTV
+      tags:
+      - Snapshot
   /cctv/import:
     post:
       consumes:

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
@@ -29,7 +30,9 @@ import {
   LoaderCircle,
   ClipboardCheck,
   SlidersHorizontal,
-  RotateCcw
+  RotateCcw,
+  ImageOff,
+  History
 } from 'lucide-react';
 
 interface CCTV {
@@ -54,12 +57,35 @@ interface CCTV {
   created_at: string;
   channel_port: number;
   stream_enabled: boolean;
+  snapshot_url?: string;
 }
 
 interface QRPrintItem {
   cctv: CCTV;
   qrDataUrl: string;
 }
+
+// Satu baris kejadian pada timeline CCTV — sesuai struktur respons backend:
+// { id, cctv_id, event_type, image_path, notes, created_at }
+interface TimelineEvent {
+  id: string;
+  cctv_id: string;
+  event_type: string;
+  image_path?: string;
+  notes?: string;
+  created_at: string;
+}
+
+// Label Bahasa Indonesia untuk tiap tipe kejadian pada timeline
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  status_changed: 'Status berubah',
+  maintenance_completed: 'Pemeliharaan selesai',
+  field_check_attention: 'Pengecekan butuh perhatian',
+  periodic_snapshot: 'Snapshot berkala',
+};
+
+const eventTypeLabel = (type: string) =>
+  EVENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 export default function CCTVPage() {
   const { user } = useAuth();
@@ -110,6 +136,11 @@ export default function CCTVPage() {
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Timeline kejadian CCTV (dimuat saat modal detail dibuka)
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState('');
 
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -335,6 +366,49 @@ export default function CCTVPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // Ambil riwayat kejadian (timeline) CCTV terbaru saat modal detail dibuka.
+  const fetchTimeline = useCallback(async (id: string) => {
+    setTimelineLoading(true);
+    setTimelineError('');
+    try {
+      const response = await apiRequest<{ rows: TimelineEvent[] }>(`/cctv/${id}/timeline?page=1&limit=20`);
+      if (response.status === 'success' && response.data) {
+        setTimeline(response.data.rows || []);
+      } else {
+        setTimeline([]);
+      }
+    } catch (err: any) {
+      setTimelineError(err.message || 'Riwayat CCTV belum dapat dimuat.');
+      setTimeline([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, []);
+
+  // Muat timeline saat modal detail dibuka; reset saat modal ditutup atau CCTV berubah.
+  useEffect(() => {
+    if (isDetailModalOpen && currentCCTV) {
+      fetchTimeline(currentCCTV.id);
+    } else {
+      setTimeline([]);
+      setTimelineLoading(false);
+      setTimelineError('');
+    }
+  }, [isDetailModalOpen, currentCCTV, fetchTimeline]);
+
+  // Format waktu kejadian ke locale Indonesia (tanggal & jam)
+  const formatTimelineDate = (value: string) => {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return value;
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleOpenForm = (cctv: CCTV | null = null) => {
@@ -975,6 +1049,7 @@ export default function CCTVPage() {
                         </div>
                       </th>
                     )}
+                    <th className="px-5 py-3.5">Snapshot</th>
                     <th className="px-5 py-3.5">Identitas</th>
                     <th className="px-5 py-3.5">Koneksi</th>
                     <th className="px-5 py-3.5">Lokasi</th>
@@ -998,6 +1073,21 @@ export default function CCTVPage() {
                           />
                         </td>
                       )}
+                      <td className="px-5 py-4">
+                        <div className="flex h-[30px] w-[40px] items-center justify-center overflow-hidden rounded-md border border-border">
+                          {cctv.snapshot_url ? (
+                            <AuthenticatedImage
+                              imageUrl={cctv.snapshot_url}
+                              alt={`Snapshot ${cctv.nama}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-background text-muted/40">
+                              <ImageOff className="h-3.5 w-3.5" aria-hidden="true" />
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           {cctv.qr_payload ? (
@@ -1773,6 +1863,62 @@ export default function CCTVPage() {
                     <dd className="mt-1 whitespace-pre-wrap text-sm">{currentCCTV.keterangan || 'Tidak ada keterangan tambahan.'}</dd>
                   </div>
                 </dl>
+              </div>
+
+              {/* Timeline kejadian CCTV */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-t border-border pt-4">
+                  <h4 className="flex items-center gap-1.5 text-sm font-bold">
+                    <History className="h-4 w-4 text-primary" />
+                    Timeline
+                  </h4>
+                  <span className="text-xs text-muted">Riwayat terbaru</span>
+                </div>
+
+                {timelineLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted" role="status">
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    <span>Memuat riwayat CCTV…</span>
+                  </div>
+                ) : timelineError ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>{timelineError}</span>
+                  </div>
+                ) : timeline.length === 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-xs text-muted">
+                    <History className="h-4 w-4 shrink-0 text-muted/40" />
+                    <span>Belum ada riwayat untuk CCTV ini.</span>
+                  </div>
+                ) : (
+                  <ol className="space-y-2.5">
+                    {timeline.map((event) => (
+                      <li
+                        key={event.id}
+                        className="flex items-start gap-3 rounded-xl border border-border bg-background/50 p-3"
+                      >
+                        <div className="flex h-[48px] w-[64px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border">
+                          <AuthenticatedImage
+                            imageUrl={`/api/cctv/${currentCCTV.id}/snapshot`}
+                            alt={`Snapshot ${currentCCTV.nama}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold leading-snug">
+                            {eventTypeLabel(event.event_type)}
+                          </p>
+                          {event.notes && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted">{event.notes}</p>
+                          )}
+                          <p className="mt-1 text-[11px] text-muted">
+                            {formatTimelineDate(event.created_at)}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
 
               <div className="flex gap-2 pt-4 border-t border-border justify-end">

@@ -31,7 +31,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
-| **10** | **Kecerdasan Visual & Snapshot** | **0/4** | **🔲 Belum dimulai** |
+| **10** | **Kecerdasan Visual & Snapshot** | **2/4** | **🚧 Berjalan** |
 | **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
@@ -457,17 +457,32 @@ cd .. && docker compose config --quiet
 ## Fase 10 — Kecerdasan Visual & Snapshot
 
 > Memperkaya data visual CCTV dengan snapshot otomatis dan monitoring stream.
-> **Prasyarat:** Fase 9 selesai. **Status: 🔲 Belum dimulai** — 4 task, 2 sprint.
+> **Prasyarat:** Fase 9 selesai. **Status: 🚧 Berjalan** — 4 task, 2 sprint (Sprint 24 = Task 10.1 + 10.2 ✅ Selesai).
 
 ### Sprint 24 — Snapshot & Timeline (Task 10.1 + 10.2)
 
 > **Branch:** `feature/cctv-snapshot`
+> **Status: ✅ Selesai** (2026-08-07)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **10.1** Snapshot Otomatis (Thumbnail) | Goroutine berkala (tiap 15 menit) mengambil snapshot frame dari stream aktif via MediaMTX API → simpan JPEG di `uploads/snapshots/{cctv_id}/` → endpoint `GET /api/cctv/:id/snapshot`. Rotasi max 10 snapshot per CCTV. Field `snapshot_url` di response `GetAllCCTV`. |
-| **Backend** | Agent-BE | **10.2** Timeline Event Visual | Model `CCTVSnapshot` (cctv_id, timestamp, event_type, image_path). Capture otomatis saat event penting (status berubah, maintenance selesai, field-check `attention`). Endpoint `GET /api/cctv/:id/timeline`. Migrasi `000005_cctv_snapshots`. |
-| **Frontend** | Agent-FE | **10.1b + 10.2b** UI Snapshot & Timeline | Thumbnail di kartu CCTV tabel master & peta marker tooltip. Timeline kronologis di detail CCTV dengan snapshot + label event. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **10.1** Snapshot Otomatis (Thumbnail) | Goroutine berkala (tiap 15 menit) mengambil snapshot frame dari stream aktif via MediaMTX API → simpan JPEG di `uploads/snapshots/{cctv_id}/` → endpoint `GET /api/cctv/:id/snapshot`. Rotasi max 10 snapshot per CCTV. Field `snapshot_url` di response `GetAllCCTV`. | ✅ Selesai |
+| **Backend** | Agent-BE | **10.2** Timeline Event Visual | Model `CCTVSnapshot` (cctv_id, timestamp, event_type, image_path). Capture otomatis saat event penting (status berubah, maintenance selesai, field-check `attention`). Endpoint `GET /api/cctv/:id/timeline`. Migrasi `000005_cctv_snapshots`. | ✅ Selesai |
+| **Frontend** | Agent-FE | **10.1b + 10.2b** UI Snapshot & Timeline | Thumbnail di kartu CCTV tabel master & peta marker tooltip. Timeline kronologis di detail CCTV dengan snapshot + label event. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 24:** Snapshot & Timeline (Fase 10) selesai.
+- **Backend (Task 10.1 + 10.2, `0.46.0`)**: model `CCTVSnapshot` + migrasi `000005_cctv_snapshots`; goroutine snapshot berkala (15 menit) via `utils/mediamtx.go` `GetSnapshot` (endpoint `/v3/paths/get/{path}/snapshot`); endpoint `GET /api/cctv/:id/snapshot` (JPEG, 404 bila belum ada) & `GET /api/cctv/:id/timeline` (paginasi); rotasi maksimal 10 snapshot per CCTV di `uploads/snapshots/{cctv_id}/`; event hook `status_changed` / `maintenance_completed` / `field_check_attention` / `periodic_snapshot`; field computed `snapshot_url` (`gorm:"-"`) pada respons `GetAllCCTV`/`GetCCTVByID`.
+- **Frontend (Task 10.1b + 10.2b, `1.38.0`)**: thumbnail snapshot di tabel Master CCTV (`/cctv`, `AuthenticatedImage` + placeholder `ImageOff`); thumbnail di tooltip marker peta (`/sebaran-cctv`, placeholder `Camera`); timeline kronologis di detail CCTV dengan snapshot + label event (`EVENT_TYPE_LABELS`).
+- **Dokumen**: `docs/manual-test-visual.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); `docs/TESTING.md` (matriks snapshot: `handlers/snapshot_test.go` — `GetCCTVTimeline` 404/success, `GetCCTVSnapshot` 404; total 48 → 49).
+
+Detail: `backend/changelog.md` [0.46.0] · `frontend/changelog.md` [1.38.0] · `docs/changelog.md` [1.28.31].
+
+#### Verifikasi Sprint 24
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && golangci-lint run ./... && swag init
+cd ../frontend && npm run lint && npm run build
+```
 
 ### Sprint 25 — Multi-View Monitor & Stream Health (Task 10.3 + 10.4)
 
@@ -606,12 +621,12 @@ Sprint 20: Fondasi Streaming (9.1 + 9.2) ✅ ......... 2 hari
 Sprint 21: Backend API Stream (9.3) ✅ .............. 2–3 hari
 Sprint 22: Frontend Player + UI (9.4–9.6) ✅ ....... 3–4 hari
 Sprint 23: Integrasi E2E + Manual Test ✅ ........... 1–2 hari
+Sprint 24: Snapshot & Timeline (10.1 + 10.2) ✅ .... 3–4 hari
 Sprint 26: Inventaris Suku Cadang (11.1) .......... 3–4 hari
 ───────────────────────────────────────────────────────────────
 
 BERIKUTNYA (Oktober – November 2026)
 ───────────────────────────────────────────────────────────────
-Sprint 24: Snapshot & Timeline (10.1 + 10.2) ...... 3–4 hari
 Sprint 25: Monitor & Stream Health (10.3 + 10.4) .. 3–4 hari
 Sprint 27: Email & Report Builder (11.2 + 11.3) ... 4–5 hari
 Sprint 28: Zona & SLA (11.4 + 11.5) ............... 4–5 hari

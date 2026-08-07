@@ -144,6 +144,11 @@ func main() {
 	}()
 	utils.Log.Info("📡 Auto-register stream CCTV ke MediaMTX dijadwalkan (tunda 5 detik)")
 
+	// Jalankan scheduler snapshot otomatis (Task 10.1). Berjalan sekali segera,
+	// lalu berulang setiap 15 menit untuk seluruh CCTV stream_enabled.
+	go handlers.RunSnapshotScheduler(config.DB)
+	utils.Log.Info("📸 Scheduler snapshot otomatis diaktifkan (interval: 15 menit)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =

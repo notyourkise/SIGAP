@@ -3,6 +3,18 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.31] — 2026-08-07 — Sprint 24: Snapshot & Timeline (Task 10.1 + 10.2) — Fase 10
+
+### Perubahan
+
+- **Fase 10 (Kecerdasan Visual & Snapshot) dimulai** — Task 10.1 (Snapshot Otomatis) + Task 10.2 (Timeline Event Visual) selesai dalam Sprint 24. Progress ROADMAP Fase 10 **0/4 → 2/4 🚧 Berjalan**, Sprint 24 **✅ Selesai**.
+- **Backend** ([0.46.0]): model `CCTVSnapshot` + migrasi `000005_cctv_snapshots`; goroutine snapshot berkala (15 menit) via `utils/mediamtx.go` `GetSnapshot` (endpoint `/v3/paths/get/{path}/snapshot`); endpoint `GET /api/cctv/:id/snapshot` (JPEG, 404 bila belum ada) & `GET /api/cctv/:id/timeline` (paginasi); rotasi maksimal 10 snapshot per CCTV di `uploads/snapshots/{cctv_id}/`; event hook `status_changed` / `maintenance_completed` / `field_check_attention` / `periodic_snapshot`; field computed `snapshot_url` (`gorm:"-"`) pada respons `GetAllCCTV`/`GetCCTVByID`.
+- **Frontend** ([1.38.0]): thumbnail snapshot di tabel Master CCTV (`/cctv`, `AuthenticatedImage` + placeholder `ImageOff`); thumbnail di tooltip marker peta (`/sebaran-cctv`, placeholder `Camera`); timeline kronologis di detail CCTV dengan snapshot + label event (`EVENT_TYPE_LABELS`).
+- **Dokumen**: `docs/manual-test-visual.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); `docs/TESTING.md` (matriks snapshot & timeline: `handlers/snapshot_test.go` — `GetCCTVTimeline` 404/success, `GetCCTVSnapshot` 404; total 48 → 49); ROADMAP Fase 10 2/4 🚧 Berjalan + Sprint 24 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet`/`golangci-lint run` + `swag init` PASS; `npm run lint` (0 error)/`npm run build` PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.46.0], `frontend/changelog.md` [1.38.0]
+
 ## [1.28.30] — 2026-08-07 — Fase 9 Streaming CCTV — Selesai (Task 9.1–9.6)
 
 ### Perubahan
