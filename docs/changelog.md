@@ -3,6 +3,18 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.30] — 2026-08-07 — Fase 9 Streaming CCTV — Selesai (Task 9.1–9.6)
+
+### Perubahan
+
+- **Fase 9 (Streaming CCTV Real-Time) selesai** — seluruh 6 task (9.1–9.6) dalam 4 sprint (20–23) telah diimplementasikan & diverifikasi. Progress ROADMAP Fase 9 **3/6 → 6/6 ✅ Selesai**.
+- **Backend** ([0.44.0]): fondasi streaming (model `CCTV` + migrasi `000004`, `utils/rtsp.go`, service `mediamtx` di Docker) → client MediaMTX (`utils/mediamtx.go`) + handler/rute stream admin-only (`handlers/stream.go`, `routes/stream.go` `/api/streams/*`) + goroutine auto-start. `rtsp_password` terenkripsi & tidak pernah dikembalikan.
+- **Frontend** ([1.36.0]): UI streaming real-time — `WHEPPlayer.tsx`, `StreamModal.tsx`, `StreamGridView.tsx`, integrasi marker CCTV + toggle Peta/Grid di `sebaran-cctv`, serta konfigurasi streaming di Master CCTV (`cctv/page.tsx`).
+- **Dokumen**: ROADMAP Fase 9 6/6 ✅ Selesai + Sprint 20–23 ✅ Selesai; `docs/AGENTS.md` (7 services + service `mediamtx`, endpoint streaming admin-only, env NVR/MediaMTX, file baru); `docs/TESTING.md` (matriks streaming + `routes/stream_test.go`, total 48); `docs/plan.md` (Sprint 20–23 + rancangan teknis); `docs/manual-test-streaming.md` (S1–S9).
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet`/`golangci-lint run` + `swag init` PASS; `npm run lint` (0 error)/`npm run build` PASS; `docker compose config --quiet` VALID; Docker E2E 8 service healthy.
+
+Timestamp: 2026-08-07 WITA | Kategori: Besar | Detail: `backend/changelog.md` [0.44.0], `frontend/changelog.md` [1.36.0]
+
 ## [1.28.29] — 2026-08-07 — Sprint 21: Backend API & MediaMTX Client (Task 9.3) — Fase 9
 
 ### Perubahan
