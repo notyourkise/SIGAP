@@ -1,5 +1,24 @@
 # Changelog - Backend SIGAP
 
+## [0.47.1] - 2026-08-07
+
+### Perbaikan: RunMigrations menutup koneksi DB global (aplikasi crash di Docker)
+
+perubahan yang dilakukan: **Menghapus pemanggilan `m.Close()` pada `RunMigrations` di `backend/config/migrate.go` agar koneksi database global (`config.DB`) tidak ikut ditutup setelah migrasi selesai. Ini memperbaiki crash "sql: database is closed" saat aplikasi berjalan di container Docker.**
+
+before: `RunMigrations` memakai `defer func() { _, _ = m.Close() }()`. `migrate.Migrate.Close()` pada driver pgx v5 memanggil `p.db.Close()` yang menutup `*sql.DB` global yang di-share dengan `config.DB`, sehingga setelah migrasi berhasil, seluruh operasi DB berikutnya (migrasi data legacy, seeder admin, handler) gagal dengan `sql: database is closed` dan aplikasi tidak bisa startup.
+
+after:
+- `backend/config/migrate.go`: `RunMigrations` TIDAK lagi memanggil `m.Close()` (instance dibiarkan dibersihkan GC). Komentar dijelaskan alasannya.
+- Efek: aplikasi berhasil menjalankan migrasi, seeder admin, dan melayani request setelah startup di Docker.
+
+timestamp: 2026-08-07 22:10 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/config/migrate.go
+- backend/changelog.md
+alasan perubahan: Aplikasi tidak dapat berjalan di container Docker karena `RunMigrations` menutup koneksi DB global (golang-migrate `Close()` → `p.db.Close()` pada driver pgx v5 yang memakai `*sql.DB` yang sama dengan `config.DB`). Menghapus `m.Close()` pada `RunMigrations` memperbaiki crash "sql: database is closed" sehingga aplikasi dapat startup dan melayani request.
+
 ## [0.47.0] - 2026-08-07
 
 ### Fitur: Deteksi Status Stream & Stream Health (Task 10.4 — Fase 10)

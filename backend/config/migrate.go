@@ -31,7 +31,10 @@ func RunMigrations(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _, _ = m.Close() }()
+	// PENTING: TIDAK memanggil m.Close() di sini. migrate.Migrate.Close() akan
+	// menutup *sql.DB global yang di-share dengan config.DB (lihat pgx driver
+	// Close() → p.db.Close()), sehingga seluruh operasi DB setelah migrasi
+	// menjadi "sql: database is closed". Instance dibiarkan dibersihkan GC.
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("menerapkan migration: %w", err)

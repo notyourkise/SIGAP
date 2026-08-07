@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.33] — 2026-08-07 — Perbaikan Infrastruktur: Stack Docker dapat dijalankan
+
+### Perubahan
+
+- **Infra** (`docker-compose.yml`): service `api` kini memiliki **healthcheck** (endpoint `/api/health` via `127.0.0.1:3000` — bukan `localhost` karena API bind di IPv4 `0.0.0.0`); direktori writable `/app/logs` & `/tmp` diubah dari `tmpfs` menjadi **named volume** `api_logs`/`api_tmp` (tmpfs tidak terpasang pada setup ini) sehingga rootfs `read_only` tetap dapat menulis log.
+- **Backend** ([0.47.1]): `RunMigrations` di `config/migrate.go` tidak lagi memanggil `m.Close()` — `migrate.Migrate.Close()` (driver pgx v5) menutup `*sql.DB` global yang di-share dengan `config.DB`, menyebabkan `sql: database is closed` dan aplikasi gagal startup di Docker. Diperbaiki.
+- Efek: seluruh stack (db, redis, api, frontend, nginx, mediamtx, prometheus, grafana) dapat di-up; `https://localhost/api/health` = Healthy; aplikasi SIGAP Fase 9 & 10 (streaming, snapshot, timeline, multi-view monitor) dapat diakses.
+- Detail: `backend/changelog.md` [0.47.1].
+
+Timestamp: 2026-08-07 WITA | Kategori: Kecil, Infrastruktur & Backend | Detail: `backend/changelog.md` [0.47.1]
+
 ## [1.28.32] — 2026-08-07 — Sprint 25: Multi-View Monitor & Stream Health (Task 10.3 + 10.4) — Fase 10
 
 ### Perubahan
