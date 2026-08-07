@@ -1,5 +1,36 @@
 # Changelog - Backend SIGAP
 
+## [0.44.0] - 2026-08-07
+
+### Fitur: Backend API & MediaMTX Client (Task 9.3)
+
+perubahan yang dilakukan: **Menambahkan client REST MediaMTX dan seluruh handler/rute streaming CCTV — `utils/mediamtx.go` (struct `MediaMTXClient` dengan `AddPath`, `RemovePath`, `GetPath`, `ListPaths` ke `http://mediamtx:9997/v3/`); `handlers/stream.go` (`StartStream` — decrypt `rtsp_password` → build URL RTSP → register path di MediaMTX → return WHEP URL; `StopStream`; `StartAllStreams`; `StopAllStreams`; `GetStreamStatus` — gabung data DB + info path MediaMTX; `GetStreamURL` — return WHEP + HLS); `routes/stream.go` (grup `/streams` admin-only); registrasi di `main.go` + goroutine auto-start stream aktif saat boot; serta unit test `utils/mediamtx_test.go` & `handlers/stream_test.go` dan Swagger annotations + `swag init`. Versi backend naik `0.43.0` → `0.44.0`.**
+
+before: MediaMTX sudah tersedia sebagai service (Task 9.2) dan model CCTV menyimpan konfigurasi streaming (Task 9.1), tetapi belum ada cara untuk mulai/menghentikan stream, mengambil status/URL stream, maupun mengelola path RTSP di MediaMTX melalui API — peta sebaran masih view-only dan belum bisa menampilkan video live.
+
+after:
+- `utils/mediamtx.go` (baru): struct `MediaMTXClient` — HTTP client ke base URL `MEDIAMTX_API_URL` (`http://mediamtx:9997/v3/`); method `AddPath` (register path RTSP pull → WHEP/HLS), `RemovePath` (hapus path), `GetPath` (detail satu path), `ListPaths` (daftar path); parsing respons JSON MediaMTX; handle status non-2xx & error.
+- `handlers/stream.go` (baru): `StartStream` (decrypt `rtsp_password` via `utils.DecryptAES256` → `utils.BuildRTSPURL` → `AddPath` di MediaMTX → return `whep_url`; validasi `stream_enabled=false` → 400, tanpa `channel_port` → 400, CCTV tidak ditemukan → 404), `StopStream` (`RemovePath` → path dihapus), `StartAllStreams`/`StopAllStreams` (loop seluruh CCTV streaming), `GetStreamStatus` (gabung data DB CCTV + info path MediaMTX — `stream_active`/`stream_ready`/`viewers`), `GetStreamURL` (return `whep_url` + `hls_url`). Swagger annotations.
+- `routes/stream.go` (baru): grup `/streams` dengan `Protected()` + `RequireRole("admin")` — `GET /status`, `POST /start-all`, `POST /stop-all`, `POST /:id/start`, `POST /:id/stop`, `GET /:id/url`; rute statis didaftarkan sebelum dinamis.
+- `main.go`: panggil `routes.SetupStreamRoutes(api)`; jalankan goroutine `RegisterActiveStreams`/auto-start untuk stream yang `stream_enabled` saat boot.
+- Test: `utils/mediamtx_test.go` (baru) — `AddPath`/`RemovePath`/`GetPath`/`ListPaths` sukses + error/edge cases via `httptest` mock (status 404, non-2xx, body tidak valid); `handlers/stream_test.go` (baru) — `StartStream` sukses/404/disabled/no-channel-port, `StopStream`, `GetStreamStatus`, `GetStreamURL`, enforcement `RequireRole("admin")` (teknisi → 403).
+- Swagger: `swag init` (endpoint baru `/streams/*`).
+
+timestamp: 2026-08-07 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/utils/mediamtx.go
+- backend/utils/mediamtx_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/routes/stream.go
+- backend/main.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+alasan perubahan: Task 9.3 ROADMAP (Fase 9 — Sprint 21) — menghubungkan konfigurasi streaming CCTV (Task 9.1) dan infrastruktur MediaMTX (Task 9.2) menjadi API backend yang bisa memulai/menghentikan stream dan mengembalikan URL WHEP/HLS untuk dipakai frontend (Sprint 22); seluruh endpoint admin-only sesuai keputusan arsitektur streaming; `rtsp_password` tidak pernah diekspos.
+
 ## [0.43.0] - 2026-08-07
 
 ### Fitur: Model & Migrasi Streaming CCTV (Task 9.1)

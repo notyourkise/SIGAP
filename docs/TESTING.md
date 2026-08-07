@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`).
+> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go`).
 
 ---
 
@@ -68,8 +68,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `field_maintenance_test.go` (Task 8.4, diperluas) | `CreateFieldMaintenance` geotag: `check_latitude` di luar rentang → 400, `check_longitude` bukan angka → 400, geotag valid → 201 + koordinat tersimpan |
 | `utils` | `rtsp_test.go` (Task 9.1) | `BuildRTSPURL` (sub/main stream — channel id `channel_port × 100 + stream_type`), `BuildStreamPath`, `GetRTSPPort` default, edge cases (channel 0/negatif, stream type tidak dikenal) |
 | `handlers` | `cctv_test.go` (Task 9.1, diperluas) | `CreateCCTV`/`UpdateCCTV` menerima field streaming baru (`channel_port`, `rtsp_password`, `stream_enabled`); `rtsp_password` tidak muncul di response JSON (excluded) |
+| `utils` | `mediamtx_test.go` (Task 9.3a) | `MediaMTXClient`: `AddPath`/`RemovePath`/`GetPath`/`ListPaths` (sukses 2xx, parsing body JSON, mapping path info), error/edge cases via `httptest` mock (status 404, respons non-2xx, body tidak valid, server error) |
+| `handlers` | `stream_test.go` (Task 9.3b) | `StartStream` (sukses → return `whep_url`; CCTV tidak ditemukan 404; `stream_enabled=false` → 400; tanpa `channel_port` → 400), `StopStream` (sukses → path dihapus), `GetStreamStatus` (list dengan `stream_active`/`stream_ready`/`viewers`), `GetStreamURL` (return `whep_url` + `hls_url`), enforcement role (`RequireRole("admin")` — teknisi → 403) |
 
-**Total: 46 file test** (12 utils, 5 middleware, 21 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
+**Total: 48 file test** (13 utils, 5 middleware, 22 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
 ---
 
