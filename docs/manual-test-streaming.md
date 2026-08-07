@@ -1,11 +1,11 @@
 # Uji Manual - Streaming CCTV Real-Time
 
-> **Task:** 9.3 Backend API & MediaMTX Client (Sprint 21, Fase 9 — Streaming CCTV)
-> **Branch:** `feature/stream-api`
-> **Versi:** backend `0.44.0`
-> **Dokumen:** verifikasi backend streaming CCTV — client MediaMTX (`utils/mediamtx.go`) dan handler/rute stream (`handlers/stream.go`, `routes/stream.go`) — mulai/menghentikan stream, status & URL stream, serta enforcement akses **admin-only**.
+> **Task:** 9.3 (Sprint 21) & 9.4/9.5/9.6 (Sprint 22, Fase 9 — Streaming CCTV)
+> **Branch:** `feature/stream-api` (backend) → `feature/stream-frontend` (frontend)
+> **Versi:** backend `0.44.0` · frontend `1.36.0`
+> **Dokumen:** verifikasi streaming CCTV end-to-end — (a) backend client MediaMTX (`utils/mediamtx.go`) & handler/rute stream (`handlers/stream.go`, `routes/stream.go`), serta (b) UI frontend (player `WHEPPlayer`, modal stream, grid view, peta sebaran, konfigurasi streaming Master CCTV).
 
-Fokus uji ini adalah **backend API stream via Swagger/curl + otorisasi admin**. Player/UI penuh (komponen `WHEPPlayer`, modal stream, peta & grid view) hadir di **Sprint 22** (`feature/stream-frontend`); dokumen ini tidak menguji tampilan player tersebut.
+Skenario **S1–S9** menguji **backend API stream via Swagger/curl + otorisasi admin** (Sprint 21). Skenario **S10–S15** menguji **UI frontend streaming** (Sprint 22) yang memakai komponen `WHEPPlayer`, `StreamModal`, `StreamGridView`, dan integrasi peta.
 
 ## 1. Prasyarat
 
@@ -107,6 +107,63 @@ Hasil yang diharapkan: `go build` sukses, `go test` seluruh package PASS, `go ve
 | 2 | Panggil salah satu endpoint `/streams` (mis. `GET /api/streams/status`, `POST /api/streams/:id/start`) | Respons **403** (hanya admin) | |
 | 3 | Login kembali sebagai **admin** | Endpoint yang sama berhasil (200) | |
 
+---
+
+## 3.1 Skenario Uji Frontend (Sprint 22 — UI Streaming)
+
+> **Catatan verifikator:** skenario di bawah menguji **UI frontend** (`feature/stream-frontend`). Prasyarat: login sebagai **admin**, minimal 1 CCTV ber-`stream_enabled=true` lengkap dengan `channel_port` & `rtsp_password`, dan **MediaMTX reachable** dari browser (lihat Catatan). Isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
+
+### S10 - Admin mengonfigurasi streaming di Master CCTV
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Buka **Master CCTV** (`/cctv`) → klik ikon edit pada sebuah CCTV | Form "Ubah Data CCTV" terbuka, berisi bagian **Konfigurasi Streaming** | |
+| 2 | Isi **Channel Port NVR** (1–35) | Field menerima angka; **Preview URI** diperbarui mengikuti `channel_port*100+2` (mis. port 2 → `.../channels/202`) | |
+| 3 | Isi **Password RTSP**; uji tombol toggle (ikon mata) untuk menampilkan/menyembunyikan | Password dapat ditampilkan/disembunyikan | |
+| 4 | Centang **Aktifkan Streaming**, lalu simpan | Simpan sukses; `channel_port` & `stream_enabled` tersimpan | |
+| 5 | Buka kembali form edit CCTV yang sama | `channel_port` & `stream_enabled` terisi sesuai; **`rtsp_password` tampil kosong** (tidak pernah dikembalikan API) | |
+
+### S11 - Klik marker CCTV streaming di Peta Sebaran → video live
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Buka **Peta Sebaran** (`/sebaran-cctv`) | Marker CCTV tampil di peta | |
+| 2 | Klik marker CCTV dengan `stream_enabled=true` | `StreamModal` terbuka | |
+| 3 | Tekan tombol **Start** | Video **live** tampil via `WHEPPlayer` dengan indikator **🔴 LIVE** | |
+| 4 | (Opsi) tekan **Stop** | Stream berhenti; tombol kembali ke **Start** | |
+
+### S12 - Toggle kualitas SD/HD pada player
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Mulai streaming pada suatu CCTV (lihat S11) | Video live tampil | |
+| 2 | Ganti kualitas ke **HD** | Stream di-restart dengan kualitas baru (URL channel utama) | |
+| 3 | Ganti kualitas kembali ke **SD** | Stream di-restart ke sub stream (kualitas default) | |
+
+### S13 - Toggle view Peta / Grid
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Di halaman Peta Sebaran, alihkan ke **Grid View** | `StreamGridView` menampilkan multi-stream CCTV yang aktif | |
+| 2 | Periksa sel CCTV tanpa streaming | Sel menampilkan **placeholder** (bukan video) | |
+| 3 | Alihkan kembali ke **Peta View** | Peta tampil kembali dengan marker | |
+
+### S14 - Status bar & kolom ikon Stream
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Di Peta/Grid Sebaran, periksa status bar | Tampil teks "**N kamera streaming aktif**" sesuai jumlah CCTV streaming | |
+| 2 | Buka **Master CCTV** (`/cctv`) | Kolom **Stream** pada tabel menampilkan ikon **MonitorPlay** | |
+| 3 | Bandingkan ikon per baris | CCTV `stream_enabled=true` berikon **hijau**; yang `false` berikon **abu-abu** | |
+
+### S15 - Guard role — teknisi tidak melihat UI streaming
+
+| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+|---|---------|------------------------|-------------|
+| 1 | Login sebagai **teknisi** | Teknisi masuk ke dashboard (tanpa akses admin) | |
+| 2 | Akses halaman streaming/peta sebaran yang memuat UI stream | UI streaming **tidak tampil** untuk teknisi (guard role); hanya admin yang dapat melihat/memutar stream | |
+| 3 | Coba akses konfigurasi streaming di Master CCTV | Teknisi tidak dapat membuka/menyimpan konfigurasi streaming (guard role admin) | |
+
 ## 4. Kriteria Lulus
 
 1. Seluruh endpoint grup `/streams` **admin-only** — akses sebagai teknisi selalu **403**.
@@ -122,6 +179,6 @@ Hasil yang diharapkan: `go build` sukses, `go test` seluruh package PASS, `go ve
 
 - `rtsp_password` disimpan **terenkripsi (AES-256)** di database dan di-exclude dari response JSON; pada `StartStream` password didekripsi internal lalu dipakai hanya untuk membangun URL RTSP.
 - `whep_url`/`hls_url` memakai path stream (bukan URL absolut penuh); player (Sprint 22) akan menempelkannya pada base host via Nginx reverse proxy (`/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`).
-- MediaMTX harus **reachable** dari backend (`MEDIAMTX_API_URL` benar dan service `mediamtx` healthy) agar `StartStream`/`StopStream`/status bekerja.
+- MediaMTX harus **reachable** dari backend (`MEDIAMTX_API_URL` benar dan service `mediamtx` healthy) agar `StartStream`/`StopStream`/status bekerja. Untuk uji **end-to-end frontend (S10–S15)**, pastikan juga **MediaMTX dapat dijangkau dari browser** melalui Nginx reverse proxy (`/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`) agar video live dapat ditampilkan pada player.
 - Seluruh operasi stream bersifat **admin-only** sesuai keputusan arsitektur streaming (akses viewer dibatasi admin).
-- UI player/streaming penuh (klik marker → video live, toggle SD/HD, grid view) belum tercakup di sini; akan ditambahkan pada uji manual streaming tahap Sprint 22/23 setelah frontend tersedia.
+- UI player/streaming penuh (klik marker → video live, toggle SD/HD, grid view) kini tercakup pada skenario **S10–S15** di bawah (Sprint 22).
