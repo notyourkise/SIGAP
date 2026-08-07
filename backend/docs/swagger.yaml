@@ -244,6 +244,19 @@ definitions:
     required:
     - qr_payload
     type: object
+  handlers.SubscribePushRequest:
+    properties:
+      endpoint:
+        type: string
+      key_auth:
+        type: string
+      key_p256dh:
+        type: string
+    required:
+    - endpoint
+    - key_auth
+    - key_p256dh
+    type: object
   handlers.UpdateCCTVRequest:
     properties:
       id_channel:
@@ -2410,6 +2423,74 @@ paths:
       summary: Jumlah Notifikasi Belum Dibaca
       tags:
       - Notifikasi
+  /push/subscribe:
+    post:
+      consumes:
+      - application/json
+      description: Menyimpan subscription Web Push (browser) untuk user yang login
+        agar dapat menerima notifikasi push.
+      parameters:
+      - description: Data subscription Web Push
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SubscribePushRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Subscription tersimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Payload tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftarkan Langganan Push
+      tags:
+      - Push Notification
+  /push/unsubscribe:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus subscription Web Push user berdasarkan endpoint (opt-out).
+      parameters:
+      - description: Body berisi endpoint
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Subscription dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Berhenti Berlangganan Push
+      tags:
+      - Push Notification
   /test-panic:
     get:
       description: Endpoint uji coba untuk memastikan Recovery Middleware bekerja

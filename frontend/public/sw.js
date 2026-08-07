@@ -1,7 +1,7 @@
 /* ==========================================
-   SIGAP — Service Worker (Task 8.1 PWA)
+   SIGAP — Service Worker (Task 8.1 PWA + Task 8.3 Push)
    ==========================================
-   Scope: installability + offline shell saja.
+   Scope: installability + offline shell + notifikasi push browser.
    Strategi cache:
      - Shell (HTML navigasi, CSS, JS chunks, ikon/font): disimpan di cache.
      - Navigasi HTML   : network-first, fallback ke cache (offline shell).
@@ -9,11 +9,14 @@
                          (hashed oleh Next.js sehingga aman di-cache).
      - API calls       : network-first, fallback ke cache (bila ada), selain itu
                          respons JSON ringan "offline".
+   Push (Task 8.3): menangani event `push` dari server (Web Push/VAPID) dan
+   menampilkan notifikasi OS via showNotification, serta membuka halaman yang
+   relevan saat notifikasi diklik.
    BUKAN full offline (tanpa IndexedDB) — data tetap butuh jaringan/API.
    ========================================== */
 
 // Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
-const CACHE_VERSION = 'sigap-shell-v1';
+const CACHE_VERSION = 'sigap-shell-v2';
 const SHELL_CACHE = CACHE_VERSION;
 
 // Aset inti shell yang di-pre-cache saat install (diperbarui saat activate).
@@ -164,3 +167,66 @@ self.addEventListener('fetch', (event) => {
 
   // Lainnya: biarkan jaringan normal.
 });
+
+// ==========================================
+// Notifikasi Push (Task 8.3)
+// ==========================================
+// Server mengirim payload JSON (data.push) berisi { title, body,
+// notification_type, reference_id, reference_type }.
+
+self.addEventListener('push', (event) => {
+  let title = 'SIGAP';
+  let options = {
+    body: 'Anda memiliki pembaruan dari SIGAP.',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: { url: '/dashboard' },
+  };
+
+  if (event.data) {
+    try {
+      const payload = event.data.json();
+      const push = payload && payload.push ? payload.push : payload;
+
+      title = push.title || title;
+      options.body = push.body || options.body;
+      options.data = {
+        url: buildReferenceUrl(push),
+      };
+    } catch (err) {
+      // Payload bukan JSON — tetap tampilkan notifikasi default.
+    }
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Saat notifikasi diklik: fokus tab yang ada atau buka tab baru ke halaman tujuan.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/dashboard';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
+// Susun URL tujuan berdasarkan tipe referensi notifikasi.
+function buildReferenceUrl(push) {
+  const type = push.reference_type;
+  const refId = push.reference_id;
+
+  if (type === 'maintenance-log' && refId) return '/maintenance';
+  if (type === 'field-maintenance' && refId) return '/field-maintenance';
+  if (type === 'daily-digest' && refId) return '/ringkasan';
+  return '/dashboard';
+}

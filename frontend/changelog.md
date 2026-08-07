@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.34.0] - 2026-08-07
+
+### Fitur: Notifikasi Push Browser (Task 8.3)
+
+perubahan yang dilakukan: **Menambahkan dukungan notifikasi push browser: service worker menangani event `push` dan `notificationclick`, serta komponen opt-in di halaman profil untuk mengaktifkan/menonaktifkan push (subscribe/unsubscribe ke backend).**
+
+before: SIGAP hanya menampilkan notifikasi in-app (bell); belum ada notifikasi OS saat aplikasi tidak dibuka.
+
+after:
+- `public/sw.js`: handler event `push` (membaca payload `data.push` → `showNotification`) dan `notificationclick` (fokus/buka tab ke halaman sesuai `reference_type`); `CACHE_VERSION` dinaikkan ke `sigap-shell-v2`.
+- `src/components/PushNotificationOptIn.tsx` (baru): cek dukungan (Service Worker + Push API), minta izin, subscribe (`pushManager.subscribe` + `applicationServerKey` dari `NEXT_PUBLIC_VAPID_PUBLIC_KEY`), kirim ke `POST /api/push/subscribe`; nonaktif → `DELETE /api/push/unsubscribe`; status unsupported/denied/on/off.
+- `src/app/profile/page.tsx`: bagian "Notifikasi Push" yang merender `PushNotificationOptIn`.
+
+timestamp: 2026-08-07 17:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/public/sw.js
+- frontend/src/components/PushNotificationOptIn.tsx
+- frontend/src/app/profile/page.tsx
+- frontend/changelog.md
+alasan perubahan: Task 8.3 ROADMAP (Fase 8) — memastikan teknisi tidak melewatkan tugas penting via notifikasi OS; opt-in per user dengan fallback ke notifikasi in-app.
+
 ## [1.33.0] - 2026-08-07
 
 ### Fitur: Kalender Jadwal Pemeliharaan (Task 8.2)

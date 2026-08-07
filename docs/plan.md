@@ -118,7 +118,8 @@ sigap-monorepo/
 | 15 | 7 | 7.6 Logging Terstruktur | lumberjack rotasi (100 MB/5 backup/30 hari), `LOG_LEVEL`, log JSON | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS |
 | 16 | 8 | 8.1 Progressive Web App (PWA) | `public/manifest.json` (standalone, warna tema), `public/sw.js` (cache-first shell, network-first API), ikon 192/512, registrasi SW + meta di `layout.tsx`, header cache di `next.config.ts` | ✅ Selesai (2026-08-07, branch `feature/pwa`) — lint & build PASS; manual test `docs/manual-test-pwa.md` |
 | 17 | 8 | 8.2 Kalender Jadwal Pemeliharaan | Halaman `/kalender` (admin+teknisi), `CalendarGrid` (grid bulanan, dot status, navigasi), panel detail hari, filter teknisi admin | ✅ Selesai (2026-08-07, branch `feature/calendar-view`) — lint & build PASS; manual test `docs/manual-test-calendar.md` |
-| 18–19 | 8 | 8.3–8.4 Pengalaman Lapangan | Push notification, geotag | ⬜ Belum |
+| 18 | 8 | 8.3 Notifikasi Push Browser | Model `PushSubscription`+migrasi, `POST /push/subscribe` & `DELETE /push/unsubscribe`, `utils/push.go` (webpush VAPID), integrasi ke `NotifyUser`, SW push/notificationclick, opt-in `PushNotificationOptIn` di `/profile` | ✅ Selesai (2026-08-07, branch `feature/push-notification`) — build/test/vet + lint/build PASS; manual test `docs/manual-test-push-notification.md` |
+| 19 | 8 | 8.4 Pengalaman Lapangan | Geotag pengecekan | ⬜ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
 
@@ -352,3 +353,29 @@ sigap-monorepo/
 **Verifikasi**
 - `cd frontend && npm run lint` (0 error) dan `npm run build` (exit 0) PASS.
 - Manual: bulan benar, klik hari menampilkan tugas, warna status sesuai, filter teknisi admin berfungsi, teknisi hanya melihat miliknya (panduan `docs/manual-test-calendar.md`).
+
+### 6.16 Rancangan Teknis Sprint 18 (Notifikasi Push Browser)
+
+**Backend**
+- `models/push_subscription.go` (baru): `PushSubscription` — `Base`, `UserID` (FK), `Endpoint`, `KeyP256DH` (column `key_p256dh`), `KeyAuth`; index `(user_id)`.
+- `migrations/000002_push_subscriptions.up.sql`/`.down.sql`: tabel `push_subscriptions` + index + FK ke users (idempoten).
+- `utils/push.go` (baru): `SendPush` (async, query subscription user, kirim ke semua via `webpush-go`; no-op bila VAPID kosong — fallback in-app), `SendPushToSubscription` (payload JSON `PushNotificationPayload`), `SetSendNotificationFn` untuk mock. Env: `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_EMAIL`.
+- `handlers/push.go` (baru): `POST /push/subscribe` (upsert idempotent), `DELETE /push/unsubscribe` (soft delete by endpoint); helper `currentUserID`.
+- `routes/push.go` (baru): grup `/push` protected.
+- `utils/notify.go`: `NotifyUser` & `NotifyUserSync` memanggil `SendPush` setelah notifikasi in-app berhasil (async, warning bila gagal).
+- `main.go`: daftarkan `SetupPushRoutes`; `go.mod` tambah `github.com/SherClockHolmes/webpush-go v1.4.0`.
+- Test: `handlers/push_test.go` (subscribe create/upsert/validasi/unauthorized, unsubscribe success/missing endpoint), `utils/push_test.go` (SendPushToSubscription mock, no-op VAPID kosong, kirim ke semua subscription, payload format).
+- Env docs: `backend/.env.docker.example` & `.env.example` tambah `VAPID_*`.
+
+**Frontend**
+- `public/sw.js`: handle `push` (showNotification dari payload `data.push`) & `notificationclick` (fokus/buka halaman by reference_type); bump `CACHE_VERSION` ke `sigap-shell-v2`.
+- `src/components/PushNotificationOptIn.tsx` (baru): cek dukungan, minta izin, subscribe (`pushManager.subscribe` + `applicationServerKey` dari `NEXT_PUBLIC_VAPID_PUBLIC_KEY`), kirim ke `POST /api/push/subscribe`; nonaktif → `DELETE /api/push/unsubscribe`.
+- `src/app/profile/page.tsx`: bagian "Notifikasi Push" dengan `PushNotificationOptIn`.
+
+**Dokumen**
+- `docs/manual-test-push-notification.md` (baru): manual test blackbox (P1–P6, S1–S9) — opt-in/izin, push saat tugas/overdue/attention, opt-out, fallback in-app, konsistensi payload, scope per user, kriteria lulus.
+- ROADMAP Task 8.3 ✅ Selesai (Fase 8 3/4); plan Sprint 18; `backend/changelog.md`; `frontend/changelog.md`; `docs/changelog.md`; TESTING.md; AGENTS.md.
+
+**Verifikasi**
+- `go build`/`go test ./... -count=1`/`go vet` PASS; `npm run lint` (0 error)/`npm run build` (exit 0) PASS.
+- Manual: notifikasi OS muncul saat tugas baru ditugaskan / eskalasi overdue / hasil attention; opt-out berfungsi; fallback in-app bila VAPID tidak dikonfigurasi (panduan `docs/manual-test-push-notification.md`).

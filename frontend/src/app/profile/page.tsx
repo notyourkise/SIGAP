@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
+import PushNotificationOptIn from '@/components/PushNotificationOptIn';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
 
@@ -281,6 +282,19 @@ export default function ProfilePage() {
               </Link>
             </div>
           </form>
+        </section>
+
+        {/* Notifikasi push browser (Task 8.3) */}
+        <section aria-labelledby="push-settings-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4">
+            <h2 id="push-settings-heading" className="text-base font-bold">Notifikasi Push</h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Terima notifikasi OS saat ada tugas baru, eskalasi, atau pembaruan penting.
+            </p>
+          </div>
+          <div className="p-5">
+            <PushNotificationOptIn />
+          </div>
         </section>
       </div>
     </DashboardLayout>

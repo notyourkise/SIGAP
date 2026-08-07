@@ -63,8 +63,10 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `health_test.go` (Task 7.4, diperluas) | HealthCheck Connected, field baru `db_response_time_ms`, `redis_status=Disabled`, `uploads{status,path,size_bytes}`, `dirSize` (folder tak ada → 0, jumlah ukuran file) |
 | `utils` | `secrets_test.go` (Task 7.5) | `GetSecret`: file `/run/secrets` menang atas env var, fallback ke env bila file tak ada, kosong bila keduanya hilang, trim whitespace file |
 | `utils` | `logger_test.go` (Task 7.6) | `parseLogLevel` (valid, invalid/empty → `info`, case-insensitive), `InitLogger` menghasilkan `Log` non-nil |
+| `utils` | `push_test.go` (Task 8.3) | `SendPushToSubscription` meneruskan subscription/payload ke sender mock (VAPID), `SendPush` no-op bila VAPID kosong, kirim ke semua subscription user, format payload JSON |
+| `handlers` | `push_test.go` (Task 8.3) | `SubscribePush` (create, upsert idempotent, validasi 400, unauthorized 401), `UnsubscribePush` (success, missing endpoint 400) |
 
-**Total: 43 file test** (10 utils, 5 middleware, 20 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
+**Total: 45 file test** (11 utils, 5 middleware, 21 handlers, 2 models, 3 config, 2 routes, 1 monitoring, termasuk helper).
 
 ---
 

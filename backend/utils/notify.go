@@ -42,6 +42,10 @@ func NotifyUser(db *gorm.DB, userID uuid.UUID, notifType string, title string, m
 			return
 		}
 		BroadcastToUser(n.UserID.String(), EventNotifCreated, n)
+
+		// Task 8.3: kirim push (Web Push) ke subscription user bila ada.
+		// Asynchronous & tidak menggagalkan operasi bila gagal (log warning).
+		SendPush(database, n.UserID, n.Type, n.Title, n.Message, n.ReferenceType, n.ReferenceID)
 	}(notif, db)
 }
 
@@ -65,6 +69,9 @@ func NotifyUserSync(db *gorm.DB, userID uuid.UUID, notifType string, title strin
 		return err
 	}
 	BroadcastToUser(notif.UserID.String(), EventNotifCreated, notif)
+
+	// Task 8.3: kirim push ke subscription user bila ada (asynchronous).
+	SendPush(db, notif.UserID, notif.Type, notif.Title, notif.Message, notif.ReferenceType, notif.ReferenceID)
 	return nil
 }
 
