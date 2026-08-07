@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
-> Rencana pengembangan SIGAP — dari perbaikan keamanan hingga kecerdasan operasional.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-06---
+> Rencana pengembangan SIGAP — dari perbaikan keamanan hingga streaming CCTV real-time.
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-07
 
 ## Visi & Prinsip Prioritas
 
@@ -30,17 +30,29 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
+| **9** | **Streaming CCTV Real-Time** | **0/6** | **🔲 Belum dimulai** |
+| **10** | **Kecerdasan Visual & Snapshot** | **0/4** | **🔲 Belum dimulai** |
+| **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
+| **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
 > ```
-> Fase 1 ✅ → Fase 2 ✅ → Fase 3 ✅ → Fase 5 (5.2 → 5.5, aktif) → Fase 6 ──┐
->                                                                              ├──→ Fase 8
->                                                                 Fase 7 ────┘
+> Fase 1–8 ✅ (semua selesai)
+>     │
+>     ▼
+> Fase 9 (Streaming CCTV) ──→ Task 11.1 (Suku Cadang)
+>     │                              │
+>     ▼                              ▼
+> Fase 10 (Visual)            sisa Fase 11 (Operasional)
+>     │                              │
+>     └──────────┬───────────────────┘
+>                ▼
+>          Fase 12 (Integrasi)
 > ```
-> - **Fase 5** (alur kerja operasional): dikerjakan berurutan 5.2 → 5.5, fondasi untuk semua fase berikutnya.
-> - **Fase 6** (kecerdasan) dan **Fase 7** (produksi) bisa dikerjakan **paralel** — Fase 6 murni fitur, Fase 7 murni infrastruktur. Jika tim terbatas dan go-live dekat, prioritaskan Fase 7.
-> - **Fase 8** (pengalaman lapangan) dikerjakan setelah Fase 6 dan/atau 7 tuntas.
-> - Sisa Fase 4 (4.3–4.7) kini **dilebur ke Fase 7** dengan scope yang disesuaikan.
+> - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
+> - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
+> - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
+> - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -297,19 +309,293 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 ---
 
-## Kandidat Lanjutan (Dievaluasi Setelah Fase 8)
+## Keputusan Arsitektur Streaming (Disepakati 2026-08-07)
 
-> Item-item berikut belum dijadwalkan tetapi berpotensi tinggi. Dievaluasi berdasarkan
-> kebutuhan nyata setelah go-live dan feedback pengguna.
+| # | Pertanyaan | Keputusan |
+|---|-----------|----------|
+| 1 | Network Access | VPS Hostinger (cloud). Port RTSP `554` pada IP Publik `36.91.27.35` dibuka oleh tim jaringan OIKN. |
+| 2 | Bandwidth | **Sub Stream (02)** default (~0.5–1 Mbps/stream). Toggle opsional ke Main Stream (01). |
+| 3 | Kredensial NVR | 1 NVR (`36.91.27.35:554`), 35 kamera, credential tunggal. Password AES-256 encrypted di DB. |
+| 4 | Encoding | **H.264 wajib**. MediaMTX relay only — **zero transcoding** (tanpa FFmpeg). |
+| 5 | Akses Viewer | **Admin Only** — `middleware.RequireRole("admin")`. |
+| 6 | Retention | **Live View saja** — rekaman tetap di NVR Hikvision lokal. |
+| 7 | Prioritas pasca-Fase 9 | Langsung ke Task 11.1 (Inventaris Suku Cadang). |
 
-| Kandidat | Deskripsi | Prasyarat |
-|----------|-----------|-----------|
-| Integrasi Snapshot CCTV | Endpoint yang menangkap thumbnail/snapshot dari kamera CCTV (RTSP → JPEG) untuk ditampilkan di dashboard; membutuhkan akses jaringan ke NVR/kamera. | Akses jaringan CCTV |
-| Inventaris Suku Cadang | Model `SparePart` + `SparePartUsage`: catat penggunaan suku cadang per tugas pemeliharaan; stok, minimum order, notifikasi stok rendah. | Fase 5 selesai |
-| Multi-Zona / Multi-Site | Mendukung beberapa kawasan (bukan hanya IKN); model `Zone` sebagai parent `CCTV`; filter + dashboard per zona. | Kebutuhan ekspansi |
-| Notifikasi Email (SMTP) | Kirim ringkasan harian, eskalasi overdue, dan pengumuman via email; konfigurasi SMTP; opt-in per user. | SMTP server tersedia |
-| API Key untuk Integrasi | Model `APIKey` dengan scope terbatas; memungkinkan sistem lain membaca data CCTV/pemeliharaan tanpa login browser. | Kebutuhan integrasi |
-| Laporan Kustom (Report Builder) | Admin memilih kolom, filter, dan format (PDF/CSV/Excel) → sistem generate laporan sesuai permintaan. | Fase 6 selesai |
+---
+
+## Fase 9 — Streaming CCTV Real-Time
+
+> Mengubah peta sebaran CCTV dari **view-only** menjadi **interactive live monitoring center**.
+> Teknologi: **MediaMTX** (RTSP-to-WebRTC proxy) + **WHEP** (browser playback) + Nginx reverse proxy.
+> **Status: 🔲 Belum dimulai** — 6 task, 4 sprint, estimasi ~10–12 hari kerja.
+
+### Arsitektur Streaming
+
+```
+Hikvision NVR          MediaMTX (Docker)       Nginx             Browser
+36.91.27.35:554   ◄── RTSP pull on-demand ──  :8889 HTTP  ──►  /stream/*  ──►  WebRTC/WHEP
+35 kamera (H.264)      :8554 RTSP internal      :443 TLS         <video> element
+CH 1–35, Sub Stream    :9997 REST API           reverse proxy     Admin Only
+```
+
+### Logika RTSP Channel ID (Hikvision ISAPI)
+
+```
+ChannelID = Channel_Port × 100 + Stream_Type
+  Stream_Type: 01 = Main Stream, 02 = Sub Stream (default)
+
+Contoh: CH 19 Sub → 19×100 + 2 = 1902 → /Streaming/channels/1902
+        CH 1  Main → 1×100 + 1 = 101  → /Streaming/channels/101
+```
+
+### Sprint 20 — Fondasi Streaming (Task 9.1 + 9.2)
+
+> **Branch:** `feature/cctv-streaming-foundation`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **9.1** Model & Migrasi: Data Streaming CCTV | Tambah field `channel_port` (int), `rtsp_password` (text, AES-256 encrypted), `stream_enabled` (boolean) ke model `CCTV`. Migrasi `000004_add_cctv_streaming.up/down.sql`. Util `utils/rtsp.go` (BuildRTSPURL, BuildStreamPath). Konfigurasi NVR global di `.env` (`RTSP_NVR_HOST`, `RTSP_NVR_PORT`, `RTSP_NVR_USER`, `MEDIAMTX_API_URL`). Enkripsi password via `utils.EncryptAES256()`. Update `CreateCCTVRequest`/`UpdateCCTVRequest` di `handlers/cctv.go`. Exclude `rtsp_password` dari response JSON. Unit test `utils/rtsp_test.go`. |
+| **Infra** | Agent-Infra | **9.2** Infrastruktur MediaMTX Docker | File `mediamtx.yml` (RTSP→WebRTC relay, `sourceOnDemand: yes`, `protocols: [tcp]`, REST API `:9997`). Service `mediamtx` di `docker-compose.yml` (image `bluenviron/mediamtx:latest-ffmpeg`, IP `172.28.0.11`, resource limits 2 CPU / 1024M, health check, port UDP `8189`). Nginx location block `/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`. Upstream `sigap_mediamtx`. Dependency nginx→mediamtx. `docker compose config --quiet` PASS. |
+
+#### Verifikasi Sprint 20
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+cd .. && docker compose config --quiet
+```
+
+---
+
+### Sprint 21 — Backend API & MediaMTX Client (Task 9.3)
+
+> **Branch:** `feature/stream-api`
+> **Prasyarat:** Sprint 20 selesai (model + infrastruktur tersedia)
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **9.3a** MediaMTX REST Client | `utils/mediamtx.go`: struct `MediaMTXClient` dengan method `AddPath`, `RemovePath`, `GetPath`, `ListPaths`. HTTP client ke `http://mediamtx:9997/v3/`. Unit test `utils/mediamtx_test.go` dengan HTTP mock. |
+| **Backend** | Agent-BE | **9.3b** Stream Handler & Routes | `handlers/stream.go`: `StartStream` (decrypt password → build RTSP URL → register path di MediaMTX → return WHEP URL), `StopStream`, `StartAllStreams`, `StopAllStreams`, `GetStreamStatus` (gabung data DB + MediaMTX path info), `GetStreamURL`. `routes/stream.go`: registrasi route dengan `Protected()` + `RequireRole("admin")`. Rute statis sebelum dinamis. Registrasi di `main.go`. Goroutine auto-start saat boot. Unit test `handlers/stream_test.go`. Swagger annotations + `swag init`. |
+
+#### Verifikasi Sprint 21
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && golangci-lint run ./...
+swag init
+```
+
+---
+
+### Sprint 22 — Frontend: Player & Streaming UI (Task 9.4 + 9.5 + 9.6)
+
+> **Branch:** `feature/stream-frontend`
+> **Prasyarat:** Sprint 21 selesai (API stream tersedia)
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Frontend** | Agent-FE-1 | **9.4** Komponen WHEPPlayer | `components/WHEPPlayer.tsx`: WebRTC player menggunakan browser-native `RTCPeerConnection` (zero SDK). WHEP signaling via `POST /stream/{path}/whep`. Auto-reconnect exponential backoff. Status overlay (connecting/live/error/reconnecting). Toggle fullscreen. Toggle kualitas (SD sub-stream ↔ HD main-stream). Indikator 🔴 LIVE. Cleanup saat unmount. SSR-safe (dynamic import). |
+| **Frontend** | Agent-FE-1 | **9.4b** Komponen StreamModal | `components/StreamModal.tsx`: modal overlay saat marker diklik. Header: nama CCTV, kode, badge status + skor kesehatan. Body: `WHEPPlayer` embed. Footer: lokasi, IP, channel port. Tombol Start/Stop stream (panggil API). Link ke Master CCTV. |
+| **Frontend** | Agent-FE-2 | **9.5** Integrasi Peta Sebaran + Grid View | Modifikasi `CCTVMap.tsx`: tambah prop `onMarkerClick`, indikator streaming aktif pada marker. Interface `CCTVMapItem` tambah `stream_enabled`, `channel_port`. Modifikasi `sebaran-cctv/page.tsx`: state `selectedCctv` + `StreamModal`. Toggle view Peta/Grid. Filter "Streaming Aktif". Status bar "N/35 kamera streaming aktif". `components/StreamGridView.tsx`: grid layout responsif, setiap sel berisi `WHEPPlayer` mini. |
+| **Frontend** | Agent-FE-2 | **9.6** Admin Config UI Streaming | Modifikasi `cctv/page.tsx`: section form "Konfigurasi Streaming" di modal edit CCTV. Field: `channel_port` (number 1–35), `rtsp_password` (password + toggle visibility), `stream_enabled` (checkbox). Preview URI RTSP. Kolom tabel master: ikon streaming aktif. |
+
+#### Verifikasi Sprint 22
+
+```bash
+cd frontend && npm run lint && npm run build
+```
+
+---
+
+### Sprint 23 — Integrasi End-to-End & Manual Test Streaming
+
+> **Branch:** sama dengan Sprint 22 (merge semua ke satu PR)
+> **Prasyarat:** Sprint 20–22 selesai
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **QA/Docs** | Agent-QA | Manual Test Document | `docs/manual-test-streaming.md`: header, prasyarat, pengujian otomatis, skenario uji S1–S9 (edit config streaming, start stream, klik marker → video live, toggle SD/HD, stop stream, grid view, role enforcement 403, reconnect saat NVR down, start-all). Kriteria lulus. |
+| **Infra** | Agent-Infra | Docker E2E Verification | `docker compose up -d --build` → verifikasi 8 service running. Health check semua PASS. MediaMTX API reachable. |
+| **Docs** | Agent-Docs | Update Dokumentasi | Update `docs/AGENTS.md` (MediaMTX service, streaming endpoints, env vars). Update `docs/TESTING.md` (test matrix stream/rtsp/mediamtx). Update `docs/plan.md` (Sprint 20–23). |
+
+#### Verifikasi Sprint 23 (Full)
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && golangci-lint run ./... && swag init
+cd ../frontend && npm run lint && npm run build
+cd .. && docker compose config --quiet
+```
+
+---
+
+## Fase 10 — Kecerdasan Visual & Snapshot
+
+> Memperkaya data visual CCTV dengan snapshot otomatis dan monitoring stream.
+> **Prasyarat:** Fase 9 selesai. **Status: 🔲 Belum dimulai** — 4 task, 2 sprint.
+
+### Sprint 24 — Snapshot & Timeline (Task 10.1 + 10.2)
+
+> **Branch:** `feature/cctv-snapshot`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **10.1** Snapshot Otomatis (Thumbnail) | Goroutine berkala (tiap 15 menit) mengambil snapshot frame dari stream aktif via MediaMTX API → simpan JPEG di `uploads/snapshots/{cctv_id}/` → endpoint `GET /api/cctv/:id/snapshot`. Rotasi max 10 snapshot per CCTV. Field `snapshot_url` di response `GetAllCCTV`. |
+| **Backend** | Agent-BE | **10.2** Timeline Event Visual | Model `CCTVSnapshot` (cctv_id, timestamp, event_type, image_path). Capture otomatis saat event penting (status berubah, maintenance selesai, field-check `attention`). Endpoint `GET /api/cctv/:id/timeline`. Migrasi `000005_cctv_snapshots`. |
+| **Frontend** | Agent-FE | **10.1b + 10.2b** UI Snapshot & Timeline | Thumbnail di kartu CCTV tabel master & peta marker tooltip. Timeline kronologis di detail CCTV dengan snapshot + label event. |
+
+### Sprint 25 — Multi-View Monitor & Stream Health (Task 10.3 + 10.4)
+
+> **Branch:** `feature/monitor-view`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Frontend** | Agent-FE | **10.3** Multi-View Monitor | Halaman `/monitor` (admin only): grid 4/9/16 video stream bersamaan. Preset layout (2×2, 3×3, 4×4). Pilih CCTV per sel. Fullscreen per sel atau seluruh grid. Menu sidebar "Monitor" (`MonitorPlay`). |
+| **Backend** | Agent-BE | **10.4** Deteksi Status Stream | Goroutine monitoring (tiap 5 menit): query MediaMTX path list → cek `ready`. Stream mati > 15 menit → notifikasi admin `STREAM_DOWN` + turunkan health score (-10). Stream pulih → `STREAM_RESTORED`. Kolom "Stream" di tabel master CCTV. |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-visual.md`: skenario snapshot, timeline, monitor grid, stream health detection. |
+
+---
+
+## Fase 11 — Manajemen Operasional Lanjut
+
+> Fitur operasional yang memperkuat fungsi SIGAP sebagai platform pengelolaan lengkap.
+> **Status: 🔲 Belum dimulai** — 5 task, 3 sprint.
+> **Task 11.1 dikerjakan langsung setelah Fase 9 stabil** (keputusan prioritas).
+
+### Sprint 26 — Inventaris Suku Cadang (Task 11.1) ⭐ PRIORITAS
+
+> **Branch:** `feature/spare-parts`
+> **Dikerjakan segera setelah Fase 9 stabil** — tidak menunggu Fase 10.
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **11.1a** Model & API Suku Cadang | Model `SparePart` (nama, SKU, stok, minimum_order, satuan, harga, kategori) + `SparePartUsage` (maintenance_log_id, spare_part_id, jumlah, catatan). Stok otomatis berkurang saat teknisi mencatat penggunaan. Notifikasi `STOCK_LOW` ke admin saat stok < minimum_order. CRUD endpoint `/api/spare-parts`. Endpoint `POST /api/maintenance-logs/:id/spare-parts`. Migrasi `000006_spare_parts`. |
+| **Frontend** | Agent-FE | **11.1b** UI Suku Cadang | Halaman admin `/suku-cadang` (CRUD tabel stok, filter kategori, indikator stok rendah). Form penggunaan suku cadang di modal pemeliharaan. Dashboard widget "Suku Cadang Stok Rendah". Menu sidebar "Suku Cadang" (`Package`). |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-spare-parts.md`. |
+
+### Sprint 27 — Email & Report Builder (Task 11.2 + 11.3)
+
+> **Branch:** `feature/email-reports`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **11.3** Notifikasi Email SMTP | Konfigurasi SMTP di `.env`. Template email HTML (Go `html/template`). Jenis: ringkasan harian, eskalasi overdue, stock rendah. Field `Email` + `EmailNotifications` di model `User`. Endpoint `PUT /api/profile/email-preferences`. Opt-in per user. |
+| **Backend** | Agent-BE | **11.2** Laporan Kustom (Report Builder) | Model `ReportTemplate` (nama, konfigurasi JSON). Endpoint `POST /api/reports/generate` (entitas, kolom, filter, format PDF/CSV/Excel). Template yang bisa disimpan/dipakai ulang. |
+| **Frontend** | Agent-FE | **11.2b + 11.3b** UI Email & Report | Halaman `/laporan-kustom` (report builder wizard). Email preferences di halaman profil. |
+
+### Sprint 28 — Zona & SLA (Task 11.4 + 11.5)
+
+> **Branch:** `feature/zone-sla`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **11.4** Zona & Wilayah Teknisi | Model `Zone` (nama, deskripsi). Relasi CCTV → Zone (FK `zone_id`). Relasi User ↔ Zone (many-to-many). Auto-assign berdasarkan zona. CRUD `/api/zones`. |
+| **Backend** | Agent-BE | **11.5** SLA & KPI Tracking | Model `SLAPolicy` (nama, jenis_tugas, target_jam). Kalkulasi SLA achievement rate. Notifikasi saat SLA mendekati batas (75%). Endpoint `GET /api/dashboard/sla`. |
+| **Frontend** | Agent-FE | **11.4b + 11.5b** UI Zona & SLA | Halaman `/zona` (CRUD zona + assign CCTV/teknisi). Filter peta per zona. Dashboard `/sla` (chart compliance, tabel pelanggaran). |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-zone-sla.md`. |
+
+---
+
+## Fase 12 — Integrasi & Skalabilitas
+
+> Mempersiapkan SIGAP untuk integrasi dengan sistem lain.
+> Fokus saat ini: **Kawasan OIKN**.
+> **Status: 🔲 Belum dimulai** — 4 task, 2 sprint.
+
+### Sprint 29 — API Key & Webhook (Task 12.1 + 12.3)
+
+> **Branch:** `feature/api-integration`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **12.1** API Key untuk Integrasi | Model `APIKey` (key_hash, scopes, expires_at). Middleware `APIKeyAuth`. Rate limit per key. Endpoint CRUD `/api/api-keys` (admin). |
+| **Backend** | Agent-BE | **12.3** Webhook & Event System | Model `WebhookEndpoint` (url, events, secret). Events: `cctv.status_changed`, `maintenance.completed`, `stream.down`. Async delivery + retry 3x. Model `WebhookDelivery` (log). |
+| **Frontend** | Agent-FE | **12.1b + 12.3b** UI API Key & Webhook | Halaman `/api-keys` (generate, revoke, usage). Halaman `/webhooks` (CRUD, test delivery, log). |
+
+### Sprint 30 — Multi-Site (Task 12.2)
+
+> **Branch:** `feature/multi-site`
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **12.2a** Model & Migrasi Multi-Site | Model `Site` (nama, kode, alamat, koordinat_pusat). FK `site_id` di CCTV, MaintenanceLog, dll. Migrasi: semua data existing → Site "OIKN" (default). CRUD `/api/sites`. |
+| **Frontend** | Agent-FE | **12.2b** UI Multi-Site | Switch site di navigasi (dropdown header). Dashboard per site. Filter global per site. User assignment ke multiple sites. |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-multi-site.md`. |
+
+> **Task 12.4** (Mobile App React Native) — **dievaluasi terpisah** berdasarkan kebutuhan pasca go-live.
+> Estimasi 10–15 hari, scope: Android prioritas, shared API layer.
+
+---
+
+## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
+
+Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
+
+| # | Channel Port | Sub Stream ID | Main Stream ID |
+|---|-------------|---------------|----------------|
+| 1 | 1 | 102 | 101 |
+| 2 | 2 | 202 | 201 |
+| 3 | 3 | 302 | 301 |
+| 4 | 4 | 402 | 401 |
+| 5 | 5 | 502 | 501 |
+| 6 | 6 | 602 | 601 |
+| 7 | 7 | 702 | 701 |
+| 8 | 8 | 802 | 801 |
+| 9 | 9 | 902 | 901 |
+| 10 | 10 | 1002 | 1001 |
+| 11 | 11 | 1102 | 1101 |
+| 12 | 12 | 1202 | 1201 |
+| 13 | 13 | 1302 | 1301 |
+| 14 | 14 | 1402 | 1401 |
+| 15 | 15 | 1502 | 1501 |
+| 16 | 16 | 1602 | 1601 |
+| 17 | 17 | 1702 | 1701 |
+| 18 | 18 | 1802 | 1801 |
+| 19 | 19 | 1902 | 1901 |
+| 20 | 20 | 2002 | 2001 |
+| 21 | 21 | 2102 | 2101 |
+| 22 | 22 | 2202 | 2201 |
+| 23 | 23 | 2302 | 2301 |
+| 24 | 24 | 2402 | 2401 |
+| 25 | 25 | 2502 | 2501 |
+| 26 | 26 | 2602 | 2601 |
+| 27 | 27 | 2702 | 2701 |
+| 28 | 28 | 2802 | 2801 |
+| 29 | 29 | 2902 | 2901 |
+| 30 | 30 | 3002 | 3001 |
+| 31 | 31 | 3102 | 3101 |
+| 32 | 32 | 3202 | 3201 |
+| 33 | 33 | 3302 | 3301 |
+| 34 | 34 | 3402 | 3401 |
+| 35 | 35 | 3502 | 3501 |
+
+---
+
+## Ringkasan Estimasi
+
+```
+═══════════════════════════════════════════════════════════════
+SEGERA (Agustus – September 2026)
+───────────────────────────────────────────────────────────────
+Sprint 20: Fondasi Streaming (9.1 + 9.2) ......... 2 hari
+Sprint 21: Backend API Stream (9.3) ............... 2–3 hari
+Sprint 22: Frontend Player + UI (9.4–9.6) ........ 3–4 hari
+Sprint 23: Integrasi E2E + Manual Test ............ 1–2 hari
+Sprint 26: Inventaris Suku Cadang (11.1) .......... 3–4 hari
+───────────────────────────────────────────────────────────────
+
+BERIKUTNYA (Oktober – November 2026)
+───────────────────────────────────────────────────────────────
+Sprint 24: Snapshot & Timeline (10.1 + 10.2) ...... 3–4 hari
+Sprint 25: Monitor & Stream Health (10.3 + 10.4) .. 3–4 hari
+Sprint 27: Email & Report Builder (11.2 + 11.3) ... 4–5 hari
+Sprint 28: Zona & SLA (11.4 + 11.5) ............... 4–5 hari
+───────────────────────────────────────────────────────────────
+
+JANGKA PANJANG (Evaluasi berdasarkan kebutuhan)
+───────────────────────────────────────────────────────────────
+Sprint 29: API Key & Webhook (12.1 + 12.3) ........ 3–4 hari
+Sprint 30: Multi-Site (12.2) ....................... 4–5 hari
+Task 12.4: Mobile App (React Native) .............. 10–15 hari
+═══════════════════════════════════════════════════════════════
+```
 
 ---
 
@@ -322,3 +608,4 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 5. Catat perubahan di `../backend/changelog.md` / `../frontend/changelog.md` (format: before/after,
    timestamp WITA, kategori, file, alasan)
 6. Perbarui dokumen terdampak: `docs/AGENTS.md`, `docs/ROADMAP.md`, `docs/TESTING.md`, `docs/plan.md`
+
