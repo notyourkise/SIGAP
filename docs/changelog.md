@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.26] — 2026-08-07 — Notifikasi Push Browser (Task 8.3)
+
+### Perubahan
+
+- **Backend** ([0.41.0]): model `PushSubscription` + migrasi `000002`; endpoint `POST /api/push/subscribe` & `DELETE /api/push/unsubscribe`; `utils/push.go` `SendPush` (webpush-go VAPID, async, fallback in-app); integrasi ke `NotifyUser`/`NotifyUserSync`; env `VAPID_*`.
+- **Frontend** ([1.34.0]): service worker handle `push`/`notificationclick`; komponen opt-in `PushNotificationOptIn` di `/profile` (subscribe/unsubscribe).
+- **Dokumen**: `docs/manual-test-push-notification.md` (baru — manual test blackbox S1–S9 sesuai format manual test lain); ROADMAP Task 8.3 ✅ Selesai (Fase 8 3/4); plan Sprint 18 + rancangan teknis.
+- Verifikasi: `go build`/`go test`/`go vet` PASS; `npm run lint` (0 error)/`npm run build` PASS.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.41.0], `frontend/changelog.md` [1.34.0]
+
 ## [1.28.25] — 2026-08-07 — Kalender Jadwal Pemeliharaan (Task 8.2)
 
 ### Perubahan

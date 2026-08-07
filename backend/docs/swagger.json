@@ -2992,6 +2992,110 @@
                 }
             }
         },
+        "/push/subscribe": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menyimpan subscription Web Push (browser) untuk user yang login agar dapat menerima notifikasi push.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Push Notification"
+                ],
+                "summary": "Daftarkan Langganan Push",
+                "parameters": [
+                    {
+                        "description": "Data subscription Web Push",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SubscribePushRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Subscription tersimpan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Payload tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/push/unsubscribe": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus subscription Web Push user berdasarkan endpoint (opt-out).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Push Notification"
+                ],
+                "summary": "Berhenti Berlangganan Push",
+                "parameters": [
+                    {
+                        "description": "Body berisi endpoint",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Subscription dihapus",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/test-panic": {
             "get": {
                 "description": "Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).",
@@ -3886,6 +3990,25 @@
             ],
             "properties": {
                 "qr_payload": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.SubscribePushRequest": {
+            "type": "object",
+            "required": [
+                "endpoint",
+                "key_auth",
+                "key_p256dh"
+            ],
+            "properties": {
+                "endpoint": {
+                    "type": "string"
+                },
+                "key_auth": {
+                    "type": "string"
+                },
+                "key_p256dh": {
                     "type": "string"
                 }
             }

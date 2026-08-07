@@ -1,5 +1,48 @@
 # Changelog - Backend SIGAP
 
+## [0.41.0] - 2026-08-07
+
+### Fitur: Notifikasi Push Browser (Task 8.3)
+
+perubahan yang dilakukan: **Menambahkan notifikasi push (Web Push Protocol / VAPID) — model `PushSubscription`, endpoint `POST /api/push/subscribe` & `DELETE /api/push/unsubscribe`, util `SendPush` (webpush-go), dan integrasi ke `NotifyUser`/`NotifyUserSync` sehingga setiap notifikasi in-app juga memicu push ke subscription user (async, fallback in-app bila VAPID tidak dikonfigurasi).**
+
+before: Notifikasi hanya in-app (bell); teknisi/admin tidak mendapat pemberitahuan OS ketika aplikasi tidak dibuka, sehingga berisiko melewatkan tugas penting.
+
+after:
+- `models/push_subscription.go` (baru): `PushSubscription` — `Base`, `UserID` (FK), `Endpoint`, `KeyP256DH` (column `key_p256dh`), `KeyAuth`; index `(user_id)`.
+- `migrations/000002_push_subscriptions.up.sql`/`.down.sql`: tabel `push_subscriptions` + index + FK ke users (idempoten, blok DO $$ pg_constraint).
+- `utils/push.go` (baru): `SendPush(db, userID, type, title, msg, refType, refID)` — async query subscription user lalu kirim ke semua via `webpush-go`; no-op bila VAPID kosong (fallback in-app, tidak fatal); `SendPushToSubscription` (payload JSON `PushNotificationPayload`); `SetSendNotificationFn` untuk unit test. Env `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_EMAIL`.
+- `handlers/push.go` (baru): `POST /push/subscribe` (upsert idempotent berdasarkan endpoint+user, restore soft-deleted), `DELETE /push/unsubscribe` (soft delete by endpoint); helper `currentUserID`.
+- `routes/push.go` (baru): grup `/push` protected.
+- `utils/notify.go`: `NotifyUser` & `NotifyUserSync` memanggil `SendPush` setelah notifikasi in-app berhasil.
+- `main.go`: daftarkan `SetupPushRoutes`.
+- `go.mod`/`go.sum`: `github.com/SherClockHolmes/webpush-go v1.4.0`.
+- Test: `handlers/push_test.go` (subscribe create/upsert/validasi/unauthorized, unsubscribe success/missing endpoint), `utils/push_test.go` (SendPushToSubscription mock, no-op VAPID kosong, kirim ke semua subscription, payload format).
+- Env docs: `backend/.env.docker.example` & `.env.example` tambah `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_EMAIL`.
+
+timestamp: 2026-08-07 17:30 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/models/push_subscription.go
+- backend/migrations/000002_push_subscriptions.up.sql
+- backend/migrations/000002_push_subscriptions.down.sql
+- backend/utils/push.go
+- backend/utils/push_test.go
+- backend/handlers/push.go
+- backend/handlers/push_test.go
+- backend/routes/push.go
+- backend/utils/notify.go
+- backend/main.go
+- backend/go.mod
+- backend/go.sum
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- .env.example
+- backend/.env.docker.example
+alasan perubahan: Task 8.3 ROADMAP (Fase 8) — memastikan teknisi tidak melewatkan tugas penting dengan notifikasi OS (push) sebagai pelengkap notifikasi in-app; push dikirim async sehingga tidak menggagalkan operasi utama dan memiliki fallback in-app bila VAPID tidak dikonfigurasi.
+
 ## [0.40.1] - 2026-08-07
 
 ### Infrastruktur: Fix CI — Deprecation Node 20 & errcheck pada test logger

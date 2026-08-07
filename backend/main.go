@@ -213,6 +213,7 @@ func main() {
 	routes.SetupWebSocketRoutes(api)
 	routes.SetupDashboardRoutes(api)
 	routes.SetupNotificationRoutes(api)
+	routes.SetupPushRoutes(api)
 	routes.SetupMaintenanceScheduleRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
