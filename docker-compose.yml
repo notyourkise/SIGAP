@@ -78,15 +78,46 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env.docker
+    environment:
+      # Level log untuk Task 7.6 (logger terstruktur). Default: info.
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     # SECURITY: port 3000 TIDAK dipublish — hanya diakses via reverse proxy (Nginx).
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # --- Container Hardening (Task 7.5) ---
+    # Secret dikirim sebagai FILE Docker secret (di-mount ke /run/secrets/<nama>),
+    # bukan sebagai env var. Go app membaca file ini (lihat backend/utils/secrets.go).
+    secrets:
+      - db_password
+      - jwt_secret
+      - aes_secret_key
+    # Root filesystem read-only: kontainer tidak dapat menulis file sistem.
+    # Direktori yang perlu ditulis (uploads & logs) disediakan via mount terpisah.
+    read_only: true
+    # Buang SEMUA capabilities Linux yang tidak diperlukan. Api tidak mengikat
+    # port <1024 (berjalan di :3000) sehingga tidak butuh NET_BIND_SERVICE.
+    cap_drop:
+      - ALL
+    tmpfs:
+      # Direktori sementara OS (runtime scratch) — ditulis tanpa persisten.
+      - /tmp
+      # Task 7.6: logger menulis file log ke /app/logs → wajib writable.
+      - /app/logs
     volumes:
-      # Bind mount untuk menyimpan foto lampiran di luar container
+      # Bind mount untuk menyimpan foto lampiran di luar container (writable).
       - ./backend/uploads:/app/uploads
+    # Batasan sumber daya: berlaku pada mode `docker compose` lokal DAN swarm.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    # Kompatibilitas mode `docker compose` non-swarm (top-level legacy keys).
+    mem_limit: 512M
+    cpus: "1.0"
     networks:
       - sigap_network
 
@@ -122,6 +153,15 @@ services:
     image: nginx:1.27-alpine
     container_name: sigap_nginx
     restart: unless-stopped
+    # Container Hardening (Task 7.5): batasan sumber daya untuk mencegah
+    # satu service menghabiskan seluruh resource host.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    mem_limit: 512M
+    cpus: "1.0"
     ports:
       - "80:80"
       - "443:443"
@@ -194,6 +234,30 @@ volumes:
   # Task 7.3: volume tempat backup db & uploads disimpan.
   backups_data:
     driver: local
+
+# ==========================================
+# Secrets (Task 7.5 — Container Hardening)
+# ==========================================
+# Secret dikirim ke container api sebagai FILE (di-mount ke /run/secrets/<nama>)
+# alih-alih env var, agar tidak bocor lewat `docker inspect` / proses env.
+#
+# BUAT file secret lokal (JANGAN commit ke git) sebelum `docker compose up`:
+#   mkdir -p secrets
+#   printf '%s' 'PASSWORD_DB_AMAN'        > secrets/db_password
+#   printf '%s' 'JWT_SECRET_AMAN'         > secrets/jwt_secret
+#   printf '%s' 'AES_SECRET_KEY_256_BIT'  > secrets/aes_secret_key
+#   chmod 600 secrets/*
+#
+# Catatan: dengan `docker compose` (non-swarm), secret dibaca sebagai file
+# terpisah dan nilainya TIDAK otomatis menjadi env var — aplikasi membacanya
+# secara eksplisit (backend/utils/secrets.go). Direktori `secrets/` di-.gitignore.
+secrets:
+  db_password:
+    file: ./secrets/db_password
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  aes_secret_key:
+    file: ./secrets/aes_secret_key
 
 # ==========================================
 # Networks

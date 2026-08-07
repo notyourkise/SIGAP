@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.22] — 2026-08-07 — Container Hardening & Logging Terstruktur (Task 7.5 & 7.6)
+
+### Perubahan
+
+- **Backend** ([0.40.0]): container `api` berjalan sebagai **non-root** (`USER sigap`), rootfs **read-only** dengan tmpfs `/tmp` & `/app/logs`, `cap_drop: [ALL]`, resource limits (`cpus`/`mem_limit`), dan **Docker secrets** untuk `DB_PASSWORD`/`JWT_SECRET`/`AES_SECRET_KEY` (file `./secrets/*` di-mount ke `/run/secrets/`, dibaca via `backend/utils/secrets.go` dengan fallback env). Logger memakai **lumberjack** untuk rotasi (100 MB/file, 5 backup, 30 hari, gzip) dengan level dari `LOG_LEVEL` (default info) dan format JSON.
+- **Infra**: `docker-compose.yml` service `api` & `nginx` di-hardening; env docs (`.env.example`, `backend/.env.docker.example`); `.gitignore` tambah `/secrets/`.
+- **Dokumen**: ROADMAP Fase 7 = **✅ SELESAI** (6/6); plan Sprint 14–15 + rancangan teknis; matriks test; panduan agent; backend changelog [0.40.0].
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS (semua package hijau); `docker compose config --quiet` VALID (base + override); test baru `utils/secrets_test.go` & `utils/logger_test.go` lulus.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.40.0]
+
 ## [1.28.21] — 2026-08-07 — Monitoring & Alerting (Task 7.4)
 
 ### Perubahan

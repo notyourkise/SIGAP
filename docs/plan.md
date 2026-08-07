@@ -114,7 +114,8 @@ sigap-monorepo/
 | 11 | 7 | 7.2 Redis Rate-Limit & Blacklist | Container Redis 7 Alpine di compose, `config/redis.go`, blacklist → Redis SET (TTL), limiter → Redis INCR/EXPIRE key `limiter:{ip}:{endpoint}`, fallback in-memory, env `REDIS_*`, unit test interface | ✅ Selesai (2026-08-06, branch `feature/redis-integration`) — build/test/vet PASS + uji live Redis 12 cek PASS + `docker compose config` valid |
 | 12 | 7 | 7.3 Backup Otomatis & Restore | Skrip `backup.sh`/`restore.sh`, container `backup` (cron), volume `backups_data`, `docs/BACKUP.md` | ✅ Selesai (2026-08-07, branch `feature/backup-restore`) — `bash -n` + `docker compose config` valid; uji fungsional backup/uploads/rotasi & restore lulus |
 | 13 | 7 | 7.4 Monitoring & Alerting | Endpoint `/api/metrics` Prometheus (counter/histogram/gauge), middleware `metrics.go`, health diperluas, collector tanpa library pihak ketiga, `docker-compose.override.yml` (Prometheus & Grafana opsional) | ✅ Selesai (2026-08-07, branch `feature/monitoring`) — build/test/vet PASS + `docker compose config` valid; unit test metrik/middleware/health |
-| 14–15 | 7 | 7.5–7.6 Kesiapan Produksi | Hardening, logging | ⬜ Belum |
+| 14 | 7 | 7.5 Container Hardening | Dockerfile non-root, resource limits, read-only rootfs + tmpfs, drop capabilities, Docker secrets (DB_PASSWORD/JWT_SECRET/AES_SECRET_KEY) + fallback env | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS + `docker compose config` valid |
+| 15 | 7 | 7.6 Logging Terstruktur | lumberjack rotasi (100 MB/5 backup/30 hari), `LOG_LEVEL`, log JSON | ✅ Selesai (2026-08-07, branch `feature/production-hardening`) — build/test/vet PASS |
 | 16â€“19 | 8 | 8.1â€“8.4 Pengalaman Lapangan | PWA, kalender, push notification, geotag | â¬œ Belum |
 
 ### 6.3 Rancangan Teknis Sprint 1 (Notifikasi In-App)
@@ -293,3 +294,26 @@ sigap-monorepo/
 - `go build ./...`, `go test ./... -count=1`, `go vet ./...` PASS (seluruh package hijau).
 - `docker compose config --quiet` VALID (base + override Prometheus/Grafana ter-resolve).
 - Uji manual: `GET /api/metrics` mengembalikan text/plain Prometheus valid; `GET /api/health` memuat field baru.
+
+### 6.13 Rancangan Teknis Sprint 14–15 (Container Hardening & Logging Terstruktur)
+
+> Dikerjakan paralel oleh dua sub-agent pada branch `feature/production-hardening`.
+
+**Task 7.5 — Container Hardening**
+- `backend/Dockerfile`: buat user non-root `sigap` (`addgroup -S sigap && adduser -S -G sigap sigap`); kepemilikan `/app/uploads` & `/app/logs` oleh `sigap`; `USER sigap` sebelum `CMD`.
+- `docker-compose.yml` (service `api`): `read_only: true` + tmpfs `/tmp` & `/app/logs`; `cap_drop: [ALL]`; resource limits (`deploy.resources.limits` + `mem_limit`/`cpus`); Docker secrets `db_password`/`jwt_secret`/`aes_secret_key` (file `./secrets/*` di-mount ke `/run/secrets/`); `LOG_LEVEL` env; `nginx` diberi resource limits.
+- `backend/utils/secrets.go` (baru): `GetSecret(env, file)` baca file `/run/secrets/<name>` bila ada (trim whitespace), fallback ke env; `RequireSecret` fail-fast.
+- Wiring secret: `config/database.go` (`DB_PASSWORD`), `utils/jwt.go` (`JWT_SECRET`), `utils/encryption.go` (`AES_SECRET_KEY`), `main.go` (`RequireSecret`).
+- `utils/secrets_test.go` (baru): file menang atas env, fallback env, kosong bila keduanya hilang, trim whitespace.
+- Env docs: `.env.example`, `backend/.env.docker.example`; `.gitignore` tambah `/secrets/`.
+
+**Task 7.6 — Logging Terstruktur**
+- `go.mod`/`go.sum`: `gopkg.in/natefinch/lumberjack.v2 v2.2.1`.
+- `utils/logger.go`: `parseLogLevel(env LOG_LEVEL, default info)`; file core memakai `lumberjack.Logger` (`MaxSize 100 MB`, `MaxBackups 5`, `MaxAge 30 hari`, `Compress`); level diterapkan konsisten di file & console; file encoder JSON.
+- `utils/logger_test.go` (baru): `parseLogLevel` (valid, invalid/empty → info, case-insensitive), `InitLogger` non-nil.
+- Konsistensi: `middleware/logger.go`, `utils/audit.go`, `middleware/recovery.go` sudah memakai `utils.Log` (struktur JSON) — diverifikasi, tidak ada `fmt.Println`/`log.Printf`.
+
+**Verifikasi**
+- `go build ./...`, `go test ./... -count=1`, `go vet ./...` PASS (seluruh package hijau).
+- `docker compose config --quiet` VALID (base + override); `api` punya `read_only`, `cap_drop`, resource limits, secrets `/run/secrets`, tmpfs `/app/logs`.
+- Manual (environment Docker): `docker exec ... whoami` → non-root; `docker inspect` tidak menampilkan nilai secret; log ter-rotate di `/app/logs`.
