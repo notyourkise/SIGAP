@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.20] — 2026-08-07 — Backup Otomatis & Restore (Task 7.3)
+
+### Perubahan
+
+- **Skrip**: `scripts/backup.sh` — `pg_dump` → `gzip` → `backups/db/sigap_<TS>.sql.gz`, tar+gzip uploads → `backups/uploads/uploads_<TS>.tar.gz`, rotasi otomatis hapus backup > 7 hari (`find -mtime +N -delete`), timestamp WITA; `scripts/restore.sh` — restore database (drop/recreate + feed dump) dan uploads (hapus & ekstrak), dengan validasi argumen.
+- **Infra**: service `backup` di `docker-compose.yml` — image `postgres:15-alpine` + `dcron`, cron `0 6 * * *` WITA via `backup/entrypoint.sh`, volume `backups_data:/backups`, uploads bind-mount read-only, menunggu `db` healthy; kredensial dari root `.env`. Opsi alternatif cron host di `docs/BACKUP.md`. `.gitignore` tambah `/backups/`.
+- **Dokumen**: `docs/BACKUP.md` (baru) — prosedur backup manual & restore, jadwal cron (container & host), verifikasi integritas + end-to-end, dan disaster recovery; ROADMAP Task 7.3 ✅ Selesai (Fase 7 3/6); plan Sprint 12 + rancangan teknis; panduan agent.
+- Verifikasi: `bash -n scripts/backup.sh scripts/restore.sh backup/entrypoint.sh` PASS; `docker compose config --quiet` VALID; uji fungsional nama file, struktur `backups/db`+`backups/uploads`, rotasi `-mtime +7`, dan alur restore drop/recreate lulus.
+
+Timestamp: 2026-08-07 WITA | Kategori: Sedang | Detail: `backend/changelog.md` [0.38.0]
+
 ## [1.28.19] — 2026-08-06 — Redis untuk Rate-Limit & Blacklist (Task 7.2)
 
 ### Perubahan
