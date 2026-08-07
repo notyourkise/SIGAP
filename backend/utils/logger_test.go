@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"os"
 	"testing"
 
 	"go.uber.org/zap/zapcore"
@@ -41,9 +40,10 @@ func TestParseLogLevel(t *testing.T) {
 // TestInitLogger memastikan InitLogger berhasil dijalankan dan Log tidak nil.
 // Rotasi file oleh lumberjack tidak diuji di sini karena bersifat integration-level.
 func TestInitLogger(t *testing.T) {
-	// Setel level log ke info agar konsisten (opsional)
-	os.Setenv("LOG_LEVEL", "info")
-	defer os.Unsetenv("LOG_LEVEL")
+	// Setel level log ke info agar konsisten (opsional).
+	// t.Setenv otomatis membersihkan env var setelah test & mem-fail test
+	// bila pengaturan env gagal (menghindari errcheck pada os.Setenv).
+	t.Setenv("LOG_LEVEL", "info")
 
 	InitLogger()
 
