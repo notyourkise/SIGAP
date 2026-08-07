@@ -1,5 +1,24 @@
 # Changelog - Backend SIGAP
 
+## [0.40.1] - 2026-08-07
+
+### Infrastruktur: Fix CI — Deprecation Node 20 pada GitHub Actions
+
+perubahan yang dilakukan: **Memperbaiki error job CI backend yang disebabkan deprecation runtime Node 20 di GitHub Actions. Upgrade `golangci/golangci-lint-action@v7` → `@v9` (menggunakan Node runtime 24) dan versi Node untuk job frontend dari 20 → 24.**
+
+before: Job CI backend (`Run Go Linter`) memakai `golangci/golangci-lint-action@v7` yang berjalan pada runtime Node 20 — Node 20 sudah di-deprecate di runner GitHub Actions sehingga muncul warning/error "Node 20 is being deprecated... running with Node 24 by default". Job frontend juga memakai `node-version: '20'`.
+
+after:
+- `.github/workflows/ci.yml`: `golangci/golangci-lint-action@v7` → `@v9` (v9.0.0+ memakai Node runtime 24, lihat kompatibilitas action). `version: v2.12.2` dan `working-directory: ./backend` tetap valid di v9.
+- `.github/workflows/ci.yml`: `node-version: '20'` → `'24'` pada job `frontend-ci` (Node 24 didukung penuh oleh Next.js 16).
+
+timestamp: 2026-08-07 14:10 WITA
+kategori: Kecil, Infrastruktur CI
+file yang diubah:
+- .github/workflows/ci.yml
+- backend/changelog.md
+alasan perubahan: Node 20 sudah di-deprecate di GitHub Actions runner (lihat github.blog/changelog/2025-09-19); memakai action/runtime terbaru (Node 24) menghilangkan warning/error dan menjaga CI tetap hijau untuk job backend maupun frontend.
+
 ## [0.40.0] - 2026-08-07
 
 ### Infrastruktur: Container Hardening (Task 7.5) & Logging Terstruktur (Task 7.6)

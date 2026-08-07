@@ -3,6 +3,14 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.23] — 2026-08-07 — Fix CI: Deprecation Node 20
+
+### Perubahan
+
+- **CI** ([0.40.1]): upgrade `golangci/golangci-lint-action@v7` → `@v9` (Node runtime 24) dan `node-version` frontend `20` → `24` untuk menghilangkan warning/error deprecation Node 20 di GitHub Actions; `docker compose` / build & lint backend/frontend tetap hijau.
+
+Timestamp: 2026-08-07 WITA | Kategori: Kecil | Detail: `backend/changelog.md` [0.40.1]
+
 ## [1.28.22] — 2026-08-07 — Container Hardening & Logging Terstruktur (Task 7.5 & 7.6)
 
 ### Perubahan
