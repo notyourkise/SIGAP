@@ -177,6 +177,37 @@ definitions:
     - cctv_id
     - frequency
     type: object
+  handlers.CreateSparePartRequest:
+    properties:
+      harga_satuan:
+        minimum: 0
+        type: number
+      kategori:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      minimum_order:
+        minimum: 0
+        type: integer
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+      satuan:
+        maxLength: 20
+        type: string
+      sku:
+        maxLength: 50
+        minLength: 2
+        type: string
+      stok:
+        minimum: 0
+        type: integer
+    required:
+    - nama
+    - sku
+    type: object
   handlers.CreateUserRequest:
     properties:
       email:
@@ -237,6 +268,18 @@ definitions:
     required:
     - password
     - username
+    type: object
+  handlers.RecordSparePartUsageRequest:
+    properties:
+      catatan:
+        type: string
+      jumlah:
+        type: integer
+      spare_part_id:
+        type: string
+    required:
+    - jumlah
+    - spare_part_id
     type: object
   handlers.ResetUserPasswordRequest:
     properties:
@@ -372,6 +415,34 @@ definitions:
         type: string
     required:
     - full_name
+    type: object
+  handlers.UpdateSparePartRequest:
+    properties:
+      harga_satuan:
+        minimum: 0
+        type: number
+      kategori:
+        maxLength: 50
+        type: string
+      keterangan:
+        type: string
+      minimum_order:
+        minimum: 0
+        type: integer
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+      satuan:
+        maxLength: 20
+        type: string
+      sku:
+        maxLength: 50
+        minLength: 2
+        type: string
+      stok:
+        minimum: 0
+        type: integer
     type: object
   handlers.UpdateUserRequest:
     properties:
@@ -1946,6 +2017,103 @@ paths:
       summary: Selesaikan Tugas Pemeliharaan
       tags:
       - Log Pemeliharaan
+  /maintenance-logs/{id}/spare-parts:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar suku cadang yang digunakan pada maintenance
+        log tertentu beserta jumlah dan catatan.
+      parameters:
+      - description: Maintenance Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar penggunaan suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar penggunaan suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Penggunaan Suku Cadang per Log
+      tags:
+      - Suku Cadang
+    post:
+      consumes:
+      - application/json
+      description: Mencatat penggunaan suku cadang pada maintenance log berstatus
+        completed. Stok suku cadang dikurangi otomatis dalam satu transaksi. Bila
+        stok < minimum_order setelah pengurangan, notifikasi/event STOCK_LOW dikirim
+        ke admin.
+      parameters:
+      - description: Maintenance Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Penggunaan Suku Cadang
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RecordSparePartUsageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Penggunaan suku cadang berhasil dicatat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, validasi gagal, atau stok tidak mencukupi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Maintenance log atau suku cadang tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Maintenance log belum berstatus completed
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan penggunaan suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Catat Penggunaan Suku Cadang
+      tags:
+      - Suku Cadang
   /maintenance-logs/export:
     get:
       description: Mengunduh seluruh riwayat pemeliharaan CCTV terfilter (tanpa limit
@@ -2580,6 +2748,277 @@ paths:
       summary: Berhenti Berlangganan Push
       tags:
       - Push Notification
+  /spare-parts:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar suku cadang terpaginasi. Mendukung filter kategori
+        (kategori), pencarian nama/SKU (search), dan sorting.
+      parameters:
+      - description: Filter berdasarkan kategori (Kabel, Konektor, Power Supply, Lensa,
+          Storage, Lainnya)
+        in: query
+        name: kategori
+        type: string
+      - description: Pencarian berdasarkan nama atau SKU
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar suku cadang terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Suku Cadang
+      tags:
+      - Suku Cadang
+    post:
+      consumes:
+      - application/json
+      description: Membuat record master suku cadang baru. SKU wajib unik.
+      parameters:
+      - description: Data Suku Cadang Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateSparePartRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Suku cadang berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah, validasi gagal, atau SKU duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan suku cadang ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Suku Cadang
+      tags:
+      - Suku Cadang
+  /spare-parts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus suku cadang (soft-delete). Riwayat penggunaan pada maintenance
+        log tetap tersimpan.
+      parameters:
+      - description: Suku Cadang UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Suku cadang berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Suku cadang tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Suku Cadang
+      tags:
+      - Suku Cadang
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan detail satu suku cadang berdasarkan UUID-nya.
+      parameters:
+      - description: Suku Cadang UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data suku cadang ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Suku cadang tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Suku Cadang Detail
+      tags:
+      - Suku Cadang
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data master suku cadang. SKU bila diubah wajib tetap
+        unik.
+      parameters:
+      - description: Suku Cadang UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Suku Cadang
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateSparePartRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Suku cadang berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau SKU duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Suku cadang tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui suku cadang
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Suku Cadang
+      tags:
+      - Suku Cadang
+  /spare-parts/low-stock:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar suku cadang yang stoknya lebih kecil dari minimum_order,
+        diurutkan dari stok paling sedikit.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar suku cadang stok rendah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar suku cadang stok rendah
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Suku Cadang Stok Rendah
+      tags:
+      - Suku Cadang
   /streams/{id}/start:
     post:
       consumes:

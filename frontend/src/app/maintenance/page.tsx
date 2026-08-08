@@ -27,6 +27,7 @@ import {
   SlidersHorizontal,
   RotateCcw,
   ArrowLeftRight,
+  PackagePlus,
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 
@@ -66,6 +67,27 @@ interface MaintenanceLogsResponse {
     page: number;
     limit: number;
   };
+}
+
+// Master suku cadang untuk dropdown pencatatan penggunaan.
+interface SparePart {
+  id: string;
+  nama: string;
+  sku: string;
+  kategori: string;
+  stok: number;
+  minimum_order: number;
+  satuan: string;
+}
+
+// Satu baris penggunaan suku cadang pada maintenance log.
+interface SparePartUsage {
+  id: string;
+  maintenance_log_id: string;
+  spare_part_id: string;
+  spare_part?: SparePart;
+  jumlah: number;
+  catatan?: string;
 }
 
 // Waktu lokal "YYYY-MM-DD HH:MM:SS" (bukan UTC)
@@ -138,6 +160,18 @@ export default function MaintenanceLogsPage() {
   const [assignTechnicianId, setAssignTechnicianId] = useState('');
   const [completeLog, setCompleteLog] = useState<MaintenanceLog | null>(null);
 
+  // Suku cadang — daftar penggunaan per log + mini modal pencatatan.
+  const [spareParts, setSpareParts] = useState<SparePart[]>([]);
+  const [usages, setUsages] = useState<SparePartUsage[]>([]);
+  const [usagesLoading, setUsagesLoading] = useState(false);
+  const [recordUsageLog, setRecordUsageLog] = useState<MaintenanceLog | null>(null);
+  const [usageForm, setUsageForm] = useState({
+    spare_part_id: '',
+    jumlah: 1,
+    catatan: '',
+  });
+  const [usageLowStockNote, setUsageLowStockNote] = useState<string | null>(null);
+
   // Form State — status dikelola sistem (created -> scheduled -> ongoing -> completed/failed),
   // sehingga form hanya memuat data yang diisi admin saat menjadwalkan pemeliharaan.
   const [formData, setFormData] = useState({
@@ -209,6 +243,35 @@ export default function MaintenanceLogsPage() {
     }
   }, []);
 
+  // Muat daftar suku cadang tersedia untuk dropdown pencatatan penggunaan.
+  const fetchSpareParts = useCallback(async () => {
+    try {
+      const response = await apiRequest<{ rows?: SparePart[] }>('/spare-parts?page=1&limit=100&sort_by=nama&order=asc');
+      if (response.status === 'success' && response.data) {
+        setSpareParts(response.data.rows || []);
+      }
+    } catch {
+      setSpareParts([]);
+    }
+  }, []);
+
+  // Muat daftar penggunaan suku cadang pada sebuah maintenance log.
+  const fetchUsages = useCallback(async (logId: string) => {
+    setUsagesLoading(true);
+    try {
+      const response = await apiRequest<SparePartUsage[]>(`/maintenance-logs/${logId}/spare-parts`);
+      if (response.status === 'success' && Array.isArray(response.data)) {
+        setUsages(response.data);
+      } else {
+        setUsages([]);
+      }
+    } catch {
+      setUsages([]);
+    } finally {
+      setUsagesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAdmin) return;
     let cancelled = false;
@@ -265,14 +328,15 @@ export default function MaintenanceLogsPage() {
   }, [subscribe, fetchLogs]);
 
   useEffect(() => {
-    if (!isModalOpen && !detailLog && !isSortModalOpen) return;
+    if (!isModalOpen && !detailLog && !isSortModalOpen && !recordUsageLog) return;
 
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || actionLoading === 'save') return;
+      if (event.key !== 'Escape' || actionLoading === 'save' || actionLoading === 'usage') return;
       setIsModalOpen(false);
       setDetailLog(null);
       setIsSortModalOpen(false);
+      setRecordUsageLog(null);
     };
 
     document.body.style.overflow = 'hidden';
@@ -282,7 +346,7 @@ export default function MaintenanceLogsPage() {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [actionLoading, detailLog, isModalOpen, isSortModalOpen]);
+  }, [actionLoading, detailLog, isModalOpen, isSortModalOpen, recordUsageLog]);
 
   const handleOpenModal = (log: MaintenanceLog | null = null) => {
     if (log) {
@@ -352,8 +416,64 @@ export default function MaintenanceLogsPage() {
     try {
       const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${id}`);
       setDetailLog(response.data || null);
+      // Muat daftar suku cadang yang digunakan pada log ini.
+      void fetchUsages(id);
+      // Siapkan daftar suku cadang untuk dropdown pencatatan (admin).
+      if (isAdmin) void fetchSpareParts();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Buka mini modal pencatatan penggunaan suku cadang untuk maintenance log.
+  const handleOpenUsageModal = (log: MaintenanceLog) => {
+    setUsageForm({ spare_part_id: '', jumlah: 1, catatan: '' });
+    setUsageLowStockNote(null);
+    setRecordUsageLog(log);
+  };
+
+  // Catat penggunaan suku cadang — stok dikurangi otomatis oleh backend.
+  const handleRecordUsage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recordUsageLog) return;
+    if (!usageForm.spare_part_id) {
+      toast.error('Pilih suku cadang yang digunakan.');
+      return;
+    }
+    if (usageForm.jumlah < 1) {
+      toast.error('Jumlah penggunaan harus minimal 1.');
+      return;
+    }
+
+    setActionLoading('usage');
+    setUsageLowStockNote(null);
+    try {
+      const response = await apiRequest<SparePartUsage>(`/maintenance-logs/${recordUsageLog.id}/spare-parts`, {
+        method: 'POST',
+        body: JSON.stringify({
+          spare_part_id: usageForm.spare_part_id,
+          jumlah: usageForm.jumlah,
+          catatan: usageForm.catatan,
+        }),
+      });
+
+      if (response.status === 'success') {
+        const selected = spareParts.find((s) => s.id === usageForm.spare_part_id);
+        // Tampilkan peringatan bila stok suku cadang kini rendah (< minimum order).
+        if (selected && selected.stok - usageForm.jumlah < selected.minimum_order) {
+          setUsageLowStockNote(
+            `Stok "${selected.nama}" kini ${Math.max(0, selected.stok - usageForm.jumlah)} ${selected.satuan} — di bawah minimum order ${selected.minimum_order}.`
+          );
+        }
+        setRecordUsageLog(null);
+        toast.success('Penggunaan suku cadang berhasil dicatat. Stok otomatis berkurang.');
+        void fetchUsages(recordUsageLog.id);
+        void fetchSpareParts();
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Penggunaan suku cadang belum dapat dicatat. Coba lagi.');
     } finally {
       setActionLoading(null);
     }
@@ -1085,9 +1205,168 @@ export default function MaintenanceLogsPage() {
                   />
                 </div>
               )}
+
+              {/* Suku Cadang Digunakan — terintegrasi dengan inventaris (Task 11.1) */}
+              <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-muted">Suku Cadang Digunakan</p>
+                  {isAdmin && detailLog.status === 'completed' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUsageModal(detailLog)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    >
+                      <PackagePlus className="h-3.5 w-3.5" />
+                      Catat Penggunaan
+                    </button>
+                  )}
+                </div>
+
+                {usagesLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted" role="status">
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    Memuat suku cadang…
+                  </div>
+                ) : usages.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border bg-background/50 px-4 py-3 text-xs text-muted">
+                    Belum ada suku cadang yang dicatat untuk pemeliharaan ini.
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-border">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
+                          <th className="px-4 py-2.5">Nama</th>
+                          <th className="px-4 py-2.5">SKU</th>
+                          <th className="px-4 py-2.5">Jumlah</th>
+                          <th className="px-4 py-2.5">Catatan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {usages.map((u) => (
+                          <tr key={u.id}>
+                            <td className="px-4 py-2.5 font-medium">{u.spare_part?.nama || '—'}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-primary">{u.spare_part?.sku || '—'}</td>
+                            <td className="px-4 py-2.5 tabular-nums">{u.jumlah} {u.spare_part?.satuan || ''}</td>
+                            <td className="px-4 py-2.5 text-muted">{u.catatan || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
+        {recordUsageLog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setRecordUsageLog(null)} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="usage-form-title"
+              className="z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 id="usage-form-title" className="text-xl font-bold tracking-[-0.015em]">Catat Penggunaan Suku Cadang</h3>
+                  <p className="mt-1 truncate text-sm text-muted">
+                    {recordUsageLog.cctv?.kode_cctv || 'CCTV'} · {recordUsageLog.action_taken}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  autoFocus
+                  aria-label="Tutup formulir penggunaan"
+                  onClick={() => setRecordUsageLog(null)}
+                  disabled={actionLoading === 'usage'}
+                  className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleRecordUsage} className="space-y-4">
+                <div>
+                  <label htmlFor="usage-spare" className="mb-1.5 block text-xs font-semibold text-muted">Suku Cadang *</label>
+                  <select
+                    id="usage-spare"
+                    value={usageForm.spare_part_id}
+                    onChange={(e) => setUsageForm({ ...usageForm, spare_part_id: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    required
+                  >
+                    <option value="" disabled>Pilih suku cadang</option>
+                    {spareParts.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nama} ({s.sku}) — stok {s.stok} {s.satuan}
+                      </option>
+                    ))}
+                  </select>
+                  {spareParts.length === 0 && (
+                    <p className="mt-1.5 text-[11px] text-muted">
+                      Belum ada suku cadang terdaftar. Tambahkan di halaman Suku Cadang terlebih dahulu.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="usage-jumlah" className="mb-1.5 block text-xs font-semibold text-muted">Jumlah *</label>
+                  <input
+                    id="usage-jumlah"
+                    type="number"
+                    min={1}
+                    value={usageForm.jumlah}
+                    onChange={(e) => setUsageForm({ ...usageForm, jumlah: Number(e.target.value) || 0 })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    required
+                  />
+                  <p className="mt-1.5 text-[11px] text-muted">Stok suku cadang akan dikurangi otomatis sebesar jumlah ini.</p>
+                </div>
+
+                <div>
+                  <label htmlFor="usage-catatan" className="mb-1.5 block text-xs font-semibold text-muted">Catatan</label>
+                  <textarea
+                    id="usage-catatan"
+                    rows={2}
+                    value={usageForm.catatan}
+                    onChange={(e) => setUsageForm({ ...usageForm, catatan: e.target.value })}
+                    placeholder="Contoh: mengganti kabel lama yang putus"
+                    className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  />
+                </div>
+
+                {usageLowStockNote && (
+                  <div role="alert" className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-foreground">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                    <p>{usageLowStockNote}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => setRecordUsageLog(null)}
+                    disabled={actionLoading === 'usage'}
+                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading === 'usage' || spareParts.length === 0}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {actionLoading === 'usage' && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    {actionLoading === 'usage' ? 'Menyimpan…' : 'Catat Penggunaan'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {assignLog && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAssignLog(null)} />

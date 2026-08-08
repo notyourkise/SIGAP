@@ -7,7 +7,8 @@ import DashboardAnalytics, { type DashboardSummary } from '@/components/Dashboar
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
-import { CheckCheck } from 'lucide-react';
+import { CheckCheck, Package, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import NotificationBell from '@/components/NotificationBell';
 import ProfileMenu from '@/components/ProfileMenu';
@@ -59,6 +60,17 @@ interface DashboardTasksResponse {
   overdue_count: number;
 }
 
+// Suku cadang stok rendah untuk widget dashboard (admin only).
+interface LowStockSpare {
+  id: string;
+  nama: string;
+  sku: string;
+  kategori: string;
+  stok: number;
+  minimum_order: number;
+  satuan: string;
+}
+
 const normalizeStatus = (status: string) => status.trim().toUpperCase();
 const isActiveCCTV = (status: string) => ['ACTIVE', 'AKTIF'].includes(normalizeStatus(status));
 const isInactiveCCTV = (status: string) => ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'].includes(normalizeStatus(status));
@@ -88,6 +100,7 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<DashboardSummary | null>(null);
   const [tasks, setTasks] = useState<DashboardTasksResponse | null>(null);
   const [completeTask, setCompleteTask] = useState<DashboardTask | null>(null);
+  const [lowStock, setLowStock] = useState<LowStockSpare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -96,12 +109,14 @@ export default function DashboardPage() {
     setError('');
     setHealth('Memeriksa');
     try {
-      const [cctvResult, maintenanceResult, healthResult, summaryResult, tasksResult] = await Promise.allSettled([
+      const [cctvResult, maintenanceResult, healthResult, summaryResult, tasksResult, lowStockResult] = await Promise.allSettled([
         apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000&sort_by=nama&order=asc'),
         apiRequest<PaginationPayload<MaintenanceLog>>('/maintenance-logs?page=1&limit=100'),
         apiRequest<Record<string, unknown>>('/health'),
         apiRequest<DashboardSummary>('/dashboard/summary'),
         apiRequest<DashboardTasksResponse>('/dashboard/tasks'),
+        // Widget suku cadang stok rendah — hanya untuk admin.
+        isAdmin ? apiRequest<LowStockSpare[]>('/spare-parts/low-stock') : Promise.resolve(null),
       ]);
 
       if (cctvResult.status === 'fulfilled') {
@@ -130,11 +145,16 @@ export default function DashboardPage() {
         setTasks(tasksResult.value.data ?? null);
       }
 
+      if (isAdmin && lowStockResult && lowStockResult.status === 'fulfilled') {
+        const data = lowStockResult.value?.data;
+        setLowStock(Array.isArray(data) ? data : []);
+      }
+
       setHealth(healthResult.status === 'fulfilled' ? 'Terhubung' : 'Tidak terhubung');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     const timer = setTimeout(loadDashboard, 0);
@@ -147,11 +167,13 @@ export default function DashboardPage() {
     const unsubCCTV = subscribe('CCTV_UPDATED', () => loadDashboard());
     const unsubMaintCreated = subscribe('MAINTENANCE_CREATED', () => loadDashboard());
     const unsubMaintUpdated = subscribe('MAINTENANCE_UPDATED', () => loadDashboard());
+    const unsubStockLow = subscribe('STOCK_LOW', () => loadDashboard());
 
     return () => {
       unsubCCTV();
       unsubMaintCreated();
       unsubMaintUpdated();
+      unsubStockLow();
     };
   }, [subscribe, loadDashboard]);
 
@@ -410,6 +432,53 @@ export default function DashboardPage() {
                 )}
               </section>
             </DashboardAnalytics>
+
+            {/* Widget suku cadang stok rendah — admin only (Task 11.1) */}
+            {isAdmin && (
+              <section aria-labelledby="low-stock-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+                <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 id="low-stock-heading" className="text-base font-bold">Suku Cadang Stok Rendah</h2>
+                    <p className="mt-0.5 text-xs text-muted">Komponen yang perlu segera di-restock.</p>
+                  </div>
+                  <Link
+                    href="/suku-cadang"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+                  >
+                    <Package className="h-3.5 w-3.5" />
+                    Kelola Suku Cadang
+                  </Link>
+                </div>
+
+                {lowStock.length === 0 ? (
+                  <div className="flex items-center gap-3 px-5 py-6 text-sm text-muted">
+                    <Package className="h-5 w-5 text-success" />
+                    Semua suku cadang dalam stok yang cukup.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {lowStock.slice(0, 5).map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid gap-2 px-5 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold" title={item.nama}>{item.nama}</p>
+                          <p className="mt-0.5 font-mono text-xs text-primary">{item.sku}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-error/25 bg-error/10 px-2.5 py-1 text-[11px] font-bold text-error">
+                            <AlertTriangle className="h-3 w-3" />
+                            {item.stok} {item.satuan}
+                          </span>
+                          <span className="text-[11px] text-muted">min. {item.minimum_order}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             <section aria-labelledby="maintenance-heading">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

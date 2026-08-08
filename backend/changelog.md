@@ -1,5 +1,40 @@
 # Changelog - Backend SIGAP
 
+## [0.48.0] - 2026-08-09
+
+### Fitur: Inventaris Suku Cadang (Task 11.1 - Sprint 26)
+
+perubahan yang dilakukan: **Menambahkan modul inventaris suku cadang yang terintegrasi dengan alur pemeliharaan existing. Backend naik `0.47.1` → `0.48.0`.**
+
+before: Teknisi tidak memiliki cara mencatat suku cadang yang dipakai saat perbaikan CCTV, dan admin tidak dapat memantau stok komponen (kabel, konektor, power supply, dll.) karena belum ada modul inventaris.
+
+after:
+- Model `models/spare_part.go`: `SparePart` (nama, sku unik, kategori, stok, minimum_order, satuan, harga_satuan, keterangan) + `SparePartUsage` (maintenance_log_id, spare_part_id, jumlah, catatan) dengan relasi GORM.
+- Migrasi `000006_spare_parts.up.sql` / `.down.sql`: tabel `spare_parts` & `spare_part_usages` + index + foreign keys (idempoten).
+- Handler `handlers/spare_part.go`:
+  - `GetAllSpareParts` (paginasi, filter kategori, pencarian nama/SKU).
+  - `GetSparePartByID`, `CreateSparePart` (admin, cek SKU duplikat incl. soft-delete), `UpdateSparePart` (admin), `DeleteSparePart` (admin, soft delete).
+  - `RecordSparePartUsage` (`POST /api/maintenance-logs/:id/spare-parts`): hanya log `completed`, mengurangi stok otomatis dalam transaksi, broadcast `STOCK_LOW` ke admin bila stok < minimum_order.
+  - `GetSparePartUsageByLog` (`GET /api/maintenance-logs/:id/spare-parts`).
+  - `GetLowStockSpareParts` (`GET /api/spare-parts/low-stock`, filter `stok < minimum_order`, urut stok terkecil) untuk widget dashboard.
+- Route `routes/spare_part.go`: `/spare-parts` (protected, CRUD admin-only; `/low-stock` statis sebelum `/:id` dinamis) + `/maintenance-logs/:id/spare-parts`; registrasi `routes.SetupSparePartRoutes(api)` di `main.go`.
+- Swagger annotations di semua handler + `swag init`.
+- Unit test `handlers/spare_part_test.go`: CRUD, SKU duplikat, stok berkurang (transaksi + `ExpectBegin`/`ExpectCommit`), stok tidak cukup (400, `ExpectRollback`), log bukan completed (409), usage by log, low-stock.
+
+timestamp: 2026-08-09 00:50 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/spare_part.go (baru)
+- backend/migrations/000006_spare_parts.up.sql (baru)
+- backend/migrations/000006_spare_parts.down.sql (baru)
+- backend/handlers/spare_part.go (baru)
+- backend/handlers/spare_part_test.go (baru)
+- backend/routes/spare_part.go (baru)
+- backend/main.go
+- backend/docs/* (regenerasi swag)
+- backend/changelog.md
+alasan perubahan: Kebutuhan vital operasional (keputusan prioritas ROADMAP Task 11.1) agar teknisi dapat mencatat penggunaan suku cadang dan admin dapat memantau stok. Stok berkurang otomatis pada pencatatan penggunaan; peringatan `STOCK_LOW` real-time memungkinkan restock proaktif.
+
 ## [0.47.1] - 2026-08-07
 
 ### Perbaikan: RunMigrations menutup koneksi DB global (aplikasi crash di Docker)
