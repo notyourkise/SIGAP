@@ -32,7 +32,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
-| **11** | **Manajemen Operasional Lanjut** | **0/5** | **🔲 Belum dimulai** |
+| **11** | **Manajemen Operasional Lanjut** | **1/5** | **🔶 Berjalan** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -514,19 +514,27 @@ cd ../frontend && npm run lint && npm run build
 ## Fase 11 — Manajemen Operasional Lanjut
 
 > Fitur operasional yang memperkuat fungsi SIGAP sebagai platform pengelolaan lengkap.
-> **Status: 🔲 Belum dimulai** — 5 task, 3 sprint.
+> **Status: 🔶 Berjalan** — 1/5 task selesai (Sprint 26 ✅).
 > **Task 11.1 dikerjakan langsung setelah Fase 9 stabil** (keputusan prioritas).
 
 ### Sprint 26 — Inventaris Suku Cadang (Task 11.1) ⭐ PRIORITAS
 
 > **Branch:** `feature/spare-parts`
+> **Status: ✅ Selesai** (2026-08-09)
 > **Dikerjakan segera setelah Fase 9 stabil** — tidak menunggu Fase 10.
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **11.1a** Model & API Suku Cadang | Model `SparePart` (nama, SKU, stok, minimum_order, satuan, harga, kategori) + `SparePartUsage` (maintenance_log_id, spare_part_id, jumlah, catatan). Stok otomatis berkurang saat teknisi mencatat penggunaan. Notifikasi `STOCK_LOW` ke admin saat stok < minimum_order. CRUD endpoint `/api/spare-parts`. Endpoint `POST /api/maintenance-logs/:id/spare-parts`. Migrasi `000006_spare_parts`. |
-| **Frontend** | Agent-FE | **11.1b** UI Suku Cadang | Halaman admin `/suku-cadang` (CRUD tabel stok, filter kategori, indikator stok rendah). Form penggunaan suku cadang di modal pemeliharaan. Dashboard widget "Suku Cadang Stok Rendah". Menu sidebar "Suku Cadang" (`Package`). |
-| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-spare-parts.md`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **11.1a** Model & API Suku Cadang | Model `SparePart` (nama, SKU, stok, minimum_order, satuan, harga, kategori) + `SparePartUsage` (maintenance_log_id, spare_part_id, jumlah, catatan). Stok otomatis berkurang saat teknisi mencatat penggunaan. Notifikasi `STOCK_LOW` ke admin saat stok < minimum_order. CRUD endpoint `/api/spare-parts`. Endpoint `POST /api/maintenance-logs/:id/spare-parts`. Migrasi `000006_spare_parts`. | ✅ Selesai |
+| **Frontend** | Agent-FE | **11.1b** UI Suku Cadang | Halaman admin `/suku-cadang` (CRUD tabel stok, filter kategori, indikator stok rendah). Form penggunaan suku cadang di modal pemeliharaan. Dashboard widget "Suku Cadang Stok Rendah". Menu sidebar "Suku Cadang" (`Package`). | ✅ Selesai |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-spare-parts.md`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 26:** Inventaris suku cadang (Task 11.1) selesai.
+- **Backend (`0.48.0`)**: model `SparePart` + `SparePartUsage`; migrasi `000006_spare_parts` (up/down); handler `spare_part.go` (CRUD `/api/spare-parts`, `GET /api/spare-parts/low-stock`, `POST/GET /api/maintenance-logs/:id/spare-parts`); stok dikurangi otomatis dalam transaksi hanya untuk log `completed`; broadcast `STOCK_LOW` ke admin saat stok < minimum_order; route di `routes/spare_part.go` + registrasi di `main.go`; Swagger annotations + `swag init`; unit test `handlers/spare_part_test.go` (CRUD, stok berkurang, stok tidak cukup 400, log bukan completed 409, low-stock).
+- **Frontend (`1.40.0`)**: halaman admin `/suku-cadang` (CRUD tabel, filter kategori, pencarian, badge stok, modal form, hapus konfirmasi, paginasi); integrasi "Suku Cadang Digunakan" + mini modal "Catat Penggunaan" di modal detail pemeliharaan; dashboard widget "Suku Cadang Stok Rendah" (admin only, real-time via `STOCK_LOW`); menu sidebar "Suku Cadang" (`Package`); proxy melindungi `/suku-cadang`.
+- **Dokumen**: `docs/manual-test-spare-parts.md` (baru — S1–S9 sesuai format manual test lain); `docs/TESTING.md` (matriks `handlers/spare_part_test.go`; total 50 → 51).
+
+Detail: `backend/changelog.md` [0.48.0] · `frontend/changelog.md` [1.40.0] · `docs/changelog.md` [1.28.33].
 
 ### Sprint 27 — Email & Report Builder (Task 11.2 + 11.3)
 

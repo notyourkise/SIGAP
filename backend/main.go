@@ -234,6 +234,7 @@ func main() {
 	routes.SetupPushRoutes(api)
 	routes.SetupMaintenanceScheduleRoutes(api)
 	routes.SetupStreamRoutes(api)
+	routes.SetupSparePartRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)

@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.34] — 2026-08-09 — Fitur: Inventaris Suku Cadang (Sprint 26)
+
+### Perubahan
+
+- **Backend** ([0.48.0]): modul inventaris suku cadang — model `SparePart` + `SparePartUsage`; migrasi `000006_spare_parts`; CRUD `/api/spare-parts` (admin-only untuk tulis), `GET /api/spare-parts/low-stock`, `POST/GET /api/maintenance-logs/:id/spare-parts`. Stok dikurangi otomatis dalam transaksi saat penggunaan dicatat (hanya log `completed`); broadcast `STOCK_LOW` ke admin bila stok < minimum_order. Swagger + unit test `handlers/spare_part_test.go`.
+- **Frontend** ([1.40.0]): halaman admin `/suku-cadang` (CRUD, filter kategori, pencarian, badge stok, paginasi); integrasi "Suku Cadang Digunakan" + mini modal "Catat Penggunaan" di modal detail pemeliharaan; dashboard widget "Suku Cadang Stok Rendah" (admin only, real-time via `STOCK_LOW`); menu sidebar "Suku Cadang"; proxy melindungi `/suku-cadang`.
+- **Docs**: `docs/manual-test-spare-parts.md` (baru, S1–S9); `docs/ROADMAP.md` Fase 11 progress 0/5 → 1/5 & Sprint 26 ✅; `docs/TESTING.md` matriks `handlers/spare_part_test.go` (total 50 → 51).
+- Detail: `backend/changelog.md` [0.48.0] · `frontend/changelog.md` [1.40.0].
+
+Timestamp: 2026-08-09 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs) | Detail: `backend/changelog.md` [0.48.0] · `frontend/changelog.md` [1.40.0]
+
 ## [1.28.33] — 2026-08-07 — Perbaikan Infrastruktur: Stack Docker dapat dijalankan
 
 ### Perubahan

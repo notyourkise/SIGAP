@@ -1,5 +1,31 @@
 # Changelog - Frontend SIGAP
 
+## [1.40.0] - 2026-08-09
+
+### Fitur: UI Inventaris Suku Cadang (Task 11.1 - Sprint 26)
+
+perubahan yang dilakukan: **Menambahkan halaman admin suku cadang + integrasi pencatatan penggunaan di modal pemeliharaan + widget dashboard stok rendah. Frontend naik `1.39.0` → `1.40.0`.**
+
+before: Belum ada antarmuka untuk mengelola stok suku cadang; teknisi tidak bisa mencatat suku cadang yang dipakai saat perbaikan, dan admin tidak bisa melihat komponen yang perlu di-restock.
+
+after:
+- `src/app/suku-cadang/page.tsx` (baru): halaman admin `/suku-cadang` — tabel (SKU, Nama, Kategori, Stok, Min Order, Satuan, Harga, Aksi), badge stok (hijau > 2×min / kuning ≤ 2×min / merah < min), pencarian nama/SKU, filter kategori (Kabel, Konektor, Power Supply, Lensa, Storage, Lainnya), modal form tambah/edit, hapus konfirmasi, paginasi; subscribe event `STOCK_LOW` untuk refresh real-time.
+- `src/app/maintenance/page.tsx`: section "Suku Cadang Digunakan" di modal detail + mini modal "Catat Penggunaan" (pilih suku cadang, jumlah, catatan); stok otomatis berkurang; peringatan stok rendah setelah pencatatan.
+- `src/app/dashboard/page.tsx`: widget "Suku Cadang Stok Rendah" (admin only) — fetch `/spare-parts/low-stock`, daftar 5 terendah dengan badge merah + link ke `/suku-cadang`, refresh real-time via `STOCK_LOW`.
+- `src/components/DashboardLayout.tsx`: menu sidebar "Suku Cadang" (ikon `Package`) dalam section admin-only setelah "Audit Log".
+- `src/proxy.ts`: route `/suku-cadang` ditambahkan ke guard admin server-side.
+
+timestamp: 2026-08-09 00:50 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/app/suku-cadang/page.tsx (baru)
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Kebutuhan vital operasional (keputusan prioritas ROADMAP Task 11.1) agar admin dapat mengelola stok komponen dan teknisi dapat mencatat suku cadang yang dipakai saat perbaikan CCTV.
+
 ## [1.39.0] - 2026-08-07
 
 ### Fitur: Multi-View Monitor & Pop-out (Task 10.3 — Fase 10)
