@@ -47,4 +47,10 @@ type MaintenanceSchedule struct {
 	// LastGeneratedAt mencatat waktu terakhir generator berhasil membuat log
 	// otomatis untuk jadwal ini (nil jika belum pernah di-generate).
 	LastGeneratedAt *time.Time `json:"last_generated_at"`
+	// SLAPolicyID menunjuk ke kebijakan SLA yang mengatur target waktu tugas
+	// hasil jadwal ini (Task 11.5, Sprint 28). Opsional — bila kosong, jadwal
+	// tidak terikat SLA dan hanya memakai aturan default.
+	SLAPolicyID *uuid.UUID `gorm:"type:uuid;index" json:"sla_policy_id,omitempty"`
+	// SLAPolicy adalah relasi ke master kebijakan SLA (preload untuk detail).
+	SLAPolicy *SLAPolicy `gorm:"foreignKey:SLAPolicyID" json:"sla_policy,omitempty"`
 }

@@ -26,6 +26,7 @@ import {
   MonitorPlay,
   Package,
   FileSpreadsheet,
+  Target,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -97,6 +98,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
           { name: 'Suku Cadang', href: '/suku-cadang', icon: Package },
           { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
+          { name: 'Zona', href: '/zona', icon: MapPinned },
+          { name: 'SLA', href: '/sla', icon: Target },
         ]
       : []),
   ];

@@ -1,11 +1,32 @@
 basePath: /api
 definitions:
+  handlers.AssignCCTVRequest:
+    properties:
+      cctv_ids:
+        description: CCTVIDs adalah daftar ID CCTV yang akan ditetapkan ke zona.
+        items:
+          type: string
+        type: array
+    required:
+    - cctv_ids
+    type: object
   handlers.AssignMaintenanceLogRequest:
     properties:
       technician_id:
         type: string
     required:
     - technician_id
+    type: object
+  handlers.AssignUsersRequest:
+    properties:
+      user_ids:
+        description: UserIDs adalah daftar ID user (teknisi) yang akan ditetapkan
+          ke zona.
+        items:
+          type: string
+        type: array
+    required:
+    - user_ids
     type: object
   handlers.ChangePasswordRequest:
     properties:
@@ -177,6 +198,30 @@ definitions:
     - cctv_id
     - frequency
     type: object
+  handlers.CreateSLAPolicyRequest:
+    properties:
+      jenis_tugas:
+        enum:
+        - corrective
+        - preventive
+        - field_check
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+      target_jam_respon:
+        minimum: 0
+        type: integer
+      target_jam_selesai:
+        minimum: 1
+        type: integer
+    required:
+    - jenis_tugas
+    - nama
+    - target_jam_respon
+    - target_jam_selesai
+    type: object
   handlers.CreateSparePartRequest:
     properties:
       harga_satuan:
@@ -233,6 +278,17 @@ definitions:
     - password
     - role
     - username
+    type: object
+  handlers.CreateZoneRequest:
+    properties:
+      deskripsi:
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - nama
     type: object
   handlers.EmailPreferencesRequest:
     properties:
@@ -463,6 +519,25 @@ definitions:
     required:
     - full_name
     type: object
+  handlers.UpdateSLAPolicyRequest:
+    properties:
+      jenis_tugas:
+        enum:
+        - corrective
+        - preventive
+        - field_check
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+      target_jam_respon:
+        minimum: 0
+        type: integer
+      target_jam_selesai:
+        minimum: 1
+        type: integer
+    type: object
   handlers.UpdateSparePartRequest:
     properties:
       harga_satuan:
@@ -504,6 +579,15 @@ definitions:
         enum:
         - admin
         - teknisi
+        type: string
+    type: object
+  handlers.UpdateZoneRequest:
+    properties:
+      deskripsi:
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 2
         type: string
     type: object
 host: localhost
@@ -842,6 +926,10 @@ paths:
       - description: Filter berdasarkan indoor/outdoor
         in: query
         name: indoor_outdoor
+        type: string
+      - description: Filter berdasarkan zona operasional (UUID zona)
+        in: query
+        name: zone_id
         type: string
       - description: Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area
         in: query
@@ -1378,6 +1466,43 @@ paths:
       security:
       - BearerAuth: []
       summary: Ringkasan Operasional Harian
+      tags:
+      - Dashboard
+  /dashboard/sla:
+    get:
+      description: Mengembalikan compliance SLA bulanan, daftar pelanggaran SLA, dan
+        ranking teknisi untuk dashboard admin.
+      parameters:
+      - description: 'Jumlah bulan tren (default: 6)'
+        in: query
+        name: months
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data dashboard SLA
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Hanya admin yang dapat mengakses dashboard SLA
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat data SLA
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Dashboard SLA
       tags:
       - Dashboard
   /dashboard/summary:
@@ -3001,6 +3126,230 @@ paths:
       summary: Hapus Template Laporan
       tags:
       - Laporan
+  /sla-policies:
+    get:
+      description: Mendapatkan daftar kebijakan SLA terpaginasi.
+      parameters:
+      - description: Pencarian berdasarkan nama atau jenis tugas
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar kebijakan SLA terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar kebijakan SLA
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Kebijakan SLA
+      tags:
+      - SLA
+    post:
+      consumes:
+      - application/json
+      description: Membuat master kebijakan SLA baru (nama, jenis tugas, target waktu).
+      parameters:
+      - description: Data Kebijakan SLA Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateSLAPolicyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Kebijakan SLA berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan kebijakan SLA ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Kebijakan SLA
+      tags:
+      - SLA
+  /sla-policies/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus kebijakan SLA (soft-delete). Jadwal yang menunjuk kebijakan
+        ini otomatis dilepas.
+      parameters:
+      - description: Kebijakan SLA UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Kebijakan SLA berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kebijakan SLA tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus kebijakan SLA
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Kebijakan SLA
+      tags:
+      - SLA
+    get:
+      description: Mendapatkan detail satu kebijakan SLA berdasarkan UUID-nya.
+      parameters:
+      - description: Kebijakan SLA UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data kebijakan SLA ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kebijakan SLA tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Kebijakan SLA Detail
+      tags:
+      - SLA
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui nama, jenis tugas, dan/atau target waktu kebijakan
+        SLA.
+      parameters:
+      - description: Kebijakan SLA UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Kebijakan SLA
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateSLAPolicyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Kebijakan SLA berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kebijakan SLA tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui kebijakan SLA
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Kebijakan SLA
+      tags:
+      - SLA
   /spare-parts:
     get:
       consumes:
@@ -3942,6 +4291,380 @@ paths:
       summary: Koneksi Real-time WebSocket Broadcast
       tags:
       - WebSocket
+  /zones:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar zona operasional terpaginasi dengan pencarian
+        nama dan jumlah CCTV/teknisi per zona.
+      parameters:
+      - description: Pencarian berdasarkan nama zona
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar zona terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Zona
+      tags:
+      - Zona
+    post:
+      consumes:
+      - application/json
+      description: Membuat master zona operasional baru.
+      parameters:
+      - description: Data Zona Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateZoneRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Zona berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan zona ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Zona
+      tags:
+      - Zona
+  /zones/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus zona (soft-delete). CCTV yang berada pada zona ini otomatis
+        dilepas dari zona (zone_id menjadi null).
+      parameters:
+      - description: Zona UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Zona berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Zona tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Zona
+      tags:
+      - Zona
+    get:
+      description: Mendapatkan detail satu zona beserta daftar CCTV dan teknisi yang
+        ditugaskan.
+      parameters:
+      - description: Zona UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data zona ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Zona tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Zona Detail
+      tags:
+      - Zona
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui nama dan/atau deskripsi zona.
+      parameters:
+      - description: Zona UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Zona
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateZoneRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Zona berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Zona tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Zona
+      tags:
+      - Zona
+  /zones/{id}/assign-cctvs:
+    post:
+      consumes:
+      - application/json
+      description: Menetapkan daftar CCTV ke sebuah zona. Seluruh CCTV pada daftar
+        akan di-set zone_id ke zona ini (menimpa penugasan zona lama bila ada).
+      parameters:
+      - description: Zona UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Daftar ID CCTV
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AssignCCTVRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: CCTV berhasil ditugaskan ke zona
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, daftar kosong, atau ada CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Zona tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menetapkan CCTV ke zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign CCTV ke Zona
+      tags:
+      - Zona
+  /zones/{id}/assign-users:
+    post:
+      consumes:
+      - application/json
+      description: Menetapkan daftar teknisi ke sebuah zona. Seluruh penugasan user
+        lama pada zona digantikan daftar baru (bila user_ids kosong, penugasan dibersihkan).
+      parameters:
+      - description: Zona UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Daftar ID User
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AssignUsersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Teknisi berhasil ditugaskan ke zona
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid atau ada user tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Zona tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menetapkan teknisi ke zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign Teknisi ke Zona
+      tags:
+      - Zona
+  /zones/all:
+    get:
+      description: Mendapatkan seluruh zona (id + nama + jumlah CCTV) tanpa paginasi
+        untuk keperluan dropdown/filter.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar zona (tanpa paginasi)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar zona
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Zona (Select)
+      tags:
+      - Zona
 schemes:
 - https
 securityDefinitions:

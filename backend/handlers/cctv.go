@@ -223,6 +223,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 // @Param        status query string false "Filter berdasarkan status"
 // @Param        jenis_cctv query string false "Filter berdasarkan jenis CCTV"
 // @Param        indoor_outdoor query string false "Filter berdasarkan indoor/outdoor"
+// @Param        zone_id query string false "Filter berdasarkan zona operasional (UUID zona)"
 // @Param        search query string false "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area"
 // @Param        page query integer false "Nomor Halaman (default: 1)"
 // @Param        limit query integer false "Jumlah data per halaman (default: 10)"
@@ -244,6 +245,18 @@ func GetAllCCTV(c *fiber.Ctx) error {
 	}
 	if io := c.Query("indoor_outdoor"); io != "" {
 		query = query.Where("indoor_outdoor = ?", io)
+	}
+	// Filter zona operasional (Task 11.4, Sprint 28): ?zone_id=<uuid>.
+	// Opsional — bila diisi hanya CCTV milik zona tersebut yang dikembalikan.
+	if zoneID := c.Query("zone_id"); zoneID != "" {
+		zid, err := uuid.Parse(zoneID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Filter zone_id tidak valid",
+			})
+		}
+		query = query.Where("zone_id = ?", zid)
 	}
 
 	// Pencarian
