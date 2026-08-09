@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "SIGAP Mobile",
+    "slug": "sigap-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#162218"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "id.oikn.sigap.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Aplikasi membutuhkan kamera untuk memindai QR label CCTV dan mengambil foto bukti.",
+        "NSLocationWhenInUseUsageDescription": "Aplikasi membutuhkan lokasi untuk mencatat posisi pengecekan lapangan.",
+        "NSPhotoLibraryUsageDescription": "Aplikasi membutuhkan akses galeri untuk mengambil foto bukti pengecekan."
+      }
+    },
+    "android": {
+      "package": "id.oikn.sigap.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      "expo-secure-store",
+      "expo-image-picker"
+    ]
+  }
+}

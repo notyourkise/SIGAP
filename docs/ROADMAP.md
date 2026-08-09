@@ -579,7 +579,7 @@ Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0].
 
 > Mempersiapkan SIGAP untuk integrasi dengan sistem lain.
 > Fokus saat ini: **Kawasan OIKN**.
-> **Status: 🔶 Berjalan** — 2/4 task selesai (Sprint 29 ✅, Task 12.2 & 12.4 belum dimulai).
+> **Status: 🔶 Berjalan** — 3/4 task selesai (Sprint 29 ✅, Task 12.4 ✅, Task 12.2 belum dimulai).
 
 ### Sprint 29 — API Key & Webhook (Task 12.1 + 12.3)
 
@@ -609,8 +609,24 @@ Detail: `backend/changelog.md` [0.51.0] · `frontend/changelog.md` [1.43.0].
 | **Frontend** | Agent-FE | **12.2b** UI Multi-Site | Switch site di navigasi (dropdown header). Dashboard per site. Filter global per site. User assignment ke multiple sites. |
 | **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-multi-site.md`. |
 
-> **Task 12.4** (Mobile App React Native) — **dievaluasi terpisah** berdasarkan kebutuhan pasca go-live.
-> Estimasi 10–15 hari, scope: Android prioritas, shared API layer.
+### Task 12.4 — Mobile App (React Native / Expo)
+
+> **Branch:** `feature/mobile-app`
+> **Status: ✅ Selesai** (2026-08-09)
+> Aplikasi mobile untuk **teknisi di lapangan**: pengecekan CCTV, scan QR label fisik, dan pencatatan pemeliharaan tanpa laptop. Target OS **Android** (prioritas).
+
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Mobile-Core** | Agent-Mobile | **12.4a** Setup & Auth | Proyek Expo RN TypeScript di `mobile/`; `react-navigation` (Stack + Bottom Tabs); shared API client (axios, Bearer session); login + simpan token via `expo-secure-store`; auto-login & refresh; profil teknisi (ganti password, status koneksi, logout). | ✅ Selesai |
+| **Mobile-Field** | Agent-Mobile | **12.4b** Scan QR & Checkup Wizard | Scanner QR kamera (`expo-camera`) → `POST /api/cctv/scan` → detail CCTV; wizard checklist 9 tahap + GPS (`expo-location`) + foto bukti (`expo-image-picker`) → unggah + `POST /api/field-maintenance`; draft offline ke AsyncStorage + sync. | ✅ Selesai |
+| **Mobile-Stream** | Agent-Mobile | **12.4c** Live View & Maps | Peta GIS (`react-native-maps`, marker warna status); WHEP player via WebView fallback; list tugas `scheduled`/`ongoing` + petunjuk arah. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Task 12.4:** Aplikasi mobile SIGAP selesai.
+- **Mobile (`1.0.0`)**: proyek Expo RN TypeScript di `mobile/`; `react-navigation` (Native Stack + Bottom Tabs); shared axios client (`src/api/client.ts`) mendukung `Authorization: Bearer <token>` (token sesi ditangkap dari `Set-Cookie` saat login dan disimpan di `expo-secure-store`); AuthContext (login, auto-login, refresh via `/auth/me`, logout); layar Login, Profil (ganti password via `/auth/change-password`, status koneksi `/health`, logout); Scan QR (`expo-camera` + `POST /api/cctv/scan`); Checkup Wizard 9 tahap (`expo-location` GPS + `expo-image-picker` foto + `POST /api/upload` + `POST /api/field-maintenance` + draft AsyncStorage offline); Peta GIS (`react-native-maps`); Live View (WebView WHEP fallback); List Tugas (`/dashboard/tasks`).
+- **Verifikasi**: `npx tsc --noEmit` lulus (0 error).
+- **Dokumen**: `mobile/README.md` (baru), `mobile/.env.example` (baru).
+
+Detail: `docs/changelog.md` [1.28.38].
 
 ---
 
