@@ -61,12 +61,19 @@ func setupMockGORM(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 }
 
 // expectHealthScoreRecalculation menyiapkan ekspektasi query kalkulator yang
-// dipanggil setelah complete atau field-check berhasil.
+// dipanggil setelah complete atau field-check berhasil, sesuai urutan eksekusi
+// (ordered matching sqlmock): (1) query metrik, (2) muat skor lama untuk hook
+// webhook health_score.changed, (3) update skor.
 func expectHealthScoreRecalculation(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery(`^SELECT\s+\(SELECT COUNT\(\*\) FROM maintenance_logs`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"failed", "attention", "overdue", "not_ok_items", "last_completed_at",
 		}).AddRow(0, 0, 0, 0, nil))
+	// Muat skor lama (Task 12.3) — skor 98 sama dengan hasil hitung untuk
+	// metrik (0,0,0,0,nil) sehingga event health_score.changed tidak terpicu.
+	mock.ExpectQuery(`SELECT "id","kode_cctv","nama","health_score" FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "health_score"}).
+			AddRow("00000000-0000-0000-0000-000000000000", "CCTV-001", "Kamera", 98))
 	mock.ExpectExec(`^UPDATE "cctvs" SET "health_score"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 }

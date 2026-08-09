@@ -81,8 +81,12 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `zone_test.go` (Task 11.4, Sprint 28) | `CreateZone` (sukses → 201, validasi nama kosong → 400), `GetAllZones` (paginasi + `cctv_count`/`user_count`), `GetZoneByID` (sukses, not found → 404), `UpdateZone` (sukses), `DeleteZone` (soft delete), `AssignCCTVToZone` (bulk-assign sukses), `AssignUsersToZone` (sukses, user bukan teknisi → 400), `GetAllZonesForSelect` |
 | `handlers` | `sla_test.go` (Task 11.5, Sprint 28) | `CreateSLAPolicy` (sukses → 201, jenis_tugas tidak valid → 400), `GetSLAPolicies` (paginasi), `GetSLAPolicyByID` (sukses, not found → 404), `UpdateSLAPolicy` (sukses), `DeleteSLAPolicy` (soft delete), `GetDashboardSLA` (sukses → `monthly_compliance`/`violations`/`technician_ranking`, teknisi → 403), `CheckSLADeadlines` (tanpa panic tanpa tugas) |
 | `routes` | `routes_test.go` (Sprint 28, diperluas) | `TestZoneRoutesRequireAuthentication`, `TestSLAPoliciesRoutesRequireAuthentication`, registrasi `SetupZoneRoutes`/`SetupSLARoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
+| `handlers` | `api_key_test.go` (Task 12.1, Sprint 29) | `CreateAPIKey` (sukses → 201 + key mentah 1×, scope invalid → 400, validasi → 400), `GetAllAPIKeys` (paginasi), `RevokeAPIKey` (sukses, not found → 404), `GenerateAPIKeyFormat` (key 64 hex + prefix 8 + bcrypt verify) |
+| `handlers` | `webhook_test.go` (Task 12.3, Sprint 29) | `CreateWebhookEndpoint` (sukses → 201, event invalid → 400, validasi → 400), `GetAllWebhookEndpoints` (paginasi), `UpdateWebhookEndpoint` (sukses), `DeleteWebhookEndpoint` (soft delete), `GetWebhookDeliveries` (paginasi), `SignPayload` (HMAC-SHA256 hex 64), `ValidWebhookEvent` |
+| `middleware` | `apikey_test.go` (Task 12.1, Sprint 29) | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals terisi, scope kurang → 403) |
+| `routes` | `routes_test.go` (Sprint 29, diperluas) | `TestAPIKeyRoutesRequireAuthentication`, `TestWebhookRoutesRequireAuthentication`, registrasi `SetupAPIKeyRoutes`/`SetupWebhookRoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
 
-**Total: 56 file test** (14 utils, 5 middleware, 28 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
+**Total: 59 file test** (14 utils, 5 middleware, 30 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -161,6 +165,24 @@ Catatan gotchas test `zone_test.go` / `sla_test.go`:
   `mock.ExpectBegin()` / `mock.ExpectCommit()` di sekitar query transaksi.
 - `GetDashboardSLA` memakai query raw dengan `JOIN`, sehingga regex sqlmock harus mencocokkan
   `FROM maintenance_logs AS ml` (tanpa quote pada tabel yang di-join).
+
+### Matriks API Key & Webhook (Fase 12, Task 12.1 + 12.3 / Sprint 29)
+
+Ringkasan cakupan test API key & webhook:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/api_key_test.go` | 12.1 | `CreateAPIKey` (sukses → 201 + key mentah 1×, scope invalid → 400, validasi nama kosong → 400), `GetAllAPIKeys` (paginasi), `RevokeAPIKey` (sukses, not found → 404), `GenerateAPIKeyFormat` (key 64 hex, prefix 8, bcrypt verify) |
+| `handlers/webhook_test.go` | 12.3 | `CreateWebhookEndpoint` (sukses → 201, event invalid → 400, validasi → 400), `GetAllWebhookEndpoints` (paginasi), `UpdateWebhookEndpoint` (sukses), `DeleteWebhookEndpoint` (soft delete), `GetWebhookDeliveries` (paginasi), `SignPayload` (HMAC-SHA256 hex 64), `ValidWebhookEvent` |
+| `middleware/apikey_test.go` | 12.1 | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals `api_key_id`/`auth_method`, scope kurang → 403) |
+
+Catatan gotchas test `api_key_test.go` / `webhook_test.go`:
+- Field jsonb `[]string` (`Scopes`/`Events`) memakai `serializer:json`; INSERT GORM menghasilkan
+  `RETURNING "scopes"`/`"events"`, sehingga mock memakai `ExpectQuery` dengan `[]byte` JSON pada kolom tsb.
+- `CreateAPIKey`/`RevokeAPIKey` memicu `LogAudit` async di goroutine — jangan mem-mock query user/audit
+  pada test success (pola sama dengan test CRUD lain).
+- Middleware API key menulis `last_used_at` async di goroutine — hindari `mock.ExpectationsWereMet()`
+  pada test `ValidKey` (menunggu UPDATE async).
 
 ---
 

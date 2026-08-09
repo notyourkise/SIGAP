@@ -767,6 +767,16 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 	}
 	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
 
+	// Task 12.3: dispatch event webhook maintenance.completed (semua status terminal).
+	DispatchWebhook(config.DB, models.EventWebhookMaintenanceCompleted, fiber.Map{
+		"log_id":          logEntry.ID.String(),
+		"cctv_id":         logEntry.CCTVID.String(),
+		"action_taken":    logEntry.ActionTaken,
+		"status":          newStatus,
+		"completed_at":    time.Now().Format(time.RFC3339),
+		"timestamp":       time.Now().Format(time.RFC3339),
+	})
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   logEntry,
