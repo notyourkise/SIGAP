@@ -26,5 +26,13 @@ echo "Menulis crontab dengan jadwal: '${CRON_SCHEDULE}' (TZ=${TZ})"
 echo "${CRON_SCHEDULE} /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1" > /etc/crontabs/root
 
 # Jalankan crond (dcron) di foreground.
+# CATATAN: tidak memakai `exec` — saat crond menjadi PID 1 di dalam container,
+# pemanggilan `setpgid(0,0)`-nya gagal dengan "Operation not permitted" (EPERM)
+# karena PID 1 sudah menjadi session/process group leader. Dengan menjalankan
+# crond sebagai child lalu `wait`, crond bukan PID 1 sehingga setpgid berhasil
+# dan container tetap hidup selama crond berjalan.
 echo "Memulai crond (foreground)..."
-exec crond -f -l 2
+crond -f -l 2 &
+CRON_PID=$!
+# Tunggu crond; bila berhenti, container ikut berhenti (restart policy menangani).
+wait "$CRON_PID"
