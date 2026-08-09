@@ -3,6 +3,16 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.38] — 2026-08-09 — Fitur: Mobile App (Task 12.4)
+
+### Perubahan
+
+- **Mobile** ([1.0.0]): aplikasi Expo React Native TypeScript di `mobile/` untuk teknisi lapangan. Auth (login, `expo-secure-store`, auto-login, profil, ganti password, logout) via shared axios client (Bearer session). Scan QR (`expo-camera` + `POST /api/cctv/scan`). Checkup Wizard 9 tahap (`expo-location` GPS + `expo-image-picker` foto + `POST /api/upload` + `POST /api/field-maintenance` + draft AsyncStorage offline). Peta GIS (`react-native-maps`). Live View (WebView WHEP fallback). List Tugas (`/dashboard/tasks`).
+- **Dokumen**: `mobile/README.md` (baru), `mobile/.env.example` (baru), `mobile/changelog.md` (baru); `docs/ROADMAP.md` Fase 12 progress 2/4 → 3/4 & Task 12.4 ✅.
+- Verifikasi: `cd mobile && npx tsc --noEmit` lulus (0 error).
+
+Timestamp: 2026-08-09 WITA | Kategori: Besar, Mobile | Detail: `mobile/changelog.md` [1.0.0]
+
 ## [1.28.37] — 2026-08-09 — Fitur: API Key & Webhook (Sprint 29)
 
 ### Perubahan
