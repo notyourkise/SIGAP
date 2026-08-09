@@ -1,5 +1,57 @@
 # Changelog - Backend SIGAP
 
+## [0.49.0] - 2026-08-09
+
+### Fitur: Notifikasi Email SMTP & Report Builder (Task 11.2 + 11.3 - Sprint 27)
+
+perubahan yang dilakukan: **Menambahkan notifikasi email berbasis SMTP dan report builder laporan kustom. Backend naik `0.48.0` → `0.49.0`.**
+
+before: Notifikasi hanya in-app + push (WebSocket/browser); laporan hanya PDF pemeliharaan statis. Belum ada email otomatis maupun laporan kustom yang dapat dikonfigurasi admin.
+
+after:
+- Email (Task 11.3):
+  - `utils/email.go`: `SendEmail` via `net/smtp` + TLS (STARTTLS/implicit), `InitEmailConfig`/`EmailEnabled`, `RenderEmailTemplate` (html/template, multi-path), `EncodeHeader` RFC 2047.
+  - Template `backend/templates/`: `daily_summary.html`, `overdue_escalation.html`, `stock_low.html`, `stream_down.html` (responsif, anti XSS).
+  - Model `User.EmailNotifications` + migrasi `000007_add_email_notifications`.
+  - Handler `handlers/email.go`: `UpdateEmailPreferences` (`PUT /api/profile/email-preferences`), `SendDailySummaryEmails`, `SendOverdueEmail`, `SendStockLowEmail`, `SendCCTVStreamDownEmail`.
+  - Trigger: digest 06:00 WITA (ringkasan harian), overdue checker (eskalasi), `STOCK_LOW` (stok rendah), stream down > 15 menit → email CCTV offline ke seluruh admin yang opt-in.
+  - Env SMTP di `.env.example` & `backend/.env.docker.example` (contoh Hostinger `noreply@nexaspace.site`).
+- Report Builder (Task 11.2):
+  - Model `ReportTemplate` + migrasi `000008_report_templates`.
+  - Handler `handlers/report_builder.go`: `GenerateReport` (`POST /api/reports/generate`, entitas cctv/maintenance_log/field_maintenance/spare_part, format csv/xlsx/pdf), `ListReportTemplates`/`SaveReportTemplate`/`DeleteReportTemplate`.
+  - Memakai `github.com/xuri/excelize/v2` (Excel) & `github.com/go-pdf/fpdf` (PDF, fork gofpdf yang sudah ada).
+- Routes `routes/profile.go` (`/profile/email-preferences`) & `routes/report.go` (admin-only) + registrasi di `main.go`; `InitEmailConfig` di startup.
+- Swagger annotations + `swag init`.
+- Unit test: `handlers/email_test.go`, `handlers/report_builder_test.go`, `utils/email_test.go`.
+
+timestamp: 2026-08-09 02:40 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/utils/email.go (baru)
+- backend/utils/email_test.go (baru)
+- backend/templates/daily_summary.html (baru)
+- backend/templates/overdue_escalation.html (baru)
+- backend/templates/stock_low.html (baru)
+- backend/models/setup.go (User.EmailNotifications)
+- backend/models/report.go (baru)
+- backend/migrations/000007_add_email_notifications.up/down.sql (baru)
+- backend/migrations/000008_report_templates.up/down.sql (baru)
+- backend/handlers/email.go (baru)
+- backend/handlers/email_test.go (baru)
+- backend/handlers/report_builder.go (baru)
+- backend/handlers/report_builder_test.go (baru)
+- backend/handlers/overdue_checker.go
+- backend/handlers/digest_generator.go
+- backend/handlers/spare_part.go
+- backend/handlers/auth.go
+- backend/routes/profile.go (baru)
+- backend/routes/report.go (baru)
+- backend/main.go
+- backend/docs/* (regenerasi swag)
+- .env.example, backend/.env.docker.example
+- backend/changelog.md
+alasan perubahan: Kebutuhan operasional lanjut (ROADMAP Task 11.2 & 11.3) — email otomatis untuk proaktifitas (ringkasan, eskalasi, stok rendah) dan laporan kustom yang dapat dikonfigurasi admin untuk pengambilan keputusan.
+
 ## [0.48.0] - 2026-08-09
 
 ### Fitur: Inventaris Suku Cadang (Task 11.1 - Sprint 26)

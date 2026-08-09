@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peringatan Stok Rendah — SIGAP</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f1e8;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f1e8;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#fffef8;border-radius:16px;overflow:hidden;border:1px solid #e4d6a7;">
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#b54432;padding:24px 28px;">
+              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">📦 Suku Cadang Stok Rendah</h1>
+              <p style="margin:6px 0 0;color:#fbe3df;font-size:13px;">SIGAP · Inventaris</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:24px 28px;">
+              <p style="margin:0 0 16px;color:#203f25;font-size:15px;line-height:1.5;">
+                Halo <strong>{{ .Nama }}</strong>,
+              </p>
+              <p style="margin:0 0 20px;color:#62705a;font-size:14px;line-height:1.5;">
+                Stok suku cadang berikut telah berada di bawah ambang minimum dan perlu segera di-restock:
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f5e8;border:1px solid #e4d6a7;border-radius:12px;">
+                <tr>
+                  <td style="padding:14px 18px;">
+                    <p style="margin:0;color:#203f25;font-size:14px;"><strong>{{ .NamaSukuCadang }}</strong></p>
+                    <p style="margin:6px 0 0;color:#62705a;font-size:13px;">SKU: {{ .SKU }}</p>
+                    <p style="margin:6px 0 0;color:#62705a;font-size:13px;">Kategori: {{ .Kategori }}</p>
+                    <p style="margin:6px 0 0;color:#b54432;font-size:14px;">
+                      Stok tersisa: <strong>{{ .Stok }}</strong> {{ .Satuan }} (minimum order: {{ .MinimumOrder }})
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:20px 0 0;color:#62705a;font-size:13px;line-height:1.5;">
+                Lakukan pemesanan ulang untuk memastikan ketersediaan komponen pada perbaikan berikutnya.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f4f1e8;padding:16px 28px;text-align:center;">
+              <p style="margin:0;color:#a3a088;font-size:11px;">
+                Email otomatis dari Sistem Identifikasi Gangguan Aset Pusat (SIGAP). Jangan membalas email ini.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

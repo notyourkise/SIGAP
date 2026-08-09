@@ -119,6 +119,12 @@ func GenerateDailyDigestAt(db *gorm.DB, now time.Time) (*models.DailyDigest, boo
 		utils.Log.Errorf("Gagal mengirim notifikasi digest %s: %v", digestDate.Format("2006-01-02"), err)
 	}
 
+	// Task 11.3: kirim email ringkasan harian ke admin yang opt-in (async).
+	// Error email tidak memengaruhi pembuatan digest, hanya dicatat di dalam fungsi.
+	go func() {
+		_ = SendDailySummaryEmails(db, &digest)
+	}()
+
 	return &digest, true, nil
 }
 

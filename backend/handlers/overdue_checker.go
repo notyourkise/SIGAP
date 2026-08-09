@@ -116,6 +116,10 @@ func processOverdueMaintenanceLog(db *gorm.DB, logEntry *models.MaintenanceLog, 
 		}
 	}
 
+	// Task 11.3: kirim email eskalasi overdue ke admin/teknisi yang opt-in.
+	// Berjalan async agar tidak memperlambat checker bila SMTP lambat.
+	go SendOverdueEmail(db, logEntry)
+
 	result := db.Model(&models.MaintenanceLog{}).
 		Where("id = ? AND overdue_notified_at IS NULL", logEntry.ID).
 		Update("overdue_notified_at", now)

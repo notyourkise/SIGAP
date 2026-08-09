@@ -1,5 +1,32 @@
 # Changelog - Frontend SIGAP
 
+## [1.41.0] - 2026-08-09
+
+### Fitur: UI Email Preferences & Report Builder (Task 11.2b + 11.3b - Sprint 27)
+
+perubahan yang dilakukan: **Menambahkan halaman report builder laporan kustom dan preferensi notifikasi email di profil. Frontend naik `1.40.0` → `1.41.0`.**
+
+before: Belum ada cara membuat laporan kustom yang dapat dikonfigurasi, dan pengguna tidak bisa mengatur apakah menerima notifikasi email.
+
+after:
+- `src/app/laporan-kustom/page.tsx` (baru): halaman admin `/laporan-kustom` — wizard 4 langkah (pilih entitas CCTV/Pemeliharaan/Pengecekan/Suku Cadang, pilih kolom, filter status/tanggal/kategori, pilih format CSV/Excel/PDF), tombol "Unduh Laporan", simpan/muat/hapus template, daftar template tersimpan.
+- `src/app/profile/page.tsx`: section "Notifikasi Email" — toggle `email_notifications` yang memanggil `PUT /api/profile/email-preferences` (optimistic update + rollback), menampilkan alamat email terdaftar.
+- `src/context/AuthContext.tsx`: interface `User` bertambah `email_notifications`.
+- `src/components/DashboardLayout.tsx`: menu sidebar "Laporan" (ikon `FileSpreadsheet`) dalam section admin-only setelah "Suku Cadang".
+- `src/proxy.ts`: route `/laporan-kustom` ditambahkan ke guard admin server-side.
+- `src/lib/api.ts` dipakai untuk template CRUD; unduhan laporan memakai fetch POST dengan cookie + CSRF header (helper lokal di halaman).
+
+timestamp: 2026-08-09 02:40 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/app/laporan-kustom/page.tsx (baru)
+- frontend/src/app/profile/page.tsx
+- frontend/src/context/AuthContext.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Kebutuhan operasional lanjut (ROADMAP Task 11.2b + 11.3b) — admin dapat membuat laporan kustom dan pengguna dapat mengatur preferensi notifikasi email.
+
 ## [1.40.0] - 2026-08-09
 
 ### Fitur: UI Inventaris Suku Cadang (Task 11.1 - Sprint 26)

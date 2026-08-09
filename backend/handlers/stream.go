@@ -583,6 +583,10 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 			"path":    path,
 		})
 
+		// Task 11.3: kirim email peringatan CCTV offline ke seluruh admin yang
+		// opt-in. Async agar tidak memperlambat monitor.
+		go SendCCTVStreamDownEmail(db, &cctv)
+
 		// Kurangi skor kesehatan 10 poin (clamp min 0).
 		newScore := cctv.HealthScore - 10
 		if newScore < 0 {

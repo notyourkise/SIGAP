@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   Trash2,
   UserRound,
+  MailCheck,
 } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
@@ -30,6 +31,7 @@ interface ProfileResponse {
   email: string;
   role: 'admin' | 'teknisi';
   profile_photo_url: string;
+  email_notifications?: boolean;
 }
 
 export default function ProfilePage() {
@@ -41,6 +43,12 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Preferensi notifikasi email (Task 11.3)
+  const [emailNotifications, setEmailNotifications] = useState<boolean>(
+    user?.email_notifications ?? true
+  );
+  const [savingEmailPref, setSavingEmailPref] = useState(false);
 
   const saveProfile = async (fullNameValue: string, photoUrlValue: string) => {
     const response = await apiRequest<ProfileResponse>('/auth/profile', {
@@ -125,6 +133,34 @@ export default function ProfilePage() {
       setError(err instanceof Error ? err.message : 'Gagal menghapus foto profil.');
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Simpan preferensi notifikasi email ke backend.
+  const handleToggleEmailNotifications = async (checked: boolean) => {
+    setError('');
+    setSuccess('');
+    setSavingEmailPref(true);
+    // Optimistic update agar UI responsif.
+    setEmailNotifications(checked);
+    try {
+      const response = await apiRequest<{ email_notifications: boolean }>('/profile/email-preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ email_notifications: checked }),
+      });
+      if (response.status === 'success' && response.data) {
+        setEmailNotifications(response.data.email_notifications);
+        if (user) {
+          updateUser({ ...user, email_notifications: response.data.email_notifications });
+        }
+        setSuccess(checked ? 'Notifikasi email diaktifkan.' : 'Notifikasi email dinonaktifkan.');
+      }
+    } catch (err: unknown) {
+      // Rollback pada kegagalan.
+      setEmailNotifications(!checked);
+      setError(err instanceof Error ? err.message : 'Preferensi email belum dapat disimpan. Coba lagi.');
+    } finally {
+      setSavingEmailPref(false);
     }
   };
 
@@ -294,6 +330,55 @@ export default function ProfilePage() {
           </div>
           <div className="p-5">
             <PushNotificationOptIn />
+          </div>
+        </section>
+
+        {/* Preferensi email (Task 11.3) */}
+        <section aria-labelledby="email-settings-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4">
+            <h2 id="email-settings-heading" className="text-base font-bold">Notifikasi Email</h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Terima ringkasan harian, eskalasi tugas terlambat, dan peringatan stok suku cadang ke email terdaftar.
+            </p>
+          </div>
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">
+                    Terima notifikasi email {user?.email ? `(${user.email})` : ''}
+                  </p>
+                  <p className="mt-1 max-w-lg text-xs text-muted">
+                    {emailNotifications
+                      ? 'Aktif — Anda akan menerima email otomatis dari SIGAP.'
+                      : 'Nonaktif — Anda hanya menerima notifikasi in-app dan push.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={emailNotifications}
+                disabled={savingEmailPref || !user?.email}
+                onClick={() => handleToggleEmailNotifications(!emailNotifications)}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60 ${
+                  emailNotifications ? 'bg-primary' : 'bg-border'
+                }`}
+                aria-label="Aktifkan atau nonaktifkan notifikasi email"
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    emailNotifications ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            {!user?.email && (
+              <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-warning">
+                Belum ada email terdaftar pada akun Anda. Hubungi admin untuk melengkapi alamat email.
+              </p>
+            )}
           </div>
         </section>
       </div>

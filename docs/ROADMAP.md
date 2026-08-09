@@ -32,7 +32,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
-| **11** | **Manajemen Operasional Lanjut** | **1/5** | **🔶 Berjalan** |
+| **11** | **Manajemen Operasional Lanjut** | **3/5** | **🔶 Berjalan** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -514,7 +514,7 @@ cd ../frontend && npm run lint && npm run build
 ## Fase 11 — Manajemen Operasional Lanjut
 
 > Fitur operasional yang memperkuat fungsi SIGAP sebagai platform pengelolaan lengkap.
-> **Status: 🔶 Berjalan** — 1/5 task selesai (Sprint 26 ✅).
+> **Status: 🔶 Berjalan** — 3/5 task selesai (Sprint 26 ✅, Sprint 27 ✅).
 > **Task 11.1 dikerjakan langsung setelah Fase 9 stabil** (keputusan prioritas).
 
 ### Sprint 26 — Inventaris Suku Cadang (Task 11.1) ⭐ PRIORITAS
@@ -539,12 +539,20 @@ Detail: `backend/changelog.md` [0.48.0] · `frontend/changelog.md` [1.40.0] · `
 ### Sprint 27 — Email & Report Builder (Task 11.2 + 11.3)
 
 > **Branch:** `feature/email-reports`
+> **Status: ✅ Selesai** (2026-08-09)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **11.3** Notifikasi Email SMTP | Konfigurasi SMTP di `.env`. Template email HTML (Go `html/template`). Jenis: ringkasan harian, eskalasi overdue, stock rendah. Field `Email` + `EmailNotifications` di model `User`. Endpoint `PUT /api/profile/email-preferences`. Opt-in per user. |
-| **Backend** | Agent-BE | **11.2** Laporan Kustom (Report Builder) | Model `ReportTemplate` (nama, konfigurasi JSON). Endpoint `POST /api/reports/generate` (entitas, kolom, filter, format PDF/CSV/Excel). Template yang bisa disimpan/dipakai ulang. |
-| **Frontend** | Agent-FE | **11.2b + 11.3b** UI Email & Report | Halaman `/laporan-kustom` (report builder wizard). Email preferences di halaman profil. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **11.3** Notifikasi Email SMTP | Konfigurasi SMTP di `.env`. Template email HTML (Go `html/template`). Jenis: ringkasan harian, eskalasi overdue, stock rendah. Field `Email` + `EmailNotifications` di model `User`. Endpoint `PUT /api/profile/email-preferences`. Opt-in per user. | ✅ Selesai |
+| **Backend** | Agent-BE | **11.2** Laporan Kustom (Report Builder) | Model `ReportTemplate` (nama, konfigurasi JSON). Endpoint `POST /api/reports/generate` (entitas, kolom, filter, format PDF/CSV/Excel). Template yang bisa disimpan/dipakai ulang. | ✅ Selesai |
+| **Frontend** | Agent-FE | **11.2b + 11.3b** UI Email & Report | Halaman `/laporan-kustom` (report builder wizard). Email preferences di halaman profil. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 27:** Email & Report Builder (Task 11.2 + 11.3) selesai.
+- **Backend (`0.49.0`)**: `utils/email.go` (SendEmail via net/smtp + TLS, render template html/template, `InitEmailConfig`/`EmailEnabled`); template `daily_summary.html`/`overdue_escalation.html`/`stock_low.html`; model `User.EmailNotifications` + migrasi `000007`; `PUT /api/profile/email-preferences`; trigger email ringkasan harian (digest 06:00 WITA), overdue (overdue checker), stock low (`STOCK_LOW`). Report builder: model `ReportTemplate` + migrasi `000008`; handler `report_builder.go` (`POST /api/reports/generate` CSV/XLSX/PDF untuk 4 entitas, `GET/POST /api/reports/templates`, `DELETE /api/reports/templates/:id`); routes `routes/profile.go` + `routes/report.go` (admin-only) + registrasi di `main.go`; Swagger + unit test `handlers/email_test.go`, `handlers/report_builder_test.go`, `utils/email_test.go`.
+- **Frontend (`1.41.0`)**: halaman `/laporan-kustom` (wizard 4 langkah: entitas, kolom, filter, format; unduh CSV/Excel/PDF; simpan/muat/hapus template); email preferences di `/profile` (toggle `email_notifications`); menu sidebar "Laporan" (`FileSpreadsheet`); proxy melindungi `/laporan-kustom`.
+- **Dokumen**: `docs/manual-test-email.md` (baru — S1–S7), `docs/manual-test-report-builder.md` (baru — S1–S8); `docs/TESTING.md` (matriks `email_test.go`, `report_builder_test.go`, `utils/email_test.go`; total 51 → 54).
+
+Detail: `backend/changelog.md` [0.49.0] · `frontend/changelog.md` [1.41.0] · `docs/changelog.md` [1.28.35].
 
 ### Sprint 28 — Zona & SLA (Task 11.4 + 11.5)
 
