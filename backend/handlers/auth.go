@@ -330,6 +330,7 @@ func GetMyProfile(c *fiber.Ctx) error {
 			"created_at":           user.CreatedAt,
 			"must_change_password": user.MustChangePassword,
 			"profile_photo_url":    user.ProfilePhotoURL,
+			"email_notifications":  user.EmailNotifications,
 		},
 	})
 }

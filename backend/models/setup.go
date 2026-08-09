@@ -41,14 +41,18 @@ type User struct {
 	// (setelah akun dibuat / password di-reset oleh Admin). Ditandai false otomatis
 	// setelah pengguna berhasil mengganti password lewat /auth/change-password.
 	MustChangePassword bool `gorm:"type:boolean;not null;default:false" json:"must_change_password"`
+	// EmailNotifications menandai apakah pengguna menerima notifikasi email
+	// (ringkasan harian, eskalasi overdue, stok rendah). Default true; dapat
+	// dimatikan lewat endpoint PUT /api/profile/email-preferences.
+	EmailNotifications bool `gorm:"type:boolean;not null;default:true" json:"email_notifications"`
 }
 
 type MaintenanceLog struct {
 	Base
 	// CCTVID menunjuk langsung ke tabel cctvs — CCTV adalah satu-satunya sumber
 	// kebenaran aset (unifikasi model assets ↔ cctv, Fase 3.6).
-	CCTVID       uuid.UUID  `gorm:"type:uuid;index" json:"cctv_id"`
-	CCTV         CCTV       `gorm:"foreignKey:CCTVID" json:"cctv"`
+	CCTVID uuid.UUID `gorm:"type:uuid;index" json:"cctv_id"`
+	CCTV   CCTV      `gorm:"foreignKey:CCTVID" json:"cctv"`
 	// TechnicianID bersifat opsional (nil) karena log baru dibuat berstatus
 	// "scheduled" tanpa penugasan; teknisi baru ditautkan saat admin menugaskan
 	// lewat endpoint assign (status berubah menjadi "ongoing").

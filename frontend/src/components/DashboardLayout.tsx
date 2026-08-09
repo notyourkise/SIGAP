@@ -25,6 +25,7 @@ import {
   ClipboardList,
   MonitorPlay,
   Package,
+  FileSpreadsheet,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -95,6 +96,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Manajemen Pengguna', href: '/users', icon: Users },
           { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
           { name: 'Suku Cadang', href: '/suku-cadang', icon: Package },
+          { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
         ]
       : []),
   ];

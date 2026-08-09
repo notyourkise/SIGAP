@@ -74,8 +74,12 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `snapshot_test.go` (Task 10.1+10.2, Fase 10) | `GetCCTVSnapshot` (sukses → JPEG, belum ada snapshot → 404, CCTV not found → 404, tanpa identitas → 401), `GetCCTVTimeline` (sukses + paginasi, CCTV not found → 404, tanpa identitas → 401), rotasi snapshot (hanya menyimpan 10 terbaru) |
 | `handlers` | `stream_health_test.go` (Task 10.4, Fase 10) | `GetStreamHealth` (tanpa stream, unauthorized 401/403), `RunStreamHealthMonitor` (no MediaMTX, down > 15 menit → `STREAM_DOWN` + health -10, pulih → `STREAM_RESTORED`) |
 | `handlers` | `spare_part_test.go` (Task 11.1, Sprint 26) | `CreateSparePart` (sukses, SKU duplikat → 400), `GetAllSpareParts` (paginasi), `GetSparePartByID` (sukses, not found → 404), `UpdateSparePart` (sukses), `DeleteSparePart` (soft delete), `RecordSparePartUsage` (stok berkurang, stok tidak cukup → 400, log bukan completed → 409), `GetSparePartUsageByLog`, `GetLowStockSpareParts` |
+| `handlers` | `email_test.go` (Task 11.3, Sprint 27) | `UpdateEmailPreferences` (sukses → simpan, field wajib hilang → 400, user not found → 404) |
+| `handlers` | `report_builder_test.go` (Task 11.2, Sprint 27) | `GenerateReport` (CSV sukses, entitas tak dikenal → 400, tanpa kolom valid → 400), `SaveReportTemplate` (sukses, config bukan JSON → 400), `ListReportTemplates` (sukses), `DeleteReportTemplate` (sukses, not found → 404) |
+| `utils` | `email_test.go` (Task 11.3, Sprint 27) | `EmailEnabled` (false bila SMTP kosong, true bila terisi), `SendEmail` no-op error bila nonaktif, `EncodeHeader` (RFC 2047 untuk non-ASCII), `RenderEmailTemplate` (merender template bila tersedia), `RenderStreamDownTemplate` (template CCTV offline) |
+| `handlers` | `email_test.go` (Task 11.3, diperluas) | `SendCCTVStreamDownEmail` (no-op tanpa panic bila SMTP nonaktif / db nil) |
 
-**Total: 51 file test** (13 utils, 5 middleware, 24 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
+**Total: 54 file test** (14 utils, 5 middleware, 26 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -119,6 +123,23 @@ Catatan gotchas test `spare_part_test.go`:
   sekitar query transaksi — lihat pola `field_maintenance_test.go`.
 - `LogAudit` ditulis async di goroutine; jangan mem-mock query user/audit di test success (pola sama
   dengan `maintenance_schedule_test.go`).
+
+### Matriks Email & Report Builder (Fase 11, Task 11.2 + 11.3 / Sprint 27)
+
+Ringkasan cakupan test email & report builder:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/email_test.go` | 11.3 | `UpdateEmailPreferences` (sukses → simpan & return, `email_notifications` wajib → 400, user tidak ditemukan → 404) |
+| `handlers/report_builder_test.go` | 11.2 | `GenerateReport` (CSV sukses → content-type + filename, entitas tak dikenal → 400, tanpa kolom valid → 400), `SaveReportTemplate` (sukses → 201, config bukan JSON → 400), `ListReportTemplates` (sukses), `DeleteReportTemplate` (sukses → soft delete, not found → 404) |
+| `utils/email_test.go` | 11.3 | `EmailEnabled` (false bila SMTP_HOST kosong, true bila terisi), `SendEmail` (return error bila nonaktif), `EncodeHeader` (ASCII apa adanya, non-ASCII → RFC 2047 `=?UTF-8?Q?...?=`), `RenderEmailTemplate` (render template bila folder tersedia), `RenderStreamDownTemplate` (template CCTV offline `stream_down.html`) |
+
+Catatan gotchas:
+- Test `utils/email_test.go` memakai `t.Setenv` + `InitEmailConfig()`; pastikan tidak meninggalkan env
+  SMTP yang bocor antar-test (selalu set `SMTP_HOST` eksplisit).
+- `RenderEmailTemplate` mencari folder template pada beberapa kandidat path
+  (`templates/`, `../templates/`, `backend/templates/`, `../backend/templates/`) agar dapat dipanggil
+  dari lokasi working directory yang berbeda (lokal vs container).
 
 ---
 

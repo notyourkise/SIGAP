@@ -234,6 +234,13 @@ definitions:
     - role
     - username
     type: object
+  handlers.EmailPreferencesRequest:
+    properties:
+      email_notifications:
+        type: boolean
+    required:
+    - email_notifications
+    type: object
   handlers.FieldCheckItem:
     properties:
       name:
@@ -258,6 +265,34 @@ definitions:
         type: string
     required:
     - image_url
+    type: object
+  handlers.GenerateReportRequest:
+    properties:
+      columns:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      entity:
+        enum:
+        - cctv
+        - maintenance_log
+        - field_maintenance
+        - spare_part
+        type: string
+      filters:
+        additionalProperties: true
+        type: object
+      format:
+        enum:
+        - csv
+        - xlsx
+        - pdf
+        type: string
+    required:
+    - columns
+    - entity
+    - format
     type: object
   handlers.LoginRequest:
     properties:
@@ -289,6 +324,18 @@ definitions:
         type: string
     required:
     - new_password
+    type: object
+  handlers.SaveReportTemplateRequest:
+    properties:
+      config:
+        type: string
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - config
+    - nama
     type: object
   handlers.ScanCCTVRequest:
     properties:
@@ -2680,6 +2727,47 @@ paths:
       summary: Jumlah Notifikasi Belum Dibaca
       tags:
       - Notifikasi
+  /profile/email-preferences:
+    put:
+      consumes:
+      - application/json
+      description: Mengaktifkan/menonaktifkan notifikasi email (ringkasan harian,
+        eskalasi overdue, stok rendah) untuk pengguna yang sedang login.
+      parameters:
+      - description: Preferensi Email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.EmailPreferencesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Preferensi email berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input tidak valid / validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan preferensi
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Perbarui Preferensi Email
+      tags:
+      - Profil
   /push/subscribe:
     post:
       consumes:
@@ -2748,6 +2836,171 @@ paths:
       summary: Berhenti Berlangganan Push
       tags:
       - Push Notification
+  /reports/generate:
+    post:
+      consumes:
+      - application/json
+      description: Menghasilkan laporan dari entitas (cctv, maintenance_log, field_maintenance,
+        spare_part) dalam format CSV/Excel/PDF, dengan pilihan kolom dan filter.
+      parameters:
+      - description: Konfigurasi Laporan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.GenerateReportRequest'
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File laporan diunduh
+          schema:
+            type: file
+        "400":
+          description: Validasi/format tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membuat laporan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat Laporan Kustom
+      tags:
+      - Laporan
+  /reports/templates:
+    get:
+      description: Mendapatkan daftar template laporan kustom yang disimpan oleh admin.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar template laporan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil template
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Template Laporan
+      tags:
+      - Laporan
+    post:
+      consumes:
+      - application/json
+      description: Menyimpan template laporan kustom agar dapat dipakai ulang.
+      parameters:
+      - description: Data Template
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SaveReportTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Template berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan template
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Simpan Template Laporan
+      tags:
+      - Laporan
+  /reports/templates/{id}:
+    delete:
+      description: Menghapus template laporan kustom (soft-delete).
+      parameters:
+      - description: Template UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Template berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Template tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus template
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Template Laporan
+      tags:
+      - Laporan
   /spare-parts:
     get:
       consumes:

@@ -12,6 +12,8 @@ export interface User {
   must_change_password?: boolean;
   created_at?: string;
   profile_photo_url?: string;
+  // Preferensi notifikasi email (Task 11.3) — dikelola di halaman profil.
+  email_notifications?: boolean;
 }
 
 interface AuthContextType {

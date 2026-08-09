@@ -459,6 +459,7 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 	var usage models.SparePartUsage
 	var sparePart models.SparePart
 	stockLow := false
+	stockLowNewStok := 0
 
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&sparePart, "id = ?", sparePartID).Error; err != nil {
@@ -494,6 +495,7 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 		// Deteksi stok rendah setelah pengurangan.
 		if newStok < sparePart.MinimumOrder {
 			stockLow = true
+			stockLowNewStok = newStok
 		}
 		return nil
 	})
@@ -525,6 +527,8 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 			"stok":          sparePart.Stok - req.Jumlah,
 			"minimum_order": sparePart.MinimumOrder,
 		})
+		// Task 11.3: kirim email peringatan stok rendah ke admin yang opt-in.
+		go SendStockLowEmail(config.DB, &sparePart, stockLowNewStok)
 	}
 
 	// Muat ulang dengan relasi suku cadang untuk respon.

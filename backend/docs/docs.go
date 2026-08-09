@@ -3243,6 +3243,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/profile/email-preferences": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengaktifkan/menonaktifkan notifikasi email (ringkasan harian, eskalasi overdue, stok rendah) untuk pengguna yang sedang login.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Profil"
+                ],
+                "summary": "Perbarui Preferensi Email",
+                "parameters": [
+                    {
+                        "description": "Preferensi Email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.EmailPreferencesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Preferensi email berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format input tidak valid / validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Pengguna tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan preferensi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/push/subscribe": {
             "post": {
                 "security": [
@@ -3339,6 +3400,253 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/generate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghasilkan laporan dari entitas (cctv, maintenance_log, field_maintenance, spare_part) dalam format CSV/Excel/PDF, dengan pilihan kolom dan filter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Laporan"
+                ],
+                "summary": "Buat Laporan Kustom",
+                "parameters": [
+                    {
+                        "description": "Konfigurasi Laporan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.GenerateReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File laporan diunduh",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Validasi/format tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membuat laporan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar template laporan kustom yang disimpan oleh admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Laporan"
+                ],
+                "summary": "Ambil Semua Template Laporan",
+                "responses": {
+                    "200": {
+                        "description": "Daftar template laporan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil template",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menyimpan template laporan kustom agar dapat dipakai ulang.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Laporan"
+                ],
+                "summary": "Simpan Template Laporan",
+                "parameters": [
+                    {
+                        "description": "Data Template",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SaveReportTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Template berhasil disimpan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan template",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/templates/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus template laporan kustom (soft-delete).",
+                "tags": [
+                    "Laporan"
+                ],
+                "summary": "Hapus Template Laporan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template berhasil dihapus",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Template tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menghapus template",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -5038,6 +5346,17 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.EmailPreferencesRequest": {
+            "type": "object",
+            "required": [
+                "email_notifications"
+            ],
+            "properties": {
+                "email_notifications": {
+                    "type": "boolean"
+                }
+            }
+        },
         "handlers.FieldCheckItem": {
             "type": "object",
             "required": [
@@ -5071,6 +5390,44 @@ const docTemplate = `{
             "properties": {
                 "image_url": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.GenerateReportRequest": {
+            "type": "object",
+            "required": [
+                "columns",
+                "entity",
+                "format"
+            ],
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "entity": {
+                    "type": "string",
+                    "enum": [
+                        "cctv",
+                        "maintenance_log",
+                        "field_maintenance",
+                        "spare_part"
+                    ]
+                },
+                "filters": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "format": {
+                    "type": "string",
+                    "enum": [
+                        "csv",
+                        "xlsx",
+                        "pdf"
+                    ]
                 }
             }
         },
@@ -5117,6 +5474,23 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 8
+                }
+            }
+        },
+        "handlers.SaveReportTemplateRequest": {
+            "type": "object",
+            "required": [
+                "config",
+                "nama"
+            ],
+            "properties": {
+                "config": {
+                    "type": "string"
+                },
+                "nama": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 2
                 }
             }
         },

@@ -41,6 +41,15 @@ func main() {
 		_ = utils.Log.Sync() // Flush buffer log ke file
 	}()
 
+	// Inisialisasi konfigurasi email/SMTP (Task 11.3). Bila SMTP_HOST kosong,
+	// notifikasi email dinonaktifkan dan hanya memakai in-app + push.
+	utils.InitEmailConfig()
+	if utils.EmailEnabled() {
+		utils.Log.Info("📧 Notifikasi email SMTP aktif")
+	} else {
+		utils.Log.Warn("⚠️ Email SMTP tidak dikonfigurasi — notifikasi email nonaktif (SMTP_HOST kosong)")
+	}
+
 	// Validasi secret wajib sebelum server berjalan (tanpa fallback hardcoded).
 	// Bila Docker secret tersedia di /run/secrets/..., nilainya dipakai;
 	// selain itu fallback ke environment variable. Fatal bila keduanya kosong.
@@ -235,6 +244,8 @@ func main() {
 	routes.SetupMaintenanceScheduleRoutes(api)
 	routes.SetupStreamRoutes(api)
 	routes.SetupSparePartRoutes(api)
+	routes.SetupProfileRoutes(api)
+	routes.SetupReportRoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)

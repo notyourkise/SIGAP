@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.35] — 2026-08-09 — Fitur: Email & Report Builder (Sprint 27)
+
+### Perubahan
+
+- **Backend** ([0.49.0]): notifikasi email SMTP — `utils/email.go` (SendEmail via net/smtp + TLS), template `daily_summary.html`/`overdue_escalation.html`/`stock_low.html`, model `User.EmailNotifications` + migrasi `000007`, `PUT /api/profile/email-preferences`, trigger email ringkasan harian (digest), overdue (checker), stok rendah (`STOCK_LOW`). Report builder — model `ReportTemplate` + migrasi `000008`, `POST /api/reports/generate` (CSV/XLSX/PDF untuk 4 entitas), `GET/POST /api/reports/templates`, `DELETE /api/reports/templates/:id`; routes `routes/profile.go` + `routes/report.go` (admin-only); Swagger + unit test `handlers/email_test.go`, `handlers/report_builder_test.go`, `utils/email_test.go`.
+- **Frontend** ([1.41.0]): halaman `/laporan-kustom` (wizard 4 langkah: entitas, kolom, filter, format; unduh CSV/Excel/PDF; simpan/muat/hapus template); email preferences di `/profile` (toggle `email_notifications`); menu sidebar "Laporan"; proxy melindungi `/laporan-kustom`.
+- **Docs**: `docs/manual-test-email.md` (baru, S1–S7), `docs/manual-test-report-builder.md` (baru, S1–S8); `docs/ROADMAP.md` Fase 11 progress 1/5 → 3/5 & Sprint 27 ✅; `docs/TESTING.md` matriks email & report builder (total 51 → 54).
+- Detail: `backend/changelog.md` [0.49.0] · `frontend/changelog.md` [1.41.0].
+
+Timestamp: 2026-08-09 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs) | Detail: `backend/changelog.md` [0.49.0] · `frontend/changelog.md` [1.41.0]
+
 ## [1.28.34] — 2026-08-09 — Fitur: Inventaris Suku Cadang (Sprint 26)
 
 ### Perubahan
