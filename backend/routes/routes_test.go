@@ -58,8 +58,28 @@ func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
 	SetupAuditRoutes(api)
 	SetupWebSocketRoutes(api)
 	SetupDashboardRoutes(api)
+	SetupZoneRoutes(api)
+	SetupSLARoutes(api)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/api/dashboard/summary", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestZoneRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupZoneRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/zones/", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestSLAPoliciesRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupSLARoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/sla-policies/", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }

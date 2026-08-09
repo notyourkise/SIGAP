@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.36] — 2026-08-09 — Fitur: Zona & SLA (Sprint 28)
+
+### Perubahan
+
+- **Backend** ([0.50.0]): model `Zone`/`UserZone` + FK `zone_id` di `CCTV`; model `SLAPolicy` + FK `sla_policy_id` di `MaintenanceSchedule`; migrasi `000009_zone_sla` (up/down). Handler `zone.go` — CRUD `/api/zones`, `GET /api/zones/all`, `POST /api/zones/:id/assign-cctvs`, `POST /api/zones/:id/assign-users`. Handler `sla.go` — CRUD `/api/sla-policies`, `GET /api/dashboard/sla` (admin → `monthly_compliance`/`violations`/`technician_ranking`); goroutine `RunSLADeadlineChecker` (startup + tiap 1 jam) memicu `SLA_WARNING` ke admin saat tugas melewati 75% target. `GetAllCCTV` mendukung filter `?zone_id=`; Swagger + unit test `zone_test.go`, `sla_test.go`.
+- **Frontend** ([1.42.0]): halaman admin `/zona` (CRUD zona + modal "Atur Penugasan" multi-select CCTV & teknisi); dashboard admin `/sla` (chart bar kepatuhan bulanan via `recharts`, ranking teknisi, tabel pelanggaran SLA); filter peta per zona di `/sebaran-cctv`; menu sidebar "Zona" (`MapPinned`) & "SLA" (`Target`); proxy melindungi `/zona` & `/sla`.
+- **Docs**: `docs/manual-test-zone-sla.md` (baru, S1–S9); `docs/ROADMAP.md` Fase 11 progress 3/5 → 5/5 & Sprint 28 ✅; `docs/TESTING.md` matriks zona & SLA (total 54 → 56).
+- Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0].
+
+Timestamp: 2026-08-09 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs) | Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0]
+
 ## [1.28.35] — 2026-08-09 — Fitur: Email & Report Builder (Sprint 27)
 
 ### Perubahan

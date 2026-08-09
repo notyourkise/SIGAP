@@ -163,6 +163,12 @@ func main() {
 	go handlers.RunStreamHealthMonitor(config.DB)
 	utils.Log.Info("🩺 Monitor status stream diaktifkan (interval: 5 menit)")
 
+	// Jalankan goroutine pemeriksa deadline SLA (Task 11.5, Sprint 28).
+	// Berjalan sekali saat startup, lalu berulang setiap 1 jam; memicu event
+	// SLA_WARNING ke admin saat tugas melewati 75% target penyelesaian.
+	go handlers.RunSLADeadlineChecker(config.DB)
+	utils.Log.Info("⏱️ Pemeriksa deadline SLA diaktifkan (interval: 1 jam)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
@@ -246,6 +252,8 @@ func main() {
 	routes.SetupSparePartRoutes(api)
 	routes.SetupProfileRoutes(api)
 	routes.SetupReportRoutes(api)
+	routes.SetupZoneRoutes(api)
+	routes.SetupSLARoutes(api)
 
 	// Rute Health Check (publik untuk monitoring)
 	api.Get("/health", handlers.HealthCheck)

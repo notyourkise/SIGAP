@@ -1,5 +1,33 @@
 # Changelog - Frontend SIGAP
 
+## [1.42.0] - 2026-08-09
+
+### Fitur: UI Zona & SLA (Task 11.4b + 11.5b - Sprint 28)
+
+perubahan yang dilakukan: **Menambahkan halaman admin zona operasional dan dashboard SLA compliance, plus filter peta per zona. Frontend naik `1.41.0` → `1.42.0`.**
+
+before: Belum ada cara mengelompokkan CCTV & teknisi ke zona/wilayah, tidak ada dashboard kepatuhan SLA, dan peta sebaran tidak dapat difilter per zona.
+
+after:
+- `src/app/zona/page.tsx` (baru): halaman admin `/zona` — CRUD zona (tabel nama, deskripsi, jumlah CCTV & teknisi), modal "Atur Penugasan" dengan multi-select CCTV (`/cctv`) dan teknisi (`/users?role=teknisi`), kirim via `POST /zones/:id/assign-cctvs` & `POST /zones/:id/assign-users` (menimpa penugasan zona).
+- `src/app/sla/page.tsx` (baru): dashboard admin `/sla` — kartu ringkasan (rata-rata kepatuhan, pelanggaran, teknisi dinilai), chart bar kepatuhan bulanan (recharts), ranking teknisi (progress bar), dan tabel pelanggaran SLA (CCTV, jenis, teknisi, status, deadline, overdue).
+- `src/app/sebaran-cctv/page.tsx`: filter dropdown "Semua zona" (dari `/zones/all`) yang mengirim `?zone_id=<uuid>` ke `/cctv` untuk menyaring peta/grid per zona.
+- `src/components/DashboardLayout.tsx`: menu sidebar admin "Zona" (`MapPinned`) dan "SLA" (`Target`) setelah "Laporan".
+- `src/proxy.ts`: rute `/zona` & `/sla` ditambahkan ke guard admin server-side.
+- Dependency `recharts` ditambahkan untuk chart SLA.
+
+timestamp: 2026-08-09 09:50 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/app/zona/page.tsx (baru)
+- frontend/src/app/sla/page.tsx (baru)
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/package.json (recharts)
+- frontend/changelog.md
+alasan perubahan: Kebutuhan operasional lanjut (ROADMAP Task 11.4b + 11.5b) — admin dapat mengelompokkan CCTV/teknisi per zona dan memantau kepatuhan target waktu layanan (SLA).
+
 ## [1.41.0] - 2026-08-09
 
 ### Fitur: UI Email Preferences & Report Builder (Task 11.2b + 11.3b - Sprint 27)

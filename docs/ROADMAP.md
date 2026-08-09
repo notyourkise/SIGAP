@@ -32,7 +32,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 8 | Pengalaman Lapangan | 4/4 | ✅ Selesai |
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
-| **11** | **Manajemen Operasional Lanjut** | **3/5** | **🔶 Berjalan** |
+| **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -514,7 +514,7 @@ cd ../frontend && npm run lint && npm run build
 ## Fase 11 — Manajemen Operasional Lanjut
 
 > Fitur operasional yang memperkuat fungsi SIGAP sebagai platform pengelolaan lengkap.
-> **Status: 🔶 Berjalan** — 3/5 task selesai (Sprint 26 ✅, Sprint 27 ✅).
+> **Status: ✅ Selesai** — 5/5 task selesai (Sprint 26 ✅, Sprint 27 ✅, Sprint 28 ✅).
 > **Task 11.1 dikerjakan langsung setelah Fase 9 stabil** (keputusan prioritas).
 
 ### Sprint 26 — Inventaris Suku Cadang (Task 11.1) ⭐ PRIORITAS
@@ -557,13 +557,21 @@ Detail: `backend/changelog.md` [0.49.0] · `frontend/changelog.md` [1.41.0] · `
 ### Sprint 28 — Zona & SLA (Task 11.4 + 11.5)
 
 > **Branch:** `feature/zone-sla`
+> **Status: ✅ Selesai** (2026-08-09)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **11.4** Zona & Wilayah Teknisi | Model `Zone` (nama, deskripsi). Relasi CCTV → Zone (FK `zone_id`). Relasi User ↔ Zone (many-to-many). Auto-assign berdasarkan zona. CRUD `/api/zones`. |
-| **Backend** | Agent-BE | **11.5** SLA & KPI Tracking | Model `SLAPolicy` (nama, jenis_tugas, target_jam). Kalkulasi SLA achievement rate. Notifikasi saat SLA mendekati batas (75%). Endpoint `GET /api/dashboard/sla`. |
-| **Frontend** | Agent-FE | **11.4b + 11.5b** UI Zona & SLA | Halaman `/zona` (CRUD zona + assign CCTV/teknisi). Filter peta per zona. Dashboard `/sla` (chart compliance, tabel pelanggaran). |
-| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-zone-sla.md`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **11.4** Zona & Wilayah Teknisi | Model `Zone` (nama, deskripsi). Relasi CCTV → Zone (FK `zone_id`). Relasi User ↔ Zone (many-to-many). Auto-assign berdasarkan zona. CRUD `/api/zones`. | ✅ Selesai |
+| **Backend** | Agent-BE | **11.5** SLA & KPI Tracking | Model `SLAPolicy` (nama, jenis_tugas, target_jam). Kalkulasi SLA achievement rate. Notifikasi saat SLA mendekati batas (75%). Endpoint `GET /api/dashboard/sla`. | ✅ Selesai |
+| **Frontend** | Agent-FE | **11.4b + 11.5b** UI Zona & SLA | Halaman `/zona` (CRUD zona + assign CCTV/teknisi). Filter peta per zona. Dashboard `/sla` (chart compliance, tabel pelanggaran). | ✅ Selesai |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-zone-sla.md`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 28:** Zona & SLA (Task 11.4 + 11.5) selesai — **Fase 11 kini 5/5 ✅ Selesai**.
+- **Backend (`0.50.0`)**: model `Zone`/`UserZone` (`models/zone.go`) + FK `zone_id` di `CCTV`; model `SLAPolicy` (`models/sla.go`) + FK `sla_policy_id` di `MaintenanceSchedule`; migrasi `000009_zone_sla` (up/down); handler `zone.go` (CRUD `/api/zones`, `GET /api/zones/all`, `POST /api/zones/:id/assign-cctvs`, `POST /api/zones/:id/assign-users`); handler `sla.go` (CRUD `/api/sla-policies`, `GET /api/dashboard/sla` admin → `monthly_compliance`/`violations`/`technician_ranking`); goroutine `RunSLADeadlineChecker` (startup + tiap 1 jam) memicu `SLA_WARNING` ke admin saat tugas melewati 75% target; `GetAllCCTV` mendukung filter `?zone_id=`; unit test `zone_test.go`, `sla_test.go`, rute baru di `routes_test.go`; Swagger + `swag init`.
+- **Frontend (`1.42.0`)**: halaman admin `/zona` (CRUD zona + modal "Atur Penugasan" multi-select CCTV & teknisi); dashboard admin `/sla` (kartu ringkasan, chart bar kepatuhan bulanan via `recharts`, ranking teknisi, tabel pelanggaran SLA); filter peta per zona di `/sebaran-cctv`; menu sidebar "Zona" (`MapPinned`) & "SLA" (`Target`); proxy melindungi `/zona` & `/sla`.
+- **Dokumen**: `docs/manual-test-zone-sla.md` (baru — S1–S9 sesuai format manual test lain).
+
+Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0].
 
 ---
 

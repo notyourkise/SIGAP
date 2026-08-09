@@ -1,5 +1,7 @@
 package models
 
+import "github.com/google/uuid"
+
 // CCTV mewakili master data perangkat CCTV tanpa menyimpan kredensial
 type CCTV struct {
 	Base
@@ -31,4 +33,9 @@ type CCTV struct {
 	// Diisi saat handler mengembalikan data CCTV agar frontend dapat langsung
 	// mengambil snapshot terbaru melalui endpoint /cctv/{id}/snapshot.
 	SnapshotURL string `gorm:"-" json:"snapshot_url,omitempty"`
+	// ZoneID menunjuk ke zona operasional tempat CCTV berada (Task 11.4,
+	// Sprint 28). Opsional — CCTV dapat belum dimasukkan ke zona mana pun.
+	ZoneID *uuid.UUID `gorm:"type:uuid;index" json:"zone_id,omitempty"`
+	// Zone adalah relasi one-to-many ke master zona (preload untuk detail).
+	Zone *Zone `gorm:"foreignKey:ZoneID" json:"zone,omitempty"`
 }

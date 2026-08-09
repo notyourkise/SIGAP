@@ -78,8 +78,11 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `report_builder_test.go` (Task 11.2, Sprint 27) | `GenerateReport` (CSV sukses, entitas tak dikenal → 400, tanpa kolom valid → 400), `SaveReportTemplate` (sukses, config bukan JSON → 400), `ListReportTemplates` (sukses), `DeleteReportTemplate` (sukses, not found → 404) |
 | `utils` | `email_test.go` (Task 11.3, Sprint 27) | `EmailEnabled` (false bila SMTP kosong, true bila terisi), `SendEmail` no-op error bila nonaktif, `EncodeHeader` (RFC 2047 untuk non-ASCII), `RenderEmailTemplate` (merender template bila tersedia), `RenderStreamDownTemplate` (template CCTV offline) |
 | `handlers` | `email_test.go` (Task 11.3, diperluas) | `SendCCTVStreamDownEmail` (no-op tanpa panic bila SMTP nonaktif / db nil) |
+| `handlers` | `zone_test.go` (Task 11.4, Sprint 28) | `CreateZone` (sukses → 201, validasi nama kosong → 400), `GetAllZones` (paginasi + `cctv_count`/`user_count`), `GetZoneByID` (sukses, not found → 404), `UpdateZone` (sukses), `DeleteZone` (soft delete), `AssignCCTVToZone` (bulk-assign sukses), `AssignUsersToZone` (sukses, user bukan teknisi → 400), `GetAllZonesForSelect` |
+| `handlers` | `sla_test.go` (Task 11.5, Sprint 28) | `CreateSLAPolicy` (sukses → 201, jenis_tugas tidak valid → 400), `GetSLAPolicies` (paginasi), `GetSLAPolicyByID` (sukses, not found → 404), `UpdateSLAPolicy` (sukses), `DeleteSLAPolicy` (soft delete), `GetDashboardSLA` (sukses → `monthly_compliance`/`violations`/`technician_ranking`, teknisi → 403), `CheckSLADeadlines` (tanpa panic tanpa tugas) |
+| `routes` | `routes_test.go` (Sprint 28, diperluas) | `TestZoneRoutesRequireAuthentication`, `TestSLAPoliciesRoutesRequireAuthentication`, registrasi `SetupZoneRoutes`/`SetupSLARoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
 
-**Total: 54 file test** (14 utils, 5 middleware, 26 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
+**Total: 56 file test** (14 utils, 5 middleware, 28 handlers, 2 models, 3 config, 3 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -140,6 +143,24 @@ Catatan gotchas:
 - `RenderEmailTemplate` mencari folder template pada beberapa kandidat path
   (`templates/`, `../templates/`, `backend/templates/`, `../backend/templates/`) agar dapat dipanggil
   dari lokasi working directory yang berbeda (lokal vs container).
+
+### Matriks Zona & SLA (Fase 11, Task 11.4 + 11.5 / Sprint 28)
+
+Ringkasan cakupan test zona & SLA:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/zone_test.go` | 11.4 | `CreateZone` (sukses → 201, validasi nama kosong → 400), `GetAllZones` (paginasi + `cctv_count`/`user_count` per zona), `GetZoneByID` (sukses → 200, not found → 404), `UpdateZone` (sukses), `DeleteZone` (soft delete → `deleted_at`), `AssignCCTVToZone` (bulk-assign sukses → update `zone_id` dalam transaksi), `AssignUsersToZone` (sukses → hapus lama + sisipkan baru dalam transaksi, user bukan teknisi → 400), `GetAllZonesForSelect` |
+| `handlers/sla_test.go` | 11.5 | `CreateSLAPolicy` (sukses → 201, `jenis_tugas` tidak valid → 400), `GetSLAPolicies` (paginasi), `GetSLAPolicyByID` (sukses, not found → 404), `UpdateSLAPolicy` (sukses), `DeleteSLAPolicy` (soft delete), `GetDashboardSLA` (sukses → `monthly_compliance`/`violations`/`technician_ranking`, teknisi → 403), `CheckSLADeadlines` (tanpa tugas → tidak panic) |
+| `routes/routes_test.go` (diperluas) | 11.4 + 11.5 | `TestZoneRoutesRequireAuthentication`, `TestSLAPoliciesRoutesRequireAuthentication`, `SetupZoneRoutes`/`SetupSLARoutes` dalam `TestSetupAllRoutesRegistersProtectedEndpoints` |
+
+Catatan gotchas test `zone_test.go` / `sla_test.go`:
+- `LogAudit` ditulis async di goroutine; jangan mem-mock query user/audit di test success (pola sama
+  dengan `maintenance_schedule_test.go` dan `spare_part_test.go`).
+- `AssignCCTVToZone`/`AssignUsersToZone` memakai `config.DB.Transaction`, sehingga test wajib menambah
+  `mock.ExpectBegin()` / `mock.ExpectCommit()` di sekitar query transaksi.
+- `GetDashboardSLA` memakai query raw dengan `JOIN`, sehingga regex sqlmock harus mencocokkan
+  `FROM maintenance_logs AS ml` (tanpa quote pada tabel yang di-join).
 
 ---
 

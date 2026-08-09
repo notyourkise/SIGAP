@@ -1,5 +1,49 @@
 # Changelog - Backend SIGAP
 
+## [0.50.0] - 2026-08-09
+
+### Fitur: Zona & SLA (Task 11.4 + 11.5 - Sprint 28)
+
+perubahan yang dilakukan: **Menambahkan modul zona operasional (wilayah CCTV & teknisi) dan kebijakan SLA beserta dashboard kepatuhan. Backend naik `0.49.0` → `0.50.0`.**
+
+before: CCTV tidak memiliki pengelompokan wilayah; teknisi tidak ditautkan ke zona; belum ada target waktu layanan (SLA) maupun dashboard kepatuhan. Seluruh daftar CCTV belum mendukung filter berdasarkan zona.
+
+after:
+- Zona (Task 11.4):
+  - Model `Zone` (`models/zone.go`) — `Nama`, `Deskripsi`, relasi one-to-many `CCTVs` (FK `zone_id`) dan many-to-many `Users` via join table `user_zones` (model `UserZone`).
+  - Migrasi `000009_zone_sla` (up/down): tabel `zones`, `user_zones`, `sla_policies`; kolom FK `zone_id` di `cctvs` (ON DELETE SET NULL) dan `sla_policy_id` di `maintenance_schedules` (ON DELETE SET NULL).
+  - Handler `handlers/zone.go`: CRUD `/api/zones` (admin-only untuk tulis), `GET /api/zones/all` (dropdown tanpa paginasi), `POST /api/zones/:id/assign-cctvs` (bulk assign CCTV), `POST /api/zones/:id/assign-users` (assign teknisi, menimpa penugasan zona).
+  - Daftar zona mengembalikan `cctv_count` & `user_count` per zona; detail zona memuat relasi CCTV & teknisi.
+- SLA (Task 11.5):
+  - Model `SLAPolicy` (`models/sla.go`) — `Nama`, `JenisTugas` (corrective/preventive/field_check), `TargetJamRespon`, `TargetJamSelesai`.
+  - FK `sla_policy_id` di `MaintenanceSchedule` (`models/maintenance_schedule.go`).
+  - Handler `handlers/sla.go`: CRUD `/api/sla-policies` (admin-only untuk tulis) + `GET /api/dashboard/sla` (admin) — `monthly_compliance` (bar chart), `violations` (tabel pelanggaran), `technician_ranking`.
+  - Goroutine `RunSLADeadlineChecker` (startup + tiap 1 jam) memicu `BroadcastToRole("admin", "SLA_WARNING", ...)` saat tugas melewati 75% target penyelesaian.
+- `GetAllCCTV` mendukung filter `?zone_id=<uuid>`.
+- Routes `routes/zone.go` & `routes/sla.go` + registrasi di `main.go`.
+- Swagger annotations + `swag init`.
+- Unit test: `handlers/zone_test.go`, `handlers/sla_test.go`, rute baru di `routes/routes_test.go`.
+
+timestamp: 2026-08-09 09:40 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/zone.go (baru)
+- backend/models/sla.go (baru)
+- backend/models/cctv.go (ZoneID FK)
+- backend/models/maintenance_schedule.go (SLAPolicyID FK)
+- backend/migrations/000009_zone_sla.up/down.sql (baru)
+- backend/handlers/zone.go (baru)
+- backend/handlers/sla.go (baru)
+- backend/handlers/cctv.go (filter zone_id)
+- backend/routes/zone.go (baru)
+- backend/routes/sla.go (baru)
+- backend/routes/routes_test.go
+- backend/handlers/zone_test.go (baru)
+- backend/handlers/sla_test.go (baru)
+- backend/main.go (registrasi rute + goroutine SLA)
+- backend/docs/ (swag init)
+alasan perubahan: Kebutuhan operasional lanjut (ROADMAP Task 11.4 + 11.5) — mengelompokkan CCTV & teknisi per zona dan memantau kepatuhan target waktu layanan (SLA) untuk meningkatkan kualitas pemeliharaan.
+
 ## [0.49.0] - 2026-08-09
 
 ### Fitur: Notifikasi Email SMTP & Report Builder (Task 11.2 + 11.3 - Sprint 27)
