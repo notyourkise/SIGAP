@@ -583,6 +583,16 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 			"path":    path,
 		})
 
+		// Task 12.3: dispatch event webhook stream.down.
+		DispatchWebhook(db, models.EventWebhookStreamDown, fiber.Map{
+			"cctv_id":    cctv.ID.String(),
+			"kode_cctv":  cctv.KodeCCTV,
+			"nama":       cctv.Nama,
+			"path":       path,
+			"down_since": streamDownSince[path].Format(time.RFC3339),
+			"timestamp":  now.Format(time.RFC3339),
+		})
+
 		// Task 11.3: kirim email peringatan CCTV offline ke seluruh admin yang
 		// opt-in. Async agar tidak memperlambat monitor.
 		go SendCCTVStreamDownEmail(db, &cctv)

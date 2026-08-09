@@ -120,6 +120,16 @@ func processOverdueMaintenanceLog(db *gorm.DB, logEntry *models.MaintenanceLog, 
 	// Berjalan async agar tidak memperlambat checker bila SMTP lambat.
 	go SendOverdueEmail(db, logEntry)
 
+	// Task 12.3: dispatch event webhook maintenance.overdue.
+	DispatchWebhook(db, models.EventWebhookMaintenanceOverdue, map[string]interface{}{
+		"log_id":         logEntry.ID.String(),
+		"cctv_id":        logEntry.CCTVID.String(),
+		"cctv_name":      logEntry.CCTV.Nama,
+		"cctv_kode":      logEntry.CCTV.KodeCCTV,
+		"scheduled_date": scheduledDate,
+		"timestamp":      now.Format(time.RFC3339),
+	})
+
 	result := db.Model(&models.MaintenanceLog{}).
 		Where("id = ? AND overdue_notified_at IS NULL", logEntry.ID).
 		Update("overdue_notified_at", now)

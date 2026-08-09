@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.37] — 2026-08-09 — Fitur: API Key & Webhook (Sprint 29)
+
+### Perubahan
+
+- **Backend** ([0.51.0]): model `APIKey` + `WebhookEndpoint`/`WebhookDelivery`; migrasi `000010_api_keys_webhooks`. Middleware `middleware/apikey.go` (`APIKeyAuth`/`APIKeyOrProtected`, rate limit 100 req/menit per key via Redis, cek revoked/expired/scope, update `last_used_at`). Handler `api_key.go` — `POST /api/api-keys` (key mentah 1×), `GET /api/api-keys`, `POST /api/api-keys/:id/revoke` (admin-only). Handler `webhook.go` — CRUD `/api/webhooks`, `POST /api/webhooks/:id/test`, `GET /api/webhooks/:id/deliveries`; antrean channel + worker `StartWebhookWorker`; `X-Signature-256` HMAC-SHA256; retry 3× 1s/5s/25s. Hook event di `cctv_sync.go`/`maintenance.go`/`overdue_checker.go`/`health_score.go`/`stream.go`. `GET /api/cctv` via API key scope `cctv:read`; unit test `api_key_test.go`, `webhook_test.go`, `middleware/apikey_test.go`.
+- **Frontend** ([1.43.0]): halaman admin `/api-keys` (generate key tampil 1× + salin, list, revoke, badge scope, usage); halaman admin `/webhooks` (CRUD endpoint, pilih event, test delivery, modal detail + log deliveries); menu sidebar "API Keys" (`KeyRound`) & "Webhooks" (`Webhook`); proxy melindungi `/api-keys` & `/webhooks`.
+- **Docs**: `docs/manual-test-api-webhook.md` (baru, S1–S9); `docs/ROADMAP.md` Fase 12 progress 0/4 → 2/4 & Sprint 29 ✅; `docs/TESTING.md` matriks API key & webhook (total 56 → 59).
+- Detail: `backend/changelog.md` [0.51.0] · `frontend/changelog.md` [1.43.0].
+
+Timestamp: 2026-08-09 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs) | Detail: `backend/changelog.md` [0.51.0] · `frontend/changelog.md` [1.43.0]
+
 ## [1.28.36] — 2026-08-09 — Fitur: Zona & SLA (Sprint 28)
 
 ### Perubahan

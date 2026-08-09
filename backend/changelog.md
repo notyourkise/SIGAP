@@ -1,5 +1,55 @@
 # Changelog - Backend SIGAP
 
+## [0.51.0] - 2026-08-09
+
+### Fitur: API Key & Webhook (Task 12.1 + 12.3 - Sprint 29)
+
+perubahan yang dilakukan: **Menambahkan API key untuk integrasi eksternal dan sistem webhook untuk mengirim event ke sistem lain. Backend naik `0.50.0` → `0.51.0`.**
+
+before: Integrasi eksternal hanya lewat sesi web (cookie JWT); belum ada kredensial API key. Belum ada cara mengirim notifikasi event ke sistem eksternal (webhook).
+
+after:
+- API Key (Task 12.1):
+  - Model `APIKey` (`models/api_key.go`) — `Name`, `KeyHash` (bcrypt), `KeyPrefix`, `Scopes` (jsonb: `cctv:read`/`maintenance:read`/`health:read`), `ExpiresAt`, `CreatedBy`, `LastUsedAt`, `RevokedAt`.
+  - Middleware `middleware/apikey.go` — `APIKeyAuth(scope)` (strict via `X-API-Key`) & `APIKeyOrProtected(scope)` (API key ATAU JWT untuk `GET /api/cctv`); rate limit per key 100 req/menit via Redis counter (fallback in-memory); cek revoked/expired/scope; update `last_used_at`.
+  - Handler `handlers/api_key.go` — `POST /api/api-keys` (generate random key, tampil 1×), `GET /api/api-keys`, `POST /api/api-keys/:id/revoke` (admin-only).
+  - `GET /api/cctv` dapat diakses via API key scope `cctv:read`; `GET /api/health` tetap publik (juga via API key `health:read`).
+- Webhook (Task 12.3):
+  - Model `WebhookEndpoint` & `WebhookDelivery` (`models/webhook.go`); event: `cctv.status_changed`, `maintenance.completed`, `maintenance.overdue`, `health_score.changed`, `stream.down`.
+  - Migrasi `000010_api_keys_webhooks` (up/down).
+  - Util `handlers/webhook.go` — antrean event (channel) + worker `StartWebhookWorker` (dipanggil di main.go); `DispatchWebhook` decoupled (tidak query DB di handler); `deliverWebhook` POST dengan header `X-Signature-256` (HMAC-SHA256), retry 3× exponential backoff (1s/5s/25s).
+  - Hook di handler existing: `cctv.status_changed` (cctv_sync.go), `maintenance.completed` (maintenance.go), `maintenance.overdue` (overdue_checker.go), `health_score.changed` (health_score.go), `stream.down` (stream.go).
+  - Handler `handlers/webhook.go` — CRUD `/api/webhooks` (admin-only), `POST /api/webhooks/:id/test` (test payload), `GET /api/webhooks/:id/deliveries` (log riwayat).
+- Routes `routes/api_key.go`, `routes/webhook.go` + registrasi di `main.go` (termasuk `StartWebhookWorker`).
+- Swagger annotations + `swag init`.
+- Unit test: `handlers/api_key_test.go`, `handlers/webhook_test.go`, `middleware/apikey_test.go`, rute baru di `routes/routes_test.go`.
+
+timestamp: 2026-08-09 11:50 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/api_key.go (baru)
+- backend/models/webhook.go (baru)
+- backend/middleware/apikey.go (baru)
+- backend/middleware/apikey_test.go (baru)
+- backend/handlers/api_key.go (baru)
+- backend/handlers/api_key_test.go (baru)
+- backend/handlers/webhook.go (baru)
+- backend/handlers/webhook_test.go (baru)
+- backend/handlers/cctv_sync.go (hook webhook)
+- backend/handlers/maintenance.go (hook webhook)
+- backend/handlers/overdue_checker.go (hook webhook)
+- backend/handlers/health_score.go (hook webhook + muat skor lama)
+- backend/handlers/stream.go (hook webhook)
+- backend/handlers/helpers_test.go (expectHealthScoreRecalculation + muat skor)
+- backend/migrations/000010_api_keys_webhooks.up/down.sql (baru)
+- backend/routes/api_key.go (baru)
+- backend/routes/webhook.go (baru)
+- backend/routes/cctv.go (API key access)
+- backend/routes/routes_test.go
+- backend/main.go (registrasi rute + StartWebhookWorker)
+- backend/docs/ (swag init)
+alasan perubahan: Kebutuhan integrasi & skalabilitas (ROADMAP Task 12.1 + 12.3) — menyediakan kredensial API key bagi sistem eksternal dan mengirim event perubahan ke endpoint webhook.
+
 ## [0.50.0] - 2026-08-09
 
 ### Fitur: Zona & SLA (Task 11.4 + 11.5 - Sprint 28)

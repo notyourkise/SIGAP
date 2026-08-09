@@ -60,8 +60,28 @@ func TestSetupAllRoutesRegistersProtectedEndpoints(t *testing.T) {
 	SetupDashboardRoutes(api)
 	SetupZoneRoutes(api)
 	SetupSLARoutes(api)
+	SetupAPIKeyRoutes(api)
+	SetupWebhookRoutes(api)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/api/dashboard/summary", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestAPIKeyRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupAPIKeyRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/api-keys/", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestWebhookRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupWebhookRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/webhooks/", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }

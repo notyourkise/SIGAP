@@ -112,6 +112,12 @@ func recalculateCCTVHealthScoreAt(db *gorm.DB, cctvID uuid.UUID, now time.Time) 
 		return HealthScoreResult{}, err
 	}
 
+	// Ambil skor lama untuk mendeteksi perubahan (hook webhook health_score.changed).
+	var cctv models.CCTV
+	if err := db.Select("id", "kode_cctv", "nama", "health_score").First(&cctv, "id = ?", cctvID).Error; err != nil {
+		return HealthScoreResult{}, err
+	}
+
 	update := db.Model(&models.CCTV{}).
 		Where("id = ?", cctvID).
 		Update("health_score", result.HealthScore)
@@ -126,6 +132,18 @@ func recalculateCCTVHealthScoreAt(db *gorm.DB, cctvID uuid.UUID, now time.Time) 
 		"id":           cctvID.String(),
 		"health_score": result.HealthScore,
 	})
+
+	// Task 12.3: dispatch event webhook health_score.changed bila skor berubah.
+	if cctv.HealthScore != result.HealthScore {
+		DispatchWebhook(db, models.EventWebhookHealthScoreChanged, map[string]interface{}{
+			"cctv_id":     cctvID.String(),
+			"kode_cctv":   cctv.KodeCCTV,
+			"nama":        cctv.Nama,
+			"old_score":   cctv.HealthScore,
+			"new_score":   result.HealthScore,
+			"timestamp":   now.Format(time.RFC3339),
+		})
+	}
 	return result, nil
 }
 

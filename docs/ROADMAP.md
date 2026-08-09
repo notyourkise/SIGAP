@@ -579,17 +579,25 @@ Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0].
 
 > Mempersiapkan SIGAP untuk integrasi dengan sistem lain.
 > Fokus saat ini: **Kawasan OIKN**.
-> **Status: 🔲 Belum dimulai** — 4 task, 2 sprint.
+> **Status: 🔶 Berjalan** — 2/4 task selesai (Sprint 29 ✅, Task 12.2 & 12.4 belum dimulai).
 
 ### Sprint 29 — API Key & Webhook (Task 12.1 + 12.3)
 
 > **Branch:** `feature/api-integration`
+> **Status: ✅ Selesai** (2026-08-09)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **12.1** API Key untuk Integrasi | Model `APIKey` (key_hash, scopes, expires_at). Middleware `APIKeyAuth`. Rate limit per key. Endpoint CRUD `/api/api-keys` (admin). |
-| **Backend** | Agent-BE | **12.3** Webhook & Event System | Model `WebhookEndpoint` (url, events, secret). Events: `cctv.status_changed`, `maintenance.completed`, `stream.down`. Async delivery + retry 3x. Model `WebhookDelivery` (log). |
-| **Frontend** | Agent-FE | **12.1b + 12.3b** UI API Key & Webhook | Halaman `/api-keys` (generate, revoke, usage). Halaman `/webhooks` (CRUD, test delivery, log). |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **12.1** API Key untuk Integrasi | Model `APIKey` (key_hash, scopes, expires_at). Middleware `APIKeyAuth`. Rate limit per key. Endpoint CRUD `/api/api-keys` (admin). | ✅ Selesai |
+| **Backend** | Agent-BE | **12.3** Webhook & Event System | Model `WebhookEndpoint` (url, events, secret). Events: `cctv.status_changed`, `maintenance.completed`, `stream.down`. Async delivery + retry 3x. Model `WebhookDelivery` (log). | ✅ Selesai |
+| **Frontend** | Agent-FE | **12.1b + 12.3b** UI API Key & Webhook | Halaman `/api-keys` (generate, revoke, usage). Halaman `/webhooks` (CRUD, test delivery, log). | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 29:** API Key & Webhook (Task 12.1 + 12.3) selesai.
+- **Backend (`0.51.0`)**: model `APIKey` (`models/api_key.go`) + `WebhookEndpoint`/`WebhookDelivery` (`models/webhook.go`); migrasi `000010_api_keys_webhooks` (up/down); middleware `middleware/apikey.go` (`APIKeyAuth`/`APIKeyOrProtected`, rate limit 100 req/menit per key via Redis, cek revoked/expired/scope, update `last_used_at`); handler `handlers/api_key.go` (`POST /api/api-keys`, `GET /api/api-keys`, `POST /api/api-keys/:id/revoke` admin-only; key mentah tampil 1×); handler `handlers/webhook.go` (CRUD `/api/webhooks`, `POST /api/webhooks/:id/test`, `GET /api/webhooks/:id/deliveries`; antrean channel + worker `StartWebhookWorker`; `X-Signature-256` HMAC-SHA256; retry 3× 1s/5s/25s); hook event di `cctv_sync.go`/`maintenance.go`/`overdue_checker.go`/`health_score.go`/`stream.go`; `GET /api/cctv` dapat diakses via API key scope `cctv:read`; unit test `api_key_test.go`, `webhook_test.go`, `middleware/apikey_test.go`; Swagger + `swag init`.
+- **Frontend (`1.43.0`)**: halaman admin `/api-keys` (generate key tampil 1× + salin, list, revoke, badge scope, usage); halaman admin `/webhooks` (CRUD endpoint, pilih event, test delivery, modal detail + log deliveries); menu sidebar "API Keys" (`KeyRound`) & "Webhooks" (`Webhook`); proxy melindungi `/api-keys` & `/webhooks`.
+- **Dokumen**: `docs/manual-test-api-webhook.md` (baru — S1–S9 sesuai format manual test lain).
+
+Detail: `backend/changelog.md` [0.51.0] · `frontend/changelog.md` [1.43.0].
 
 ### Sprint 30 — Multi-Site (Task 12.2)
 

@@ -1,5 +1,29 @@
 # Changelog - Frontend SIGAP
 
+## [1.43.0] - 2026-08-09
+
+### Fitur: UI API Key & Webhook (Task 12.1b + 12.3b - Sprint 29)
+
+perubahan yang dilakukan: **Menambahkan halaman admin API Key dan Webhook untuk integrasi eksternal. Frontend naik `1.42.0` → `1.43.0`.**
+
+before: Belum ada antarmuka untuk mengelola kredensial API key integrasi eksternal maupun endpoint webhook untuk mengirim event ke sistem lain.
+
+after:
+- `src/app/api-keys/page.tsx` (baru): halaman admin `/api-keys` — daftar API key (nama, prefix, badge scope, terakhir dipakai, kedaluwarsa, status dicabut), modal "Buat API Key" (nama, scope multi-select, kedaluwarsa), menampilkan key mentah 1× dengan tombol salin, cabut key.
+- `src/app/webhooks/page.tsx` (baru): halaman admin `/webhooks` — CRUD endpoint (nama, URL, secret, event multi-select), toggle aktif/nonaktif, tombol test delivery, modal detail + riwayat pengiriman (status, HTTP, latensi, percobaan).
+- `src/components/DashboardLayout.tsx`: menu sidebar admin "API Keys" (`KeyRound`) & "Webhooks" (`Webhook`).
+- `src/proxy.ts`: rute `/api-keys` & `/webhooks` ditambahkan ke guard admin server-side.
+
+timestamp: 2026-08-09 11:55 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/app/api-keys/page.tsx (baru)
+- frontend/src/app/webhooks/page.tsx (baru)
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Kebutuhan integrasi & skalabilitas (ROADMAP Task 12.1b + 12.3b) — admin dapat mengelola API key integrasi eksternal dan endpoint webhook beserta riwayat pengiriman.
+
 ## [1.42.0] - 2026-08-09
 
 ### Fitur: UI Zona & SLA (Task 11.4b + 11.5b - Sprint 28)

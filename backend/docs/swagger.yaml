@@ -60,6 +60,24 @@ definitions:
     - checks
     - images
     type: object
+  handlers.CreateAPIKeyRequest:
+    properties:
+      expires_in_days:
+        description: 0 = tidak pernah
+        minimum: 1
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      scopes:
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    - scopes
+    type: object
   handlers.CreateCCTVRequest:
     properties:
       channel_port:
@@ -278,6 +296,27 @@ definitions:
     - password
     - role
     - username
+    type: object
+  handlers.CreateWebhookRequest:
+    properties:
+      events:
+        items:
+          type: string
+        type: array
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      secret:
+        minLength: 8
+        type: string
+      url:
+        type: string
+    required:
+    - events
+    - name
+    - secret
+    - url
     type: object
   handlers.CreateZoneRequest:
     properties:
@@ -581,6 +620,24 @@ definitions:
         - teknisi
         type: string
     type: object
+  handlers.UpdateWebhookRequest:
+    properties:
+      events:
+        items:
+          type: string
+        type: array
+      is_active:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      secret:
+        minLength: 8
+        type: string
+      url:
+        type: string
+    type: object
   handlers.UpdateZoneRequest:
     properties:
       deskripsi:
@@ -597,6 +654,142 @@ info:
   title: SIGAP API
   version: "1.0"
 paths:
+  /api-keys:
+    get:
+      description: Mendapatkan daftar API key terpaginasi. Hash tidak dikembalikan;
+        hanya prefix dan metadata.
+      parameters:
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: Pencarian berdasarkan nama
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar API key terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar API key
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua API Key
+      tags:
+      - API Key
+    post:
+      consumes:
+      - application/json
+      description: Membuat API key baru untuk integrasi eksternal. Key mentah hanya
+        ditampilkan sekali pada respons ini; hash bcrypt disimpan di database. Dapat
+        diakses hanya oleh Admin.
+      parameters:
+      - description: Data API Key Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateAPIKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: API key berhasil dibuat (key ditampilkan sekali)
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Validasi gagal atau scope tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membuat API key
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat API Key
+      tags:
+      - API Key
+  /api-keys/{id}/revoke:
+    post:
+      consumes:
+      - application/json
+      description: Mencabut API key sehingga tidak dapat digunakan lagi. Key tetap
+        tersimpan untuk audit (revoked_at diisi).
+      parameters:
+      - description: API Key UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: API key berhasil dicabut
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: API key tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mencabut API key
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cabut API Key
+      tags:
+      - API Key
   /audit-logs:
     get:
       description: Mengembalikan daftar riwayat aktivitas sistem berdasarkan filter
@@ -4259,6 +4452,324 @@ paths:
       summary: Reset Password Pengguna
       tags:
       - Manajemen Pengguna
+  /webhooks:
+    get:
+      description: Mendapatkan daftar endpoint webhook terpaginasi. Secret tidak dikembalikan.
+      parameters:
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar webhook endpoint terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar webhook endpoint
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Webhook Endpoint
+      tags:
+      - Webhook
+    post:
+      consumes:
+      - application/json
+      description: Membuat endpoint webhook baru dengan daftar event yang dilanggan
+        dan secret untuk signature HMAC.
+      parameters:
+      - description: Data Webhook Endpoint Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Webhook endpoint berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Validasi gagal atau event tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan webhook endpoint
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat Webhook Endpoint
+      tags:
+      - Webhook
+  /webhooks/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus endpoint webhook (soft-delete). Riwayat pengiriman tetap
+        tersimpan.
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Webhook endpoint berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Webhook endpoint tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus webhook endpoint
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Webhook Endpoint
+      tags:
+      - Webhook
+    get:
+      description: Mendapatkan detail satu endpoint webhook beserta riwayat pengiriman
+        terbaru.
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data webhook endpoint
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Webhook endpoint tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Webhook Endpoint Detail
+      tags:
+      - Webhook
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui nama, URL, event, secret, atau status aktif endpoint
+        webhook.
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Webhook Endpoint
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Webhook endpoint berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Webhook endpoint tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui webhook endpoint
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Webhook Endpoint
+      tags:
+      - Webhook
+  /webhooks/{id}/deliveries:
+    get:
+      description: Mendapatkan daftar pengiriman webhook untuk sebuah endpoint (paginasi,
+        terbaru dahulu).
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar delivery terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil riwayat pengiriman
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Riwayat Webhook Delivery
+      tags:
+      - Webhook
+  /webhooks/{id}/test:
+    post:
+      consumes:
+      - application/json
+      description: Mengirim payload uji (event test.ping) ke endpoint dan mengembalikan
+        status respons serta latensi.
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Hasil test delivery
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Webhook endpoint tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengirim test
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Test Webhook Delivery
+      tags:
+      - Webhook
   /ws:
     get:
       description: 'Membuka koneksi bi-directional WebSocket real-time untuk menerima

@@ -169,6 +169,11 @@ func main() {
 	go handlers.RunSLADeadlineChecker(config.DB)
 	utils.Log.Info("⏱️ Pemeriksa deadline SLA diaktifkan (interval: 1 jam)")
 
+	// Jalankan worker pengiriman webhook (Task 12.3, Sprint 29). Mengonsumsi
+	// antrean event dan mengirim ke endpoint webhook secara asinkron.
+	handlers.StartWebhookWorker(config.DB)
+	utils.Log.Info("🔗 Worker pengiriman webhook diaktifkan")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
@@ -254,8 +259,11 @@ func main() {
 	routes.SetupReportRoutes(api)
 	routes.SetupZoneRoutes(api)
 	routes.SetupSLARoutes(api)
+	routes.SetupAPIKeyRoutes(api)
+	routes.SetupWebhookRoutes(api)
 
-	// Rute Health Check (publik untuk monitoring)
+	// Rute Health Check (publik untuk monitoring, juga dapat diakses via API key
+	// scope health:read untuk integrasi eksternal — Task 12.1).
 	api.Get("/health", handlers.HealthCheck)
 
 	// Rute Metrik Prometheus (publik untuk monitoring / scraping). Mengembalikan

@@ -27,6 +27,8 @@ import {
   Package,
   FileSpreadsheet,
   Target,
+  KeyRound,
+  Webhook,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -100,6 +102,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
           { name: 'Zona', href: '/zona', icon: MapPinned },
           { name: 'SLA', href: '/sla', icon: Target },
+          { name: 'API Keys', href: '/api-keys', icon: KeyRound },
+          { name: 'Webhooks', href: '/webhooks', icon: Webhook },
         ]
       : []),
   ];
