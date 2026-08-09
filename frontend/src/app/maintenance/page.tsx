@@ -30,6 +30,8 @@ import {
   PackagePlus,
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 
 interface MasterCCTV {
   id: string;
@@ -180,6 +182,44 @@ export default function MaintenanceLogsPage() {
     notes: '',
     scheduled_date: nowLocalDateTime(),
     image_url: ''
+  });
+
+  // Sortir client-side kolom header (main table).
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows(logs, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'cctv':
+          return row.cctv?.nama ?? '';
+        case 'pekerjaan':
+          return row.action_taken;
+        case 'teknisi':
+          return row.technician?.full_name ?? '';
+        case 'waktu':
+          return row.completed_at || row.scheduled_date || '';
+        case 'status':
+          return row.status;
+        default:
+          return '';
+      }
+    },
+  });
+
+  // Sortir client-side kolom header (tabel suku cadang pada modal detail).
+  const usageSort = useSortableRows<SparePartUsage>(usages, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'nama':
+          return row.spare_part?.nama ?? '';
+        case 'sku':
+          return row.spare_part?.sku ?? '';
+        case 'jumlah':
+          return row.jumlah;
+        case 'catatan':
+          return row.catatan ?? '';
+        default:
+          return '';
+      }
+    },
   });
 
   const fetchLogs = useCallback(async () => {
@@ -730,16 +770,16 @@ export default function MaintenanceLogsPage() {
               <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                    <th className="px-5 py-3.5">CCTV</th>
-                    <th className="px-5 py-3.5">Pekerjaan</th>
-                    <th className="px-5 py-3.5">Teknisi</th>
-                    <th className="px-5 py-3.5">Waktu</th>
-                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Pekerjaan" sortKey="pekerjaan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Waktu" sortKey="waktu" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                     <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
-                  {logs.map((log) => (
+                  {sortedRows.map((log) => (
                     <tr key={log.id} className="transition-colors hover:bg-background/40">
                       <td className="px-5 py-4">
                         <p className="font-semibold">{log.cctv?.nama || 'CCTV tidak tersedia'}</p>
@@ -1236,14 +1276,14 @@ export default function MaintenanceLogsPage() {
                     <table className="w-full border-collapse text-left text-sm">
                       <thead>
                         <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                          <th className="px-4 py-2.5">Nama</th>
-                          <th className="px-4 py-2.5">SKU</th>
-                          <th className="px-4 py-2.5">Jumlah</th>
-                          <th className="px-4 py-2.5">Catatan</th>
+                          <th className="px-4 py-2.5"><SortableHeader label="Nama" sortKey="nama" activeKey={usageSort.sortKey} direction={usageSort.sortDirection} onSort={usageSort.onSort} /></th>
+                          <th className="px-4 py-2.5"><SortableHeader label="SKU" sortKey="sku" activeKey={usageSort.sortKey} direction={usageSort.sortDirection} onSort={usageSort.onSort} /></th>
+                          <th className="px-4 py-2.5"><SortableHeader label="Jumlah" sortKey="jumlah" activeKey={usageSort.sortKey} direction={usageSort.sortDirection} onSort={usageSort.onSort} /></th>
+                          <th className="px-4 py-2.5"><SortableHeader label="Catatan" sortKey="catatan" activeKey={usageSort.sortKey} direction={usageSort.sortDirection} onSort={usageSort.onSort} /></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {usages.map((u) => (
+                        {usageSort.sortedRows.map((u) => (
                           <tr key={u.id}>
                             <td className="px-4 py-2.5 font-medium">{u.spare_part?.nama || '—'}</td>
                             <td className="px-4 py-2.5 font-mono text-xs text-primary">{u.spare_part?.sku || '—'}</td>

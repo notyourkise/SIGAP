@@ -11,7 +11,6 @@ export default function ChangePasswordPage() {
   const { user, login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
-  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,7 +23,7 @@ export default function ChangePasswordPage() {
     event.preventDefault();
     setError('');
 
-    if (!oldPassword || !newPassword || !confirmPassword) {
+    if (!newPassword || !confirmPassword) {
       setError('Seluruh kolom wajib diisi.');
       return;
     }
@@ -41,7 +40,7 @@ export default function ChangePasswordPage() {
     try {
       const response = await apiRequest<{ user: AuthUser }>('/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+        body: JSON.stringify({ new_password: newPassword }),
       });
       if (response.status === 'success' && response.data) {
         login(response.data.user);
@@ -73,7 +72,7 @@ export default function ChangePasswordPage() {
         {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-accent" />}
       </button>
 
-      <div className="z-10 w-full max-w-sm rounded-3xl border border-border bg-card p-7 shadow-[0_24px_70px_rgba(40,63,36,0.12)] sm:p-8">
+      <div className="z-10 w-full max-w-2xl rounded-3xl border border-border bg-card p-7 shadow-[0_24px_70px_rgba(40,63,36,0.12)] sm:p-8">
         <header className="mb-7 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <KeyRound className="h-6 w-6" />
@@ -99,88 +98,73 @@ export default function ChangePasswordPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="mb-2 block text-sm font-medium" htmlFor="old-password">Kata sandi lama</label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                id="old-password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={oldPassword}
-                onChange={(event) => setOldPassword(event.target.value)}
-                placeholder="Masukkan kata sandi saat ini"
-                disabled={loading}
-                className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
-                required
-              />
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium" htmlFor="new-password">Kata sandi baru</label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  id="new-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="Minimal 8 karakter"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  disabled={loading}
+                  aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-muted transition-colors hover:text-foreground disabled:opacity-50"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-muted">Gunakan kombinasi huruf besar, huruf kecil, angka, dan simbol.</p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium" htmlFor="confirm-password">Ulangi kata sandi baru</label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  id="confirm-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Ulangi kata sandi baru"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3">
+            {!forced && (
               <button
                 type="button"
-                onClick={() => setShowPassword((visible) => !visible)}
+                onClick={cancelToDashboard}
                 disabled={loading}
-                aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
-                className="absolute inset-y-0 right-0 flex items-center pr-4 text-muted transition-colors hover:text-foreground disabled:opacity-50"
+                className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                Batal
               </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium" htmlFor="new-password">Kata sandi baru</label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                id="new-password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                placeholder="Minimal 8 karakter"
-                disabled={loading}
-                className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
-                required
-              />
-            </div>
-            <p className="mt-2 text-xs text-muted">Gunakan kombinasi huruf besar, huruf kecil, angka, dan simbol.</p>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium" htmlFor="confirm-password">Ulangi kata sandi baru</label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                id="confirm-password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="Ulangi kata sandi baru"
-                disabled={loading}
-                className="w-full rounded-xl border border-input-border bg-input py-3 pl-11 pr-4 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-70"
-                required
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98] disabled:cursor-wait disabled:scale-100 disabled:opacity-70"
-          >
-            {loading ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Menyimpan…</> : 'Simpan Kata Sandi'}
-          </button>
-
-          {!forced && (
+            )}
             <button
-              type="button"
-              onClick={cancelToDashboard}
+              type="submit"
               disabled={loading}
-              className="w-full rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-hover active:scale-[0.98] disabled:cursor-wait disabled:scale-100 disabled:opacity-70"
             >
-              Batal
+              {loading ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Menyimpan…</> : 'Simpan Kata Sandi'}
             </button>
-          )}
+          </div>
         </form>
       </div>
     </main>

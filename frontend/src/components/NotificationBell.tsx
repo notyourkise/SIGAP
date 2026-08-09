@@ -18,7 +18,7 @@ export interface NotificationItem {
   created_at: string;
 }
 
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 20_000;
 const NOTIFICATION_EVENT = 'NOTIFICATION_CREATED';
 // Preview dropdown hanya menampilkan 3 notifikasi terbaru; sisanya diakses
 // lewat halaman /pemberitahuan melalui tombol "Lihat lainnya".
@@ -90,6 +90,12 @@ export default function NotificationBell() {
     fetchNotifications();
     fetchUnreadCount();
   }, [fetchNotifications, fetchUnreadCount]);
+
+  // Muat jumlah belum dibaca segera saat halaman pertama kali dibuka, agar badge
+  // lonceng langsung tampil tanpa harus menunggu polling atau diklik dulu.
+  useEffect(() => {
+    fetchUnreadCount();
+  }, [fetchUnreadCount]);
 
   // Sinkronisasi real-time: event NOTIFICATION_CREATED dari server.
   useEffect(() => {

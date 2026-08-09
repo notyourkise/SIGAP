@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { apiRequest, downloadApiFile } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
@@ -86,6 +88,28 @@ export default function AuditLogsPage() {
   const [exporting, setExporting] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Sortir kolom (client-side) — hanya mengurutkan baris yang sudah ada di state
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<AuditLog>(logs, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'waktu':
+          return row.created_at;
+        case 'pengguna':
+          return row.username ?? '';
+        case 'modul':
+          return row.module ?? '';
+        case 'aksi':
+          return row.action ?? '';
+        case 'deskripsi':
+          return row.description ?? '';
+        case 'ip':
+          return row.ip_address ?? '';
+        default:
+          return '';
+      }
+    },
+  });
 
   const fetchAuditLogs = useCallback(async () => {
     if (!user || !isAdmin) {
@@ -332,17 +356,29 @@ export default function AuditLogsPage() {
                   <table className="w-full min-w-[950px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                        <th className="px-5 py-3.5">Waktu</th>
-                        <th className="px-5 py-3.5">Pengguna</th>
-                        <th className="px-5 py-3.5">Modul</th>
-                        <th className="px-5 py-3.5">Aksi</th>
-                        <th className="px-5 py-3.5">Deskripsi Aktivitas</th>
-                        <th className="px-5 py-3.5">Client IP</th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Waktu" sortKey="waktu" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Pengguna" sortKey="pengguna" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Modul" sortKey="modul" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Aksi" sortKey="aksi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Deskripsi Aktivitas" sortKey="deskripsi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
+                        <th className="px-5 py-3.5">
+                          <SortableHeader label="Client IP" sortKey="ip" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        </th>
                         <th className="px-5 py-3.5 text-right">Detail</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                      {logs.map((log) => (
+                      {sortedRows.map((log) => (
                         <tr key={log.id} className="transition-colors hover:bg-background/35">
                           <td className="whitespace-nowrap px-5 py-4 text-xs font-mono text-muted">
                             {new Date(log.created_at).toLocaleString('id-ID', {

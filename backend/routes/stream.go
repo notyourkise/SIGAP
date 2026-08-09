@@ -2,15 +2,16 @@ package routes
 
 import (
 	"sigap-backend/handlers"
-	"sigap-backend/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 // SetupStreamRoutes mendefinisikan rute modul Streaming CCTV (Task 9.3).
-// Seluruh rute khusus admin: Protected + RequireRole("admin").
+// Streaming dibuat dapat diakses tanpa login (publik) agar video CCTV dapat
+// ditonton langsung tanpa proses sign-in. Endpoint lain (master data, dsb.)
+// tetap dilindungi autentikasi seperti biasa.
 func SetupStreamRoutes(router fiber.Router) {
-	streamGroup := router.Group("/streams", middleware.Protected(), middleware.RequireRole("admin"))
+	streamGroup := router.Group("/streams")
 
 	// Rute STATIS didaftarkan sebelum rute dinamis (gotcha Fiber route ordering).
 	streamGroup.Get("/status", handlers.GetStreamStatus)

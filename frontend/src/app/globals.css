@@ -418,3 +418,43 @@ body {
   gap: 5mm 6mm;
   justify-content: center;
 }
+
+/* ==========================================
+   Sidebar & area konten utama — sembunyikan scrollbar tapi tetap bisa di-scroll
+   ========================================== */
+#primary-sidebar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge lama */
+}
+
+#primary-sidebar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge modern */
+}
+
+#primary-sidebar * {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge lama */
+}
+
+#primary-sidebar *::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge modern */
+}
+
+/* Area konten utama (halaman yang diklik dari menu) */
+main {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge lama */
+}
+
+main::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge modern */
+}
+
+main * {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge lama */
+}
+
+main *::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge modern */
+}

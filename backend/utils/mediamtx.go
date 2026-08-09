@@ -89,7 +89,7 @@ func (c *MediaMTXClient) doRequest(method, endpoint string, body []byte) (int, [
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		Log.Errorf("❌ MediaMTX %s %s mengembalikan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
-		return resp.StatusCode, respBody, fmt.Errorf("MediaMTX %s %s gagal dengan status %d", method, endpoint, resp.StatusCode)
+		return resp.StatusCode, respBody, fmt.Errorf("MediaMTX %s %s gagal dengan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
 	}
 
 	return resp.StatusCode, respBody, nil
@@ -144,6 +144,15 @@ func (c *MediaMTXClient) ListPaths() ([]PathInfo, error) {
 	_, respBody, err := c.doRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	// MediaMTX v1.20+ mengembalikan objek terpaginasi {itemCount,pageCount,items}.
+	// Beberapa versi mengembalikan array langsung. Tangani kedua format tersebut.
+	var paged struct {
+		Items []PathInfo `json:"items"`
+	}
+	if err := json.Unmarshal(respBody, &paged); err == nil && paged.Items != nil {
+		return paged.Items, nil
 	}
 
 	var paths []PathInfo

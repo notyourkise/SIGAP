@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Penugasan Tugas Pemeliharaan SIGAP</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f1e8;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f1e8;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#fffef8;border-radius:16px;overflow:hidden;border:1px solid #e4d6a7;">
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#467235;padding:24px 28px;">
+              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Tugas Pemeliharaan Baru</h1>
+              <p style="margin:6px 0 0;color:#e8f0df;font-size:13px;">SIGAP · Sistem Identifikasi Gangguan Aset Pusat</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:24px 28px;">
+              <p style="margin:0 0 16px;color:#203f25;font-size:15px;line-height:1.5;">
+                Halo <strong>{{ .Nama }}</strong>,
+              </p>
+              <p style="margin:0 0 20px;color:#62705a;font-size:14px;line-height:1.5;">
+                Anda ditugaskan untuk menangani pekerjaan pemeliharaan berikut pada CCTV:
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;background-color:#f9f5e8;font-size:13px;color:#203f25;width:40%;">CCTV</td>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;background-color:#f9f5e8;font-size:13px;font-weight:700;color:#467235;">{{ .CCTV }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;font-size:13px;color:#203f25;">Kode CCTV</td>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;font-size:13px;font-weight:700;color:#203f25;font-family:monospace;">{{ .KodeCCTV }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;background-color:#f9f5e8;font-size:13px;color:#203f25;">Pekerjaan</td>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;background-color:#f9f5e8;font-size:13px;font-weight:700;color:#203f25;">{{ .Pekerjaan }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;font-size:13px;color:#203f25;">Lokasi</td>
+                  <td style="padding:10px 12px;border:1px solid #e4d6a7;font-size:13px;color:#203f25;">{{ .Lokasi }}</td>
+                </tr>
+              </table>
+              <p style="margin:20px 0 0;color:#62705a;font-size:13px;line-height:1.5;">
+                Silakan buka aplikasi SIGAP untuk melihat rincian dan menindaklanjuti tugas ini.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f4f1e8;padding:16px 28px;text-align:center;">
+              <p style="margin:0;color:#a3a088;font-size:11px;">
+                Email otomatis dari Sistem Identifikasi Gangguan Aset Pusat (SIGAP). Jangan membalas email ini.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

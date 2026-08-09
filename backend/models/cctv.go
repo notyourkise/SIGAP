@@ -29,6 +29,11 @@ type CCTV struct {
 	ChannelPort   int    `gorm:"type:integer" json:"channel_port"`
 	RTSPPassword  string `gorm:"type:text" json:"rtsp_password,omitempty"`
 	StreamEnabled bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
+	// RTSPURL adalah URL RTSP penuh per-CCTV, mis.
+	//   rtsp://admin:hik12345@36.91.27.35:554/Streaming/channels/1901
+	// Bila diisi, URL ini dipakai langsung oleh MediaMTX sebagai sumber stream,
+	// menggantikan penyusunan otomatis dari ChannelPort + kredensial NVR global.
+	RTSPURL string `gorm:"type:text" json:"rtsp_url"`
 	// SnapshotURL adalah path URL snapshot terbaru (computed, tidak disimpan di DB).
 	// Diisi saat handler mengembalikan data CCTV agar frontend dapat langsung
 	// mengambil snapshot terbaru melalui endpoint /cctv/{id}/snapshot.

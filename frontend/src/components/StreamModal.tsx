@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import {
   X,
   MapPin,
@@ -24,7 +23,6 @@ import {
   Square,
   Maximize2,
   Video,
-  VideoOff,
   LoaderCircle,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
@@ -322,14 +320,6 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
                 </button>
               )}
             </div>
-
-            <Link
-              href="/cctv"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-background"
-            >
-              <VideoOff className="h-4 w-4" />
-              Lihat di Master CCTV
-            </Link>
           </div>
         </div>
       </div>

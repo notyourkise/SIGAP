@@ -24,13 +24,39 @@ hlsSegmentDuration: 1s
 # REST API (untuk Go backend)
 api: yes
 apiAddress: :9997
+
+# Autentikasi internal (menggantikan readUser/readPass yang deprecated).
+#   - playback: boleh dari semua IP (browser menonton WHEP/WebRTC via proxy nginx).
+#   - api:      dibatasi hanya dari subnet Docker (172.28.0.0/16) tempat
+#               container backend (api) berada. Tanpa ini, panggilan API
+#               MediaMTX dari backend ditolak 401 (default hanya izinkan 127.0.0.1).
+authInternalUsers:
+  - user: any
+    pass: ""
+    permissions:
+      - action: read
+        path: ""
+      - action: playback
+        path: ""
+  - user: any
+    pass: ""
+    ips:
+      - 127.0.0.1/32
+      - ::1/128
+      - 172.28.0.0/16
+    permissions:
+      - action: api
+        path: ""
+      - action: metrics
+        path: ""
+      - action: pprof
+        path: ""
+
 # Path defaults — on-demand pull dari NVR
 pathDefaults:
   sourceOnDemand: yes
   sourceOnDemandStartTimeout: 10s
   sourceOnDemandCloseAfter: 30s
   sourceProtocol: tcp
-  readUser: ""
-  readPass: ""
 # Path dikonfigurasi DINAMIS via REST API
 paths: {}

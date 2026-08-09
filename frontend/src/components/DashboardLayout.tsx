@@ -29,6 +29,12 @@ import {
   Target,
   KeyRound,
   Webhook,
+  Cctv,
+  CalendarRange,
+  BarChart3,
+  Settings,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -51,10 +57,24 @@ function getSidebarPreference() {
   return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
 }
 
+// Deteksi breakpoint md (768px) untuk membedakan perilaku sidebar di desktop vs mobile.
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 768px)');
+    const update = () => setIsDesktop(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return isDesktop;
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
+  const isDesktop = useIsDesktop();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarPreference,
@@ -79,34 +99,84 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [isSidebarOpen]);
 
-  const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    ...(user?.role === 'admin'
-      ? [
-          { name: 'Kinerja Teknisi', href: '/kinerja-teknisi', icon: TrendingUp },
-          { name: 'Ringkasan', href: '/ringkasan', icon: ClipboardList },
-        ]
-      : []),
-    { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
-    { name: 'Aset CCTV', href: '/cctv', icon: Database },
-    { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
-    { name: 'Kalender', href: '/kalender', icon: Calendar },
-    ...(user?.role === 'admin'
-      ? [
-          { name: 'Monitor CCTV', href: '/monitor', icon: MonitorPlay },
-          { name: 'Jadwal', href: '/schedules', icon: CalendarClock },
-          { name: 'Pengecekan Lapangan', href: '/field-maintenance', icon: ClipboardCheck },
-          { name: 'Manajemen Pengguna', href: '/users', icon: Users },
-          { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
-          { name: 'Suku Cadang', href: '/suku-cadang', icon: Package },
-          { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
-          { name: 'Zona', href: '/zona', icon: MapPinned },
-          { name: 'SLA', href: '/sla', icon: Target },
-          { name: 'API Keys', href: '/api-keys', icon: KeyRound },
-          { name: 'Webhooks', href: '/webhooks', icon: Webhook },
-        ]
-      : []),
-  ];
+  // Tipe untuk item menu & grup kategori
+  type NavItem = { name: string; href: string; icon: typeof LayoutDashboard };
+  type NavGroup = { label: string; icon: typeof LayoutDashboard; items: NavItem[] };
+
+  const isAdmin = user?.role === 'admin';
+
+  // Grup kategori menu. Dashboard dibiarkan di menu utama (langsung).
+  const navGroups: NavGroup[] = [
+    {
+      label: 'CCTV & Monitoring',
+      icon: Cctv,
+      items: [
+        { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
+        { name: 'Aset CCTV', href: '/cctv', icon: Database },
+        { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
+        ...(isAdmin ? [{ name: 'Monitor CCTV', href: '/monitor', icon: MonitorPlay }] : []),
+      ],
+    },
+    {
+      label: 'Operasional & Jadwal',
+      icon: CalendarRange,
+      items: [
+        { name: 'Kalender', href: '/kalender', icon: Calendar },
+        ...(isAdmin
+          ? [
+              { name: 'Jadwal', href: '/schedules', icon: CalendarClock },
+              { name: 'Pengecekan Lapangan', href: '/field-maintenance', icon: ClipboardCheck },
+              { name: 'Kinerja Teknisi', href: '/kinerja-teknisi', icon: TrendingUp },
+            ]
+          : []),
+      ],
+    },
+    {
+      label: 'Pelaporan & Analisis',
+      icon: BarChart3,
+      items: isAdmin
+        ? [
+            { name: 'Ringkasan', href: '/ringkasan', icon: ClipboardList },
+            { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
+            { name: 'SLA', href: '/sla', icon: Target },
+          ]
+        : [],
+    },
+    {
+      label: 'Manajemen Sistem',
+      icon: Settings,
+      items: isAdmin
+        ? [
+            { name: 'Manajemen Pengguna', href: '/users', icon: Users },
+            { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
+            { name: 'Suku Cadang', href: '/suku-cadang', icon: Package },
+            { name: 'Zona', href: '/zona', icon: MapPinned },
+            { name: 'API Keys', href: '/api-keys', icon: KeyRound },
+            { name: 'Webhooks', href: '/webhooks', icon: Webhook },
+          ]
+        : [],
+    },
+  ].filter((group) => group.items.length > 0);
+
+  // Grup yang sedang terbuka (accordion, mode sidebar normal/expanded)
+  const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const activeHref = window.location.pathname;
+    return navGroups
+      .filter((group) => group.items.some((item) => item.href === activeHref))
+      .map((group) => group.label);
+  });
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) =>
+      prev.includes(label) ? prev.filter((g) => g !== label) : [...prev, label]
+    );
+  };
+
+  const isGroupOpen = (label: string) => openGroups.includes(label);
+
+  // Grup yang popup menu-nya sedang terbuka (mode sidebar collapsed/icon-only)
+  const [activeCollapsedGroup, setActiveCollapsedGroup] = useState<string | null>(null);
 
   return (
     <ProtectedRoute>
@@ -225,7 +295,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <p className={`mb-2 px-3 text-xs font-semibold text-muted ${isSidebarCollapsed ? 'md:sr-only' : ''}`}>
                 Menu utama
               </p>
-              {navigation.map((item) => {
+              {/* Dashboard — selalu tampil langsung di menu utama */}
+              {(() => {
+                const item = { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard };
                 const isActive = pathname === item.href;
                 const IconComponent = item.icon;
                 return (
@@ -249,7 +321,122 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <span className={isSidebarCollapsed ? 'md:hidden' : ''}>{item.name}</span>
                   </Link>
                 );
-              })}
+              })()}
+
+              {/* Grup kategori menu (dropdown / accordion) */}
+              <div className="space-y-1.5">
+                {navGroups.map((group) => {
+                  const GroupIcon = group.icon;
+                  const open = isGroupOpen(group.label);
+                  const groupHasActive = group.items.some((item) => pathname === item.href);
+                  const isCollapsed = isSidebarCollapsed && isDesktop;
+                  const popupOpen = activeCollapsedGroup === group.label;
+
+                  return (
+                    <div key={group.label} className="relative">
+                      {/* Header grup */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isCollapsed) {
+                            // Mode icon-only: toggle popup dropdown di samping sidebar
+                            setActiveCollapsedGroup(popupOpen ? null : group.label);
+                          } else {
+                            // Mode normal: buka/tutup accordion
+                            toggleGroup(group.label);
+                          }
+                        }}
+                        aria-expanded={isCollapsed ? popupOpen : open}
+                        aria-haspopup={isCollapsed ? 'menu' : undefined}
+                        title={isCollapsed ? group.label : undefined}
+                        className={`
+                          flex min-h-11 w-full items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-medium transition-[background-color,color,box-shadow,border-color]
+                          ${isCollapsed ? 'md:justify-center md:px-0' : ''}
+                          ${groupHasActive || (isCollapsed && popupOpen)
+                            ? 'text-primary'
+                            : 'text-muted hover:bg-background hover:text-foreground'
+                          }
+                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card
+                        `}
+                      >
+                        <GroupIcon className="h-5 w-5 shrink-0" />
+                        <span className={isCollapsed ? 'md:hidden' : 'flex-1 text-left'}>{group.label}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isCollapsed ? 'md:hidden' : ''} ${open ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+
+                      {/* Popup dropdown saat sidebar collapsed (desktop, icon-only) */}
+                      {isCollapsed && popupOpen && (
+                        <div
+                          role="menu"
+                          className="absolute left-full top-0 z-50 hidden w-56 origin-top-left rounded-2xl border border-border bg-card p-2 shadow-2xl md:block"
+                        >
+                          <p className="px-3 pb-2 pt-1 text-xs font-semibold text-muted">{group.label}</p>
+                          <div className="space-y-1">
+                            {group.items.map((item) => {
+                              const isActive = pathname === item.href;
+                              const IconComponent = item.icon;
+                              return (
+                                <Link
+                                  key={item.name}
+                                  href={item.href}
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setIsSidebarOpen(false);
+                                    setActiveCollapsedGroup(null);
+                                  }}
+                                  aria-current={isActive ? 'page' : undefined}
+                                  className={`
+                                    flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-[background-color,color]
+                                    ${isActive 
+                                      ? 'bg-primary/10 text-primary'
+                                      : 'text-muted hover:bg-background hover:text-foreground'
+                                    }
+                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
+                                  `}
+                                >
+                                  <IconComponent className="h-4 w-4 shrink-0" />
+                                  <span>{item.name}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Accordion saat sidebar normal (expanded) */}
+                      {!isCollapsed && open && (
+                        <div className="ml-2 mt-1 space-y-1 border-l border-border pl-3">
+                          {group.items.map((item) => {
+                            const isActive = pathname === item.href;
+                            const IconComponent = item.icon;
+                            return (
+                              <Link
+                                key={item.name}
+                                href={item.href}
+                                onClick={() => setIsSidebarOpen(false)}
+                                aria-current={isActive ? 'page' : undefined}
+                                className={`
+                                  flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-[background-color,color]
+                                  ${isActive 
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'text-muted hover:bg-background hover:text-foreground'
+                                  }
+                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card
+                                `}
+                              >
+                                <IconComponent className="h-4 w-4 shrink-0" />
+                                <span>{item.name}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
               {/* Pemberitahuan selalu di akhir menu sidebar */}
               <NotificationsMenu isCollapsed={isSidebarCollapsed} />

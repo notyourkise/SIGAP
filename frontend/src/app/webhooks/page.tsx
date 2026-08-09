@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
 import { useAuth } from '@/context/AuthContext';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -101,6 +103,51 @@ export default function WebhooksPage() {
 
   // Detail + deliveries
   const [detail, setDetail] = useState<{ endpoint: WebhookEndpoint; deliveries: Delivery[] } | null>(null);
+
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<WebhookEndpoint>(endpoints, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'name':
+          return row.name;
+        case 'url':
+          return row.url;
+        case 'events':
+          return (row.events || []).join(', ');
+        case 'is_active':
+          return row.is_active ? 'Aktif' : 'Nonaktif';
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'name',
+    defaultDirection: 'asc',
+  });
+
+  const {
+    sortedRows: sortedDeliveries,
+    sortKey: deliverySortKey,
+    sortDirection: deliverySortDirection,
+    onSort: onDeliverySort,
+  } = useSortableRows<Delivery>(detail?.deliveries ?? [], {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'event':
+          return row.event;
+        case 'status':
+          return row.status;
+        case 'response_code':
+          return row.response_code;
+        case 'latency':
+          return row.latency;
+        case 'created_at':
+          return row.created_at;
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'created_at',
+    defaultDirection: 'desc',
+  });
 
   useEffect(() => {
     if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
@@ -296,15 +343,15 @@ export default function WebhooksPage() {
                 <table className="w-full min-w-[860px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-5 py-3.5">Nama</th>
-                      <th className="px-5 py-3.5">URL</th>
-                      <th className="px-5 py-3.5">Event</th>
-                      <th className="px-5 py-3.5">Status</th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Nama" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="URL" sortKey="url" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Event" sortKey="events" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="is_active" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {endpoints.map((ep) => (
+                    {sortedRows.map((ep) => (
                       <tr key={ep.id} className="transition-colors hover:bg-background/40">
                         <td className="px-5 py-4">
                           <p className="font-semibold">{ep.name}</p>
@@ -435,15 +482,15 @@ export default function WebhooksPage() {
                 <table className="w-full min-w-[700px] border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-4 py-3">Event</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">HTTP</th>
-                      <th className="px-4 py-3">Latensi</th>
-                      <th className="px-4 py-3">Waktu</th>
+                      <th className="px-4 py-3"><SortableHeader label="Event" sortKey="event" activeKey={deliverySortKey} direction={deliverySortDirection} onSort={onDeliverySort} /></th>
+                      <th className="px-4 py-3"><SortableHeader label="Status" sortKey="status" activeKey={deliverySortKey} direction={deliverySortDirection} onSort={onDeliverySort} /></th>
+                      <th className="px-4 py-3"><SortableHeader label="HTTP" sortKey="response_code" activeKey={deliverySortKey} direction={deliverySortDirection} onSort={onDeliverySort} /></th>
+                      <th className="px-4 py-3"><SortableHeader label="Latensi" sortKey="latency" activeKey={deliverySortKey} direction={deliverySortDirection} onSort={onDeliverySort} /></th>
+                      <th className="px-4 py-3"><SortableHeader label="Waktu" sortKey="created_at" activeKey={deliverySortKey} direction={deliverySortDirection} onSort={onDeliverySort} /></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {detail.deliveries.map((d) => {
+                    {sortedDeliveries.map((d) => {
                       const badge = STATUS_BADGE[d.status] || STATUS_BADGE.pending;
                       const StatusIcon = d.status === 'success' ? CheckCircle2 : d.status === 'failed' ? XCircle : Clock;
                       return (

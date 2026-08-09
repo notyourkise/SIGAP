@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import SortableHeader from '@/components/SortableHeader';
 import { useAuth } from '@/context/AuthContext';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { apiRequest } from '@/lib/api';
 import {
   AlertTriangle,
@@ -82,6 +84,58 @@ export default function SLAPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState<SLAResponse | null>(null);
+
+  const {
+    sortedRows: sortedRanking,
+    sortKey: rankingSortKey,
+    sortDirection: rankingSortDirection,
+    onSort: onRankingSort,
+  } = useSortableRows<TechnicianRank>(data?.technician_ranking ?? [], {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'full_name':
+          return row.full_name;
+        case 'total_tasks':
+          return row.total_tasks;
+        case 'completed_in_target':
+          return row.completed_in_target;
+        case 'compliance_rate':
+          return row.compliance_rate;
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'compliance_rate',
+    defaultDirection: 'desc',
+  });
+
+  const {
+    sortedRows: sortedViolations,
+    sortKey: violationSortKey,
+    sortDirection: violationSortDirection,
+    onSort: onViolationSort,
+  } = useSortableRows<Violation>(data?.violations ?? [], {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'cctv_name':
+          return row.cctv_name;
+        case 'jenis_tugas':
+          return row.jenis_tugas;
+        case 'technician_name':
+          return row.technician_name;
+        case 'status':
+          return row.status;
+        case 'deadline':
+          return row.deadline;
+        case 'overdue_hours':
+          return row.overdue_hours;
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'deadline',
+    defaultDirection: 'desc',
+  });
 
   useEffect(() => {
     if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
@@ -245,14 +299,14 @@ export default function SLAPage() {
                     <thead>
                       <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
                         <th className="px-5 py-3.5">#</th>
-                        <th className="px-5 py-3.5">Teknisi</th>
-                        <th className="px-5 py-3.5">Total Tugas</th>
-                        <th className="px-5 py-3.5">Dalam Target</th>
-                        <th className="px-5 py-3.5">Kepatuhan</th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="full_name" activeKey={rankingSortKey} direction={rankingSortDirection} onSort={onRankingSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Total Tugas" sortKey="total_tasks" activeKey={rankingSortKey} direction={rankingSortDirection} onSort={onRankingSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Dalam Target" sortKey="completed_in_target" activeKey={rankingSortKey} direction={rankingSortDirection} onSort={onRankingSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Kepatuhan" sortKey="compliance_rate" activeKey={rankingSortKey} direction={rankingSortDirection} onSort={onRankingSort} /></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                      {data.technician_ranking.map((rank, idx) => (
+                      {sortedRanking.map((rank, idx) => (
                         <tr key={rank.user_id} className="transition-colors hover:bg-background/40">
                           <td className="px-5 py-4 font-bold text-muted">{idx + 1}</td>
                           <td className="px-5 py-4 font-semibold">{rank.full_name || '-'}</td>
@@ -291,16 +345,16 @@ export default function SLAPage() {
                   <table className="w-full min-w-[900px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                        <th className="px-5 py-3.5">CCTV</th>
-                        <th className="px-5 py-3.5">Jenis</th>
-                        <th className="px-5 py-3.5">Teknisi</th>
-                        <th className="px-5 py-3.5">Status</th>
-                        <th className="px-5 py-3.5">Deadline</th>
-                        <th className="px-5 py-3.5 text-right">Overdue</th>
+                        <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv_name" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Jenis" sortKey="jenis_tugas" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="technician_name" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} /></th>
+                        <th className="px-5 py-3.5"><SortableHeader label="Deadline" sortKey="deadline" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} /></th>
+                        <th className="px-5 py-3.5 text-right"><SortableHeader label="Overdue" sortKey="overdue_hours" activeKey={violationSortKey} direction={violationSortDirection} onSort={onViolationSort} align="right" /></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                      {data.violations.map((v) => (
+                      {sortedViolations.map((v) => (
                         <tr key={v.id} className="transition-colors hover:bg-background/40">
                           <td className="px-5 py-4">
                             <p className="font-semibold">{v.cctv_name || '-'}</p>

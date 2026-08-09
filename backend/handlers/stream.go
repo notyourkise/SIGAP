@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -114,30 +115,39 @@ func StartStream(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validasi: channel port wajib dikonfigurasi.
-	if cctv.ChannelPort <= 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Channel port belum dikonfigurasi",
-		})
+	// Validasi konfigurasi sumber stream.
+	// Bila rtsp_url penuh tersedia, tidak wajib channel port / password.
+	if cctv.RTSPURL == "" {
+		// Validasi: channel port wajib dikonfigurasi.
+		if cctv.ChannelPort <= 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Channel port belum dikonfigurasi",
+			})
+		}
+
+		// Validasi: password RTSP wajib terisi (tersimpan terenkripsi di DB).
+		if cctv.RTSPPassword == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Password RTSP belum dikonfigurasi",
+			})
+		}
 	}
 
-	// Validasi: password RTSP wajib terisi (tersimpan terenkripsi di DB).
-	if cctv.RTSPPassword == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Password RTSP belum dikonfigurasi",
-		})
-	}
-
-	// Dekripsi password RTSP AES-256.
-	decrypted, err := utils.DecryptAES256(cctv.RTSPPassword)
-	if err != nil {
-		utils.Log.Errorf("❌ Gagal mendekripsi password RTSP untuk CCTV %s: %v", cctv.ID, err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Gagal mendekripsi password RTSP",
-		})
+	// Dekripsi password RTSP AES-256 (tidak diperlukan bila rtsp_url penuh
+	// sudah memuat kredensial).
+	decrypted := ""
+	if cctv.RTSPURL == "" {
+		var err error
+		decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
+		if err != nil {
+			utils.Log.Errorf("❌ Gagal mendekripsi password RTSP untuk CCTV %s: %v", cctv.ID, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mendekripsi password RTSP",
+			})
+		}
 	}
 
 	// Tentukan tipe stream berdasarkan query ?quality= (default sub).
@@ -147,7 +157,7 @@ func StartStream(c *fiber.Ctx) error {
 	}
 
 	// Susun URL RTSP dan path MediaMTX.
-	rtspURL := utils.BuildRTSPURL(cctv.ChannelPort, decrypted, streamType)
+	rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, streamType)
 	path := utils.BuildStreamPath(cctv.ID.String())
 
 	// Daftarkan path ke MediaMTX (on-demand, ditutup otomatis setelah 30 detik).
@@ -158,11 +168,17 @@ func StartStream(c *fiber.Ctx) error {
 		SourceProtocol:           "tcp",
 	}
 	if err := streamClient.AddPath(path, pathCfg); err != nil {
-		utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Gagal menghubungi server streaming",
-		})
+		// Path mungkin sudah terdaftar dari pemanggilan sebelumnya (restart modal
+		// atau auto-register). Bila sudah ada, anggap berhasil agar tidak 502.
+		if strings.Contains(err.Error(), "already exists") {
+			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
+		} else {
+			utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal menghubungi server streaming",
+			})
+		}
 	}
 
 	// Catat aktivitas ke audit log dan sebarkan event ke client WebSocket.
@@ -255,20 +271,24 @@ func StartAllStreams(c *fiber.Ctx) error {
 	failed := 0
 
 	for _, cctv := range cctvs {
-		// Lewati dengan peringatan bila password kosong atau gagal didekripsi.
-		if cctv.RTSPPassword == "" {
-			utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati", cctv.Nama, cctv.KodeCCTV)
-			failed++
-			continue
-		}
-		decrypted, err := utils.DecryptAES256(cctv.RTSPPassword)
-		if err != nil {
-			utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
-			failed++
-			continue
+		decrypted := ""
+		if cctv.RTSPURL == "" {
+			// Lewati dengan peringatan bila password kosong atau gagal didekripsi.
+			if cctv.RTSPPassword == "" {
+				utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati", cctv.Nama, cctv.KodeCCTV)
+				failed++
+				continue
+			}
+			var err error
+			decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
+			if err != nil {
+				utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+				failed++
+				continue
+			}
 		}
 
-		rtspURL := utils.BuildRTSPURL(cctv.ChannelPort, decrypted, utils.SubStream)
+		rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 		path := utils.BuildStreamPath(cctv.ID.String())
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,
@@ -277,8 +297,14 @@ func StartAllStreams(c *fiber.Ctx) error {
 			SourceProtocol:           "tcp",
 		}
 		if err := streamClient.AddPath(path, pathCfg); err != nil {
-			utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-			failed++
+			// Path mungkin sudah terdaftar dari auto-register atau panggilan
+			// sebelumnya; bila sudah ada, anggap berhasil.
+			if strings.Contains(err.Error(), "already exists") {
+				success++
+			} else {
+				utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
+				failed++
+			}
 			continue
 		}
 		success++
@@ -460,17 +486,21 @@ func RegisterActiveStreams(db *gorm.DB) {
 	}
 
 	for _, cctv := range cctvs {
-		if cctv.RTSPPassword == "" {
-			utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati saat auto-register", cctv.Nama, cctv.KodeCCTV)
-			continue
-		}
-		decrypted, err := utils.DecryptAES256(cctv.RTSPPassword)
-		if err != nil {
-			utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
-			continue
+		decrypted := ""
+		if cctv.RTSPURL == "" {
+			if cctv.RTSPPassword == "" {
+				utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati saat auto-register", cctv.Nama, cctv.KodeCCTV)
+				continue
+			}
+			var err error
+			decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
+			if err != nil {
+				utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+				continue
+			}
 		}
 
-		rtspURL := utils.BuildRTSPURL(cctv.ChannelPort, decrypted, utils.SubStream)
+		rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 		path := utils.BuildStreamPath(cctv.ID.String())
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,

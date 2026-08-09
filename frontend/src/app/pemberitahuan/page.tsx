@@ -64,6 +64,21 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isMarkingAll, setIsMarkingAll] = useState(false);
+  // Jumlah total pemberitahuan yang belum dibaca (untuk ditampilkan di header).
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const res = await apiRequest<{ unread_count: number }>('/notifications/unread-count');
+      setUnreadCount(res.data?.unread_count ?? 0);
+    } catch {
+      // Abaikan; badge di sidebar tetap yang jadi acuan utama.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUnreadCount();
+  }, [fetchUnreadCount]);
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
@@ -92,15 +107,17 @@ export default function NotificationsPage() {
   useEffect(() => {
     const unsubscribe = subscribe(NOTIFICATION_EVENT, () => {
       fetchNotifications();
+      fetchUnreadCount();
     });
     return unsubscribe;
-  }, [subscribe, fetchNotifications]);
+  }, [subscribe, fetchNotifications, fetchUnreadCount]);
 
   const handleMarkAllRead = async () => {
     setIsMarkingAll(true);
     try {
       await apiRequest('/notifications/read-all', { method: 'PUT' });
       setNotifications((list) => list.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
       if (onlyUnread) {
         setOnlyUnread(false);
       } else {
@@ -140,7 +157,14 @@ export default function NotificationsPage() {
       <div className="space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-[-0.025em]">Pemberitahuan</h1>
+            <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-[-0.025em]">
+              Pemberitahuan
+              {unreadCount > 0 && (
+                <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold leading-5 text-white shadow-[0_2px_8px_rgba(220,38,38,0.4)]">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
               Riwayat penugasan, penyelesaian tugas, dan peringatan yang ditujukan untuk Anda.
             </p>
@@ -207,7 +231,11 @@ export default function NotificationsPage() {
                     <button
                       type="button"
                       onClick={() => handleItemClick(item)}
-                      className="flex w-full items-start gap-3.5 px-5 py-4 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className={`flex w-full items-start gap-3.5 border-l-4 px-5 py-4 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                        item.is_read
+                          ? 'border-transparent'
+                          : 'border-primary bg-primary/5'
+                      }`}
                     >
                       <span
                         className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${typeStyles[item.type] ?? 'bg-muted'}`}
@@ -219,12 +247,12 @@ export default function NotificationsPage() {
                             {item.title}
                           </span>
                           {!item.is_read && (
-                            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                            <span className="shrink-0 rounded-md bg-red-600/10 px-2 py-0.5 text-[10px] font-bold uppercase text-red-600">
                               Baru
                             </span>
                           )}
                         </span>
-                        <span className="mt-1 block text-sm leading-relaxed text-muted">{item.message}</span>
+                        <span className={`mt-1 block text-sm leading-relaxed ${item.is_read ? 'text-muted' : 'text-foreground'}`}>{item.message}</span>
                         <span className="mt-1.5 block text-[11px] text-muted/70">{formatTime(item.created_at)}</span>
                       </span>
                     </button>
