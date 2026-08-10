@@ -384,6 +384,12 @@ func StopAllStreams(c *fiber.Ctx) error {
 // @Failure      500 {object} map[string]interface{} "Gagal memuat data CCTV"
 // @Router       /streams/status [get]
 func GetStreamStatus(c *fiber.Ctx) error {
+	if config.DB == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Database belum tersedia",
+		})
+	}
 	var cctvs []models.CCTV
 	if err := config.DB.Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV untuk status stream: %v", err)
@@ -651,6 +657,12 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 // @Failure      500 {object} map[string]interface{} "Gagal memuat data CCTV"
 // @Router       /streams/health [get]
 func GetStreamHealth(c *fiber.Ctx) error {
+	if config.DB == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Database belum tersedia",
+		})
+	}
 	var cctvs []models.CCTV
 	if err := config.DB.Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV untuk status kesehatan stream: %v", err)
