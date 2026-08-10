@@ -46,18 +46,21 @@ type healthScoreMetrics struct {
 }
 
 // RunHealthScoreCalculator menghitung ulang seluruh skor saat startup lalu
-// mengulanginya setiap enam jam agar data yang menua tetap tercermin.
+// mengulanginya setiap enam jam agar data yang menua tetap tercermin. Sekaligus
+// membersihkan histori skor kesehatan lama agar tabel tidak membengkak.
 func RunHealthScoreCalculator(db *gorm.DB) {
 	if db == nil {
 		return
 	}
 
 	CalculateAllCCTVHealthScoresAt(db, time.Now())
+	cleanupOldHealthHistories(db)
 
 	ticker := time.NewTicker(healthScoreCalculatorTick)
 	defer ticker.Stop()
 	for range ticker.C {
 		CalculateAllCCTVHealthScoresAt(db, time.Now())
+		cleanupOldHealthHistories(db)
 	}
 }
 
