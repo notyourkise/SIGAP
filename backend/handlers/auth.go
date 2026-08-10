@@ -334,6 +334,9 @@ func GetMyProfile(c *fiber.Ctx) error {
 			"must_change_password": user.MustChangePassword,
 			"profile_photo_url":    user.ProfilePhotoURL,
 			"email_notifications":  user.EmailNotifications,
+			"email_daily_digest":   user.EmailDailyDigest,
+			"email_overdue":        user.EmailOverdue,
+			"email_stock_low":      user.EmailStockLow,
 		},
 	})
 }

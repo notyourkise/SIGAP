@@ -1,5 +1,62 @@
 # Changelog - Backend SIGAP
 
+## [0.53.1] - 2026-08-10
+
+### Fix: Race/Panic pada middleware API Key (last_used_at)
+
+perubahan yang dilakukan: **Update `last_used_at` API key diubah dari goroutine async menjadi sinkron, menghilangkan race/panic saat `config.DB` berubah.**
+
+before: `last_used_at` diperbarui dalam goroutine async yang memakai `config.DB` global setelah handler selesai; di lingkungan uji/CI `config.DB` bisa menjadi nil (cleanup `defer`) sehingga terjadi nil pointer dereference (flaky).
+
+after:
+- `backend/middleware/apikey.go`: update `last_used_at` dijalankan sinkron + guard `config.DB != nil`; hapus goroutine & import `uuid` yang tidak terpakai.
+- `backend/middleware/apikey_test.go`: perbarui komentar (sinkron).
+
+timestamp: 2026-08-10 14:45 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/middleware/apikey.go
+- backend/middleware/apikey_test.go
+
+## [0.53.0] - 2026-08-10
+
+### Fitur: Notifikasi & Preferensi Email (Sprint 32 - P6, P7a)
+
+perubahan yang dilakukan: **Menambahkan cleanup otomatis notifikasi lama dan preferensi email granular per-tipe.**
+
+before:
+- Tabel `notifications` tumbuh tanpa batas (tidak ada cleanup otomatis).
+- `EmailNotifications` satu toggle untuk semua jenis email; user tidak bisa pilih per-tipe (digest/overdue/stock).
+
+after:
+- **P6 — Cleanup notifikasi (Task 13.6)**:
+  - `CleanupOldNotifications(db)` — hapus yang dibaca >30 hari & belum dibaca >90 hari (hard delete via Unscoped).
+  - `StartNotificationCleanup(db)` — goroutine saat startup lalu tiap 7 hari.
+  - Endpoint admin `DELETE /api/notifications/cleanup?older_than=30` → `{deleted_read, deleted_unread, total_deleted}`.
+  - `GetNotifications` respons tambah field `total_count`.
+  - Route `DELETE /cleanup` (admin-only) + registrasi di main.go.
+  - Unit test `TestCleanupOldNotifications`, `TestAdminCleanupEndpoint`.
+- **P7a — Preferensi email granular (Task 13.7)**:
+  - Migration `000013_email_prefs_granular` (up/down): kolom `email_daily_digest`, `email_overdue`, `email_stock_low` (default true, sync dengan email_notifications).
+  - Model `User` tambah 3 field; `EmailNotifications` tetap master toggle.
+  - `PUT /api/profile/email-preferences` terima body granular; sinkronisasi master (false jika semua nonaktif, true jika minimal satu aktif).
+  - Gate pengiriman email: digest → `email_daily_digest`, overdue → `email_overdue`, stock low → `email_stock_low`.
+  - Unit test `TestUpdateEmailPreferences_Granular`, `TestUpdateEmailPreferences_AllOff`.
+
+timestamp: 2026-08-10 14:30 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/migrations/000013_email_prefs_granular.up.sql (baru)
+- backend/migrations/000013_email_prefs_granular.down.sql (baru)
+- backend/models/setup.go
+- backend/handlers/notification.go
+- backend/handlers/notification_test.go
+- backend/handlers/email.go
+- backend/handlers/email_test.go
+- backend/handlers/auth.go
+- backend/routes/notification.go
+- backend/main.go
+
 ## [0.52.0] - 2026-08-10
 
 ### Fitur: Keamanan & Integritas Data (Sprint 31 - P1, P3, P4, P5)

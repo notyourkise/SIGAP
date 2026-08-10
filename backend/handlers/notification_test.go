@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"sigap-backend/config"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -242,6 +244,52 @@ func TestMarkAllNotificationsRead_NoIdentity(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("PUT", "/notifications/read-all", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCleanupOldNotifications memastikan CleanupOldNotifications menghapus
+// notifikasi dibaca lama (>30 hari) dan belum dibaca lama (>90 hari) (Task 13.6).
+func TestCleanupOldNotifications(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	mock.ExpectExec(`^DELETE FROM "notifications" WHERE is_read = \$1 AND created_at < \$2$`).
+		WithArgs(true, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 4))
+	mock.ExpectExec(`^DELETE FROM "notifications" WHERE is_read = \$1 AND created_at < \$2$`).
+		WithArgs(false, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	deletedRead, deletedUnread := CleanupOldNotifications(config.DB)
+	assert.Equal(t, int64(4), deletedRead)
+	assert.Equal(t, int64(2), deletedUnread)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestAdminCleanupEndpoint memastikan endpoint DELETE /notifications/cleanup
+// menghapus notifikasi lama dan mengembalikan jumlah terhapus (Task 13.6).
+func TestAdminCleanupEndpoint(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	mock.ExpectExec(`^DELETE FROM "notifications" WHERE is_read = \$1 AND created_at < \$2$`).
+		WithArgs(true, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectExec(`^DELETE FROM "notifications" WHERE is_read = \$1 AND created_at < \$2$`).
+		WithArgs(false, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	app := newTestApp()
+	app.Delete("/notifications/cleanup", withUserLocals(uuid.New().String(), "admin"), AdminCleanupNotifications)
+
+	resp, err := app.Test(httptest.NewRequest("DELETE", "/notifications/cleanup?older_than=7", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "success", result["status"])
+	assert.Equal(t, float64(3), result["deleted_read"])
+	assert.Equal(t, float64(1), result["deleted_unread"])
+	assert.Equal(t, float64(4), result["total_deleted"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -13,9 +13,13 @@ import (
 )
 
 // EmailPreferencesRequest adalah body untuk memperbarui preferensi notifikasi
-// email pengguna yang sedang login.
+// email pengguna yang sedang login. Mendukung preferensi granular per-tipe
+// (Task 13.7): ringkasan harian, eskalasi overdue, stok suku cadang rendah.
 type EmailPreferencesRequest struct {
-	EmailNotifications *bool `json:"email_notifications" validate:"required"`
+	EmailNotifications *bool `json:"email_notifications"`
+	EmailDailyDigest   *bool `json:"email_daily_digest"`
+	EmailOverdue       *bool `json:"email_overdue"`
+	EmailStockLow      *bool `json:"email_stock_low"`
 }
 
 // UpdateEmailPreferences memperbarui preferensi notifikasi email pengguna.
@@ -47,10 +51,12 @@ func UpdateEmailPreferences(c *fiber.Ctx) error {
 			"message": "Format input tidak valid",
 		})
 	}
-	if req.EmailNotifications == nil {
+
+	// Harus ada minimal satu field yang dikirim.
+	if req.EmailNotifications == nil && req.EmailDailyDigest == nil && req.EmailOverdue == nil && req.EmailStockLow == nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Field email_notifications wajib diisi",
+			"message": "Setidaknya satu preferensi email harus diisi",
 		})
 	}
 
@@ -62,7 +68,32 @@ func UpdateEmailPreferences(c *fiber.Ctx) error {
 		})
 	}
 
-	user.EmailNotifications = *req.EmailNotifications
+	// Master toggle: bila dikirim, set email_notifications. Bila dimatikan,
+	// semua email diblokir.
+	if req.EmailNotifications != nil {
+		user.EmailNotifications = *req.EmailNotifications
+		if !*req.EmailNotifications {
+			user.EmailDailyDigest = false
+			user.EmailOverdue = false
+			user.EmailStockLow = false
+		}
+	}
+
+	// Preferensi granular per-tipe.
+	if req.EmailDailyDigest != nil {
+		user.EmailDailyDigest = *req.EmailDailyDigest
+	}
+	if req.EmailOverdue != nil {
+		user.EmailOverdue = *req.EmailOverdue
+	}
+	if req.EmailStockLow != nil {
+		user.EmailStockLow = *req.EmailStockLow
+	}
+
+	// Sinkronkan master toggle: bila setidaknya satu sub-preferensi aktif,
+	// email_notifications menjadi true; bila semua nonaktif, menjadi false.
+	user.EmailNotifications = user.EmailDailyDigest || user.EmailOverdue || user.EmailStockLow
+
 	if err := config.DB.Save(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -71,13 +102,17 @@ func UpdateEmailPreferences(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "UPDATE_EMAIL_PREFERENCES", "USER",
-		fmt.Sprintf("Pengguna %s mengubah preferensi email menjadi %v", user.Username, *req.EmailNotifications),
+		fmt.Sprintf("Pengguna %s mengubah preferensi email (master=%v, digest=%v, overdue=%v, stock=%v)",
+			user.Username, user.EmailNotifications, user.EmailDailyDigest, user.EmailOverdue, user.EmailStockLow),
 		&user.ID, user.Username, user.Role)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
 			"email_notifications": user.EmailNotifications,
+			"email_daily_digest":  user.EmailDailyDigest,
+			"email_overdue":       user.EmailOverdue,
+			"email_stock_low":     user.EmailStockLow,
 		},
 	})
 }
@@ -90,8 +125,8 @@ func SendDailySummaryEmails(db *gorm.DB, digest *models.DailyDigest) error {
 	}
 
 	var admins []models.User
-	if err := db.Where("role = ? AND email_notifications = ? AND deleted_at IS NULL", "admin", true).
-		Find(&admins).Error; err != nil {
+	if err := db.Where("role = ? AND email_notifications = ? AND email_daily_digest = ? AND deleted_at IS NULL",
+		"admin", true, true).Find(&admins).Error; err != nil {
 		return err
 	}
 
@@ -136,7 +171,7 @@ func SendOverdueEmail(db *gorm.DB, logEntry *models.MaintenanceLog) {
 	}
 
 	sendToUser := func(u models.User, status string) {
-		if u.Email == "" || !u.EmailNotifications {
+		if u.Email == "" || !u.EmailNotifications || !u.EmailOverdue {
 			return
 		}
 		body, err := utils.RenderEmailTemplate("overdue_escalation.html", map[string]interface{}{
@@ -156,10 +191,10 @@ func SendOverdueEmail(db *gorm.DB, logEntry *models.MaintenanceLog) {
 		}
 	}
 
-	// Kirim ke seluruh admin yang opt-in.
+	// Kirim ke seluruh admin yang opt-in (overdue).
 	var admins []models.User
-	if err := db.Where("role = ? AND email_notifications = ? AND deleted_at IS NULL", "admin", true).
-		Find(&admins).Error; err == nil {
+	if err := db.Where("role = ? AND email_notifications = ? AND email_overdue = ? AND deleted_at IS NULL",
+		"admin", true, true).Find(&admins).Error; err == nil {
 		for _, a := range admins {
 			sendToUser(a, "Terlambat")
 		}
@@ -183,8 +218,8 @@ func SendStockLowEmail(db *gorm.DB, sparePart *models.SparePart, newStock int) {
 
 	subject := "Peringatan Stok Rendah: " + sparePart.Nama
 	var admins []models.User
-	if err := db.Where("role = ? AND email_notifications = ? AND deleted_at IS NULL", "admin", true).
-		Find(&admins).Error; err != nil {
+	if err := db.Where("role = ? AND email_notifications = ? AND email_stock_low = ? AND deleted_at IS NULL",
+		"admin", true, true).Find(&admins).Error; err != nil {
 		return
 	}
 

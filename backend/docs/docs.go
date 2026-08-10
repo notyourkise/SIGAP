@@ -3347,6 +3347,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/notifications/cleanup": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus notifikasi yang sudah dibaca lebih lama dari N hari (default 30). Khusus admin.",
+                "tags": [
+                    "Notifikasi"
+                ],
+                "summary": "Bersihkan Notifikasi Lama (Admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Batas umur notifikasi (hari, default 30)",
+                        "name": "older_than",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cleanup selesai",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: hanya admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/notifications/read-all": {
             "put": {
                 "security": [
@@ -7094,11 +7139,17 @@ const docTemplate = `{
         },
         "handlers.EmailPreferencesRequest": {
             "type": "object",
-            "required": [
-                "email_notifications"
-            ],
             "properties": {
+                "email_daily_digest": {
+                    "type": "boolean"
+                },
                 "email_notifications": {
+                    "type": "boolean"
+                },
+                "email_overdue": {
+                    "type": "boolean"
+                },
+                "email_stock_low": {
                     "type": "boolean"
                 }
             }

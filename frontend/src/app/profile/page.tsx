@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AtSign,
@@ -32,6 +32,9 @@ interface ProfileResponse {
   role: 'admin' | 'teknisi';
   profile_photo_url: string;
   email_notifications?: boolean;
+  email_daily_digest?: boolean;
+  email_overdue?: boolean;
+  email_stock_low?: boolean;
 }
 
 export default function ProfilePage() {
@@ -44,9 +47,18 @@ export default function ProfilePage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Preferensi notifikasi email (Task 11.3)
+  // Preferensi notifikasi email (Task 11.3 + Task 13.7 granular)
   const [emailNotifications, setEmailNotifications] = useState<boolean>(
     user?.email_notifications ?? true
+  );
+  const [emailDailyDigest, setEmailDailyDigest] = useState<boolean>(
+    user?.email_daily_digest ?? true
+  );
+  const [emailOverdue, setEmailOverdue] = useState<boolean>(
+    user?.email_overdue ?? true
+  );
+  const [emailStockLow, setEmailStockLow] = useState<boolean>(
+    user?.email_stock_low ?? true
   );
   const [savingEmailPref, setSavingEmailPref] = useState(false);
 
@@ -136,33 +148,77 @@ export default function ProfilePage() {
     }
   };
 
-  // Simpan preferensi notifikasi email ke backend.
-  const handleToggleEmailNotifications = async (checked: boolean) => {
-    setError('');
-    setSuccess('');
+  // Kirim preferensi email ke backend (auto-save). payload berisi field yang berubah.
+  const persistEmailPrefs = async (payload: Record<string, boolean>) => {
     setSavingEmailPref(true);
-    // Optimistic update agar UI responsif.
-    setEmailNotifications(checked);
     try {
-      const response = await apiRequest<{ email_notifications: boolean }>('/profile/email-preferences', {
+      const response = await apiRequest<ProfileResponse>('/profile/email-preferences', {
         method: 'PUT',
-        body: JSON.stringify({ email_notifications: checked }),
+        body: JSON.stringify(payload),
       });
       if (response.status === 'success' && response.data) {
-        setEmailNotifications(response.data.email_notifications);
+        setEmailNotifications(response.data.email_notifications ?? emailNotifications);
+        setEmailDailyDigest(response.data.email_daily_digest ?? emailDailyDigest);
+        setEmailOverdue(response.data.email_overdue ?? emailOverdue);
+        setEmailStockLow(response.data.email_stock_low ?? emailStockLow);
         if (user) {
-          updateUser({ ...user, email_notifications: response.data.email_notifications });
+          updateUser({ ...user, ...response.data });
         }
-        setSuccess(checked ? 'Notifikasi email diaktifkan.' : 'Notifikasi email dinonaktifkan.');
+        setSuccess('Preferensi email berhasil disimpan.');
+      } else {
+        throw new Error(response.message || 'Preferensi email belum dapat disimpan.');
       }
     } catch (err: unknown) {
-      // Rollback pada kegagalan.
-      setEmailNotifications(!checked);
       setError(err instanceof Error ? err.message : 'Preferensi email belum dapat disimpan. Coba lagi.');
+      // Re-sync dari user (rollback).
+      setEmailNotifications(user?.email_notifications ?? true);
+      setEmailDailyDigest(user?.email_daily_digest ?? true);
+      setEmailOverdue(user?.email_overdue ?? true);
+      setEmailStockLow(user?.email_stock_low ?? true);
     } finally {
       setSavingEmailPref(false);
     }
   };
+
+  // Debounce ref untuk auto-save.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Master toggle: bila dimatikan, kirim email_notifications=false (backend juga
+  // mematikan sub-prefs). Bila dinyalakan, kirim email_notifications=true.
+  const handleToggleMasterEmail = (checked: boolean) => {
+    setEmailNotifications(checked);
+    if (!checked) {
+      setEmailDailyDigest(false);
+      setEmailOverdue(false);
+      setEmailStockLow(false);
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      persistEmailPrefs({ email_notifications: checked });
+    }, 500);
+  };
+
+  // Sub-toggle granular per-tipe.
+  const handleToggleSubEmail = (
+    key: 'email_daily_digest' | 'email_overdue' | 'email_stock_low',
+    checked: boolean
+  ) => {
+    if (key === 'email_daily_digest') setEmailDailyDigest(checked);
+    else if (key === 'email_overdue') setEmailOverdue(checked);
+    else setEmailStockLow(checked);
+    // Mematikan sub-pref juga mematikan master bila semua nonaktif; backend menangani sinkronisasi.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      persistEmailPrefs({ [key]: checked });
+    }, 500);
+  };
+
+  // Bersihkan timer debounce saat unmount.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const formatDate = (value?: string) => {
     if (!value) return '—';
@@ -333,21 +389,22 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Preferensi email (Task 11.3) */}
+        {/* Preferensi email (Task 11.3 + Task 13.7 granular) */}
         <section aria-labelledby="email-settings-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-5 py-4">
             <h2 id="email-settings-heading" className="text-base font-bold">Notifikasi Email</h2>
             <p className="mt-0.5 text-xs text-muted">
-              Terima ringkasan harian, eskalasi tugas terlambat, dan peringatan stok suku cadang ke email terdaftar.
+              Pilih jenis email yang ingin Anda terima. Perubahan tersimpan otomatis.
             </p>
           </div>
-          <div className="p-5">
+          <div className="space-y-4 p-5">
+            {/* Master toggle */}
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-medium">
-                    Terima notifikasi email {user?.email ? `(${user.email})` : ''}
+                    Aktifkan notifikasi email {user?.email ? `(${user.email})` : ''}
                   </p>
                   <p className="mt-1 max-w-lg text-xs text-muted">
                     {emailNotifications
@@ -356,26 +413,39 @@ export default function ProfilePage() {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={emailNotifications}
-                disabled={savingEmailPref || !user?.email}
-                onClick={() => handleToggleEmailNotifications(!emailNotifications)}
-                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60 ${
-                  emailNotifications ? 'bg-primary' : 'bg-border'
-                }`}
-                aria-label="Aktifkan atau nonaktifkan notifikasi email"
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                    emailNotifications ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch checked={emailNotifications} disabled={savingEmailPref || !user?.email} onChange={handleToggleMasterEmail} label="Aktifkan atau nonaktifkan notifikasi email" />
             </div>
+
+            {/* Sub-toggle granular */}
+            <div className={`space-y-3 rounded-xl border border-border bg-background/40 p-4 transition-opacity ${emailNotifications ? '' : 'opacity-60'}`}>
+              <EmailPrefRow
+                icon="📅"
+                title="Ringkasan Harian"
+                description="Terima laporan operasional setiap pagi pukul 06:00 WITA."
+                checked={emailDailyDigest}
+                disabled={savingEmailPref || !emailNotifications || !user?.email}
+                onChange={(v) => handleToggleSubEmail('email_daily_digest', v)}
+              />
+              <EmailPrefRow
+                icon="⚠️"
+                title="Eskalasi Overdue"
+                description="Notif saat tugas melewati batas waktu penyelesaian."
+                checked={emailOverdue}
+                disabled={savingEmailPref || !emailNotifications || !user?.email}
+                onChange={(v) => handleToggleSubEmail('email_overdue', v)}
+              />
+              <EmailPrefRow
+                icon="📦"
+                title="Stok Suku Cadang Rendah"
+                description="Alert saat stok suku cadang di bawah minimum."
+                checked={emailStockLow}
+                disabled={savingEmailPref || !emailNotifications || !user?.email}
+                onChange={(v) => handleToggleSubEmail('email_stock_low', v)}
+              />
+            </div>
+
             {!user?.email && (
-              <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-warning">
+              <p className="rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-warning">
                 Belum ada email terdaftar pada akun Anda. Hubungi admin untuk melengkapi alamat email.
               </p>
             )}
@@ -383,5 +453,68 @@ export default function ProfilePage() {
         </section>
       </div>
     </DashboardLayout>
+  );
+}
+
+// Toggle switch reusable (role=switch) untuk preferensi email.
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60 ${
+        checked ? 'bg-primary' : 'bg-border'
+      }`}
+      aria-label={label}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+          checked ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  );
+}
+
+// Baris preferensi email granular (ikon + judul + deskripsi + toggle).
+function EmailPrefRow({
+  icon,
+  title,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 h-5 w-5 shrink-0 text-lg leading-none" aria-hidden="true">{icon}</span>
+        <div>
+          <p className="text-sm font-medium">{title}</p>
+          <p className="mt-0.5 max-w-md text-xs text-muted">{description}</p>
+        </div>
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} label={`Aktifkan atau nonaktifkan ${title}`} />
+    </div>
   );
 }

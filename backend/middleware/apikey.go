@@ -10,7 +10,6 @@ import (
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -152,12 +151,15 @@ func authenticateAPIKey(c *fiber.Ctx, requiredScope string) error {
 		})
 	}
 
-	// Catat last_used_at (async, tidak menghambat respons).
-	id := matched.ID
-	go func(uid uuid.UUID) {
-		_ = config.DB.Model(&models.APIKey{}).Where("id = ?", uid).
-			Update("last_used_at", time.Now()).Error
-	}(id)
+	// Catat last_used_at. Dilakukan sinkron (bukan goroutine) untuk menghindari
+	// race/panic bila koneksi DB berubah antara pemanggilan handler dan eksekusi
+	// goroutine (mis. di lingkungan uji). Kegagalan update tidak memblokir layanan.
+	if config.DB != nil {
+		if err := config.DB.Model(&models.APIKey{}).Where("id = ?", matched.ID).
+			Update("last_used_at", time.Now()).Error; err != nil {
+			utils.Log.Warnf("⚠️ Gagal memperbarui last_used_at API key: %v", err)
+		}
+	}
 
 	// Set identitas untuk handler.
 	c.Locals("api_key_id", matched.ID.String())

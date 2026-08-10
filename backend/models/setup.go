@@ -43,8 +43,15 @@ type User struct {
 	MustChangePassword bool `gorm:"type:boolean;not null;default:false" json:"must_change_password"`
 	// EmailNotifications menandai apakah pengguna menerima notifikasi email
 	// (ringkasan harian, eskalasi overdue, stok rendah). Default true; dapat
-	// dimatikan lewat endpoint PUT /api/profile/email-preferences.
+	// dimatikan lewat endpoint PUT /api/profile/email-preferences. Bertindak
+	// sebagai master toggle — bila false, semua email diblokir.
 	EmailNotifications bool `gorm:"type:boolean;not null;default:true" json:"email_notifications"`
+	// Preferensi granular per-tipe email (Task 13.7, Sprint 32). Default true;
+	// di-sync dengan EmailNotifications saat migrasi. Hanya berlaku bila
+	// EmailNotifications (master) aktif.
+	EmailDailyDigest bool `gorm:"type:boolean;not null;default:true" json:"email_daily_digest"`
+	EmailOverdue     bool `gorm:"type:boolean;not null;default:true" json:"email_overdue"`
+	EmailStockLow    bool `gorm:"type:boolean;not null;default:true" json:"email_stock_low"`
 }
 
 type MaintenanceLog struct {

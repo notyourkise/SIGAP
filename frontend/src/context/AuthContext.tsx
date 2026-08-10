@@ -14,6 +14,10 @@ export interface User {
   profile_photo_url?: string;
   // Preferensi notifikasi email (Task 11.3) — dikelola di halaman profil.
   email_notifications?: boolean;
+  // Preferensi email granular per-tipe (Task 13.7, Sprint 32).
+  email_daily_digest?: boolean;
+  email_overdue?: boolean;
+  email_stock_low?: boolean;
 }
 
 interface AuthContextType {
