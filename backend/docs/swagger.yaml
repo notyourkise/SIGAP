@@ -38,7 +38,6 @@ definitions:
         type: string
     required:
     - new_password
-    - old_password
     type: object
   handlers.CompleteMaintenanceLogRequest:
     properties:
@@ -106,14 +105,12 @@ definitions:
         minLength: 3
         type: string
       latitude:
-        maxLength: 50
-        type: string
+        type: number
       lokasi_area:
         maxLength: 255
         type: string
       longitude:
-        maxLength: 50
-        type: string
+        type: number
       nama:
         maxLength: 100
         minLength: 3
@@ -122,6 +119,9 @@ definitions:
         maxLength: 100
         type: string
       rtsp_password:
+        type: string
+      rtsp_url:
+        maxLength: 500
         type: string
       status:
         enum:
@@ -480,14 +480,12 @@ definitions:
         minLength: 3
         type: string
       latitude:
-        maxLength: 50
-        type: string
+        type: number
       lokasi_area:
         maxLength: 255
         type: string
       longitude:
-        maxLength: 50
-        type: string
+        type: number
       nama:
         maxLength: 100
         minLength: 3
@@ -496,6 +494,9 @@ definitions:
         maxLength: 100
         type: string
       rtsp_password:
+        type: string
+      rtsp_url:
+        maxLength: 500
         type: string
       status:
         enum:

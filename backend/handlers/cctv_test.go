@@ -38,7 +38,7 @@ func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
 		"channel_port", "rtsp_password", "stream_enabled",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
-		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
+		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
 		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload", 100, 19, "encrypted-rtsp", true)
 	return rows, id
 }
@@ -395,4 +395,128 @@ func TestNormalizeCCTVStatus(t *testing.T) {
 			assert.Equal(t, tt.want, normalizeCCTVStatus(tt.in))
 		})
 	}
+}
+
+// TestRTSPPasswordNotInResponse memastikan password RTSP tidak bocor pada
+// respons JSON (Task 13.3 / P3). Diuji lewat GET /cctv/:id dan POST /cctv/scan.
+func TestRTSPPasswordNotInResponse(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+
+	t.Run("GetByID", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		rows, id := cctvMockRow()
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+
+		app := newTestApp()
+		app.Get("/cctv/:id", GetCCTVByID)
+		resp, err := app.Test(httptest.NewRequest("GET", "/cctv/"+id.String(), nil))
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		data := result["data"].(map[string]interface{})
+		val, exists := data["rtsp_password"]
+		if exists {
+			assert.Equal(t, "", val, "rtsp_password tidak boleh berisi nilai")
+		}
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("Scan", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		rows, _ := cctvMockRow()
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+
+		cctvID := uuid.New()
+		encrypted, err := utils.EncryptAES256(cctvID.String())
+		assert.NoError(t, err)
+
+		app := newTestApp()
+		app.Post("/cctv/scan", ScanCCTV)
+		payload := `{"qr_payload":"` + encrypted + `"}`
+		req := httptest.NewRequest("POST", "/cctv/scan", strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		data := result["data"].(map[string]interface{})
+		val, exists := data["rtsp_password"]
+		if exists {
+			assert.Equal(t, "", val, "rtsp_password tidak boleh berisi nilai")
+		}
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// TestCreateCCTV_LatitudeOutOfRange memastikan latitude di luar rentang -90..90
+// ditolak dengan 400 (Task 13.1).
+func TestCreateCCTV_LatitudeOutOfRange(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+	_, mock := setupMockGORM(t)
+
+	app := newTestApp()
+	app.Post("/cctv", CreateCCTV)
+
+	payload := `{"kode_cctv":"CCTV-LAT","nama":"Kamera LAT","status":"aktif","latitude":200}`
+	req := httptest.NewRequest("POST", "/cctv", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCreateCCTV_ChannelPortRange memastikan channel_port di luar 1-35 ditolak
+// dengan 400 (Task 13.4).
+func TestCreateCCTV_ChannelPortRange(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+	_, mock := setupMockGORM(t)
+
+	app := newTestApp()
+	app.Post("/cctv", CreateCCTV)
+
+	payload := `{"kode_cctv":"CCTV-PORT","nama":"Kamera PORT","status":"aktif","channel_port":40}`
+	req := httptest.NewRequest("POST", "/cctv", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCreateCCTV_ChannelPortDuplicate memastikan channel_port yang sudah dipakai
+// CCTV lain ditolak dengan 400 (Task 13.4).
+func TestCreateCCTV_ChannelPortDuplicate(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+	_, mock := setupMockGORM(t)
+	existingID := uuid.New()
+
+	// Query keunikan channel_port menemukan CCTV lain.
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs" WHERE channel_port =`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at", "kode_cctv", "id_channel",
+			"nama", "lokasi_area", "longitude", "latitude", "jenis_cctv", "sumber_listrik",
+			"tipe_koneksi", "indoor_outdoor", "pemilik", "status", "ip_nvr", "ip_camera",
+			"keterangan", "qr_payload", "health_score", "channel_port", "rtsp_password", "stream_enabled",
+		}).AddRow(existingID, time.Now(), time.Now(), nil, "CCTV-010", "", "Kamera Lama", "",
+			nil, nil, "", "", "", "", "", "aktif", "", "", "", "payload", 100, 19, "", false))
+
+	app := newTestApp()
+	app.Post("/cctv", CreateCCTV)
+
+	payload := `{"kode_cctv":"CCTV-011","nama":"Kamera Baru","status":"aktif","channel_port":19}`
+	req := httptest.NewRequest("POST", "/cctv", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }

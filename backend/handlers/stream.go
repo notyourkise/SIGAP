@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -480,45 +481,138 @@ func GetStreamURL(c *fiber.Ctx) error {
 }
 
 // RegisterActiveStreams mendaftarkan seluruh CCTV stream_enabled ke MediaMTX
-// saat aplikasi mulai berjalan (dipanggil sebagai goroutine).
+// saat aplikasi mulai berjalan (dipanggil sebagai goroutine). Sebelum iterasi,
+// menunggu MediaMTX siap; tiap CCTV didaftarkan dengan retry terbatas.
 func RegisterActiveStreams(db *gorm.DB) {
 	if db == nil {
 		return
 	}
+	if !waitForMediaMTX(2 * time.Minute) {
+		utils.Log.Error("MediaMTX tidak siap setelah 2 menit, stream registration dibatalkan")
+		return
+	}
+
 	var cctvs []models.CCTV
 	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV aktif untuk auto-register: %v", err)
 		return
 	}
 
+	successCount, failCount := 0, 0
 	for _, cctv := range cctvs {
-		decrypted := ""
-		if cctv.RTSPURL == "" {
-			if cctv.RTSPPassword == "" {
-				utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati saat auto-register", cctv.Nama, cctv.KodeCCTV)
-				continue
-			}
-			var err error
-			decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
-			if err != nil {
-				utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
-				continue
-			}
+		if err := registerStreamWithRetry(cctv, 5); err != nil {
+			utils.Log.Warnf("⚠️ Gagal register stream CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+			failCount++
+		} else {
+			successCount++
 		}
+	}
+	utils.Log.Infof("Stream registration selesai: %d berhasil, %d gagal", successCount, failCount)
+}
 
-		rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
-		path := utils.BuildStreamPath(cctv.ID.String())
-		pathCfg := utils.PathConfig{
-			Source:                   rtspURL,
-			SourceOnDemand:           true,
-			SourceOnDemandCloseAfter: "30s",
-			SourceProtocol:           "tcp",
+// waitForMediaMTX mem-poll endpoint config MediaMTX hingga siap atau timeout.
+func waitForMediaMTX(maxWait time.Duration) bool {
+	deadline := time.Now().Add(maxWait)
+	for {
+		if err := streamClient.Ping(); err == nil {
+			return true
 		}
-		if err := streamClient.AddPath(path, pathCfg); err != nil {
-			utils.Log.Errorf("❌ Gagal auto-register path streaming %s: %v", path, err)
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// registerStreamWithRetry mendaftarkan stream satu CCTV ke MediaMTX dengan
+// exponential backoff (2s, 4s, 8s, 16s, 30s) hingga maxRetry percobaan.
+func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
+	decrypted := ""
+	if cctv.RTSPURL == "" {
+		if cctv.RTSPPassword == "" {
+			return fmt.Errorf("password RTSP kosong")
+		}
+		var err error
+		decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
+		if err != nil {
+			return fmt.Errorf("gagal mendekripsi password RTSP: %w", err)
+		}
+	}
+
+	rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
+	path := utils.BuildStreamPath(cctv.ID.String())
+	pathCfg := utils.PathConfig{
+		Source:                   rtspURL,
+		SourceOnDemand:           true,
+		SourceOnDemandCloseAfter: "30s",
+		SourceProtocol:           "tcp",
+	}
+
+	backoff := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
+	for attempt := 0; attempt < maxRetry; attempt++ {
+		err := streamClient.AddPath(path, pathCfg)
+		if err == nil {
+			utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
+			return nil
+		}
+		// Path sudah ada → dianggap berhasil.
+		if strings.Contains(err.Error(), "already exists") {
+			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
+			return nil
+		}
+		utils.Log.Warnf("⚠️ Percobaan %d/%d register stream %s gagal: %v", attempt+1, maxRetry, path, err)
+		if attempt < maxRetry-1 {
+			time.Sleep(backoff[attempt])
+		}
+	}
+	return fmt.Errorf("gagal setelah %d percobaan", maxRetry)
+}
+
+// ReRegisterFailedStreams memeriksa CCTV stream_enabled yang belum terdaftar di
+// MediaMTX lalu mencoba mendaftarkan ulang. Dipanggil berkala oleh scheduler.
+func ReRegisterFailedStreams(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	var cctvs []models.CCTV
+	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
+		utils.Log.Errorf("❌ Gagal memuat CCTV untuk re-register: %v", err)
+		return
+	}
+
+	// Bangun set path yang sudah ada di MediaMTX.
+	existing := map[string]bool{}
+	if paths, err := streamClient.ListPaths(); err == nil {
+		for _, p := range paths {
+			existing[p.Name] = true
+		}
+	} else {
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar path MediaMTX untuk re-register: %v", err)
+		return
+	}
+
+	for _, cctv := range cctvs {
+		path := utils.BuildStreamPath(cctv.ID.String())
+		if existing[path] {
 			continue
 		}
-		utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
+		if err := registerStreamWithRetry(cctv, 3); err != nil {
+			utils.Log.Warnf("⚠️ Re-register stream CCTV %s (%s) gagal: %v", cctv.Nama, cctv.KodeCCTV, err)
+		}
+	}
+}
+
+// RunStreamReRegistrar menjalankan ReRegisterFailedStreams sekali segera lalu
+// berulang setiap 10 menit untuk menutup celah stream yang belum terdaftar.
+func RunStreamReRegistrar(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	ReRegisterFailedStreams(db)
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		ReRegisterFailedStreams(db)
 	}
 }
 

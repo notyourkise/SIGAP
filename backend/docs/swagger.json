@@ -6680,8 +6680,7 @@
         "handlers.ChangePasswordRequest": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "new_password"
             ],
             "properties": {
                 "new_password": {
@@ -6790,16 +6789,14 @@
                     "minLength": 3
                 },
                 "latitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "lokasi_area": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "longitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "nama": {
                     "type": "string",
@@ -6812,6 +6809,10 @@
                 },
                 "rtsp_password": {
                     "type": "string"
+                },
+                "rtsp_url": {
+                    "type": "string",
+                    "maxLength": 500
                 },
                 "status": {
                     "type": "string",
@@ -7304,16 +7305,14 @@
                     "minLength": 3
                 },
                 "latitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "lokasi_area": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "longitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "nama": {
                     "type": "string",
@@ -7326,6 +7325,10 @@
                 },
                 "rtsp_password": {
                     "type": "string"
+                },
+                "rtsp_url": {
+                    "type": "string",
+                    "maxLength": 500
                 },
                 "status": {
                     "type": "string",

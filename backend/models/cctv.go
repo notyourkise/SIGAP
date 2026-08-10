@@ -8,10 +8,10 @@ type CCTV struct {
 	KodeCCTV      string `gorm:"type:varchar(50);uniqueIndex;not null" json:"kode_cctv"`
 	IDChannel     string `gorm:"type:varchar(50)" json:"id_channel"`
 	Nama          string `gorm:"type:varchar(100);not null" json:"nama"`
-	LokasiArea    string `gorm:"type:varchar(255)" json:"lokasi_area"`
-	Longitude     string `gorm:"type:varchar(50)" json:"longitude"`
-	Latitude      string `gorm:"type:varchar(50)" json:"latitude"`
-	JenisCCTV     string `gorm:"type:varchar(50)" json:"jenis_cctv"`
+	LokasiArea    string   `gorm:"type:varchar(255)" json:"lokasi_area"`
+	Longitude     *float64 `gorm:"type:double precision" json:"longitude"`
+	Latitude      *float64 `gorm:"type:double precision" json:"latitude"`
+	JenisCCTV     string   `gorm:"type:varchar(50)" json:"jenis_cctv"`
 	SumberListrik string `gorm:"type:varchar(50)" json:"sumber_listrik"`
 	TipeKoneksi   string `gorm:"type:varchar(50)" json:"tipe_koneksi"`
 	IndoorOutdoor string `gorm:"type:varchar(20)" json:"indoor_outdoor"`

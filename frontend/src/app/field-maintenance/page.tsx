@@ -68,8 +68,8 @@ interface FieldMaintenance {
     nama: string;
     lokasi_area: string;
     status: string;
-    latitude?: string;
-    longitude?: string;
+    latitude?: number | null;
+    longitude?: number | null;
   };
   technician_id: string;
   technician: { id: string; full_name: string; username: string };

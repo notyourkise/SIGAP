@@ -163,6 +163,13 @@ func (c *MediaMTXClient) ListPaths() ([]PathInfo, error) {
 	return paths, nil
 }
 
+// Ping memeriksa apakah MediaMTX siap menerima permintaan dengan memanggil
+// endpoint global config. Mengembalikan nil bila server merespons 2xx.
+func (c *MediaMTXClient) Ping() error {
+	_, _, err := c.doRequest(http.MethodGet, "/v3/config/global/get", nil)
+	return err
+}
+
 // GetSnapshot mengambil snapshot JPEG sebuah path dari MediaMTX. Endpoint
 // snapshot mengembalikan gambar berformat JPEG (Content-Type image/jpeg).
 // Mengembalikan error pada status non-2xx atau bila client tidak valid.

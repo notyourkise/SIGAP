@@ -1,5 +1,37 @@
 # Changelog - Backend SIGAP
 
+## [0.52.0] - 2026-08-10
+
+### Fitur: Keamanan & Integritas Data (Sprint 31 - P1, P3, P4, P5)
+
+perubahan yang dilakukan: **Memperkuat integritas & keamanan data CCTV: migrasi koordinat ke float, hardening password RTSP, validasi keunikan channel port, dan retry auto-register stream.**
+
+before:
+- Koordinat CCTV disimpan sebagai `varchar(50)` — tidak presisi & sulit dihitung.
+- `rtsp_password` berpotensi bocor bila terisi (tag `omitempty`).
+- `channel_port` tidak divalidasi keunikan → konflik di NVR Hikvision.
+- `RegisterActiveStreams` hanya jalan sekali tanpa retry & tanpa cek kesiapan MediaMTX.
+- Peta sebaran menyebar CCTV tanpa koordinat secara acak di sekitar IKN (menyesatkan).
+
+after:
+- **P1 — Koordinat float (Task 13.1)**: migrasi `000012_cctv_coords_to_float` (latitude/longitude → `double precision`, kosong → NULL); model `CCTV.Latitude/Longitude` → `*float64`; request `Create/UpdateCCTVRequest` → `*float64` + validasi rentang (lat -90..90, lng -180..180); `ImportCCTV` parse `strconv.ParseFloat` (format tidak valid → warning + dilewati); frontend konversi string→number|null saat submit.
+- **P3 — Hardening RTSPPassword (Task 13.3)**: memastikan `RTSPPassword` dikosongkan pada semua titik return (Create, GetAll, GetByID, Update, Scan); test `TestRTSPPasswordNotInResponse`.
+- **P4 — Validasi ChannelPort (Task 13.4)**: range 1-35 + keunikan saat create & update (exclude self); helper `validateChannelPortForCreate/ForUpdate`; test range & duplikat.
+- **P5 — Retry Stream Auto-Register (Task 13.5)**: `MediaMTXClient.Ping`; `waitForMediaMTX` (2 mnt); `registerStreamWithRetry` (exponential backoff 2s/4s/8s/16s/30s); `ReRegisterFailedStreams` + scheduler `RunStreamReRegistrar` (tiap 10 mnt); test retry & give-up.
+
+timestamp: 2026-08-10 13:30 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/migrations/000012_cctv_coords_to_float.up.sql (baru)
+- backend/migrations/000012_cctv_coords_to_float.down.sql (baru)
+- backend/models/cctv.go
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/utils/mediamtx.go
+- backend/main.go
+
 ## [0.51.0] - 2026-08-09
 
 ### Fitur: API Key & Webhook (Task 12.1 + 12.3 - Sprint 29)

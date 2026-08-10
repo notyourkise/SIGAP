@@ -33,26 +33,31 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
-| **12** | **Integrasi & Skalabilitas** | **0/4** | **🔲 Belum dimulai** |
+| **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
+| **13** | **Perbaikan & Penguatan Fitur Existing** | **0/18** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
 > ```
-> Fase 1–8 ✅ (semua selesai)
+> Fase 1–11 ✅ (semua selesai)
 >     │
 >     ▼
-> Fase 9 (Streaming CCTV) ──→ Task 11.1 (Suku Cadang)
->     │                              │
->     ▼                              ▼
-> Fase 10 (Visual)            sisa Fase 11 (Operasional)
->     │                              │
->     └──────────┬───────────────────┘
->                ▼
->          Fase 12 (Integrasi)
+> Fase 12 (Integrasi) 🔶
+>     │
+>     ▼
+> Fase 13 (Perbaikan & Penguatan) ← P1-P5 DAHULU (prioritas tinggi)
+>     │
+>     ├── Sprint 31: Keamanan & Data Integrity (P1–P5)
+>     ├── Sprint 32: Notifikasi & Email (P6–P7)
+>     ├── Sprint 33: Kecerdasan Data (P8–P9 + P11)
+>     ├── Sprint 34: Infra & Integrasi (P10 + P14 + P16)
+>     ├── Sprint 35: Performa & UX Backend (P12 + P13)
+>     └── Sprint 36: Polish Frontend (P2 + P15 + P17 + P18)
 > ```
 > - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
 > - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
 > - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
 > - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
+> - **Fase 13** (perbaikan): penguatan kualitas & keamanan fitur existing berdasarkan analisis teknis 2026-08-10.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -630,6 +635,222 @@ Detail: `docs/changelog.md` [1.28.38].
 
 ---
 
+## Fase 13 — Perbaikan & Penguatan Fitur Existing
+
+> Fase ini **tidak menambah fitur baru**, melainkan memperbaiki kualitas, keamanan, dan ketangguhan
+> dari seluruh fitur yang sudah terimplementasi (Fase 1–12). Berdasarkan **analisis teknis 2026-08-10**.
+> **Status: 🔲 Belum dimulai** — 18 task, 6 sprint.
+
+### Ringkasan 18 Perbaikan
+
+| ID | Prioritas | Masalah | Upaya |
+|----|-----------|---------|-------|
+| P1 | 🔴 Tinggi | Koordinat CCTV disimpan sebagai `varchar` — tidak ada validasi, rentan data kacau | Sedang |
+| P2 | 🔴 Tinggi | Fallback koordinat menyebar CCTV tanpa GPS di sekitar pusat IKN — menyesatkan admin | Rendah |
+| P3 | 🔴 Tinggi | `RTSPPassword` berpotensi bocor ke respons API jika field terisi | Rendah |
+| P4 | 🔴 Tinggi | `ChannelPort` tidak ada constraint unik — dua CCTV bisa konflik di NVR | Rendah |
+| P5 | 🔴 Tinggi | Stream auto-registration berjalan sekali tanpa retry — gagal diam-diam | Rendah |
+| P6 | 🟡 Menengah | Tabel notifikasi tumbuh tanpa batas — tidak ada kebijakan cleanup | Rendah |
+| P7 | 🟡 Menengah | Email opt-in/out all-or-nothing — tidak ada granularitas per tipe notifikasi | Rendah |
+| P8 | 🟡 Menengah | Health score hanya nilai terkini — tidak ada histori / tren | Sedang |
+| P9 | 🟡 Menengah | Daily digest terlewat jika server mati saat 06:00 WITA | Rendah |
+| P10 | 🟡 Menengah | Webhook delivery log tumbuh tanpa batas retensi | Rendah |
+| P11 | 🟡 Menengah | Eskalasi overdue hanya satu kali — tidak ada tingkatan urgensi | Sedang |
+| P12 | 🟡 Menengah | Checklist 9 tahap pengecekan lapangan hardcoded di kode | Tinggi |
+| P13 | 🟢 Rendah | Foto upload teknisi disimpan tanpa kompresi — ukuran file besar | Sedang |
+| P14 | 🟢 Rendah | QR Code tidak ada mekanisme rotasi untuk keamanan | Rendah |
+| P15 | 🟢 Rendah | StreamGridView memuat semua WHEPPlayer sekaligus — boros resource | Rendah |
+| P16 | 🟢 Rendah | API Key tidak bisa diregenerasi tanpa menghapus — merepotkan integrasi | Rendah |
+| P17 | 🟢 Rendah | Kalender tidak bisa membuat tugas baru langsung dari klik tanggal | Rendah |
+| P18 | 🟢 Rendah | Dashboard kinerja teknisi tidak ada filter periode (7 hari / 30 hari / dll.) | Rendah |
+
+---
+
+### Sprint 31 — Keamanan & Integritas Data (P1, P2, P3, P4, P5)
+
+> **Branch:** `fix/data-integrity-security`
+> **Prasyarat:** Tidak ada — bisa langsung dikerjakan setelah Fase 12 Task 12.1+12.3 selesai.
+> **Estimasi:** 3–4 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P1** | **Backend** | Agent-BE | **13.1** Migrasi Koordinat varchar → float | Buat `000012_cctv_coords_to_float.up.sql`: `ALTER TABLE cctvs ALTER COLUMN latitude TYPE double precision USING NULLIF(latitude, '')::double precision`, idem longitude. Update model GORM: `Latitude float64`, `Longitude float64`. Update semua handler yang menerima/mereturn koordinat — validasi range lat (-90..90), lng (-180..180) di `CreateCCTV` dan `UpdateCCTV`. Update seed data. Update Excel import handler (`ImportCCTV`) agar parse float bukan string. Update unit test `cctv_test.go`. |
+| **P2** | **Frontend** | Agent-FE | **13.2** Perbaikan Visual Marker Koordinat Kosong | Di `CCTVMap.tsx`: ganti fallback scatter → marker abu-abu bertanda tanya (`?`) dengan icon berbeda dari `createCustomMarkerIcon`. Popup: tambah banner peringatan merah "⚠️ Koordinat belum diisi — klik untuk edit". Link dari popup ke form edit CCTV (`/cctv?edit={id}`). Tambah counter di status bar peta: "X dari N CCTV belum memiliki koordinat". |
+| **P3** | **Backend** | Agent-BE | **13.3** Hardening RTSPPassword di Semua Handler | Audit seluruh handler yang mereturn data CCTV: `GetAllCCTV`, `GetCCTVByID`, `ScanCCTV`, `BulkDeleteCCTV`, `ImportCCTV`, `GetStreamStatus`, `GetStreamURL`. Di setiap titik return, pastikan `cctv.RTSPPassword = ""`. Tambah unit test khusus: `TestRTSPPasswordNotInResponse` yang memverifikasi field tidak ada atau kosong di respons JSON untuk semua endpoint tersebut. Pertimbangkan membuat DTO `CCTVResponse` terpisah yang tidak memiliki field `RTSPPassword`. |
+| **P4** | **Backend** | Agent-BE | **13.4** Validasi Keunikan ChannelPort | Di `CreateCCTV`: sebelum `config.DB.Create`, cek `config.DB.Where("channel_port = ? AND channel_port != 0", req.ChannelPort).First(&existing)`. Return 400 jika duplikat. Di `UpdateCCTV`: cek `channel_port != cctv.ChannelPort && duplikat`. Tambah validasi range: `channel_port` harus 1–35 (sesuai jumlah kamera). Update unit test. Catatan: TIDAK tambah DB unique constraint karena `channel_port=0` (belum diisi) valid untuk banyak CCTV. |
+| **P5** | **Backend** | Agent-BE | **13.5** Retry Logic Stream Auto-Registration | Di `handlers/stream.go`, modifikasi `RegisterActiveStreams`: tambah retry loop maksimal 5× dengan backoff (2s, 4s, 8s, 16s, 30s). Sebelum iterasi CCTV, cek terlebih dahulu apakah MediaMTX API reachable via `mediamtxClient.GetPath("__ping__")` atau `GET /v3/config/global/get`. Log berapa stream berhasil / gagal. Tambah scheduler periodik (tiap 10 menit) yang mengecek stream `stream_enabled=true` yang belum terdaftar di MediaMTX dan mendaftarkannya kembali. Unit test `TestRegisterActiveStreams_RetryOnFailure`. |
+
+#### Verifikasi Sprint 31
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria:**
+> - `RTSPPassword` tidak muncul di output apapun dari `curl /api/cctv`
+> - Dua CCTV dengan channel_port yang sama ditolak oleh API dengan pesan error yang jelas
+> - Server restart tidak menyebabkan stream gagal register (retry berhasil)
+> - CCTV tanpa koordinat ditampilkan dengan marker abu-abu di peta, bukan marker warna random
+
+---
+
+### Sprint 32 — Notifikasi & Preferensi Email (P6, P7)
+
+> **Branch:** `feature/notification-improvements`
+> **Prasyarat:** Sprint 31 selesai (tidak wajib, bisa paralel)
+> **Estimasi:** 2–3 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P6** | **Backend** | Agent-BE | **13.6** Cleanup Notifikasi Otomatis | Tambah goroutine `StartNotificationCleanup` di `main.go` (interval: tiap 7 hari). Logic: hapus notifikasi `read_at IS NOT NULL AND created_at < NOW() - INTERVAL '30 days'`, dan `read_at IS NULL AND created_at < NOW() - INTERVAL '90 days'`. Tambah endpoint admin `DELETE /api/notifications/cleanup?older_than=30d` untuk trigger manual. Update `GetAllNotifications` handler: tambah query `COUNT(*)` untuk jumlah total notifikasi user — tampilkan di response. Unit test cleanup logic. |
+| **P7a** | **Backend** | Agent-BE | **13.7** Preferensi Email Per-Tipe | Buat migrasi `000013_email_prefs_granular.up.sql`: tambah kolom `email_daily_digest BOOLEAN NOT NULL DEFAULT TRUE`, `email_overdue BOOLEAN NOT NULL DEFAULT TRUE`, `email_stock_low BOOLEAN NOT NULL DEFAULT TRUE` ke tabel `users`. Hapus kolom `email_notifications` (atau set sebagai alias master). Update model `User` di `models/setup.go`. Update endpoint `PUT /api/profile/email-preferences` untuk menerima ketiga field baru. Update `SendDailyDigestEmail`, `SendOverdueEmail`, `SendStockLowEmail` di `utils/email.go` agar cek field masing-masing sebelum kirim. |
+| **P7b** | **Frontend** | Agent-FE | **13.7b** UI Preferensi Email Granular | Di halaman profil (`/profile`): ganti toggle tunggal "Terima notifikasi email" dengan 3 toggle terpisah: "📅 Ringkasan Harian", "⚠️ Eskalasi Overdue", "📦 Stok Suku Cadang Rendah". Masing-masing toggle memanggil `PUT /api/profile/email-preferences`. Simpan state ke API — bukan localStorage. |
+
+#### Verifikasi Sprint 32
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria:**
+> - User yang opt-out "Ringkasan Harian" tidak menerima email digest, tapi masih menerima email overdue
+> - Notifikasi lama (>30 hari dibaca) terhapus otomatis setiap minggu
+> - Admin bisa trigger cleanup manual via endpoint
+
+---
+
+### Sprint 33 — Kecerdasan Data & Eskalasi (P8, P9, P11)
+
+> **Branch:** `feature/data-intelligence`
+> **Prasyarat:** Sprint 31 selesai
+> **Estimasi:** 3–4 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P8a** | **Backend** | Agent-BE | **13.8** Histori Health Score CCTV | Buat migrasi `000014_cctv_health_histories.up.sql`: `CREATE TABLE cctv_health_histories (id uuid PRIMARY KEY, cctv_id uuid NOT NULL REFERENCES cctvs(id), health_score integer NOT NULL, calculated_at timestamptz NOT NULL DEFAULT NOW())`. Index: `(cctv_id, calculated_at)`. Buat model `CCTVHealthHistory` di `models/`. Di `RunHealthScoreCalculator`: setelah update `health_score` di tabel `cctvs`, insert baris baru ke `cctv_health_histories`. Tambah endpoint `GET /api/cctv/:id/health-history?range=7d|30d|90d` yang mereturn array `{health_score, calculated_at}`. |
+| **P8b** | **Frontend** | Agent-FE | **13.8b** Grafik Tren Skor Kesehatan | Di modal detail CCTV (atau halaman detail jika ada): tambah tab/section "Tren Kesehatan". Fetch dari `GET /api/cctv/:id/health-history?range=30d`. Render line chart menggunakan komponen `TrendChart` yang sudah ada. Axis X: tanggal, axis Y: 0–100. Highlight titik nilai minimum (kondisi terburuk). |
+| **P9** | **Backend** | Agent-BE | **13.9** Daily Digest Catch-Up Logic | Di `RunDailyDigestGenerator` (`handlers/digest_generator.go`): tambah fungsi `checkAndGenerateMissedDigest(db)` yang dipanggil saat startup. Logic: query apakah `daily_digests` memiliki record untuk rentang hari ini (00:00–23:59 WITA). Jika tidak ada → generate digest untuk jendela 24 jam terakhir. Gunakan transaksi idempoten (sudah ada pola di kode). Log: "Digest hari ini tidak ditemukan, generate catch-up..." |
+| **P11a** | **Backend** | Agent-BE | **13.11** Eskalasi Overdue Bertingkat | Di `models/setup.go` atau `MaintenanceLog`: tambah kolom `overdue_level INTEGER NOT NULL DEFAULT 0` via migrasi `000015_overdue_level.up.sql`. Di `RunOverdueChecker`: tambah logic tingkatan — level 1 (>24h): notifikasi biasa (sudah ada), level 2 (>48h): notifikasi "Perhatian Tinggi" + broadcast `OVERDUE_HIGH`, level 3 (>72h): notifikasi "Kritis" + broadcast `OVERDUE_CRITICAL` + kirim email ke admin yang opt-in overdue. Cek `overdue_level < target_level` sebelum kirim — jangan kirim ulang yang sudah dikirim. |
+| **P11b** | **Frontend** | Agent-FE | **13.11b** UI Eskalasi Overdue Visual | Di tabel maintenance (`/maintenance`): tambah kolom "Status Overdue" dengan badge warna — abu-abu (belum overdue), kuning (level 1: >24h), oranye (level 2: >48h), merah berkedip (level 3: >72h). Di notifikasi bell: tampilkan ikon darurat 🚨 untuk notifikasi `OVERDUE_CRITICAL`. |
+
+#### Verifikasi Sprint 33
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && swag init
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria:**
+> - Health score history tersedia untuk 30 hari terakhir dan tampil sebagai grafik
+> - Restart server tidak menyebabkan digest hari ini terlewat
+> - Tugas yang overdue 72+ jam menghasilkan notifikasi kritis dan email (jika opt-in)
+
+---
+
+### Sprint 34 — Infrastruktur & Integrasi (P10, P14, P16)
+
+> **Branch:** `feature/infra-integration-fixes`
+> **Prasyarat:** Sprint 31 selesai
+> **Estimasi:** 2–3 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P10** | **Backend** | Agent-BE | **13.10** Retensi Webhook Delivery Log | Di `handlers/webhook.go`: tambah goroutine `StartWebhookLogCleanup` (interval: tiap 7 hari). Logic: `DELETE FROM webhook_deliveries WHERE created_at < NOW() - INTERVAL '30 days'`. Tambah kolom `max_log_retention_days INTEGER DEFAULT 30` di model `WebhookEndpoint`. Cleanup periodik menghormati nilai ini per endpoint. Tambah endpoint `DELETE /api/webhooks/:id/deliveries?older_than=7d` untuk admin trigger manual. Di UI `/webhooks`: tampilkan jumlah log tersimpan per endpoint + tombol "Bersihkan Log". |
+| **P14a** | **Backend** | Agent-BE | **13.14** QR Code Rotation Endpoint | Tambah handler `RotateQRCode` di `handlers/cctv.go`: `POST /api/cctv/:id/rotate-qr` (admin only). Logic: generate UUID baru → `utils.EncryptAES256(newUUID)` → update `cctv.QrPayload` → `config.DB.Save(&cctv)` → `utils.LogAudit(...)` "QR Code dirotasi" → return response dengan data CCTV terbaru. Tambah route di `routes/cctv.go` (statis sebelum `/:id`). Unit test `TestRotateQRCode`. |
+| **P14b** | **Frontend** | Agent-FE | **13.14b** UI Cetak Ulang QR Setelah Rotasi | Di halaman master CCTV (`/cctv`): tambah tombol "🔄 Rotasi QR" di dropdown aksi per baris (di samping "Edit" dan "Hapus"). Klik → konfirmasi dialog "QR Code lama akan tidak berlaku. Lanjutkan?" → panggil `POST /api/cctv/:id/rotate-qr` → langsung buka modal cetak QR baru. |
+| **P16a** | **Backend** | Agent-BE | **13.16** API Key Regeneration Endpoint | Tambah handler `RegenerateAPIKey` di `handlers/api_key.go`: `POST /api/api-keys/:id/regenerate` (admin only). Logic: generate raw key baru → bcrypt hash → update `key_hash` di DB → reset `last_used_at = null` → `utils.LogAudit(...)` "API Key diregenerasi" → `BroadcastEvent("API_KEY_REGENERATED", ...)` → return `{ raw_key: "..." }` (tampil 1×). Tambah route di `routes/api_key.go`. Unit test. |
+| **P16b** | **Frontend** | Agent-FE | **13.16b** UI Regenerasi API Key | Di halaman `/api-keys`: tambah tombol "🔄 Regenerasi" per baris di samping "Revoke". Klik → dialog konfirmasi "Integrasi yang memakai key ini akan berhenti bekerja sampai diupdate. Lanjutkan?" → panggil endpoint → tampilkan raw key baru dalam modal one-time dengan tombol salin. |
+
+#### Verifikasi Sprint 34
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./... && swag init
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria:**
+> - Log webhook lebih dari 30 hari terhapus otomatis
+> - QR Code lama tidak bisa dipakai scan setelah rotasi
+> - API Key yang diregenerasi mengembalikan raw key baru dan key lama tidak lagi valid
+
+---
+
+### Sprint 35 — Performa Backend & Checklist Fleksibel (P12, P13)
+
+> **Branch:** `feature/performance-checklist`
+> **Prasyarat:** Sprint 31 selesai
+> **Estimasi:** 4–5 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P12a** | **Backend** | Agent-BE | **13.12** Checklist Template yang Dapat Dikustomisasi | Buat migrasi `000016_checklist_templates.up.sql`: `CREATE TABLE checklist_templates (id uuid PRIMARY KEY, nama_item varchar(255) NOT NULL, deskripsi text, urutan integer NOT NULL DEFAULT 0, wajib boolean NOT NULL DEFAULT TRUE, aktif boolean NOT NULL DEFAULT TRUE, created_at timestamptz, updated_at timestamptz)`. Seed data: 9 item checklist default (sama dengan yang saat ini hardcoded). CRUD handler `/api/checklist-templates` (admin only): GetAll, Create, Update, Delete (soft: set `aktif=false`). Update `CreateFieldMaintenance` handler: ambil item dari DB (filter `aktif=true`, order by `urutan`) bukan dari konstanta hardcoded. Pertahankan backward compat: `FieldMaintenanceCheck` existing tidak terpengaruh. |
+| **P12b** | **Frontend** | Agent-FE | **13.12b** UI Manajemen Template Checklist | Di halaman `/field-maintenance` (atau halaman pengaturan admin baru): tambah tab/section "Template Checklist". Tabel: nomor urut, nama item, wajib/opsional, aktif/nonaktif. Aksi: edit nama, drag-reorder urutan, toggle aktif. Buat komponen `ChecklistTemplateManager`. |
+| **P13a** | **Backend** | Agent-BE | **13.13** Kompresi Foto Upload Server-Side | Di `handlers/upload.go`, setelah file diterima dan sebelum disimpan ke disk, tambah kompresi gambar: gunakan library `golang.org/x/image` atau `github.com/disintegration/imaging`. Logic: 1) Decode JPEG/PNG, 2) Resize ke max 1920×1080 (pertahankan aspect ratio), 3) Encode JPEG quality 85. Simpan file terkompresi. Generate juga thumbnail 400×300 JPEG dengan suffix `_thumb.jpg` → simpan di `uploads/thumbnails/`. Skip kompresi jika ukuran file sudah < 300KB. Tambah header `X-Original-Size` dan `X-Compressed-Size` di response untuk transparency. |
+| **P13b** | **Frontend** | Agent-FE | **13.13b** Tampilkan Thumbnail di Daftar Maintenance | Di tabel maintenance (`/maintenance`): ganti placeholder foto dengan `<img src="/api/uploads/{id}_thumb.jpg">` menggunakan `AuthenticatedImage` component yang sudah ada. Di modal detail: tampilkan foto fullsize saat diklik thumbnail. Fallback ke ikon kamera jika thumbnail tidak ada. |
+
+#### Verifikasi Sprint 35
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria:**
+> - Admin bisa menambah/mengubah urutan item checklist dari UI tanpa deploy ulang
+> - Foto yang diupload > 300KB otomatis dikompresi ke < 300KB
+> - Thumbnail tersedia di tabel maintenance
+
+---
+
+### Sprint 36 — Polish Frontend & UX (P15, P17, P18)
+
+> **Branch:** `fix/frontend-ux-polish`
+> **Prasyarat:** Tidak ada — bisa paralel dengan sprint lain
+> **Estimasi:** 2–3 hari kerja
+
+| ID | Jobdesk | Sub-Agent | Task | Deliverable |
+|----|---------|-----------|------|-------------|
+| **P15** | **Frontend** | Agent-FE | **13.15** Lazy Loading StreamGridView | Di `StreamGridView.tsx`: implementasi `IntersectionObserver` — `WHEPPlayer` hanya di-mount saat sel memasuki viewport. Tambah tombol "⏸ Pause" per sel yang menutup `RTCPeerConnection` sementara (bukan unmount komponen — pertahankan placeholder). Tambah pagination grid: tampilkan 12 kamera per halaman (configurable via dropdown: 4/8/12/all). Tambah counter "Menampilkan X dari Y kamera aktif" di header grid. |
+| **P17** | **Frontend** | Agent-FE | **13.17** Buat Tugas dari Kalender | Di `CalendarGrid.tsx`: tambah handler `onDayClick(date: Date)` — klik pada sel tanggal membuka modal create maintenance baru dengan field `scheduled_date` sudah terisi tanggal yang diklik. Reuse komponen modal form yang sudah ada di `/maintenance` (lift state atau gunakan portal). Setelah submit berhasil: refresh kalender via `loadMap()` / WebSocket `MAINTENANCE_UPDATED` event. |
+| **P18a** | **Backend** | Agent-BE | **13.18** Filter Periode Kinerja Teknisi | Di `handlers/dashboard.go`, update handler `GetTechnicianPerformance`: tambah query parameter `?period=7d|30d|90d|365d` (default: `30d`). Konversi ke `start_date = NOW() - INTERVAL 'X days'`. Terapkan filter ke semua query (completion rate, avg response time, task count). |
+| **P18b** | **Frontend** | Agent-FE | **13.18b** UI Filter Periode Kinerja Teknisi | Di halaman `/kinerja-teknisi`: tambah dropdown filter periode di header ("7 Hari", "30 Hari", "3 Bulan", "1 Tahun"). State `period` memicu fetch ulang ke API dengan query param. Update komponen `TechnicianPerformanceChart` untuk menerima data baru. Label axis X di chart menyesuaikan granularitas periode (harian/mingguan/bulanan). |
+
+#### Verifikasi Sprint 36
+
+```bash
+cd frontend && npm run lint && npm run build
+cd backend && go build ./... && go test ./... -count=1 && go vet ./...
+```
+
+> **Acceptance Criteria:**
+> - Membuka StreamGridView dengan 35 kamera tidak memuat lebih dari 12 WHEPPlayer sekaligus
+> - Klik tanggal di kalender membuka modal create maintenance dengan tanggal pre-filled
+> - Dashboard kinerja teknisi menampilkan data sesuai periode yang dipilih
+
+---
+
+### Ringkasan Estimasi Sprint Fase 13
+
+```
+═══════════════════════════════════════════════════════════════
+FASE 13 — Perbaikan & Penguatan Fitur Existing
+───────────────────────────────────────────────────────────────
+Sprint 31: Keamanan & Integritas Data (P1-P5) ......... 3-4 hari
+Sprint 32: Notifikasi & Email (P6-P7) ................. 2-3 hari
+Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) .... 3-4 hari
+Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) ... 2-3 hari
+Sprint 35: Performa & Checklist (P12-P13) ............. 4-5 hari
+Sprint 36: Polish Frontend UX (P15,P17,P18) ........... 2-3 hari
+───────────────────────────────────────────────────────────────
+Total Estimasi: 16-22 hari kerja
+Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
+═══════════════════════════════════════════════════════════════
+```
+
+---
+
 ## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
 
 Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
@@ -678,28 +899,36 @@ Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
 
 ```
 ═══════════════════════════════════════════════════════════════
-SEGERA (Agustus – September 2026)
+SELESAI (Fase 9–11, Sprint 20–28)
 ───────────────────────────────────────────────────────────────
-Sprint 20: Fondasi Streaming (9.1 + 9.2) ✅ ......... 2 hari
-Sprint 21: Backend API Stream (9.3) ✅ .............. 2–3 hari
-Sprint 22: Frontend Player + UI (9.4–9.6) ✅ ....... 3–4 hari
-Sprint 23: Integrasi E2E + Manual Test ✅ ........... 1–2 hari
-Sprint 24: Snapshot & Timeline (10.1 + 10.2) ✅ .... 3–4 hari
-Sprint 26: Inventaris Suku Cadang (11.1) .......... 3–4 hari
-───────────────────────────────────────────────────────────────
-
-BERIKUTNYA (Oktober – November 2026)
-───────────────────────────────────────────────────────────────
-Sprint 25: Monitor & Stream Health (10.3 + 10.4) .. 3–4 hari
-Sprint 27: Email & Report Builder (11.2 + 11.3) ... 4–5 hari
-Sprint 28: Zona & SLA (11.4 + 11.5) ............... 4–5 hari
+Sprint 20: Fondasi Streaming (9.1 + 9.2)  ✅ ........  2 hari
+Sprint 21: Backend API Stream (9.3)  ✅ ..............  2–3 hari
+Sprint 22: Frontend Player + UI (9.4–9.6)  ✅ .......  3–4 hari
+Sprint 23: Integrasi E2E + Manual Test  ✅ ...........  1–2 hari
+Sprint 24: Snapshot & Timeline (10.1 + 10.2)  ✅ ....  3–4 hari
+Sprint 25: Monitor & Stream Health (10.3 + 10.4)  ✅   3–4 hari
+Sprint 26: Inventaris Suku Cadang (11.1)  ✅ ........  3–4 hari
+Sprint 27: Email & Report Builder (11.2 + 11.3)  ✅ .  4–5 hari
+Sprint 28: Zona & SLA (11.4 + 11.5)  ✅ .............  4–5 hari
 ───────────────────────────────────────────────────────────────
 
-JANGKA PANJANG (Evaluasi berdasarkan kebutuhan)
+BERJALAN / BERIKUTNYA (Fase 12)
 ───────────────────────────────────────────────────────────────
-Sprint 29: API Key & Webhook (12.1 + 12.3) ........ 3–4 hari
-Sprint 30: Multi-Site (12.2) ....................... 4–5 hari
-Task 12.4: Mobile App (React Native) .............. 10–15 hari
+Sprint 29: API Key & Webhook (12.1 + 12.3)  ✅ ......  3–4 hari
+Task 12.4: Mobile App (React Native)  ✅ ............  10–15 hari
+Sprint 30: Multi-Site (12.2)  🔲 ...................  4–5 hari
+───────────────────────────────────────────────────────────────
+
+PERBAIKAN FITUR EXISTING (Fase 13 — mulai setelah Sprint 29)
+───────────────────────────────────────────────────────────────
+Sprint 31: Keamanan & Integritas Data (P1–P5)  🔲 ..  3–4 hari  ← SEGERA
+Sprint 32: Notifikasi & Email (P6–P7)  🔲 ..........  2–3 hari
+Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) 🔲  3–4 hari
+Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) 🔲 2–3 hari
+Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
+Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
+═══════════════════════════════════════════════════════════════
+Total Fase 13: 16–22 hari kerja (dapat dikerjakan paralel sebagian)
 ═══════════════════════════════════════════════════════════════
 ```
 

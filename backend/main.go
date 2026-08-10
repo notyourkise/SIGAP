@@ -153,6 +153,11 @@ func main() {
 	}()
 	utils.Log.Info("📡 Auto-register stream CCTV ke MediaMTX dijadwalkan (tunda 5 detik)")
 
+	// Re-register berkala stream yang belum terdaftar di MediaMTX (Task 13.5).
+	// Menjalankan sekali segera lalu berulang setiap 10 menit.
+	go handlers.RunStreamReRegistrar(config.DB)
+	utils.Log.Info("🔁 Re-registrar stream otomatis diaktifkan (interval: 10 menit)")
+
 	// Jalankan scheduler snapshot otomatis (Task 10.1). Berjalan sekali segera,
 	// lalu berulang setiap 15 menit untuk seluruh CCTV stream_enabled.
 	go handlers.RunSnapshotScheduler(config.DB)
