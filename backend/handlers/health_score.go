@@ -5,9 +5,11 @@ import (
 	"math"
 	"time"
 
+	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -44,18 +46,21 @@ type healthScoreMetrics struct {
 }
 
 // RunHealthScoreCalculator menghitung ulang seluruh skor saat startup lalu
-// mengulanginya setiap enam jam agar data yang menua tetap tercermin.
+// mengulanginya setiap enam jam agar data yang menua tetap tercermin. Sekaligus
+// membersihkan histori skor kesehatan lama agar tabel tidak membengkak.
 func RunHealthScoreCalculator(db *gorm.DB) {
 	if db == nil {
 		return
 	}
 
 	CalculateAllCCTVHealthScoresAt(db, time.Now())
+	cleanupOldHealthHistories(db)
 
 	ticker := time.NewTicker(healthScoreCalculatorTick)
 	defer ticker.Stop()
 	for range ticker.C {
 		CalculateAllCCTVHealthScoresAt(db, time.Now())
+		cleanupOldHealthHistories(db)
 	}
 }
 
@@ -126,6 +131,16 @@ func recalculateCCTVHealthScoreAt(db *gorm.DB, cctvID uuid.UUID, now time.Time) 
 	}
 	if update.RowsAffected == 0 {
 		return HealthScoreResult{}, gorm.ErrRecordNotFound
+	}
+
+	// Task 13.8: rekam histori skor kesehatan. Kegagalan insert tidak membatalkan
+	// proses utama — cukup log peringatan.
+	if err := db.Create(&models.CCTVHealthHistory{
+		CCTVID:       cctvID,
+		HealthScore:  result.HealthScore,
+		CalculatedAt: now,
+	}).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal merekam histori skor kesehatan CCTV %s: %v", cctvID, err)
 	}
 
 	utils.BroadcastEvent("CCTV_UPDATED", map[string]interface{}{
@@ -230,5 +245,78 @@ func calculateHealthScore(metrics healthScoreMetrics, now time.Time) HealthScore
 			NotOKItems: int(metrics.NotOKItems),
 		},
 		UpdatedAt: now,
+	}
+}
+
+// GetCCTVHealthHistory mengembalikan histori skor kesehatan CCTV untuk rentang
+// waktu tertentu (Task 13.8). Query param ?range=7d|30d|90d (default 30d).
+// @Summary      Histori Skor Kesehatan CCTV
+// @Description  Mengembalikan histori skor kesehatan (0-100) suatu CCTV dalam rentang waktu (7/30/90 hari).
+// @Tags         Master CCTV
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Param        range query string false "Rentang waktu: 7d|30d|90d (default 30d)"
+// @Success      200 {object} map[string]interface{} "Sukses mendapatkan histori skor kesehatan"
+// @Failure      400 {object} map[string]interface{} "ID CCTV tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Router       /cctv/{id}/health-history [get]
+func GetCCTVHealthHistory(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	// Tentukan rentang hari dari query param.
+	days := 30
+	switch c.Query("range") {
+	case "7d":
+		days = 7
+	case "90d":
+		days = 90
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+
+	var history []models.CCTVHealthHistory
+	if err := config.DB.Where("cctv_id = ? AND calculated_at > ?", id, cutoff).
+		Order("calculated_at ASC").Find(&history).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil histori skor kesehatan",
+		})
+	}
+
+	// Format respons ringkas untuk grafik frontend.
+	type point struct {
+		HealthScore  int       `json:"health_score"`
+		CalculatedAt time.Time `json:"calculated_at"`
+	}
+	points := make([]point, 0, len(history))
+	for _, h := range history {
+		points = append(points, point{HealthScore: h.HealthScore, CalculatedAt: h.CalculatedAt})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   points,
+		"meta": fiber.Map{
+			"range_days": days,
+		},
+	})
+}
+
+// cleanupOldHealthHistories menghapus histori skor kesehatan lebih dari 1 tahun
+// agar tabel tidak membengkak (Task 13.8).
+func cleanupOldHealthHistories(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if err := db.Where("calculated_at < ?", time.Now().AddDate(-1, 0, 0)).
+		Delete(&models.CCTVHealthHistory{}).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal cleanup histori skor kesehatan: %v", err)
 	}
 }

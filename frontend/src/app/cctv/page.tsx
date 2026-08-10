@@ -34,7 +34,8 @@ import {
   RotateCcw,
   History,
   Network,
-  ShieldCheck
+  ShieldCheck,
+  TrendingUp
 } from 'lucide-react';
 
 interface CCTV {
@@ -90,6 +91,12 @@ interface HealthBreakdown {
     age: number;
     not_ok_items: number;
   };
+}
+
+// Titik histori skor kesehatan dari GET /cctv/:id/health-history.
+interface HealthHistoryPoint {
+  health_score: number;
+  calculated_at: string;
 }
 
 // Label Bahasa Indonesia untuk tiap tipe kejadian pada timeline
@@ -173,6 +180,12 @@ export default function CCTVPage() {
   const [healthBreakdown, setHealthBreakdown] = useState<HealthBreakdown | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState('');
+
+  // Histori skor kesehatan (tren) untuk detail CCTV
+  const [healthHistory, setHealthHistory] = useState<HealthHistoryPoint[]>([]);
+  const [healthHistoryRange, setHealthHistoryRange] = useState<'7d' | '30d' | '90d'>('30d');
+  const [healthHistoryLoading, setHealthHistoryLoading] = useState(false);
+  const [healthHistoryError, setHealthHistoryError] = useState('');
 
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -439,11 +452,31 @@ export default function CCTVPage() {
     }
   }, []);
 
+  // Ambil histori skor kesehatan (tren) untuk detail CCTV.
+  const fetchHealthHistory = useCallback(async (id: string, range: string) => {
+    setHealthHistoryLoading(true);
+    setHealthHistoryError('');
+    try {
+      const response = await apiRequest<HealthHistoryPoint[]>(`/cctv/${id}/health-history?range=${range}`);
+      if (response.status === 'success' && Array.isArray(response.data)) {
+        setHealthHistory(response.data);
+      } else {
+        setHealthHistory([]);
+      }
+    } catch (err: any) {
+      setHealthHistoryError(err.message || 'Histori skor kesehatan belum dapat dimuat.');
+      setHealthHistory([]);
+    } finally {
+      setHealthHistoryLoading(false);
+    }
+  }, []);
+
   // Muat timeline saat modal detail dibuka; reset saat modal ditutup atau CCTV berubah.
   useEffect(() => {
     if (isDetailModalOpen && currentCCTV) {
       fetchTimeline(currentCCTV.id);
       fetchHealthBreakdown(currentCCTV.id);
+      fetchHealthHistory(currentCCTV.id, healthHistoryRange);
     } else {
       setTimeline([]);
       setTimelineLoading(false);
@@ -451,8 +484,20 @@ export default function CCTVPage() {
       setHealthBreakdown(null);
       setHealthLoading(false);
       setHealthError('');
+      setHealthHistory([]);
+      setHealthHistoryLoading(false);
+      setHealthHistoryError('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDetailModalOpen, currentCCTV, fetchTimeline, fetchHealthBreakdown]);
+
+  // Muat ulang histori saat range diubah.
+  useEffect(() => {
+    if (isDetailModalOpen && currentCCTV) {
+      fetchHealthHistory(currentCCTV.id, healthHistoryRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [healthHistoryRange]);
 
   // Format waktu kejadian ke locale Indonesia (tanggal & jam)
   const formatTimelineDate = (value: string) => {
@@ -2076,6 +2121,51 @@ export default function CCTVPage() {
                 ) : null}
               </div>
 
+              {/* Tren skor kesehatan (Task 13.8b) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-t border-border pt-4">
+                  <h4 className="flex items-center gap-1.5 text-sm font-bold">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    Tren Kesehatan
+                  </h4>
+                  <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
+                    {(['7d', '30d', '90d'] as const).map((range) => (
+                      <button
+                        key={range}
+                        type="button"
+                        onClick={() => setHealthHistoryRange(range)}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          healthHistoryRange === range ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
+                        }`}
+                      >
+                        {range === '7d' ? '7 Hari' : range === '30d' ? '30 Hari' : '90 Hari'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {healthHistoryLoading ? (
+                  <div className="space-y-2 rounded-xl border border-border bg-background/50 p-4" role="status">
+                    <div className="h-4 w-24 animate-pulse rounded bg-border" />
+                    <div className="h-32 w-full animate-pulse rounded bg-border/60" />
+                  </div>
+                ) : healthHistoryError ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>{healthHistoryError}</span>
+                  </div>
+                ) : healthHistory.length === 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-xs text-muted">
+                    <TrendingUp className="h-4 w-4 shrink-0 text-muted/40" />
+                    <span>Data histori skor kesehatan belum tersedia.</span>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border bg-background/50 p-3">
+                    <HealthTrendChart data={healthHistory} />
+                  </div>
+                )}
+              </div>
+
               {/* Timeline kejadian CCTV */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-t border-border pt-4">
@@ -2185,6 +2275,131 @@ export default function CCTVPage() {
 }
 
 // Satu baris faktor penalti pada breakdown skor kesehatan.
+// Grafik garis tren skor kesehatan (0-100) dengan zona warna, highlight titik
+// minimum, dan tooltip. Komponen SVG mandiri (tanpa dependency chart eksternal).
+function HealthTrendChart({ data }: { data: HealthHistoryPoint[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const W = 520;
+  const H = 180;
+  const PAD = { top: 14, right: 14, bottom: 28, left: 34 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  if (data.length === 0) return null;
+
+  // Cari titik nilai minimum untuk di-highlight.
+  let minIndex = 0;
+  data.forEach((p, i) => {
+    if (p.health_score < data[minIndex].health_score) minIndex = i;
+  });
+
+  const yMax = 100;
+  const stepX = data.length === 1 ? innerW / 2 : innerW / (data.length - 1);
+  const xAt = (i: number) => PAD.left + i * stepX;
+  const yAt = (value: number) => PAD.top + innerH - (value / yMax) * innerH;
+
+  const points = data.map((p, i) => ({ x: xAt(i), y: yAt(p.health_score) }));
+
+  // Path garis lurus antar titik.
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+  // Zona warna: hijau 71-100, kuning 41-70, merah 0-40.
+  const zoneGreenY = yAt(70);
+  const zoneYellowY = yAt(40);
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+  };
+
+  return (
+    <div className="relative w-full overflow-x-auto">
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Grafik tren skor kesehatan CCTV" className="block">
+        {/* Zona warna latar */}
+        <rect x={PAD.left} y={zoneGreenY} width={innerW} height={PAD.top + innerH - zoneGreenY} fill="#10B981" opacity={0.08} />
+        <rect x={PAD.left} y={zoneYellowY} width={innerW} height={zoneGreenY - zoneYellowY} fill="#F59E0B" opacity={0.08} />
+        <rect x={PAD.left} y={PAD.top} width={innerW} height={zoneYellowY - PAD.top} fill="#EF4444" opacity={0.08} />
+
+        {/* Grid horizontal */}
+        {[0, 25, 50, 75, 100].map((v) => {
+          const y = yAt(v);
+          return (
+            <g key={v}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} className="stroke-border" strokeWidth={1} />
+              <text x={PAD.left - 6} y={y + 3} textAnchor="end" fontSize={9} className="fill-muted">{v}</text>
+            </g>
+          );
+        })}
+
+        {/* Garis tren */}
+        <path d={linePath} fill="none" stroke="#467235" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Titik data */}
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={i === minIndex ? 5 : 3.5}
+            fill={i === minIndex ? '#EF4444' : '#467235'}
+            stroke="#ffffff"
+            strokeWidth={1.5}
+          />
+        ))}
+
+        {/* Label sumbu X */}
+        {data.map((p, i) => (
+          <text key={i} x={points[i].x} y={H - 8} textAnchor="middle" fontSize={9} className="fill-muted">
+            {formatDate(p.calculated_at)}
+          </text>
+        ))}
+
+        {/* Area hover + tooltip */}
+        {points.map((p, i) => (
+          <circle
+            key={`hover-${i}`}
+            cx={p.x}
+            cy={p.y}
+            r={14}
+            fill="transparent"
+            className="cursor-pointer"
+            onMouseEnter={() => setHoveredIndex(i)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          >
+            <title>{`${new Date(data[i].calculated_at).toLocaleString('id-ID')}: ${data[i].health_score}`}</title>
+          </circle>
+        ))}
+
+        {/* Garis penanda hover */}
+        {hoveredIndex !== null && points[hoveredIndex] && (
+          <line
+            x1={points[hoveredIndex].x}
+            x2={points[hoveredIndex].x}
+            y1={PAD.top}
+            y2={PAD.top + innerH}
+            stroke="#467235"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            opacity={0.5}
+          />
+        )}
+      </svg>
+
+      {/* Tooltip */}
+      {hoveredIndex !== null && data[hoveredIndex] && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs shadow-lg"
+          style={{ left: `${(points[hoveredIndex].x / W) * 100}%`, top: '0' }}
+        >
+          <p className="font-bold">{new Date(data[hoveredIndex].calculated_at).toLocaleString('id-ID')}</p>
+          <p className="mt-0.5 text-muted">Skor: {data[hoveredIndex].health_score}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HealthFactorRow({
   label,
   value,

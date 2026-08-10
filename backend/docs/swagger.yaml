@@ -1351,6 +1351,43 @@ paths:
       summary: Edit Data CCTV
       tags:
       - Master CCTV
+  /cctv/{id}/health-history:
+    get:
+      description: Mengembalikan histori skor kesehatan (0-100) suatu CCTV dalam rentang
+        waktu (7/30/90 hari).
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Rentang waktu: 7d|30d|90d (default 30d)'
+        in: query
+        name: range
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sukses mendapatkan histori skor kesehatan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID CCTV tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Histori Skor Kesehatan CCTV
+      tags:
+      - Master CCTV
   /cctv/{id}/health-score:
     get:
       description: Menghitung skor kesehatan 0-100 berdasarkan kegagalan pemeliharaan,

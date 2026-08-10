@@ -23,6 +23,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	cctvGroup.Get("/:id/health-score", middleware.Protected(), handlers.GetCCTVHealthScore)
 	cctvGroup.Get("/:id/snapshot", middleware.Protected(), handlers.GetCCTVSnapshot)
 	cctvGroup.Get("/:id/timeline", middleware.Protected(), handlers.GetCCTVTimeline)
+	cctvGroup.Get("/:id/health-history", middleware.Protected(), handlers.GetCCTVHealthHistory)
 	cctvGroup.Get("/:id", middleware.Protected(), handlers.GetCCTVByID)
 
 	// Rute yang hanya dapat diakses oleh Admin

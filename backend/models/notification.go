@@ -12,6 +12,7 @@ const (
 	NotificationTypeUnassigned  = "MAINTENANCE_UNASSIGNED"
 	NotificationTypeCompleted   = "MAINTENANCE_COMPLETED"
 	NotificationTypeOverdue     = "MAINTENANCE_OVERDUE"
+	NotificationTypeOverdueCritical = "OVERDUE_CRITICAL"
 	NotificationTypeFieldCheck  = "FIELD_CHECK_ATTENTION"
 	NotificationTypeDailyDigest = "DAILY_DIGEST_AVAILABLE"
 )

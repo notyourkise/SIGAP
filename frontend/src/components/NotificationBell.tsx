@@ -30,9 +30,13 @@ export const typeStyles: Record<string, string> = {
   MAINTENANCE_UNASSIGNED: 'bg-blue-500',
   MAINTENANCE_COMPLETED: 'bg-success',
   MAINTENANCE_OVERDUE: 'bg-red-500',
+  OVERDUE_CRITICAL: 'bg-red-600',
   FIELD_CHECK_ATTENTION: 'bg-accent',
   DAILY_DIGEST_AVAILABLE: 'bg-primary',
 };
+
+// Tipe notifikasi kritis (overdue level 3) — ditampilkan dengan latar merah + ikon 🚨.
+export const isCriticalType = (type: string) => type === 'OVERDUE_CRITICAL';
 
 // Peta tipe notifikasi ke rute halaman tujuan saat item diklik.
 export function getTargetRoute(item: NotificationItem): string {
@@ -226,7 +230,7 @@ export default function NotificationBell() {
                   <button
                     type="button"
                     onClick={() => handleItemClick(item)}
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${isCriticalType(item.type) ? 'bg-red-500/10' : ''}`}
                   >
                     <span
                       className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${typeStyles[item.type] ?? 'bg-muted'}`}
@@ -235,6 +239,7 @@ export default function NotificationBell() {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
                         <span className={`truncate text-sm ${item.is_read ? 'font-medium text-muted' : 'font-bold text-foreground'}`}>
+                          {isCriticalType(item.type) && <span className="mr-1" aria-hidden="true">🚨</span>}
                           {item.title}
                         </span>
                         {!item.is_read && (

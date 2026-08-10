@@ -35,6 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **0/18** | **🔲 Belum dimulai** |
+| **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -44,20 +45,23 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 > Fase 12 (Integrasi) 🔶
 >     │
 >     ▼
-> Fase 13 (Perbaikan & Penguatan) ← P1-P5 DAHULU (prioritas tinggi)
+> Fase 13 (Perbaikan & Penguatan) ← kerjakan paralel dengan Fase 14
 >     │
->     ├── Sprint 31: Keamanan & Data Integrity (P1–P5)
->     ├── Sprint 32: Notifikasi & Email (P6–P7)
->     ├── Sprint 33: Kecerdasan Data (P8–P9 + P11)
->     ├── Sprint 34: Infra & Integrasi (P10 + P14 + P16)
->     ├── Sprint 35: Performa & UX Backend (P12 + P13)
->     └── Sprint 36: Polish Frontend (P2 + P15 + P17 + P18)
+>     ├── Sprint 31–36 (P1–P18)
+>     │
+>     ▼
+> Fase 14 (CCTV Intelligence) ← dapat dimulai setelah Sprint 31 selesai
+>     │
+>     ├── Sprint 37: RTSP Live Status Detection (14A)
+>     ├── Sprint 38: AI Microservice & Person Counting (14B)
+>     └── Sprint 39: Frontend AI Overlay & E2E Integration (14C)
 > ```
 > - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
 > - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
 > - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
 > - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
 > - **Fase 13** (perbaikan): penguatan kualitas & keamanan fitur existing berdasarkan analisis teknis 2026-08-10.
+> - **Fase 14** (CCTV intelligence): deteksi online/offline real-time + AI deteksi orang berbasis YOLOv8.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -851,6 +855,273 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 
 ---
 
+## Fase 14 — CCTV Intelligence: Live Status & AI Detection
+
+> Fase ini menambahkan **dua kemampuan baru** yang saling melengkapi:
+> - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati.
+> - **14B**: AI object detection berbasis YOLOv8 — mendeteksi dan menghitung **orang unik** yang terdeteksi oleh kamera yang sedang ditampilkan di `/monitor`.
+>
+> **Status: 🔲 Belum dimulai** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai.
+
+### Latar Belakang & Root Cause
+
+#### Mengapa peta selalu hijau padahal kamera mati?
+
+Terdapat **3 lapisan bug** yang menyebabkan status kamera selalu tampak "online":
+
+```
+BUG 1: sourceOnDemand: yes (mediamtx.yml)
+─────────────────────────────────────────
+MediaMTX hanya connect ke RTSP kamera saat ada yang menonton stream.
+Jika tidak ada viewer → path tidak pernah Ready=true
+→ streamLastReady[path] tidak pernah diset
+
+BUG 2: evaluateStreamState() — kondisi guardian (stream.go:694)
+─────────────────────────────────────────
+if _, wasUp := streamLastReady[path]; !wasUp {
+    return  ← SKIP jika kamera belum pernah ditonton
+}
+Kamera yang tidak pernah dibuka = tidak pernah dianggap down
+
+BUG 3: CCTVMap menggunakan field "status" bukan "stream_live"
+─────────────────────────────────────────
+Warna marker = health_score / status GORM (aktif/nonaktif/pemeliharaan)
+Bukan status koneksi RTSP real-time kamera
+Walau STREAM_DOWN di-broadcast, marker tidak berubah warna
+```
+
+#### Solusi Arsitektur Fase 14
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         FASE 14 ARCHITECTURE                         │
+│                                                                      │
+│  NVR Hikvision (36.91.27.35:554)                                     │
+│         │                                                            │
+│         │ RTSP pull (per channel)                                    │
+│         ▼                                                            │
+│  ┌──────────────────┐     ┌────────────────────────────────────┐     │
+│  │  sigap_api (Go)  │────▶│  RTSP Probe Engine (NEW - 14A)     │     │
+│  │  RunRTSPProber   │     │  tiap 2 menit: TCP dial port 554   │     │
+│  │  + DB update     │     │  + RTSP OPTIONS per channel        │     │
+│  │  + WS broadcast  │     │  → update stream_live di DB        │     │
+│  └──────────────────┘     │  → broadcast CCTV_LIVE_STATUS_UPDATED│  │
+│         │                 └────────────────────────────────────┘     │
+│         │ HTTP internal                                              │
+│         ▼                                                            │
+│  ┌──────────────────────────────────────┐                            │
+│  │  sigap_ai (Python NEW - 14B)         │                            │
+│  │  FastAPI + YOLOv8n + ByteTrack       │                            │
+│  │  Pull RTSP: hanya kamera di /monitor │                            │
+│  │  Inference: 1 frame/detik per kamera │                            │
+│  │  Output: koordinat box + tracking ID │                            │
+│  └──────────────────────────────────────┘                            │
+│         │ WebSocket push                                             │
+│         ▼                                                            │
+│  ┌──────────────────────────────────────────────────────────┐        │
+│  │  Browser (/monitor)                                       │        │
+│  │  <canvas> overlay bounding box di atas <video> WebRTC    │        │
+│  │  Badge: 🟢 Online / 🔴 Offline per kamera               │        │
+│  │  Counter: "X orang unik terdeteksi hari ini"             │        │
+│  └──────────────────────────────────────────────────────────┘        │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Skema Database Baru (Fase 14)
+
+```sql
+-- Migration 000018: RTSP Live Status
+ALTER TABLE cctvs
+  ADD COLUMN stream_live       BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN stream_checked_at TIMESTAMPTZ;
+
+-- Migration 000019: AI Detection Sessions (person counting)
+CREATE TABLE ai_detection_sessions (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cctv_id          UUID NOT NULL REFERENCES cctvs(id) ON DELETE CASCADE,
+  session_date     DATE NOT NULL,           -- tanggal untuk reset harian
+  unique_person_count INT NOT NULL DEFAULT 0,
+  last_tracking_ids   JSONB,               -- set ID ByteTrack yg sudah dihitung
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cctv_id, session_date)
+);
+CREATE INDEX idx_ai_sessions_cctv_date ON ai_detection_sessions (cctv_id, session_date);
+
+-- Migration 000020: AI Detection Events log
+CREATE TABLE ai_detection_events (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cctv_id         UUID NOT NULL REFERENCES cctvs(id) ON DELETE CASCADE,
+  event_type      VARCHAR(50) NOT NULL,    -- 'person_detected', 'person_new_unique'
+  person_count    INT NOT NULL DEFAULT 0,  -- jumlah person dalam frame saat ini
+  unique_count    INT NOT NULL DEFAULT 0,  -- total unik hari ini
+  confidence_avg  FLOAT,
+  detected_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_ai_events_cctv_date ON ai_detection_events (cctv_id, detected_at DESC);
+```
+
+### Struktur Folder AI Service (Baru)
+
+```
+ai/
+├── Dockerfile                  # python:3.11-slim, install ultralytics, fastapi, uvicorn
+├── requirements.txt
+├── main.py                     # FastAPI app entry point
+├── routers/
+│   ├── session.py              # POST /sessions, DELETE /sessions/{cctv_id}
+│   └── health.py               # GET /health
+├── core/
+│   ├── detector.py             # YOLOv8n inference wrapper
+│   ├── tracker.py              # ByteTrack person tracker
+│   ├── person_counter.py       # unique ID counting + daily reset logic
+│   └── session_manager.py      # manage active RTSP stream per session
+├── models/
+│   └── yolov8n.pt              # model nano (6MB) — auto-download saat build
+└── tests/
+    └── test_detector.py
+```
+
+### Spesifikasi Teknis AI
+
+| Parameter | Nilai | Catatan |
+|-----------|-------|---------|
+| **Model** | YOLOv8n (nano) | 6MB, CPU-friendly, ~30ms/frame |
+| **Class yang dideteksi** | Class 0 (person) saja | Filter output YOLOv8 |
+| **Confidence threshold** | ≥ 0.50 | Kurangi false positive |
+| **Inference interval** | 1 frame/detik per kamera | Balance CPU vs akurasi |
+| **Max concurrent kamera** | Sesuai grid aktif (max 16 untuk 4×4) | Tidak proses kamera idle |
+| **Tracker** | ByteTrack | Open-source, akurat, no GPU required |
+| **RTSP source** | Sub-stream via MediaMTX | `rtsp://mediamtx:8554/cam-{id}` |
+| **Reset counter** | 00:00 WITA setiap hari | Sesi baru per tanggal |
+| **Min RAM AI service** | 1.5 GB | YOLOv8n + 16 stream buffer |
+| **Min CPU AI service** | 2 vCPU | ~0.1–0.3 core/kamera aktif |
+
+---
+
+### Sprint 37 — RTSP Live Status Detection (Task 14A)
+
+> **Branch:** `feature/rtsp-live-probe`
+> **Prasyarat:** Sprint 31 selesai (koordinat float + hardening)
+> **Estimasi:** 2–3 hari kerja
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Backend** | Agent-BE | **14A.1** Migration + RTSP Probe Engine | Migration `000018_stream_live_status`. Model `CCTV` + `StreamLive bool`, `StreamCheckedAt *time.Time`. Fungsi `ProbeRTSPChannel(host, port, channelID int) bool` via TCP dial + RTSP OPTIONS. Goroutine `RunRTSPProber(db)`: probe semua CCTV `stream_enabled=true` tiap 2 menit, update `stream_live` + `stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED` via WebSocket. Endpoint `GET /api/streams/live-status` (admin) — return seluruh CCTV dengan `stream_live` + `stream_checked_at`. |
+| **Frontend** | Agent-FE | **14A.2** Map Badge + Monitor Border | `CCTVMap.tsx`: tambah field `stream_live` ke interface `CCTVMapItem`. Tambah badge kecil di pojok kanan atas marker SVG: 🟢 (online) / 🔴 (offline) / ⚪ (belum dicek). Listen WebSocket event `CCTV_LIVE_STATUS_UPDATED` → update badge tanpa reload. Status bar peta: `"X Online · Y Offline · Z Belum dicek"`. Di `/monitor` (`StreamGridView.tsx`): border hijau tipis = online, border merah = offline, border abu-abu = belum dicek. Tooltip per sel: `"Terakhir dicek: HH:mm WIB"`. |
+| **Backend** | Agent-BE | **14A.3** Fix StreamHealthMonitor | Hapus kondisi guardian `if _, wasUp := streamLastReady[path]; !wasUp { return }` di `evaluateStreamState()`. Ganti logika: jika `stream_live=false` setelah probe, langsung set `streamDownSince` tanpa perlu menunggu ada viewer dulu. Update unit test `stream_health_test.go`. |
+
+#### Verifikasi Sprint 37
+
+```bash
+cd backend && go build ./... && go test ./... -count=1 -run "TestRTSP|TestStream" && go vet ./...
+cd frontend && npm run lint && npm run build
+```
+
+> **Acceptance Criteria Sprint 37:**
+> - Kamera yang mati (RTSP tidak bisa diakses) → badge merah di peta dalam ≤ 2 menit tanpa perlu ada yang membuka stream-nya
+> - Kamera hidup kembali → badge berubah hijau dalam ≤ 2 menit berikutnya
+> - `GET /api/streams/live-status` mereturn `stream_live: false` untuk kamera yang offline
+> - Counter status bar peta akurat (X Online, Y Offline)
+> - Border merah di /monitor untuk kamera offline
+
+---
+
+### Sprint 38 — AI Microservice & Person Counting (Task 14B)
+
+> **Branch:** `feature/ai-detection-service`
+> **Prasyarat:** Sprint 37 selesai (stream_live tersedia)
+> **Estimasi:** 4–5 hari kerja
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **AI Service** | Agent-AI | **14B.1** Setup AI Microservice | Buat folder `ai/` di root repo. `Dockerfile` (python:3.11-slim). `requirements.txt`: `fastapi==0.111`, `uvicorn`, `ultralytics==8.2`, `opencv-python-headless`, `numpy`, `httpx`. `main.py`: FastAPI app dengan router `session` dan `health`. `core/detector.py`: load YOLOv8n, fungsi `detect_persons(frame: np.ndarray) → List[Detection]` — filter class=0, confidence≥0.5. `core/tracker.py`: ByteTrack wrapper (gunakan `supervision` library dari Roboflow). `core/session_manager.py`: class `SessionManager` — `activate(cctv_id, rtsp_url)`, `deactivate(cctv_id)`, `get_active()`. RTSP pull via OpenCV `cv2.VideoCapture`. Update `docker-compose.yml`: tambah service `sigap_ai` (network `sigap_network`, port 8010 internal, depends_on: `mediamtx`). |
+| **AI Service** | Agent-AI | **14B.2** Person Counting + API Endpoints | `core/person_counter.py`: class `PersonCounter` — method `process(tracking_ids: Set[int], cctv_id: str, db_session_date: date)` → update `seen_ids` set, hitung `new_unique = seen_ids - previously_seen`. Endpoint `POST /sessions`: `{ "cctv_id": "uuid", "rtsp_url": "rtsp://..." }` → aktifkan stream + tracking. Endpoint `DELETE /sessions/{cctv_id}` → nonaktifkan. Endpoint `GET /sessions` → list aktif + count per kamera. Endpoint `GET /counts/{cctv_id}` → `{ "unique_today": 42, "current_in_frame": 2 }`. Kirim deteksi ke backend Go via `POST /api/ai/detection-event` tiap ada deteksi baru. Reset `seen_ids` otomatis tiap 00:00 WITA. |
+| **Backend** | Agent-BE | **14B.3** Backend AI Integration + DB | Migration `000019_ai_detection_sessions` + `000020_ai_detection_events`. Handler `handlers/ai.go` (file baru): `POST /api/ai/detection-event` (internal only — auth via shared secret header `X-AI-Secret`). Terima payload `{ cctv_id, person_count, unique_count, tracking_ids, confidence_avg }`. Update `ai_detection_sessions` (upsert per `cctv_id + session_date`). Insert ke `ai_detection_events`. Broadcast WebSocket `AI_DETECTION_UPDATE { cctv_id, bboxes: [...], unique_today, current_in_frame }`. Endpoint `GET /api/ai/counts` (admin) → ringkasan semua kamera hari ini. Endpoint `GET /api/ai/counts/:cctv_id` → detail per kamera. Route di `routes/ai.go` (file baru). Register goroutine `RunAIDailyReset(db)` di `main.go`: tiap 00:00 WITA, trigger `POST /sessions/reset-all` ke AI service. |
+
+#### Verifikasi Sprint 38
+
+```bash
+# AI Service
+cd ai && docker build -t sigap_ai . && docker run --rm sigap_ai python -c "from core.detector import Detector; print('OK')"
+
+# Backend
+cd backend && go build ./... && go test ./... -count=1 -run "TestAI" && go vet ./...
+
+# Integration test
+docker compose up -d sigap_ai sigap_api
+curl -X POST http://localhost:8010/sessions -d '{"cctv_id":"test","rtsp_url":"rtsp://..."}'
+curl http://localhost:8010/counts/test
+```
+
+> **Acceptance Criteria Sprint 38:**
+> - AI service berhasil start tanpa error via `docker compose up sigap_ai`
+> - `POST /sessions` mengaktifkan RTSP pull dan mulai inferensi
+> - Person terdeteksi → `unique_today` bertambah, orang yang sama tidak dihitung dua kali
+> - `DELETE /sessions/{id}` menghentikan RTSP pull dan membebaskan CPU
+> - Backend menerima event deteksi dan menyimpan ke DB
+> - Counter reset ke 0 pada 00:00 WITA
+
+---
+
+### Sprint 39 — Frontend AI Overlay & E2E Integration (Task 14C)
+
+> **Branch:** `feature/ai-frontend-overlay`
+> **Prasyarat:** Sprint 38 selesai
+> **Estimasi:** 3–4 hari kerja
+
+| Jobdesk | Sub-Agent | Task | Deliverable |
+|---------|-----------|------|-------------|
+| **Frontend** | Agent-FE | **14C.1** Canvas Overlay Bounding Box | Di `StreamGridView.tsx` atau `WHEPPlayer.tsx`: tambah `<canvas>` yang overlay tepat di atas `<video>` (CSS `position: absolute, top: 0, left: 0, pointer-events: none`). Listen WebSocket event `AI_DETECTION_UPDATE { cctv_id, bboxes }`. Saat event diterima: `ctx.clearRect(...)` → draw box per `bbox` (warna hijau `#22C55E`, line width 2). Label per box: `"Person"`. Box otomatis fade dalam 1.5 detik jika tidak ada update baru. Aktifkan canvas hanya jika AI session aktif untuk kamera tersebut. |
+| **Frontend** | Agent-FE | **14C.2** AI Session Control + Counter UI | Di `StreamGridView.tsx`: tambah tombol toggle "🤖 AI" di header grid. Klik ON: kirim `POST /api/ai/sessions` untuk setiap kamera yang aktif di grid. Klik OFF: kirim `DELETE /api/ai/sessions/{id}` untuk semua. Per sel kamera: tampilkan badge kecil `"👥 42 orang hari ini"` di pojok kiri bawah video. Badge update via WebSocket tanpa reload. Saat ganti layout grid (2×2 → 3×3): otomatis hentikan session kamera yang tidak lagi tampil, aktifkan session kamera baru. State AI on/off tersimpan di localStorage per sesi browser. |
+| **Frontend** | Agent-FE | **14C.3** Dashboard AI Analytics | Tambah halaman `/ai-analytics` (admin only) di sidebar menu (ikon `BrainCircuit`). Konten: Tabel per kamera — nama, zona, unique_today, max_today (peak), terakhir aktif. Card ringkasan: total orang unik seluruh kamera hari ini, rata-rata per kamera. Line chart per kamera (7 hari terakhir, ambil dari `ai_detection_events` grouped by date). Filter: dropdown pilih kamera, pilih tanggal. Tambah item menu sidebar (admin only): `{ label: "AI Analytics", icon: BrainCircuit, href: "/ai-analytics" }`. Proteksi route di `middleware.ts`. |
+
+#### Verifikasi Sprint 39
+
+```bash
+cd frontend && npm run lint && npm run build && npx tsc --noEmit
+
+# Manual E2E:
+# 1. Buka /monitor, set grid 2x2
+# 2. Klik tombol "🤖 AI"
+# 3. Pastikan bounding box muncul di atas video stream saat ada orang
+# 4. Counter "X orang hari ini" bertambah
+# 5. Ganti ke grid 3x3 → AI otomatis aktif untuk 9 kamera
+# 6. Buka /ai-analytics → tampil data hitungan
+```
+
+> **Acceptance Criteria Sprint 39:**
+> - Bounding box hijau muncul real-time di atas video saat person terdeteksi
+> - Box fade setelah 1.5 detik jika tidak ada person di frame
+> - Counter "X orang hari ini" per sel kamera akurat dan tidak double-count
+> - Ganti layout grid → AI session otomatis menyesuaikan (aktif hanya untuk kamera yang tampil)
+> - Halaman `/ai-analytics` menampilkan data hitungan orang per kamera per hari
+> - Sprint lengkap tidak menyebabkan error di halaman lain
+
+---
+
+### Ringkasan Sprint Fase 14
+
+```
+═══════════════════════════════════════════════════════════════
+FASE 14 — CCTV Intelligence
+───────────────────────────────────────────────────────────────
+Sprint 37: RTSP Live Status Detection (14A) ......... 2–3 hari  ← mulai sini
+Sprint 38: AI Microservice & Person Counting (14B) .. 4–5 hari
+Sprint 39: Frontend AI Overlay & E2E (14C) ......... 3–4 hari
+───────────────────────────────────────────────────────────────
+Total Estimasi: 9–12 hari kerja
+───────────────────────────────────────────────────────────────
+Requirement Server (minimum):
+  CPU   : 4 vCPU (2 untuk app, 2 untuk AI)
+  RAM   : 6 GB total (4 app + 2 AI service)
+  GPU   : Opsional — tanpa GPU tetap jalan di CPU
+  Port  : 554 (RTSP NVR) harus bisa dicapai dari VPS
+═══════════════════════════════════════════════════════════════
+```
+
+---
+
 ## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
 
 Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
@@ -927,8 +1198,16 @@ Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) 🔲  3–4 hari
 Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) 🔲 2–3 hari
 Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
 Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
+───────────────────────────────────────────────────────────────
+
+CCTV INTELLIGENCE (Fase 14 — mulai setelah Sprint 31)
+───────────────────────────────────────────────────────────────
+Sprint 37: RTSP Live Status Detection (14A)  🔲 ....  2–3 hari  ← SEGERA
+Sprint 38: AI Microservice & Person Counting (14B) 🔲 4–5 hari
+Sprint 39: Frontend AI Overlay & E2E (14C)  🔲 ....  3–4 hari
 ═══════════════════════════════════════════════════════════════
-Total Fase 13: 16–22 hari kerja (dapat dikerjakan paralel sebagian)
+Total Fase 13: 16–22 hari kerja
+Total Fase 14:  9–12 hari kerja
 ═══════════════════════════════════════════════════════════════
 ```
 
