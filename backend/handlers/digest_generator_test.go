@@ -144,3 +144,16 @@ func dailyDigestRowsForTest(newer, older time.Time) *sqlmock.Rows {
 		AddRow(uuid.New(), newer, newer, nil, newer, 2, 3, 1, 0, 4, 1, 2, "Digest terbaru").
 		AddRow(uuid.New(), older, older, nil, older, 1, 1, 0, 2, 2, 0, 1, "Digest sebelumnya")
 }
+
+// TestDailyDigestCatchUp_AlreadyExists memastikan catch-up melewati generate bila
+// digest hari ini sudah ada (Task 13.9). Path "count > 0" deterministik.
+func TestDailyDigestCatchUp_AlreadyExists(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "daily_digests"`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	checkAndGenerateMissedDigest(config.DB)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

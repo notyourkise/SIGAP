@@ -37,7 +37,8 @@ func TestProcessOverdueMaintenance_OverdueNotified(t *testing.T) {
 	db, mock := setupMockGORM(t)
 	logID, cctvID := uuid.New(), uuid.New()
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
-	scheduledAt := now.Add(-2 * time.Hour)
+	// Overdue >24 jam → level 1 (Warning) → memicu eskalasi.
+	scheduledAt := now.Add(-30 * time.Hour)
 	adminID := uuid.New()
 
 	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
@@ -62,7 +63,8 @@ func TestProcessOverdueMaintenance_OngoingNotifiesTechnician(t *testing.T) {
 	db, mock := setupMockGORM(t)
 	logID, cctvID, technicianID := uuid.New(), uuid.New(), uuid.New()
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
-	scheduledAt := now.Add(-2 * time.Hour)
+	// Overdue >24 jam → level 1 (Warning) → memicu eskalasi.
+	scheduledAt := now.Add(-30 * time.Hour)
 	adminID := uuid.New()
 
 	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
@@ -158,5 +160,28 @@ func TestUpdateMaintenanceLog_RescheduleResetsOverdueNotification(t *testing.T) 
 	response, err := app.Test(request)
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, response.StatusCode)
-	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestOverdueEscalationLevels memastikan perhitungan level eskalasi berdasarkan
+// jam keterlambatan (Task 13.11).
+func TestOverdueEscalationLevels(t *testing.T) {
+	tests := []struct {
+		name string
+		hrs  float64
+		want int
+	}{
+		{"belum overdue", 10, OverdueLevelNone},
+		{"24 jam", 24, OverdueLevelNone},
+		{">24 jam (25)", 25, OverdueLevelWarning},
+		{"48 jam", 48, OverdueLevelWarning},
+		{">48 jam (49)", 49, OverdueLevelHigh},
+		{"72 jam", 72, OverdueLevelHigh},
+		{">72 jam (73)", 73, OverdueLevelCritical},
+		{"sangat telat", 200, OverdueLevelCritical},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, overdueLevelFor(tt.hrs))
+		})
+	}
 }

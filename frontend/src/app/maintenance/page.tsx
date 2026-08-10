@@ -59,6 +59,7 @@ interface MaintenanceLog {
   completed_at: string | null;
   image_url?: string;
   created_at: string;
+  overdue_level?: number;
 }
 
 interface MaintenanceLogsResponse {
@@ -627,6 +628,30 @@ export default function MaintenanceLogsPage() {
     return 'Terjadwal';
   };
 
+  // Badge status eskalasi overdue berdasarkan overdue_level (Task 13.11b).
+  const renderOverdueBadge = (level?: number) => {
+    if (!level || level <= 0) return null;
+    if (level >= 3) {
+      return (
+        <span className="mt-1 inline-flex animate-pulse items-center gap-1 rounded-full border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-600 dark:text-red-400">
+          🔴 KRITIS
+        </span>
+      );
+    }
+    if (level === 2) {
+      return (
+        <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-500/30 bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-600 dark:text-orange-400">
+          🟠 Overdue Tinggi
+        </span>
+      );
+    }
+    return (
+      <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+        🟡 Overdue
+      </span>
+    );
+  };
+
   const closeFormModal = () => {
     if (actionLoading === 'save') return;
     setIsModalOpen(false);
@@ -796,17 +821,20 @@ export default function MaintenanceLogsPage() {
                       <td className="whitespace-nowrap px-5 py-4 text-xs text-muted">{formatDate(log.completed_at || log.scheduled_date)}</td>
 
                       <td className="px-5 py-4">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            log.status === 'completed'
-                            ? 'border-success/25 bg-success/10 text-success'
-                            : log.status === 'failed'
-                            ? 'border-error/25 bg-error/10 text-error'
-                            : log.status === 'ongoing'
-                            ? 'border-warning/25 bg-warning/10 text-warning'
-                            : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                        }`}>
-                          {getStatusLabel(log.status)}
-                        </span>
+                        <div className="flex flex-col items-start">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              log.status === 'completed'
+                              ? 'border-success/25 bg-success/10 text-success'
+                              : log.status === 'failed'
+                              ? 'border-error/25 bg-error/10 text-error'
+                              : log.status === 'ongoing'
+                              ? 'border-warning/25 bg-warning/10 text-warning'
+                              : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                          }`}>
+                            {getStatusLabel(log.status)}
+                          </span>
+                          {renderOverdueBadge(log.overdue_level)}
+                        </div>
                       </td>
 
                       <td className="px-5 py-4 text-right">

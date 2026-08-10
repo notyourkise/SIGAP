@@ -39,9 +39,13 @@ const typeStyles: Record<string, string> = {
   MAINTENANCE_UNASSIGNED: 'bg-blue-500',
   MAINTENANCE_COMPLETED: 'bg-success',
   MAINTENANCE_OVERDUE: 'bg-red-500',
+  OVERDUE_CRITICAL: 'bg-red-600',
   FIELD_CHECK_ATTENTION: 'bg-accent',
   DAILY_DIGEST_AVAILABLE: 'bg-primary',
 };
+
+// Tipe notifikasi kritis (overdue level 3) — latar merah + ikon 🚨.
+const isCriticalType = (type: string) => type === 'OVERDUE_CRITICAL';
 
 // Halaman Pemberitahuan menampilkan notifikasi milik user yang login saja —
 // backend mem-scope seluruh endpoint /api/notifications dari klaim JWT,
@@ -232,9 +236,11 @@ export default function NotificationsPage() {
                       type="button"
                       onClick={() => handleItemClick(item)}
                       className={`flex w-full items-start gap-3.5 border-l-4 px-5 py-4 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
-                        item.is_read
-                          ? 'border-transparent'
-                          : 'border-primary bg-primary/5'
+                        isCriticalType(item.type)
+                          ? 'border-red-600 bg-red-500/10'
+                          : item.is_read
+                            ? 'border-transparent'
+                            : 'border-primary bg-primary/5'
                       }`}
                     >
                       <span
@@ -244,6 +250,7 @@ export default function NotificationsPage() {
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline justify-between gap-3">
                           <span className={`truncate text-sm ${item.is_read ? 'font-medium text-muted' : 'font-bold text-foreground'}`}>
+                            {isCriticalType(item.type) && <span className="mr-1" aria-hidden="true">🚨</span>}
                             {item.title}
                           </span>
                           {!item.is_read && (

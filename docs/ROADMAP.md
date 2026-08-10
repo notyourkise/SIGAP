@@ -35,6 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **0/18** | **🔲 Belum dimulai** |
+| **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -44,20 +45,23 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 > Fase 12 (Integrasi) 🔶
 >     │
 >     ▼
-> Fase 13 (Perbaikan & Penguatan) ← P1-P5 DAHULU (prioritas tinggi)
+> Fase 13 (Perbaikan & Penguatan) ← kerjakan paralel dengan Fase 14
 >     │
->     ├── Sprint 31: Keamanan & Data Integrity (P1–P5)
->     ├── Sprint 32: Notifikasi & Email (P6–P7)
->     ├── Sprint 33: Kecerdasan Data (P8–P9 + P11)
->     ├── Sprint 34: Infra & Integrasi (P10 + P14 + P16)
->     ├── Sprint 35: Performa & UX Backend (P12 + P13)
->     └── Sprint 36: Polish Frontend (P2 + P15 + P17 + P18)
+>     ├── Sprint 31–36 (P1–P18)
+>     │
+>     ▼
+> Fase 14 (CCTV Intelligence) ← dapat dimulai setelah Sprint 31 selesai
+>     │
+>     ├── Sprint 37: RTSP Live Status Detection (14A)
+>     ├── Sprint 38: AI Microservice & Person Counting (14B)
+>     └── Sprint 39: Frontend AI Overlay & E2E Integration (14C)
 > ```
 > - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
 > - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
 > - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
 > - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
 > - **Fase 13** (perbaikan): penguatan kualitas & keamanan fitur existing berdasarkan analisis teknis 2026-08-10.
+> - **Fase 14** (CCTV intelligence): deteksi online/offline real-time + AI deteksi orang berbasis YOLOv8.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -927,8 +931,16 @@ Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) 🔲  3–4 hari
 Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) 🔲 2–3 hari
 Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
 Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
+───────────────────────────────────────────────────────────────
+
+CCTV INTELLIGENCE (Fase 14 — mulai setelah Sprint 31)
+───────────────────────────────────────────────────────────────
+Sprint 37: RTSP Live Status Detection (14A)  🔲 ....  2–3 hari  ← SEGERA
+Sprint 38: AI Microservice & Person Counting (14B) 🔲 4–5 hari
+Sprint 39: Frontend AI Overlay & E2E (14C)  🔲 ....  3–4 hari
 ═══════════════════════════════════════════════════════════════
-Total Fase 13: 16–22 hari kerja (dapat dikerjakan paralel sebagian)
+Total Fase 13: 16–22 hari kerja
+Total Fase 14:  9–12 hari kerja
 ═══════════════════════════════════════════════════════════════
 ```
 

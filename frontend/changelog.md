@@ -1,5 +1,30 @@
 # Changelog - Frontend SIGAP
 
+## [1.46.0] - 2026-08-10
+
+### Fitur: Grafik Tren Kesehatan & UI Eskalasi Overdue (Sprint 33 - P8b, P11b)
+
+perubahan yang dilakukan: **Menambahkan grafik tren skor kesehatan di detail CCTV dan badge eskalasi overdue di tabel pemeliharaan.**
+
+before: Detail CCTV tidak menampilkan tren skor; tabel pemeliharaan tidak menunjukkan level overdue.
+
+after:
+- **P8b — Grafik tren (Task 13.8b)**:
+  - Section "Tren Kesehatan" di modal detail CCTV dengan tab range 7/30/90 hari.
+  - Komponen `HealthTrendChart` (SVG mandiri): zona warna merah/kuning/hijau, highlight titik minimum, tooltip, loading skeleton, empty state.
+  - Fetch `GET /cctv/:id/health-history`.
+- **P11b — UI eskalasi overdue (Task 13.11b)**:
+  - Badge status overdue di tabel pemeliharaan: 🟡 Overdue (level 1), 🟠 Overdue Tinggi (level 2), 🔴 KRITIS berkedip (level 3).
+  - Notifikasi `OVERDUE_CRITICAL` ditampilkan dengan latar merah + ikon 🚨 di bell & halaman pemberitahuan.
+
+timestamp: 2026-08-10 16:50 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/pemberitahuan/page.tsx
+- frontend/src/components/NotificationBell.tsx
+
 ## [1.45.0] - 2026-08-10
 
 ### Fitur: UI Preferensi Email Granular (Sprint 32 - P7b, Task 13.7b)

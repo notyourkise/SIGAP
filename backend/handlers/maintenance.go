@@ -379,6 +379,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 			// tugas kembali terlambat setelah reschedule.
 			if t.After(time.Now()) {
 				logEntry.OverdueNotifiedAt = nil
+				logEntry.OverdueLevel = 0
 			}
 		}
 	}
@@ -736,6 +737,8 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		logEntry.MaintenanceResultID = &field.ID
 		logEntry.Status = newStatus
 		logEntry.CompletedAt = &now
+		// Tugas selesai/gagal tidak lagi overdue → reset level eskalasi (Task 13.11).
+		logEntry.OverdueLevel = 0
 		if err := tx.Save(&logEntry).Error; err != nil {
 			return err
 		}

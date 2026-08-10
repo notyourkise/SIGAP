@@ -1,5 +1,49 @@
 # Changelog - Backend SIGAP
 
+## [0.54.0] - 2026-08-10
+
+### Fitur: Kecerdasan Data & Eskalasi (Sprint 33 - P8, P9, P11)
+
+perubahan yang dilakukan: **Menambahkan histori skor kesehatan, catch-up digest, dan eskalasi overdue bertingkat.**
+
+before:
+- Skor kesehatan CCTV hanya disimpan di kolom `health_score` (tanpa histori/tren).
+- `RunDailyDigestGenerator` menunggu 06:00 WITA; bila server restart setelahnya, digest hari ini terlewat.
+- `RunOverdueChecker` hanya mengirim notifikasi overdue sekali (tanpa eskalasi bertingkat).
+
+after:
+- **P8 — Histori skor kesehatan (Task 13.8)**:
+  - Migration `000014_cctv_health_histories` + model `CCTVHealthHistory`.
+  - Insert histori saat `recalculateCCTVHealthScoreAt`; endpoint `GET /api/cctv/:id/health-history?range=7d|30d|90d`.
+  - Route + unit test `TestGetCCTVHealthHistory`.
+- **P9 — Digest catch-up (Task 13.9)**:
+  - `checkAndGenerateMissedDigest` dipanggil di awal `RunDailyDigestGenerator` (generate digest hari ini bila belum ada).
+  - Unit test `TestDailyDigestCatchUp_AlreadyExists`.
+- **P11 — Eskalasi overdue bertingkat (Task 13.11)**:
+  - Migration `000015_overdue_level` + kolom `overdue_level` di `MaintenanceLog`.
+  - Level 0/1(>24h)/2(>48h)/3(>72h); eskalasi hanya saat level naik; level 3 → notifikasi kritis `OVERDUE_CRITICAL` + email + broadcast; level 2 → `OVERDUE_HIGH`.
+  - Reset `overdue_level` saat selesai/di-reschedule.
+  - Unit test `TestOverdueEscalationLevels`.
+
+timestamp: 2026-08-10 16:45 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/migrations/000014_cctv_health_histories.up.sql (baru)
+- backend/migrations/000014_cctv_health_histories.down.sql (baru)
+- backend/migrations/000015_overdue_level.up.sql (baru)
+- backend/migrations/000015_overdue_level.down.sql (baru)
+- backend/models/cctv_health_history.go (baru)
+- backend/models/notification.go
+- backend/models/setup.go
+- backend/handlers/health_score.go
+- backend/handlers/health_score_test.go
+- backend/handlers/digest_generator.go
+- backend/handlers/digest_generator_test.go
+- backend/handlers/overdue_checker.go
+- backend/handlers/overdue_checker_test.go
+- backend/handlers/maintenance.go
+- backend/routes/cctv.go
+
 ## [0.53.1] - 2026-08-10
 
 ### Fix: Race/Panic pada middleware API Key (last_used_at)

@@ -87,4 +87,7 @@ type MaintenanceLog struct {
 	ScheduledDate     *time.Time `json:"scheduled_date"`
 	CompletedAt       *time.Time `json:"completed_at"`
 	ImageUrl          string     `gorm:"type:varchar(255)" json:"image_url,omitempty"`
+	// OverdueLevel adalah level eskalasi overdue bertingkat (Task 13.11):
+	// 0 = belum/bukan, 1 = >24 jam, 2 = >48 jam, 3 = >72 jam (kritis).
+	OverdueLevel int `gorm:"type:integer;not null;default:0" json:"overdue_level"`
 }

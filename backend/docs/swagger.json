@@ -1193,6 +1193,61 @@
                 }
             }
         },
+        "/cctv/{id}/health-history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan histori skor kesehatan (0-100) suatu CCTV dalam rentang waktu (7/30/90 hari).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Histori Skor Kesehatan CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Rentang waktu: 7d|30d|90d (default 30d)",
+                        "name": "range",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sukses mendapatkan histori skor kesehatan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "ID CCTV tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/cctv/{id}/health-score": {
             "get": {
                 "security": [

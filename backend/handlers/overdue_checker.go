@@ -7,11 +7,26 @@ import (
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
 // overdueCheckerInterval adalah jeda pemeriksaan tugas yang melewati jadwal.
 const overdueCheckerInterval = 1 * time.Hour
+
+// Level eskalasi overdue bertingkat (Task 13.11).
+const (
+	OverdueLevelNone     = 0 // Belum / bukan overdue
+	OverdueLevelWarning  = 1 // >24 jam
+	OverdueLevelHigh     = 2 // >48 jam
+	OverdueLevelCritical = 3 // >72 jam (kritis)
+)
+
+// Event WebSocket untuk eskalasi overdue tingkat lanjut.
+const (
+	EventOverdueHigh     = "OVERDUE_HIGH"
+	EventOverdueCritical = "OVERDUE_CRITICAL"
+)
 
 // RunOverdueChecker menjalankan eskalasi overdue sebagai goroutine. Pemeriksaan
 // dilakukan sekali saat startup agar tugas yang terlewat ketika server mati
@@ -44,7 +59,7 @@ func ProcessOverdueMaintenanceAt(db *gorm.DB, now time.Time) {
 
 	var logs []models.MaintenanceLog
 	if err := db.Preload("CCTV").
-		Where("status IN ? AND scheduled_date IS NOT NULL AND scheduled_date < ? AND overdue_notified_at IS NULL", []string{"scheduled", "ongoing"}, now).
+		Where("status IN ? AND scheduled_date IS NOT NULL AND scheduled_date < ?", []string{"scheduled", "ongoing"}, now).
 		Order("scheduled_date asc").
 		Find(&logs).Error; err != nil {
 		utils.Log.Errorf("⚠️ Gagal memuat tugas overdue: %v", err)
@@ -58,43 +73,83 @@ func ProcessOverdueMaintenanceAt(db *gorm.DB, now time.Time) {
 		if logs[i].Status != "scheduled" && logs[i].Status != "ongoing" {
 			continue
 		}
-		if logs[i].OverdueNotifiedAt != nil {
-			continue
-		}
 		processOverdueMaintenanceLog(db, &logs[i], now)
 	}
 }
 
-// processOverdueMaintenanceLog mengirimkan eskalasi ke admin dan, bila ada,
-// teknisi yang sedang mengerjakan tugas. Flag baru ditulis setelah seluruh
-// notifikasi berhasil dibuat agar checker dapat mencoba kembali saat database
-// sedang mengalami gangguan.
+// overdueLevelFor menghitung level eskalasi berdasarkan jam keterlambatan.
+func overdueLevelFor(hoursSinceScheduled float64) int {
+	switch {
+	case hoursSinceScheduled > 72:
+		return OverdueLevelCritical
+	case hoursSinceScheduled > 48:
+		return OverdueLevelHigh
+	case hoursSinceScheduled > 24:
+		return OverdueLevelWarning
+	default:
+		return OverdueLevelNone
+	}
+}
+
+// processOverdueMaintenanceLog mengirimkan eskalasi bertingkat ke admin dan, bila
+// ada, teknisi yang sedang mengerjakan tugas. Eskalasi hanya dikirim saat level
+// naik (0→1→2→3) agar tidak spam.
 func processOverdueMaintenanceLog(db *gorm.DB, logEntry *models.MaintenanceLog, now time.Time) {
 	if logEntry.ScheduledDate == nil {
 		return
 	}
 
-	const overdueTitle = "Tugas pemeliharaan terlambat"
+	hoursSinceScheduled := now.Sub(*logEntry.ScheduledDate).Hours()
+	targetLevel := overdueLevelFor(hoursSinceScheduled)
+	if targetLevel <= logEntry.OverdueLevel {
+		return
+	}
+
+	if err := sendEscalationNotification(db, logEntry, targetLevel, now); err != nil {
+		utils.Log.Errorf("⚠️ Gagal mengirim eskalasi level %d untuk log %s: %v", targetLevel, logEntry.ID.String(), err)
+		return
+	}
+
+	result := db.Model(&models.MaintenanceLog{}).
+		Where("id = ?", logEntry.ID).
+		Update("overdue_level", targetLevel)
+	if result.Error != nil {
+		utils.Log.Errorf("⚠️ Gagal memperbarui overdue_level log %s: %v", logEntry.ID.String(), result.Error)
+	}
+}
+
+// sendEscalationNotification mengirim notifikasi/email sesuai level eskalasi.
+func sendEscalationNotification(db *gorm.DB, logEntry *models.MaintenanceLog, level int, now time.Time) error {
 	const referenceType = "maintenance-log"
 	scheduledDate := logEntry.ScheduledDate.Format("2006-01-02 15:04:05")
+
+	title := "Tugas pemeliharaan terlambat"
+	if level >= OverdueLevelHigh {
+		title = "Perhatian Tinggi: Tugas pemeliharaan terlambat"
+	}
+	if level >= OverdueLevelCritical {
+		title = "KRITIS: Tugas pemeliharaan sangat terlambat"
+	}
+
 	adminMessage := fmt.Sprintf(
-		"Tugas pemeliharaan %s (ID: %s) sudah melewati jadwal %s",
+		"Tugas pemeliharaan %s (ID: %s) sudah melewati jadwal %s (level %d)",
 		logEntry.CCTV.Nama,
 		logEntry.CCTV.KodeCCTV,
 		scheduledDate,
+		level,
 	)
 
+	// Level kritis memakai tipe notifikasi khusus agar frontend bisa menampilkan
+	// ikon/background khusus.
+	notifType := models.NotificationTypeOverdue
+	if level >= OverdueLevelCritical {
+		notifType = models.NotificationTypeOverdueCritical
+	}
+
 	if err := utils.NotifyRoleSync(
-		db,
-		"admin",
-		models.NotificationTypeOverdue,
-		overdueTitle,
-		adminMessage,
-		referenceType,
-		&logEntry.ID,
+		db, "admin", notifType, title, adminMessage, referenceType, &logEntry.ID,
 	); err != nil {
-		utils.Log.Errorf("⚠️ Gagal mengirim eskalasi overdue untuk log %s ke admin: %v", logEntry.ID.String(), err)
-		return
+		return err
 	}
 
 	if logEntry.Status == "ongoing" && logEntry.TechnicianID != nil {
@@ -103,22 +158,27 @@ func processOverdueMaintenanceLog(db *gorm.DB, logEntry *models.MaintenanceLog, 
 			logEntry.CCTV.Nama,
 		)
 		if err := utils.NotifyUserSync(
-			db,
-			*logEntry.TechnicianID,
-			models.NotificationTypeOverdue,
-			overdueTitle,
-			technicianMessage,
-			referenceType,
-			&logEntry.ID,
+			db, *logEntry.TechnicianID, notifType, title, technicianMessage, referenceType, &logEntry.ID,
 		); err != nil {
-			utils.Log.Errorf("⚠️ Gagal mengirim eskalasi overdue untuk teknisi log %s: %v", logEntry.ID.String(), err)
-			return
+			return err
 		}
 	}
 
-	// Task 11.3: kirim email eskalasi overdue ke admin/teknisi yang opt-in.
-	// Berjalan async agar tidak memperlambat checker bila SMTP lambat.
-	go SendOverdueEmail(db, logEntry)
+	// Broadcast event via WebSocket untuk eskalasi tingkat lanjut.
+	if level >= OverdueLevelCritical {
+		utils.BroadcastEvent(EventOverdueCritical, fiber.Map{
+			"log_id": logEntry.ID.String(), "cctv_name": logEntry.CCTV.Nama, "level": level,
+		})
+	} else if level >= OverdueLevelHigh {
+		utils.BroadcastEvent(EventOverdueHigh, fiber.Map{
+			"log_id": logEntry.ID.String(), "cctv_name": logEntry.CCTV.Nama, "level": level,
+		})
+	}
+
+	// Task 11.3: kirim email eskalasi overdue. Berjalan async bila SMTP lambat.
+	if level >= OverdueLevelCritical {
+		go SendOverdueEmail(db, logEntry)
+	}
 
 	// Task 12.3: dispatch event webhook maintenance.overdue.
 	DispatchWebhook(db, models.EventWebhookMaintenanceOverdue, map[string]interface{}{
@@ -127,17 +187,18 @@ func processOverdueMaintenanceLog(db *gorm.DB, logEntry *models.MaintenanceLog, 
 		"cctv_name":      logEntry.CCTV.Nama,
 		"cctv_kode":      logEntry.CCTV.KodeCCTV,
 		"scheduled_date": scheduledDate,
+		"overdue_level":  level,
 		"timestamp":      now.Format(time.RFC3339),
 	})
 
-	result := db.Model(&models.MaintenanceLog{}).
-		Where("id = ? AND overdue_notified_at IS NULL", logEntry.ID).
-		Update("overdue_notified_at", now)
-	if result.Error != nil {
-		utils.Log.Errorf("⚠️ Gagal menandai log %s sebagai sudah dinotifikasi overdue: %v", logEntry.ID.String(), result.Error)
-		return
+	// Tandai telah dinotifikasi (hanya pada level warning pertama).
+	if logEntry.OverdueNotifiedAt == nil {
+		if err := db.Model(&models.MaintenanceLog{}).
+			Where("id = ? AND overdue_notified_at IS NULL", logEntry.ID).
+			Update("overdue_notified_at", now).Error; err != nil {
+			utils.Log.Warnf("⚠️ Gagal menandai overdue_notified_at log %s: %v", logEntry.ID.String(), err)
+		}
 	}
-	if result.RowsAffected == 0 {
-		utils.Log.Infof("⏰ Log %s sudah ditandai overdue oleh proses lain", logEntry.ID.String())
-	}
+
+	return nil
 }

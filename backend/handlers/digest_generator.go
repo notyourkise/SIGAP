@@ -33,6 +33,39 @@ type DailyDigestFieldStats struct {
 	AttentionChecks int64 `gorm:"column:attention_checks"`
 }
 
+// checkAndGenerateMissedDigest memastikan digest "hari ini" (WITA) ada saat
+// startup. Bila server restart setelah pukul 06:00 WITA, digest hari ini belum
+// dibuat — fungsi ini membuatnya sebagai catch-up (Task 13.9).
+func checkAndGenerateMissedDigest(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	loc := time.FixedZone("WITA", 8*60*60)
+	now := time.Now().In(loc)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	var count int64
+	if err := db.Model(&models.DailyDigest{}).
+		Where("digest_date >= ? AND digest_date < ?", startOfDay.UTC(), endOfDay.UTC()).
+		Count(&count).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal memeriksa digest hari ini saat catch-up: %v", err)
+		return
+	}
+
+	if count > 0 {
+		utils.Log.Info("📅 Digest hari ini sudah ada — lewati catch-up")
+		return
+	}
+
+	utils.Log.Info("📅 Digest hari ini tidak ditemukan, generate catch-up...")
+	if _, created, err := GenerateDailyDigestAt(db, now); err != nil {
+		utils.Log.Errorf("Gagal generate digest catch-up: %v", err)
+	} else if created {
+		utils.Log.Info("✅ Digest catch-up hari ini berhasil dibuat")
+	}
+}
+
 // RunDailyDigestGenerator menunggu jadwal 06:00 WITA berikutnya lalu membuat
 // satu digest setiap hari. Timer dihitung ulang setiap siklus agar waktu tetap
 // mengikuti kalender WITA saat server berjalan lama.
@@ -40,6 +73,10 @@ func RunDailyDigestGenerator(db *gorm.DB) {
 	if db == nil {
 		return
 	}
+
+	// Catch-up saat startup: bila server restart setelah 06:00 WITA, digest hari
+	// ini belum dibuat → generate otomatis (Task 13.9).
+	checkAndGenerateMissedDigest(db)
 
 	for {
 		now := time.Now().In(dailyDigestWitaLocation())

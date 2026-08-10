@@ -131,3 +131,45 @@ func TestCalculateAllCCTVHealthScoresAt_UpdatesEveryCCTV(t *testing.T) {
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestGetCCTVHealthHistory memastikan endpoint histori skor kesehatan mengembalikan
+// data terurut naik (Task 13.8).
+func TestGetCCTVHealthHistory(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+
+	rows := sqlmock.NewRows([]string{"id", "cctv_id", "health_score", "calculated_at"}).
+		AddRow(uuid.New(), cctvID, 90, time.Now().AddDate(0, 0, -3)).
+		AddRow(uuid.New(), cctvID, 85, time.Now().AddDate(0, 0, -2)).
+		AddRow(uuid.New(), cctvID, 78, time.Now().AddDate(0, 0, -1))
+	mock.ExpectQuery(`SELECT \* FROM "cctv_health_histories"`).
+		WillReturnRows(rows)
+
+	app := newTestApp()
+	app.Get("/cctv/:id/health-history", withUserLocals(uuid.New().String(), "teknisi"), GetCCTVHealthHistory)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/cctv/"+cctvID.String()+"/health-history?range=30d", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var payload map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	assert.Equal(t, "success", payload["status"])
+	data := payload["data"].([]interface{})
+	assert.Len(t, data, 3)
+	first := data[0].(map[string]interface{})
+	assert.Equal(t, float64(90), first["health_score"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetCCTVHealthHistory_InvalidUUID memastikan 400 untuk UUID tidak valid.
+func TestGetCCTVHealthHistory_InvalidUUID(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	app := newTestApp()
+	app.Get("/cctv/:id/health-history", withUserLocals(uuid.New().String(), "teknisi"), GetCCTVHealthHistory)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/cctv/not-a-uuid/health-history", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
