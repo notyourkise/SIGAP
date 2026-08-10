@@ -331,10 +331,14 @@ definitions:
     type: object
   handlers.EmailPreferencesRequest:
     properties:
+      email_daily_digest:
+        type: boolean
       email_notifications:
         type: boolean
-    required:
-    - email_notifications
+      email_overdue:
+        type: boolean
+      email_stock_low:
+        type: boolean
     type: object
   handlers.FieldCheckItem:
     properties:
@@ -2988,6 +2992,36 @@ paths:
       security:
       - BearerAuth: []
       summary: Tandai Notifikasi Dibaca
+      tags:
+      - Notifikasi
+  /notifications/cleanup:
+    delete:
+      description: Menghapus notifikasi yang sudah dibaca lebih lama dari N hari (default
+        30). Khusus admin.
+      parameters:
+      - description: Batas umur notifikasi (hari, default 30)
+        in: query
+        name: older_than
+        type: integer
+      responses:
+        "200":
+          description: Cleanup selesai
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: hanya admin'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Bersihkan Notifikasi Lama (Admin)
       tags:
       - Notifikasi
   /notifications/read-all:

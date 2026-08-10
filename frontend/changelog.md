@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.45.0] - 2026-08-10
+
+### Fitur: UI Preferensi Email Granular (Sprint 32 - P7b, Task 13.7b)
+
+perubahan yang dilakukan: **Mengganti toggle email tunggal dengan card berisi master toggle + 3 sub-toggle per-tipe, dengan auto-save.**
+
+before: Halaman profil hanya punya satu toggle "Terima notifikasi email".
+
+after:
+- Card "Notifikasi Email" berisi:
+  - Master toggle "Aktifkan notifikasi email" — bila mati, ketiga sub-toggle tampil disabled (grayed out).
+  - Sub-toggle: Ringkasan Harian (📅), Eskalasi Overdue (⚠️), Stok Suku Cadang Rendah (📦).
+- Auto-save: setiap toggle change langsung hit `PUT /api/profile/email-preferences` (debounce 500ms), tampilkan toast sukses/error.
+- Inisialisasi nilai dari `GET /api/profile` (user context).
+- Interface `User` & `ProfileResponse` tambah `email_daily_digest`, `email_overdue`, `email_stock_low`.
+
+timestamp: 2026-08-10 14:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/profile/page.tsx
+- frontend/src/context/AuthContext.tsx
+
 ## [1.44.0] - 2026-08-10
 
 ### Fitur: Perbaikan Marker Peta Koordinat Kosong (Sprint 31 - P2, Task 13.2)

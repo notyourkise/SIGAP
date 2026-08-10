@@ -17,5 +17,6 @@ func SetupNotificationRoutes(router fiber.Router) {
 	notifGroup.Get("/", handlers.GetNotifications)
 	notifGroup.Get("/unread-count", handlers.GetUnreadNotificationCount)
 	notifGroup.Put("/read-all", handlers.MarkAllNotificationsRead)
+	notifGroup.Delete("/cleanup", middleware.RequireRole("admin"), handlers.AdminCleanupNotifications)
 	notifGroup.Put("/:id/read", handlers.MarkNotificationRead)
 }

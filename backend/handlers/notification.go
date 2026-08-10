@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"strconv"
+	"time"
+
 	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // GetNotifications mengembalikan daftar notifikasi milik user terautentikasi
@@ -80,6 +84,7 @@ func GetNotifications(c *fiber.Ctx) error {
 		"data": fiber.Map{
 			"rows":       notifications,
 			"pagination": pagination,
+			"total_count": totalRows,
 		},
 	})
 }
@@ -236,5 +241,103 @@ func MarkAllNotificationsRead(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "success",
 		"message": "Seluruh notifikasi berhasil ditandai sebagai dibaca",
+	})
+}
+
+// CleanupOldNotifications menghapus notifikasi lama untuk mencegah tabel tumbuh
+// tanpa batas (Task 13.6). Aturan:
+//   - Sudah dibaca & lebih dari 30 hari → dihapus.
+//   - Belum dibaca & lebih dari 90 hari → dihapus.
+//
+// Mengembalikan jumlah notifikasi yang dihapus (baca & belum dibaca).
+func CleanupOldNotifications(db *gorm.DB) (deletedRead, deletedUnread int64) {
+	if db == nil {
+		return 0, 0
+	}
+	now := time.Now()
+	readCutoff := now.AddDate(0, 0, -30)
+	unreadCutoff := now.AddDate(0, 0, -90)
+
+	// Hapus yang sudah dibaca dan lebih dari 30 hari.
+	if res := db.Unscoped().Where("is_read = ? AND created_at < ?", true, readCutoff).
+		Delete(&models.Notification{}); res.Error == nil {
+		deletedRead = res.RowsAffected
+	} else {
+		utils.Log.Errorf("❌ Gagal cleanup notifikasi dibaca lama: %v", res.Error)
+	}
+
+	// Hapus yang belum dibaca tapi lebih dari 90 hari.
+	if res := db.Unscoped().Where("is_read = ? AND created_at < ?", false, unreadCutoff).
+		Delete(&models.Notification{}); res.Error == nil {
+		deletedUnread = res.RowsAffected
+	} else {
+		utils.Log.Errorf("❌ Gagal cleanup notifikasi belum dibaca lama: %v", res.Error)
+	}
+
+	return deletedRead, deletedUnread
+}
+
+// StartNotificationCleanup menjalankan CleanupOldNotifications saat startup lalu
+// berulang setiap 7 hari (Task 13.6).
+func StartNotificationCleanup(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	CleanupOldNotifications(db)
+	ticker := time.NewTicker(7 * 24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		CleanupOldNotifications(db)
+	}
+}
+
+// AdminCleanupNotifications endpoint admin untuk menghapus notifikasi lama secara
+// manual. Query param ?older_than=<hari> (default 30). Menghapus notifikasi yang
+// sudah dibaca lebih lama dari N hari.
+// @Summary      Bersihkan Notifikasi Lama (Admin)
+// @Description  Menghapus notifikasi yang sudah dibaca lebih lama dari N hari (default 30). Khusus admin.
+// @Tags         Notifikasi
+// @Security     BearerAuth
+// @Param        older_than query int false "Batas umur notifikasi (hari, default 30)"
+// @Success      200 {object} map[string]interface{} "Cleanup selesai"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: hanya admin"
+// @Router       /notifications/cleanup [delete]
+func AdminCleanupNotifications(c *fiber.Ctx) error {
+	days := 30
+	if v := c.Query("older_than"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			days = n
+		}
+	}
+
+	// Hapus notifikasi yang sudah dibaca lebih lama dari N hari.
+	var deletedRead, deletedUnread int64
+	if res := config.DB.Unscoped().Where("is_read = ? AND created_at < ?", true, time.Now().AddDate(0, 0, -days)).
+		Delete(&models.Notification{}); res.Error == nil {
+		deletedRead = res.RowsAffected
+	} else {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membersihkan notifikasi lama",
+		})
+	}
+	// Hapus notifikasi belum dibaca lebih lama dari 90 hari.
+	if res := config.DB.Unscoped().Where("is_read = ? AND created_at < ?", false, time.Now().AddDate(0, 0, -90)).
+		Delete(&models.Notification{}); res.Error == nil {
+		deletedUnread = res.RowsAffected
+	} else {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membersihkan notifikasi belum dibaca lama",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":        "success",
+		"message":       "Cleanup notifikasi lama selesai",
+		"deleted_read":  deletedRead,
+		"deleted_unread": deletedUnread,
+		"total_deleted": deletedRead + deletedUnread,
 	})
 }
