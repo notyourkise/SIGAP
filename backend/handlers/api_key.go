@@ -239,3 +239,81 @@ func RevokeAPIKey(c *fiber.Ctx) error {
 		"message": "API key berhasil dicabut",
 	})
 }
+
+// RegenerateAPIKey membuat API key mentah baru untuk key yang sudah ada,
+// memperbarui hash & prefix, dan mengembalikan key mentah (hanya 1×). Admin saja.
+// (Task 13.16, Sprint 34)
+// @Summary      Regenerasi API Key (Admin)
+// @Description  Membuat API key baru untuk integrasi yang sudah ada. Key lama otomatis tidak berlaku; key mentah hanya ditampilkan sekali.
+// @Tags         API Key
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "API Key UUID"
+// @Success      200 {object} map[string]interface{} "API key berhasil diregenerasi (key ditampilkan sekali)"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "API key tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal meregenerasi API key"
+// @Router       /api-keys/{id}/regenerate [post]
+func RegenerateAPIKey(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID API key tidak valid",
+		})
+	}
+
+	var item models.APIKey
+	if err := config.DB.First(&item, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "API key tidak ditemukan",
+		})
+	}
+
+	rawKey, prefix := generateAPIKey()
+	hash, err := bcrypt.GenerateFromPassword([]byte(rawKey), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghasilkan hash API key",
+		})
+	}
+
+	// Perbarui hash, prefix, dan reset last_used_at (key baru belum terpakai).
+	updates := map[string]interface{}{
+		"key_hash":      string(hash),
+		"key_prefix":    prefix,
+		"last_used_at":  nil,
+	}
+	if err := config.DB.Model(&models.APIKey{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan API key baru",
+		})
+	}
+
+	utils.LogAudit(config.DB, c, "REGENERATE_API_KEY", "API_KEY",
+		"Merregenerasi API key: "+item.Name, nil, "", "")
+	utils.BroadcastEvent("API_KEY_REGENERATED", fiber.Map{
+		"id":         item.ID,
+		"name":       item.Name,
+		"key_prefix": prefix,
+	})
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"id":         item.ID,
+			"name":       item.Name,
+			"key_prefix": prefix,
+			"scopes":     item.Scopes,
+			"expires_at": item.ExpiresAt,
+			"api_key":    rawKey, // hanya tampil sekali
+			"message":    "Simpan API key ini sekarang; tidak akan ditampilkan lagi.",
+		},
+	})
+}

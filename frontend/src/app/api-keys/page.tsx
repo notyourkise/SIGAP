@@ -21,6 +21,7 @@ import {
   Copy,
   Check,
   Shield,
+  RotateCcw,
 } from 'lucide-react';
 
 const SCOPES = [
@@ -195,6 +196,33 @@ export default function APIKeysPage() {
     }
   };
 
+  // Regenerasi API key (Task 13.16): membuat key mentah baru, key lama tidak
+  // berlaku. Key mentah ditampilkan sekali via modal one-time.
+  const handleRegenerate = async (key: APIKey) => {
+    const ok = await confirm({
+      title: 'Regenerasi API Key?',
+      message: `Integrasi yang memakai "${key.name}" (${key.key_prefix}…) akan berhenti bekerja sampai di-update. Lanjutkan?`,
+      confirmLabel: 'Regenerasi',
+    });
+    if (!ok) return;
+    setActionLoading(`regenerate-${key.id}`);
+    try {
+      const response = await apiRequest<{ api_key: string; key_prefix: string; name: string }>(
+        `/api-keys/${key.id}/regenerate`,
+        { method: 'POST' }
+      );
+      if (response.status === 'success' && response.data) {
+        setGenerated(response.data);
+        toast.success(`API key "${key.name}" berhasil diregenerasi.`);
+        fetchKeys();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'API key belum dapat diregenerasi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const copyKey = async () => {
     if (!generated) return;
     try {
@@ -233,7 +261,7 @@ export default function APIKeysPage() {
             <div className="flex items-start gap-3">
               <Shield className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="flex-1">
-                <h2 className="font-semibold">API Key berhasil dibuat — simpan sekarang!</h2>
+                <h2 className="font-semibold">API Key baru — simpan sekarang!</h2>
                 <p className="mt-1 text-sm text-muted">
                   Key untuk &quot;{generated.name}&quot; tidak akan ditampilkan lagi. Salin dan simpan di tempat aman.
                 </p>
@@ -341,16 +369,28 @@ export default function APIKeysPage() {
                           {key.revoked_at ? (
                             <span className="rounded-full border border-error/25 bg-error/10 px-2.5 py-1 text-[11px] font-bold text-error">Dicabut</span>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleRevoke(key)}
-                              disabled={actionLoading !== null}
-                              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-error transition-colors hover:bg-error/10 disabled:opacity-50"
-                              title="Cabut API key"
-                            >
-                              {actionLoading === `revoke-${key.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                              Cabut
-                            </button>
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleRegenerate(key)}
+                                disabled={actionLoading !== null}
+                                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                                title="Regenerasi API key"
+                              >
+                                {actionLoading === `regenerate-${key.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                Regenerasi
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRevoke(key)}
+                                disabled={actionLoading !== null}
+                                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                                title="Cabut API key"
+                              >
+                                {actionLoading === `revoke-${key.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                Cabut
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

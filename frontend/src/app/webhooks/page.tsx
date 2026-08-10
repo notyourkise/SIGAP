@@ -48,6 +48,7 @@ interface WebhookEndpoint {
   url: string;
   events: string[];
   is_active: boolean;
+  max_log_retention_days?: number;
   created_at: string;
   user?: { full_name?: string };
 }
@@ -66,7 +67,14 @@ interface Delivery {
 
 interface WebhooksResponse {
   rows: WebhookEndpoint[];
+  delivery_counts?: Record<string, number>;
   pagination: { page: number; limit: number; total_rows: number; total_pages: number };
+}
+
+interface WebhookDetailResponse {
+  endpoint: WebhookEndpoint;
+  deliveries: Delivery[];
+  delivery_count?: number;
 }
 
 const formatDate = (iso: string) => {
@@ -89,6 +97,7 @@ export default function WebhooksPage() {
   const confirm = useConfirm();
 
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
+  const [deliveryCounts, setDeliveryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
@@ -98,11 +107,11 @@ export default function WebhooksPage() {
   // Modal form
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [current, setCurrent] = useState<WebhookEndpoint | null>(null);
-  const [form, setForm] = useState({ name: '', url: '', events: [] as string[], secret: '' });
+  const [form, setForm] = useState({ name: '', url: '', events: [] as string[], secret: '', retention: 30 });
   const [saveLoading, setSaveLoading] = useState(false);
 
   // Detail + deliveries
-  const [detail, setDetail] = useState<{ endpoint: WebhookEndpoint; deliveries: Delivery[] } | null>(null);
+  const [detail, setDetail] = useState<{ endpoint: WebhookEndpoint; deliveries: Delivery[]; delivery_count?: number } | null>(null);
 
   const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<WebhookEndpoint>(endpoints, {
     getValue: (row, key) => {
@@ -160,6 +169,7 @@ export default function WebhooksPage() {
       const response = await apiRequest<WebhooksResponse>(`/webhooks?page=${page}&limit=10`);
       if (response.status === 'success' && response.data) {
         setEndpoints(response.data.rows || []);
+        setDeliveryCounts(response.data.delivery_counts || {});
         setPagination(response.data.pagination || { page: 1, limit: 10, total_rows: 0, total_pages: 1 });
       }
     } catch (err) {
@@ -188,13 +198,13 @@ export default function WebhooksPage() {
 
   const openCreate = () => {
     setCurrent(null);
-    setForm({ name: '', url: '', events: [], secret: '' });
+    setForm({ name: '', url: '', events: [], secret: '', retention: 30 });
     setIsFormOpen(true);
   };
 
   const openEdit = (ep: WebhookEndpoint) => {
     setCurrent(ep);
-    setForm({ name: ep.name, url: ep.url, events: ep.events || [], secret: '' });
+    setForm({ name: ep.name, url: ep.url, events: ep.events || [], secret: '', retention: ep.max_log_retention_days ?? 30 });
     setIsFormOpen(true);
   };
 
@@ -216,6 +226,7 @@ export default function WebhooksPage() {
     try {
       const payload: Record<string, unknown> = { name: form.name, url: form.url, events: form.events };
       if (form.secret) payload.secret = form.secret;
+      if (form.retention > 0) payload.max_log_retention_days = form.retention;
       const endpoint = current ? `/webhooks/${current.id}` : '/webhooks';
       const method = current ? 'PUT' : 'POST';
       const response = await apiRequest<WebhookEndpoint>(endpoint, { method, body: JSON.stringify(payload) });
@@ -288,12 +299,36 @@ export default function WebhooksPage() {
 
   const openDetail = async (ep: WebhookEndpoint) => {
     try {
-      const response = await apiRequest<{ endpoint: WebhookEndpoint; deliveries: Delivery[] }>(`/webhooks/${ep.id}`);
+      const response = await apiRequest<WebhookDetailResponse>(`/webhooks/${ep.id}`);
       if (response.status === 'success' && response.data) {
         setDetail(response.data);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Detail webhook belum dapat dimuat.');
+    }
+  };
+
+  // Bersihkan log delivery lama untuk satu endpoint (Task 13.10).
+  const handleCleanLog = async (ep: WebhookEndpoint) => {
+    const ok = await confirm({
+      title: 'Bersihkan Log Pengiriman?',
+      message: `Hapus log pengiriman lebih tua dari 30 hari untuk "${ep.name}"? Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: 'Bersihkan',
+    });
+    if (!ok) return;
+    setActionLoading(`clean-${ep.id}`);
+    try {
+      const response = await apiRequest<{ deleted: number }>(`/webhooks/${ep.id}/deliveries?older_than=30`, { method: 'DELETE' });
+      if (response.status === 'success') {
+        toast.success(`${response.data?.deleted ?? 0} log pengiriman dibersihkan.`);
+        // Perbarui detail dan daftar.
+        if (detail?.endpoint?.id === ep.id) await openDetail(ep);
+        fetchWebhooks();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Log belum dapat dibersihkan.');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -347,6 +382,7 @@ export default function WebhooksPage() {
                       <th className="px-5 py-3.5"><SortableHeader label="URL" sortKey="url" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Event" sortKey="events" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="is_active" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5 text-right">Log</th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
@@ -371,6 +407,11 @@ export default function WebhooksPage() {
                           <button type="button" onClick={() => handleToggle(ep)} disabled={actionLoading !== null} title="Ubah status aktif" className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${ep.is_active ? 'border-success/25 bg-success/10 text-success' : 'border-error/25 bg-error/10 text-error'}`}>
                             {ep.is_active ? 'Aktif' : 'Nonaktif'}
                           </button>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold tabular-nums" title="Jumlah log pengiriman tersimpan">
+                            {deliveryCounts[ep.id] ?? 0} log
+                          </span>
                         </td>
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -428,6 +469,11 @@ export default function WebhooksPage() {
                 <input id="wh-secret" type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} placeholder={current ? 'Biarkan kosong agar tidak berubah' : 'Min. 8 karakter'} className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all" />
               </div>
               <div>
+                <label htmlFor="wh-retention" className="mb-1.5 block text-xs font-semibold text-muted">Retensi Log (hari)</label>
+                <input id="wh-retention" type="number" min={1} value={form.retention} onChange={(e) => setForm({ ...form, retention: Number(e.target.value) || 30 })} className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all" />
+                <p className="mt-1 text-xs text-muted">Log pengiriman lebih tua dari jumlah hari ini akan dihapus otomatis.</p>
+              </div>
+              <div>
                 <span className="mb-1.5 block text-xs font-semibold text-muted">Event yang dilanggan *</span>
                 <div className="space-y-2">
                   {EVENTS.map((ev) => (
@@ -472,8 +518,25 @@ export default function WebhooksPage() {
               ))}
             </div>
 
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <Zap className="h-4 w-4 text-primary" /> Riwayat Pengiriman
+            <h4 className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
+              <span className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" /> Riwayat Pengiriman
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold tabular-nums">
+                  {detail.delivery_count ?? detail.deliveries.length} log tersimpan
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCleanLog(detail.endpoint)}
+                  disabled={actionLoading !== null || (detail.delivery_count ?? 0) === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                  title="Hapus log pengiriman lebih tua dari 30 hari"
+                >
+                  {actionLoading === `clean-${detail.endpoint.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Bersihkan Log
+                </button>
+              </span>
             </h4>
             {detail.deliveries.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted">Belum ada pengiriman untuk endpoint ini.</div>

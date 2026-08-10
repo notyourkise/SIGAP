@@ -21,4 +21,5 @@ func SetupWebhookRoutes(router fiber.Router) {
 	group.Delete("/:id", handlers.DeleteWebhookEndpoint)
 	group.Post("/:id/test", handlers.TestWebhook)
 	group.Get("/:id/deliveries", handlers.GetWebhookDeliveries)
+	group.Delete("/:id/deliveries", handlers.AdminCleanupWebhookDeliveries)
 }

@@ -34,7 +34,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
-| **13** | **Perbaikan & Penguatan Fitur Existing** | **0/18** | **🔲 Belum dimulai** |
+| **13** | **Perbaikan & Penguatan Fitur Existing** | **13/18 (Sprint 31–34)** | **🔶 Berjalan** |
 | **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -758,14 +758,15 @@ cd frontend && npm run lint && npm run build
 > **Branch:** `feature/infra-integration-fixes`
 > **Prasyarat:** Sprint 31 selesai
 > **Estimasi:** 2–3 hari kerja
+> **Status: ✅ Selesai** (2026-08-10)
 
-| ID | Jobdesk | Sub-Agent | Task | Deliverable |
-|----|---------|-----------|------|-------------|
-| **P10** | **Backend** | Agent-BE | **13.10** Retensi Webhook Delivery Log | Di `handlers/webhook.go`: tambah goroutine `StartWebhookLogCleanup` (interval: tiap 7 hari). Logic: `DELETE FROM webhook_deliveries WHERE created_at < NOW() - INTERVAL '30 days'`. Tambah kolom `max_log_retention_days INTEGER DEFAULT 30` di model `WebhookEndpoint`. Cleanup periodik menghormati nilai ini per endpoint. Tambah endpoint `DELETE /api/webhooks/:id/deliveries?older_than=7d` untuk admin trigger manual. Di UI `/webhooks`: tampilkan jumlah log tersimpan per endpoint + tombol "Bersihkan Log". |
-| **P14a** | **Backend** | Agent-BE | **13.14** QR Code Rotation Endpoint | Tambah handler `RotateQRCode` di `handlers/cctv.go`: `POST /api/cctv/:id/rotate-qr` (admin only). Logic: generate UUID baru → `utils.EncryptAES256(newUUID)` → update `cctv.QrPayload` → `config.DB.Save(&cctv)` → `utils.LogAudit(...)` "QR Code dirotasi" → return response dengan data CCTV terbaru. Tambah route di `routes/cctv.go` (statis sebelum `/:id`). Unit test `TestRotateQRCode`. |
-| **P14b** | **Frontend** | Agent-FE | **13.14b** UI Cetak Ulang QR Setelah Rotasi | Di halaman master CCTV (`/cctv`): tambah tombol "🔄 Rotasi QR" di dropdown aksi per baris (di samping "Edit" dan "Hapus"). Klik → konfirmasi dialog "QR Code lama akan tidak berlaku. Lanjutkan?" → panggil `POST /api/cctv/:id/rotate-qr` → langsung buka modal cetak QR baru. |
-| **P16a** | **Backend** | Agent-BE | **13.16** API Key Regeneration Endpoint | Tambah handler `RegenerateAPIKey` di `handlers/api_key.go`: `POST /api/api-keys/:id/regenerate` (admin only). Logic: generate raw key baru → bcrypt hash → update `key_hash` di DB → reset `last_used_at = null` → `utils.LogAudit(...)` "API Key diregenerasi" → `BroadcastEvent("API_KEY_REGENERATED", ...)` → return `{ raw_key: "..." }` (tampil 1×). Tambah route di `routes/api_key.go`. Unit test. |
-| **P16b** | **Frontend** | Agent-FE | **13.16b** UI Regenerasi API Key | Di halaman `/api-keys`: tambah tombol "🔄 Regenerasi" per baris di samping "Revoke". Klik → dialog konfirmasi "Integrasi yang memakai key ini akan berhenti bekerja sampai diupdate. Lanjutkan?" → panggil endpoint → tampilkan raw key baru dalam modal one-time dengan tombol salin. |
+| ID | Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|----|---------|-----------|------|-------------|--------|
+| **P10** | **Backend** | Agent-BE | **13.10** Retensi Webhook Delivery Log | Goroutine `StartWebhookLogCleanup` (interval 7 hari); kolom `max_log_retention_days` di `WebhookEndpoint`; cleanup periodik menghormati retensi per endpoint; endpoint `DELETE /api/webhooks/:id/deliveries?older_than=7d`; UI menampilkan jumlah log per endpoint + tombol "Bersihkan Log". | ✅ Selesai |
+| **P14a** | **Backend** | Agent-BE | **13.14** QR Code Rotation Endpoint | Handler `RotateQRCode` (`POST /api/cctv/:id/rotate-qr`, admin only): UUID baru → enkripsi AES-256 → update `QrPayload` → audit + broadcast. | ✅ Selesai |
+| **P14b** | **Frontend** | Agent-FE | **13.14b** UI Cetak Ulang QR Setelah Rotasi | Tombol "🔄 Rotasi QR" di dropdown aksi per baris CCTV; konfirmasi; setelah sukses langsung siapkan cetak label QR baru. | ✅ Selesai |
+| **P16a** | **Backend** | Agent-BE | **13.16** API Key Regeneration Endpoint | Handler `RegenerateAPIKey` (`POST /api/api-keys/:id/regenerate`, admin only): key mentah baru → hash → update `key_hash`/`key_prefix` → reset `last_used_at` → audit + broadcast → return `{ api_key }` 1×. | ✅ Selesai |
+| **P16b** | **Frontend** | Agent-FE | **13.16b** UI Regenerasi API Key | Tombol "🔄 Regenerasi" per baris; dialog konfirmasi; key mentah baru ditampilkan modal one-time + tombol salin. | ✅ Selesai |
 
 #### Verifikasi Sprint 34
 

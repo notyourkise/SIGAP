@@ -20,8 +20,8 @@ import (
 func webhookEndpointRows(id uuid.UUID, name, url string, events []byte, createdBy uuid.UUID) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
-		"name", "url", "events", "secret", "is_active", "created_by",
-	}).AddRow(id, time.Now(), time.Now(), nil, name, url, string(events), "secret123", true, createdBy)
+		"name", "url", "events", "secret", "is_active", "max_log_retention_days", "created_by",
+	}).AddRow(id, time.Now(), time.Now(), nil, name, url, string(events), "secret123", true, 30, createdBy)
 }
 
 // TestCreateWebhookEndpoint_Success menguji pembuatan endpoint webhook.
@@ -95,6 +95,10 @@ func TestGetAllWebhookEndpoints_Success(t *testing.T) {
 		WillReturnRows(webhookEndpointRows(id, "Endpoint A", "https://example.com/hook", []byte(`["cctv.status_changed"]`), createdBy))
 	mock.ExpectQuery(`SELECT \* FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "full_name", "username"}).AddRow(createdBy, "Admin", "admin"))
+	// Query jumlah log delivery per endpoint (Task 13.10). Tidak ada log →
+	// tidak ada baris yang dikembalikan.
+	mock.ExpectQuery(`SELECT webhook_endpoint_id, COUNT\(\*\) AS count FROM "webhook_deliveries"`).
+		WillReturnRows(sqlmock.NewRows([]string{"webhook_endpoint_id", "count"}))
 
 	app := newTestApp()
 	app.Get("/webhooks", withUserLocals(uuid.New().String(), "admin"), GetAllWebhookEndpoints)

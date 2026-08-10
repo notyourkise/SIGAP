@@ -303,6 +303,9 @@ definitions:
         items:
           type: string
         type: array
+      max_log_retention_days:
+        minimum: 1
+        type: integer
       name:
         maxLength: 100
         minLength: 2
@@ -633,6 +636,9 @@ definitions:
         type: array
       is_active:
         type: boolean
+      max_log_retention_days:
+        minimum: 1
+        type: integer
       name:
         maxLength: 100
         minLength: 2
@@ -743,6 +749,56 @@ paths:
       security:
       - BearerAuth: []
       summary: Buat API Key
+      tags:
+      - API Key
+  /api-keys/{id}/regenerate:
+    post:
+      consumes:
+      - application/json
+      description: Membuat API key baru untuk integrasi yang sudah ada. Key lama otomatis
+        tidak berlaku; key mentah hanya ditampilkan sekali.
+      parameters:
+      - description: API Key UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: API key berhasil diregenerasi (key ditampilkan sekali)
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: API key tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal meregenerasi API key
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Regenerasi API Key (Admin)
       tags:
       - API Key
   /api-keys/{id}/revoke:
@@ -1473,6 +1529,56 @@ paths:
       security:
       - BearerAuth: []
       summary: Unduh QR Code CCTV
+      tags:
+      - Master CCTV
+  /cctv/{id}/rotate-qr:
+    post:
+      consumes:
+      - application/json
+      description: Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga
+        QR Code lama tidak berlaku lagi. Khusus admin.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: QR Code berhasil dirotasi (data CCTV terbaru)
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal merotasi QR Code
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Rotasi QR Code CCTV (Admin)
       tags:
       - Master CCTV
   /cctv/{id}/snapshot:
@@ -4747,6 +4853,55 @@ paths:
       tags:
       - Webhook
   /webhooks/{id}/deliveries:
+    delete:
+      description: Menghapus log pengiriman webhook yang lebih tua dari N hari (default
+        30) untuk satu endpoint. Khusus admin.
+      parameters:
+      - description: Webhook Endpoint UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Batas umur log (hari, default 30)
+        in: query
+        name: older_than
+        type: integer
+      responses:
+        "200":
+          description: Cleanup selesai
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Webhook endpoint tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membersihkan log
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Bersihkan Log Webhook Delivery (Admin)
+      tags:
+      - Webhook
     get:
       description: Mendapatkan daftar pengiriman webhook untuk sebuah endpoint (paginasi,
         terbaru dahulu).

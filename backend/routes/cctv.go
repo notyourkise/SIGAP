@@ -30,6 +30,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	cctvGroup.Post("/", middleware.Protected(), middleware.RequireRole("admin"), handlers.CreateCCTV)
 	cctvGroup.Post("/import", middleware.Protected(), middleware.RequireRole("admin"), handlers.ImportCCTV)
 	cctvGroup.Post("/bulk-delete", middleware.Protected(), middleware.RequireRole("admin"), handlers.BulkDeleteCCTV)
+	cctvGroup.Post("/:id/rotate-qr", middleware.Protected(), middleware.RequireRole("admin"), handlers.RotateQRCode)
 	cctvGroup.Put("/:id", middleware.Protected(), middleware.RequireRole("admin"), handlers.UpdateCCTV)
 	cctvGroup.Delete("/:id", middleware.Protected(), middleware.RequireRole("admin"), handlers.DeleteCCTV)
 }

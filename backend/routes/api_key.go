@@ -16,4 +16,5 @@ func SetupAPIKeyRoutes(router fiber.Router) {
 	group.Get("/", handlers.GetAllAPIKeys)
 	group.Post("/", handlers.CreateAPIKey)
 	group.Post("/:id/revoke", handlers.RevokeAPIKey)
+	group.Post("/:id/regenerate", handlers.RegenerateAPIKey)
 }

@@ -184,6 +184,22 @@ Catatan gotchas test `api_key_test.go` / `webhook_test.go`:
 - Middleware API key menulis `last_used_at` async di goroutine — hindari `mock.ExpectationsWereMet()`
   pada test `ValidKey` (menunggu UPDATE async).
 
+### Matriks Infrastruktur & Integrasi (Fase 13, Task 13.10 + 13.14 + 13.16 / Sprint 34)
+
+Ringkasan cakupan test Sprint 34:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/infra_integration_test.go` | 13.10/13.14/13.16 | `CleanupWebhookDeliveries` (query cleanup per endpoint), `AdminCleanupWebhookDeliveries` (sukses → 200 + `deleted`, not found → 404), `RotateQRCode` (sukses → 200 + `qr_payload` berubah, not found → 404), `RegenerateAPIKey` (sukses → 200 + `api_key` baru + prefix baru, not found → 404) |
+| `handlers/webhook_test.go` | 13.10 | `GetAllWebhookEndpoints` (kini menyertakan query `delivery_counts`) |
+
+Catatan gotchas test Sprint 34:
+- `CleanupWebhookDeliveries` memakai query mentah `DELETE ... WHERE id IN (SELECT ... JOIN ...)`;
+  mock hanya perlu `ExpectExec('^DELETE FROM webhook_deliveries')`.
+- `RotateQRCode` memicu `LogAudit` async di goroutine — jangan mem-mock query user/audit pada test success.
+- `RegenerateAPIKey` memicu `LogAudit` + `BroadcastEvent` async; hanya mock `SELECT * FROM "api_keys"` dan `UPDATE "api_keys"`.
+- `webhookEndpointRows` kini menyertakan kolom `max_log_retention_days` (baris tabel bertambah satu kolom).
+
 ---
 
 ## 3. Gotchas Penting (Wajib Dibaca Sebelum Menambah Test)

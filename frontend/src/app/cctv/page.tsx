@@ -631,6 +631,33 @@ export default function CCTVPage() {
     }
   };
 
+  // Rotasi QR Code CCTV (Task 13.14): membuat QrPayload baru sehingga QR lama
+  // tidak berlaku. Setelah berhasil, langsung siapkan cetak label QR baru.
+  const handleRotateQR = async (cctv: CCTV) => {
+    const ok = await confirm({
+      title: 'Rotasi QR Code?',
+      message: `QR Code lama untuk “${cctv.nama}” akan tidak berlaku. Cetak label QR baru setelah rotasi. Lanjutkan?`,
+      confirmLabel: 'Rotasi QR',
+    });
+    if (!ok) return;
+    setActionLoading(`rotate-qr-${cctv.id}`);
+    try {
+      const response = await apiRequest<CCTV>(`/cctv/${cctv.id}/rotate-qr`, {
+        method: 'POST'
+      });
+      if (response.status === 'success' && response.data) {
+        toast.success(`QR Code untuk "${cctv.nama}" berhasil dirotasi.`);
+        fetchCCTVs();
+        // Langsung siapkan cetak label QR baru untuk CCTV ini.
+        openQRPrint([response.data], 'single');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'QR Code belum dapat dirotasi. Coba lagi.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Bulk Selection Handlers
   const handleSelectAll = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const shouldSelectAll = e.target.checked;
@@ -1359,6 +1386,19 @@ export default function CCTVPage() {
                                   >
                                     <Edit2 className="h-4 w-4 text-primary" />
                                     Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenu(null);
+                                      handleRotateQR(cctv);
+                                    }}
+                                    disabled={actionLoading === `rotate-qr-${cctv.id}`}
+                                    className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-left text-sm font-semibold hover:bg-background disabled:opacity-60"
+                                  >
+                                    {actionLoading === `rotate-qr-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin text-primary" /> : <RotateCcw className="h-4 w-4 text-primary" />}
+                                    Rotasi QR
                                   </button>
                                   <button
                                     type="button"

@@ -1,5 +1,35 @@
 # Changelog - Frontend SIGAP
 
+## [1.47.0] - 2026-08-10
+
+### Fitur: UI Infrastruktur & Integrasi (Sprint 34 - P14b, P16b, P10)
+
+perubahan yang dilakukan: **Menambahkan tombol rotasi QR Code di master CCTV, tombol regenerasi API key, serta tampilan jumlah log & tombol bersihkan log di halaman webhook.**
+
+before:
+- Master CCTV tidak bisa merotasi QR Code (label lama tetap berlaku).
+- API key tidak bisa diregenerasi dari UI (harus hapus & buat baru).
+- Halaman webhook tidak menampilkan jumlah log tersimpan & tidak ada cara membersihkan log.
+
+after:
+- **P14b — Rotasi QR (Task 13.14b)**:
+  - Item menu "🔄 Rotasi QR" di dropdown aksi per baris CCTV (samping Edit/Hapus).
+  - Dialog konfirmasi "QR Code lama akan tidak berlaku"; setelah sukses langsung siapkan cetak label QR baru.
+- **P16b — Regenerasi API key (Task 13.16b)**:
+  - Tombol "🔄 Regenerasi" per baris di halaman `/api-keys` (samping "Cabut").
+  - Dialog konfirmasi peringatan integrasi; key mentah baru tampil di modal one-time dengan tombol salin.
+- **P10 — Webhook log (Task 13.10)**:
+  - Kolom "Log" di tabel webhook menampilkan jumlah log delivery per endpoint (`delivery_counts`).
+  - Tombol "Bersihkan Log" di modal detail (hapus log > 30 hari, panggil `DELETE /api/webhooks/:id/deliveries`).
+  - Field "Retensi Log (hari)" di form tambah/ubah webhook (`max_log_retention_days`).
+
+timestamp: 2026-08-10 18:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/api-keys/page.tsx
+- frontend/src/app/webhooks/page.tsx
+
 ## [1.46.0] - 2026-08-10
 
 ### Fitur: Grafik Tren Kesehatan & UI Eskalasi Overdue (Sprint 33 - P8b, P11b)

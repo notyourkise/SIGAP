@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"sigap-backend/config"
@@ -27,19 +28,21 @@ var WebhookRetryDelays = []time.Duration{1 * time.Second, 5 * time.Second, 25 * 
 
 // CreateWebhookRequest adalah body pembuatan endpoint webhook (Admin saja).
 type CreateWebhookRequest struct {
-	Name   string   `json:"name" validate:"required,min=2,max=100"`
-	URL    string   `json:"url" validate:"required,url"`
-	Events []string `json:"events" validate:"required"`
-	Secret string   `json:"secret" validate:"required,min=8"`
+	Name                 string   `json:"name" validate:"required,min=2,max=100"`
+	URL                  string   `json:"url" validate:"required,url"`
+	Events               []string `json:"events" validate:"required"`
+	Secret               string   `json:"secret" validate:"required,min=8"`
+	MaxLogRetentionDays  int      `json:"max_log_retention_days" validate:"omitempty,gte=1"`
 }
 
 // UpdateWebhookRequest adalah body pembaruan endpoint webhook (Admin saja).
 type UpdateWebhookRequest struct {
-	Name     *string  `json:"name" validate:"omitempty,min=2,max=100"`
-	URL      *string  `json:"url" validate:"omitempty,url"`
-	Events   []string `json:"events"`
-	Secret   *string  `json:"secret" validate:"omitempty,min=8"`
-	IsActive *bool    `json:"is_active"`
+	Name                *string  `json:"name" validate:"omitempty,min=2,max=100"`
+	URL                 *string  `json:"url" validate:"omitempty,url"`
+	Events              []string `json:"events"`
+	Secret              *string  `json:"secret" validate:"omitempty,min=8"`
+	IsActive            *bool    `json:"is_active"`
+	MaxLogRetentionDays *int     `json:"max_log_retention_days" validate:"omitempty,gte=1"`
 }
 
 // validWebhookEvent memeriksa apakah nama event webhook terdaftar.
@@ -273,12 +276,16 @@ func CreateWebhookEndpoint(c *fiber.Ctx) error {
 	}
 
 	item := models.WebhookEndpoint{
-		Name:      req.Name,
-		URL:       req.URL,
-		Events:    req.Events,
-		Secret:    req.Secret,
-		IsActive:  true,
-		CreatedBy: createdBy,
+		Name:                req.Name,
+		URL:                 req.URL,
+		Events:              req.Events,
+		Secret:              req.Secret,
+		IsActive:            true,
+		MaxLogRetentionDays: 30,
+		CreatedBy:           createdBy,
+	}
+	if req.MaxLogRetentionDays > 0 {
+		item.MaxLogRetentionDays = req.MaxLogRetentionDays
 	}
 	if err := config.DB.Create(&item).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -329,16 +336,152 @@ func GetAllWebhookEndpoints(c *fiber.Ctx) error {
 		})
 	}
 
+	// Sertakan jumlah log delivery tersimpan untuk tiap endpoint (Task 13.10).
+	deliveryCounts, err := webhookDeliveryCountsFor(config.DB, items)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung jumlah log webhook",
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"rows":       items,
-			"pagination": utils.CalculatePagination(totalRows, page, limit),
+			"rows":            items,
+			"delivery_counts": deliveryCounts,
+			"pagination":      utils.CalculatePagination(totalRows, page, limit),
 		},
 	})
 }
 
-// GetWebhookEndpointByID mengambil detail satu endpoint webhook.
+// webhookDeliveryCountsFor menghitung jumlah log delivery untuk setiap endpoint
+// dalam daftar. Mengembalikan map endpoint_id → jumlah log.
+func webhookDeliveryCountsFor(db *gorm.DB, items []models.WebhookEndpoint) (map[string]int64, error) {
+	if len(items) == 0 {
+		return map[string]int64{}, nil
+	}
+	ids := make([]uuid.UUID, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	type row struct {
+		WebhookEndpointID uuid.UUID
+		Count             int64
+	}
+	var rows []row
+	if err := db.Model(&models.WebhookDelivery{}).
+		Select("webhook_endpoint_id, COUNT(*) AS count").
+		Where("webhook_endpoint_id IN ?", ids).
+		Group("webhook_endpoint_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		result[r.WebhookEndpointID.String()] = r.Count
+	}
+	return result, nil
+}
+
+// CleanupWebhookDeliveries menghapus log delivery yang lebih tua dari masa
+// retensi tiap endpoint (max_log_retention_days). Dihormati per-endpoint.
+// Mengembalikan jumlah baris yang dihapus. (Task 13.10, Sprint 34)
+func CleanupWebhookDeliveries(db *gorm.DB) (int64, error) {
+	if db == nil {
+		return 0, nil
+	}
+	res := db.Exec(`
+		DELETE FROM webhook_deliveries WHERE id IN (
+			SELECT d.id FROM webhook_deliveries d
+			JOIN webhook_endpoints e ON e.id = d.webhook_endpoint_id
+			WHERE d.created_at < NOW() - make_interval(days => e.max_log_retention_days)
+		)`)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// StartWebhookLogCleanup menjalankan CleanupWebhookDeliveries saat startup lalu
+// berulang setiap 7 hari (Task 13.10, Sprint 34).
+func StartWebhookLogCleanup(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	go func() {
+		if _, err := CleanupWebhookDeliveries(db); err != nil {
+			utils.Log.Errorf("❌ Gagal cleanup awal log webhook: %v", err)
+		}
+		ticker := time.NewTicker(7 * 24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if _, err := CleanupWebhookDeliveries(db); err != nil {
+				utils.Log.Errorf("❌ Gagal cleanup log webhook: %v", err)
+			}
+		}
+	}()
+}
+
+// AdminCleanupWebhookDeliveries menghapus log delivery lama untuk satu endpoint
+// secara manual (Admin). Query param ?older_than=<hari> (default 30).
+// @Summary      Bersihkan Log Webhook Delivery (Admin)
+// @Description  Menghapus log pengiriman webhook yang lebih tua dari N hari (default 30) untuk satu endpoint. Khusus admin.
+// @Tags         Webhook
+// @Security     BearerAuth
+// @Param        id path string true "Webhook Endpoint UUID"
+// @Param        older_than query int false "Batas umur log (hari, default 30)"
+// @Success      200 {object} map[string]interface{} "Cleanup selesai"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "Webhook endpoint tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal membersihkan log"
+// @Router       /webhooks/{id}/deliveries [delete]
+func AdminCleanupWebhookDeliveries(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID webhook endpoint tidak valid",
+		})
+	}
+
+	var item models.WebhookEndpoint
+	if err := config.DB.First(&item, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Webhook endpoint tidak ditemukan",
+		})
+	}
+
+	days := 30
+	if v := c.Query("older_than"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			days = n
+		}
+	}
+
+	res := config.DB.Unscoped().
+		Where("webhook_endpoint_id = ? AND created_at < ?", id, time.Now().AddDate(0, 0, -days)).
+		Delete(&models.WebhookDelivery{})
+	if res.Error != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membersihkan log webhook delivery",
+		})
+	}
+
+	utils.LogAudit(config.DB, c, "CLEANUP_WEBHOOK_DELIVERIES", "WEBHOOK",
+		"Membersihkan log webhook endpoint: "+item.Name, nil, "", "")
+
+	return c.JSON(fiber.Map{
+		"status":        "success",
+		"message":       "Cleanup log webhook delivery selesai",
+		"deleted":       res.RowsAffected,
+		"endpoint_id":   id,
+	})
+}
 // @Summary      Ambil Webhook Endpoint Detail
 // @Description  Mendapatkan detail satu endpoint webhook beserta riwayat pengiriman terbaru.
 // @Tags         Webhook
@@ -371,11 +514,17 @@ func GetWebhookEndpointByID(c *fiber.Ctx) error {
 	var deliveries []models.WebhookDelivery
 	config.DB.Where("webhook_endpoint_id = ?", id).Order("created_at desc").Limit(20).Find(&deliveries)
 
+	// Jumlah total log tersimpan untuk endpoint ini (Task 13.10).
+	var deliveryCount int64
+	config.DB.Model(&models.WebhookDelivery{}).
+		Where("webhook_endpoint_id = ?", id).Count(&deliveryCount)
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"endpoint":   item,
-			"deliveries": deliveries,
+			"endpoint":        item,
+			"deliveries":      deliveries,
+			"delivery_count":  deliveryCount,
 		},
 	})
 }
@@ -450,6 +599,9 @@ func UpdateWebhookEndpoint(c *fiber.Ctx) error {
 	}
 	if req.IsActive != nil {
 		item.IsActive = *req.IsActive
+	}
+	if req.MaxLogRetentionDays != nil {
+		item.MaxLogRetentionDays = *req.MaxLogRetentionDays
 	}
 
 	if err := config.DB.Save(&item).Error; err != nil {
