@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -20,19 +21,20 @@ import {
   MapPin, 
   Upload, 
   Scan, 
+  QrCode,
   MoreHorizontal,
   X, 
   AlertTriangle, 
   Eye, 
   EyeOff,
-  MonitorPlay,
   Printer,
   LoaderCircle,
   ClipboardCheck,
   SlidersHorizontal,
   RotateCcw,
-  ImageOff,
-  History
+  History,
+  Network,
+  ShieldCheck
 } from 'lucide-react';
 
 interface CCTV {
@@ -57,6 +59,7 @@ interface CCTV {
   created_at: string;
   channel_port: number;
   stream_enabled: boolean;
+  rtsp_url?: string;
   snapshot_url?: string;
 }
 
@@ -74,6 +77,19 @@ interface TimelineEvent {
   image_path?: string;
   notes?: string;
   created_at: string;
+}
+
+// Breakdown skor kesehatan dari GET /cctv/:id/health-score.
+interface HealthBreakdown {
+  health_score: number;
+  updated_at: string;
+  breakdown: {
+    failed: number;
+    attention: number;
+    overdue: number;
+    age: number;
+    not_ok_items: number;
+  };
 }
 
 // Label Bahasa Indonesia untuk tiap tipe kejadian pada timeline
@@ -136,11 +152,18 @@ export default function CCTVPage() {
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // Id CCTV yang menu aksinya (detail/edit/hapus) sedang terbuka.
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
 
   // Timeline kejadian CCTV (dimuat saat modal detail dibuka)
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState('');
+
+  // Breakdown skor kesehatan CCTV (alasan penurunan skor)
+  const [healthBreakdown, setHealthBreakdown] = useState<HealthBreakdown | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState('');
 
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -167,7 +190,8 @@ export default function CCTVPage() {
     keterangan: '',
     channel_port: 0,
     rtsp_password: '',
-    stream_enabled: false
+    stream_enabled: false,
+    rtsp_url: ''
   });
 
   // Scanner State
@@ -387,16 +411,39 @@ export default function CCTVPage() {
     }
   }, []);
 
+  // Ambil breakdown skor kesehatan (alasan penurunan skor) saat modal detail dibuka.
+  const fetchHealthBreakdown = useCallback(async (id: string) => {
+    setHealthLoading(true);
+    setHealthError('');
+    try {
+      const response = await apiRequest<HealthBreakdown>(`/cctv/${id}/health-score`);
+      if (response.status === 'success' && response.data) {
+        setHealthBreakdown(response.data);
+      } else {
+        setHealthBreakdown(null);
+      }
+    } catch (err: any) {
+      setHealthError(err.message || 'Skor kesehatan belum dapat dimuat.');
+      setHealthBreakdown(null);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
   // Muat timeline saat modal detail dibuka; reset saat modal ditutup atau CCTV berubah.
   useEffect(() => {
     if (isDetailModalOpen && currentCCTV) {
       fetchTimeline(currentCCTV.id);
+      fetchHealthBreakdown(currentCCTV.id);
     } else {
       setTimeline([]);
       setTimelineLoading(false);
       setTimelineError('');
+      setHealthBreakdown(null);
+      setHealthLoading(false);
+      setHealthError('');
     }
-  }, [isDetailModalOpen, currentCCTV, fetchTimeline]);
+  }, [isDetailModalOpen, currentCCTV, fetchTimeline, fetchHealthBreakdown]);
 
   // Format waktu kejadian ke locale Indonesia (tanggal & jam)
   const formatTimelineDate = (value: string) => {
@@ -434,7 +481,8 @@ export default function CCTVPage() {
         // rtsp_password tidak pernah dikembalikan API — selalu dikosongkan; hanya terisi bila user mengetik ulang
         channel_port: typeof cctv.channel_port === 'number' ? cctv.channel_port : 0,
         rtsp_password: '',
-        stream_enabled: !!cctv.stream_enabled
+        stream_enabled: !!cctv.stream_enabled,
+        rtsp_url: cctv.rtsp_url || ''
       });
     } else {
       setCurrentCCTV(null);
@@ -456,7 +504,8 @@ export default function CCTVPage() {
         keterangan: '',
         channel_port: 0,
         rtsp_password: '',
-        stream_enabled: false
+        stream_enabled: false,
+        rtsp_url: ''
       });
     }
     setIsFormModalOpen(true);
@@ -844,6 +893,19 @@ export default function CCTVPage() {
     setIsSortModalOpen(false);
   };
 
+  // Sorting lewat klik pada judul kolom (server-side, otomatis memicu re-fetch).
+  const handleHeaderSort = (key: string) => {
+    if (sortBy === key) {
+      // Klik lagi: balik arah urutan
+      setSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      // Kolom teks default naik; kolom angka default turun (terbesar dulu)
+      setSortOrder(key === 'health_score' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
+
   useEffect(() => {
     if (!isSortModalOpen) return;
 
@@ -860,6 +922,21 @@ export default function CCTVPage() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isSortModalOpen]);
+
+  // Tutup menu aksi baris saat klik di luar / tekan Escape.
+  useEffect(() => {
+    if (!openActionMenu) return;
+    const close = () => setOpenActionMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openActionMenu]);
 
   return (
     <DashboardLayout>
@@ -1031,7 +1108,7 @@ export default function CCTVPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] border-collapse text-left">
+              <table className="w-full min-w-[740px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
                     {isAdmin && (
@@ -1049,13 +1126,55 @@ export default function CCTVPage() {
                         </div>
                       </th>
                     )}
-                    <th className="px-5 py-3.5">Snapshot</th>
-                    <th className="px-5 py-3.5">Identitas</th>
+                    <th
+                      className="px-5 py-3.5"
+                      aria-sort={sortBy === 'nama' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <SortableHeader
+                        label="Identitas"
+                        sortKey="nama"
+                        activeKey={sortBy}
+                        direction={sortOrder}
+                        onSort={handleHeaderSort}
+                      />
+                    </th>
                     <th className="px-5 py-3.5">Koneksi</th>
-                    <th className="px-5 py-3.5">Lokasi</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5">Kesehatan</th>
-                    <th className="px-5 py-3.5 text-center">Stream</th>
+                    <th
+                      className="px-5 py-3.5"
+                      aria-sort={sortBy === 'lokasi_area' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <SortableHeader
+                        label="Lokasi"
+                        sortKey="lokasi_area"
+                        activeKey={sortBy}
+                        direction={sortOrder}
+                        onSort={handleHeaderSort}
+                      />
+                    </th>
+                    <th
+                      className="px-5 py-3.5"
+                      aria-sort={sortBy === 'status' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <SortableHeader
+                        label="Status"
+                        sortKey="status"
+                        activeKey={sortBy}
+                        direction={sortOrder}
+                        onSort={handleHeaderSort}
+                      />
+                    </th>
+                    <th
+                      className="px-5 py-3.5"
+                      aria-sort={sortBy === 'health_score' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <SortableHeader
+                        label="Kesehatan"
+                        sortKey="health_score"
+                        activeKey={sortBy}
+                        direction={sortOrder}
+                        onSort={handleHeaderSort}
+                      />
+                    </th>
                     <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
@@ -1074,62 +1193,26 @@ export default function CCTVPage() {
                         </td>
                       )}
                       <td className="px-5 py-4">
-                        <div className="flex h-[30px] w-[40px] items-center justify-center overflow-hidden rounded-md border border-border">
-                          {cctv.snapshot_url ? (
-                            <AuthenticatedImage
-                              imageUrl={cctv.snapshot_url}
-                              alt={`Snapshot ${cctv.nama}`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-background text-muted/40">
-                              <ImageOff className="h-3.5 w-3.5" aria-hidden="true" />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          {cctv.qr_payload ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCurrentCCTV(cctv);
-                                setIsQrModalOpen(true);
-                              }}
-                              className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-1.5 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-                              aria-label={`Buka label QR ${cctv.nama}`}
-                              title="Buka label QR"
-                            >
-                              <Scan className="absolute h-5 w-5 text-muted/35" aria-hidden="true" />
-                              <CCTVQRImage
-                                cctv={cctv}
-                                alt=""
-                                fetchQRDataUrl={fetchQRDataUrl}
-                                className="relative h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.04]"
-                              />
-                            </button>
-                          ) : (
-                            <div
-                              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/50"
-                              aria-label={`Kode QR ${cctv.nama} belum tersedia`}
-                              title="QR belum tersedia"
-                            >
-                              <Scan className="h-5 w-5" aria-hidden="true" />
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <h3 className="max-w-[260px] truncate font-semibold" title={cctv.nama}>{cctv.nama}</h3>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                              <span className="font-mono text-xs font-semibold text-primary">{cctv.kode_cctv}</span>
-                              {cctv.id_channel && <span className="text-xs text-muted">Channel {cctv.id_channel}</span>}
-                            </div>
+                        <div className="min-w-0">
+                          <h3 className="max-w-[240px] truncate font-semibold" title={cctv.id_channel ? `${cctv.nama} · Channel ${cctv.id_channel}` : cctv.nama}>{cctv.nama}</h3>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-semibold text-primary">{cctv.kode_cctv}</span>
+                            {cctv.id_channel && (
+                              <span className="truncate rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted">CH {cctv.id_channel}</span>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="space-y-1 px-5 py-4 font-mono text-xs text-muted">
-                        <div>{cctv.ip_camera || 'IP kamera belum dicatat'}</div>
-                        {cctv.ip_nvr && <div>{cctv.ip_nvr} <span className="font-sans">NVR</span></div>}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <Network className="h-3.5 w-3.5 shrink-0 text-muted/50" aria-hidden="true" />
+                          <span className="truncate font-mono text-xs text-muted" title={cctv.ip_camera || 'IP kamera belum dicatat'}>
+                            {cctv.ip_camera || '—'}
+                          </span>
+                          {cctv.ip_nvr && (
+                            <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted">NVR</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-start gap-1.5">
@@ -1165,46 +1248,72 @@ export default function CCTVPage() {
                           {normalizedHealthScore(cctv.health_score)}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-center">
-                        <MonitorPlay
-                          className={`mx-auto h-4 w-4 ${cctv.stream_enabled ? 'text-emerald-500' : 'text-muted/40'}`}
-                          aria-label={cctv.stream_enabled ? 'Streaming aktif' : 'Streaming nonaktif'}
-                        />
-                      </td>
                       <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="relative inline-flex justify-end">
                           <button
                             type="button"
-                            onClick={() => handleOpenDetail(cctv.id)}
-                            disabled={actionLoading === `detail-${cctv.id}`}
-                            className="rounded-lg p-2 text-muted transition-colors hover:bg-background hover:text-foreground"
-                            title="Lihat detail CCTV"
-                            aria-label={`Lihat detail CCTV ${cctv.nama}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenActionMenu((cur) => (cur === cctv.id ? null : cctv.id));
+                            }}
+                            aria-label={`Aksi untuk CCTV ${cctv.nama}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openActionMenu === cctv.id}
+                            title="Aksi"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-primary/40 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                           >
-                            {actionLoading === `detail-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                            <MoreHorizontal className="h-4 w-4" />
                           </button>
-                          {isAdmin && (
-                            <>
+
+                          {openActionMenu === cctv.id && (
+                            <div
+                              role="menu"
+                              className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-xl border border-border bg-card shadow-[0_12px_28px_rgba(32,63,37,0.14)]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <button
                                 type="button"
-                                onClick={() => handleOpenForm(cctv)}
-                                className="rounded-lg p-2 text-muted transition-colors hover:bg-primary/10 hover:text-primary"
-                                title="Ubah data CCTV"
-                                aria-label={`Ubah data CCTV ${cctv.nama}`}
+                                role="menuitem"
+                                onClick={() => {
+                                  setOpenActionMenu(null);
+                                  handleOpenDetail(cctv.id);
+                                }}
+                                disabled={actionLoading === `detail-${cctv.id}`}
+                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold hover:bg-background disabled:opacity-60"
                               >
-                                <Edit2 className="h-4 w-4" />
+                                {actionLoading === `detail-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin text-primary" /> : <Eye className="h-4 w-4 text-primary" />}
+                                Detail
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCCTV(cctv)}
-                                disabled={actionLoading === `delete-${cctv.id}`}
-                                className="rounded-lg p-2 text-muted transition-colors hover:bg-error/10 hover:text-error"
-                                title="Hapus CCTV"
-                                aria-label={`Hapus CCTV ${cctv.nama}`}
-                              >
-                                {actionLoading === `delete-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                              </button>
-                            </>
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenu(null);
+                                      handleOpenForm(cctv);
+                                    }}
+                                    className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-left text-sm font-semibold hover:bg-background"
+                                  >
+                                    <Edit2 className="h-4 w-4 text-primary" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenu(null);
+                                      handleDeleteCCTV(cctv);
+                                    }}
+                                    disabled={actionLoading === `delete-${cctv.id}`}
+                                    className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-left text-sm font-semibold text-error hover:bg-error/10 disabled:opacity-60"
+                                  >
+                                    {actionLoading === `delete-${cctv.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                    Hapus
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -1407,16 +1516,39 @@ export default function CCTVPage() {
                       <p className="text-sm font-bold text-foreground">Konfigurasi Streaming</p>
 
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted">Channel Port NVR</label>
+                        <label className="text-xs font-semibold text-muted">URL RTSP Kamera</label>
+                        <input
+                          type="text"
+                          value={formData.rtsp_url}
+                          onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
+                          placeholder="rtsp://admin:hik12345@36.91.27.35:554/Streaming/channels/1901"
+                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                        <p className="text-[11px] text-muted">
+                          Isi URL RTSP penuh bila kamera punya sumber stream sendiri. Bila kosong, sistem akan menyusun
+                          URL otomatis dari Nomor Channel NVR + kredensial di bawah.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted">
+                          Nomor Channel NVR <span className="font-normal text-muted">(opsional)</span>
+                        </label>
                         <input
                           type="number"
-                          min={1}
-                          max={35}
-                          value={formData.channel_port}
-                          onChange={(e) => setFormData({ ...formData, channel_port: Number(e.target.value) || 0 })}
-                          placeholder="Nomor channel (1-35)"
+                          min={0}
+                          max={999}
+                          value={formData.channel_port || ''}
+                          onChange={(e) => setFormData({ ...formData, channel_port: e.target.value === '' ? 0 : Number(e.target.value) })}
+                          placeholder="Opsional, mis. 19"
                           className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
+                        <p className="text-[11px] text-muted">
+                          Opsional — cukup isi bila Anda <span className="font-semibold">tidak</span> memakai URL RTSP
+                          penuh di atas. Ini nomor channel kamera (bukan port TCP; port seperti{' '}
+                          <span className="font-mono">554</span> sudah ada di URL RTSP). Kosongkan bila sudah memakai URL
+                          RTSP penuh.
+                        </p>
                       </div>
 
                       <div className="space-y-1.5">
@@ -1443,10 +1575,20 @@ export default function CCTVPage() {
 
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-muted">Preview URI</label>
-                        <p className="w-full truncate rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-muted" title={`rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`}>
-                          {formData.channel_port > 0
-                            ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
-                            : 'Isi channel port untuk melihat URI RTSP (sub stream).'}
+                        <p
+                          className="w-full truncate rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-muted"
+                          title={
+                            formData.rtsp_url ||
+                            (formData.channel_port > 0
+                              ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
+                              : '')
+                          }
+                        >
+                          {formData.rtsp_url
+                            ? formData.rtsp_url
+                            : formData.channel_port > 0
+                              ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
+                              : 'Isi URL RTSP atau channel port untuk melihat URI stream (sub stream).'}
                         </p>
                       </div>
 
@@ -1865,6 +2007,58 @@ export default function CCTVPage() {
                 </dl>
               </div>
 
+              {/* Breakdown skor kesehatan — alasan penurunan skor */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-t border-border pt-4">
+                  <h4 className="flex items-center gap-1.5 text-sm font-bold">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    Skor Kesehatan
+                  </h4>
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${healthScoreClasses(healthBreakdown?.health_score ?? currentCCTV.health_score)}`}
+                  >
+                    {healthBreakdown?.health_score ?? currentCCTV.health_score}/100
+                  </span>
+                </div>
+
+                {healthLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted" role="status">
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    <span>Menghitung skor kesehatan…</span>
+                  </div>
+                ) : healthError ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>{healthError}</span>
+                  </div>
+                ) : healthBreakdown ? (
+                  <div className="space-y-2 rounded-xl border border-border bg-background/50 p-3 text-sm">
+                    <p className="text-xs text-muted">
+                      Skor dihitung dari 5 faktor penalti selama 90 hari terakhir. Faktor di bawah ini yang menurunkan skor:
+                    </p>
+                    <ul className="space-y-1.5">
+                      <HealthFactorRow label="Pemeliharaan gagal" value={healthBreakdown.breakdown.failed} active={healthBreakdown.breakdown.failed > 0} />
+                      <HealthFactorRow label="Pengecekan butuh perhatian" value={healthBreakdown.breakdown.attention} active={healthBreakdown.breakdown.attention > 0} />
+                      <HealthFactorRow label="Pemeliharaan lewat jatuh tempo" value={healthBreakdown.breakdown.overdue} active={healthBreakdown.breakdown.overdue > 0} />
+                      <HealthFactorRow
+                        label="Hari sejak pemeliharaan terakhir"
+                        value={healthBreakdown.breakdown.age > 90 ? 91 : healthBreakdown.breakdown.age}
+                        active={healthBreakdown.breakdown.age > 30}
+                        suffix={healthBreakdown.breakdown.age > 90 ? ' (belum ada pemeliharaan selesai)' : ' hari'}
+                      />
+                      <HealthFactorRow label="Item checklist tidak OK" value={healthBreakdown.breakdown.not_ok_items} active={healthBreakdown.breakdown.not_ok_items > 0} />
+                    </ul>
+                    {healthBreakdown.breakdown.failed === 0 &&
+                      healthBreakdown.breakdown.attention === 0 &&
+                      healthBreakdown.breakdown.overdue === 0 &&
+                      healthBreakdown.breakdown.not_ok_items === 0 &&
+                      healthBreakdown.breakdown.age <= 30 && (
+                        <p className="text-xs font-semibold text-emerald-600">Tidak ada faktor yang menurunkan skor.</p>
+                      )}
+                  </div>
+                ) : null}
+              </div>
+
               {/* Timeline kejadian CCTV */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-t border-border pt-4">
@@ -1922,6 +2116,19 @@ export default function CCTVPage() {
               </div>
 
               <div className="flex gap-2 pt-4 border-t border-border justify-end">
+                {currentCCTV.qr_payload && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDetailModalOpen(false);
+                      setIsQrModalOpen(true);
+                    }}
+                    className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-primary hover:bg-background"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Lihat QR
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsDetailModalOpen(false)}
@@ -1957,6 +2164,35 @@ export default function CCTVPage() {
         onSaved={() => fetchCCTVs()}
       />
     </DashboardLayout>
+  );
+}
+
+// Satu baris faktor penalti pada breakdown skor kesehatan.
+function HealthFactorRow({
+  label,
+  value,
+  active,
+  suffix = '',
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  suffix?: string;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3">
+      <span className={`text-xs ${active ? 'font-semibold text-foreground' : 'text-muted'}`}>
+        {label}
+        {suffix}
+      </span>
+      <span
+        className={`inline-flex min-w-7 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+          active ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+        }`}
+      >
+        {value}
+      </span>
+    </li>
   );
 }
 

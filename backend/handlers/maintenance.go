@@ -558,6 +558,23 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		"Anda mendapat tugas pemeliharaan baru untuk CCTV "+cctvName+".",
 		"maintenance-log", &refID)
 
+	// Kirim email notifikasi penugasan ke teknisi (bila SMTP dikonfigurasi).
+	if techUser.Email != "" && utils.EmailEnabled() {
+		subject := "Tugas Pemeliharaan Baru: " + cctvName
+		emailBody, rerr := utils.RenderEmailTemplate("maintenance_assigned.html", map[string]interface{}{
+			"Nama":      techUser.FullName,
+			"CCTV":      cctvName,
+			"KodeCCTV":  cctv.KodeCCTV,
+			"Pekerjaan": logEntry.ActionTaken,
+			"Lokasi":    cctv.LokasiArea,
+		})
+		if rerr != nil {
+			utils.Log.Errorf("Gagal merender template email penugasan untuk %s: %v", techUser.Email, rerr)
+		} else if err := utils.SendEmail(techUser.Email, subject, emailBody); err != nil {
+			utils.Log.Errorf("Gagal mengirim email penugasan ke %s: %v", techUser.Email, err)
+		}
+	}
+
 	// Fase 5.3: saat re-assign, beri tahu teknisi lama bahwa tugas dialihkan
 	if isReassign && oldTechUser.ID != uuid.Nil {
 		utils.NotifyUser(config.DB, oldTechUser.ID, models.NotificationTypeUnassigned,

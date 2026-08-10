@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
 import { useAuth } from '@/context/AuthContext';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -80,6 +82,27 @@ export default function APIKeysPage() {
   // Hasil generate (key mentah tampil 1×)
   const [generated, setGenerated] = useState<{ api_key: string; key_prefix: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<APIKey>(keys, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'name':
+          return row.name;
+        case 'key_prefix':
+          return row.key_prefix;
+        case 'scopes':
+          return (row.scopes || []).join(', ');
+        case 'last_used_at':
+          return row.last_used_at;
+        case 'expires_at':
+          return row.expires_at;
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'name',
+    defaultDirection: 'asc',
+  });
 
   useEffect(() => {
     if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
@@ -285,16 +308,16 @@ export default function APIKeysPage() {
                 <table className="w-full min-w-[880px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-5 py-3.5">Nama</th>
-                      <th className="px-5 py-3.5">Key</th>
-                      <th className="px-5 py-3.5">Scope</th>
-                      <th className="px-5 py-3.5">Terakhir Dipakai</th>
-                      <th className="px-5 py-3.5">Kedaluwarsa</th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Nama" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Key" sortKey="key_prefix" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Scope" sortKey="scopes" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Terakhir Dipakai" sortKey="last_used_at" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Kedaluwarsa" sortKey="expires_at" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {keys.map((key) => (
+                    {sortedRows.map((key) => (
                       <tr key={key.id} className="transition-colors hover:bg-background/40">
                         <td className="px-5 py-4">
                           <p className="font-semibold">{key.name}</p>

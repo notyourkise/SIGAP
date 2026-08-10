@@ -115,7 +115,7 @@ func Login(c *fiber.Ctx) error {
 
 // ChangePasswordRequest adalah body untuk mengganti password sendiri (self-service).
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" validate:"required"`
+	OldPassword string `json:"old_password" validate:"omitempty"`
 	NewPassword string `json:"new_password" validate:"required,min=8,max=100,strongpassword"`
 }
 
@@ -168,17 +168,20 @@ func ChangePassword(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verifikasi password lama
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
-		utils.LogAudit(config.DB, c, "CHANGE_PASSWORD_FAILED", "AUTH", "Gagal mengganti password: password lama salah (username: "+user.Username+")", &user.ID, user.Username, user.Role)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Password lama tidak sesuai",
-		})
+	// Verifikasi password lama bila disertakan. Jika kosong (mode tanpa password
+	// lama), verifikasi dilewati.
+	if req.OldPassword != "" {
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
+			utils.LogAudit(config.DB, c, "CHANGE_PASSWORD_FAILED", "AUTH", "Gagal mengganti password: password lama salah (username: "+user.Username+")", &user.ID, user.Username, user.Role)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Password lama tidak sesuai",
+			})
+		}
 	}
 
-	// Cegah memakai password yang sama dengan sebelumnya
-	if req.OldPassword == req.NewPassword {
+	// Cegah memakai password yang sama dengan sebelumnya (bila password lama disertakan)
+	if req.OldPassword != "" && req.OldPassword == req.NewPassword {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Password baru harus berbeda dari password lama",

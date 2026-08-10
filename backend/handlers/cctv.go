@@ -60,6 +60,7 @@ type CreateCCTVRequest struct {
 	ChannelPort   int    `json:"channel_port"`
 	RTSPPassword  string `json:"rtsp_password"`
 	StreamEnabled bool   `json:"stream_enabled"`
+	RTSPURL       string `json:"rtsp_url" validate:"omitempty,max=500"`
 }
 
 // Request body untuk update data CCTV
@@ -82,6 +83,7 @@ type UpdateCCTVRequest struct {
 	ChannelPort   *int   `json:"channel_port"`
 	RTSPPassword  string `json:"rtsp_password"`
 	StreamEnabled *bool  `json:"stream_enabled"`
+	RTSPURL       *string `json:"rtsp_url" validate:"omitempty,max=500"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -183,6 +185,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
+	cctv.RTSPURL = req.RTSPURL
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -519,6 +522,9 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	}
 	if req.StreamEnabled != nil {
 		cctv.StreamEnabled = *req.StreamEnabled
+	}
+	if req.RTSPURL != nil {
+		cctv.RTSPURL = *req.RTSPURL
 	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {

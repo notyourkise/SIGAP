@@ -29,6 +29,9 @@ import {
   ExternalLink,
   LoaderCircle,
   VideoOff,
+  Play,
+  Square,
+  X,
 } from 'lucide-react';
 
 // WHEPPlayer dimuat dinamis (lazy) hanya di sisi klien agar aman untuk SSR,
@@ -68,6 +71,54 @@ const LAYOUT_PRESETS: Record<'2x2' | '3x3' | '4x4', { cells: number; gridClass: 
 // Konversi id CCTV menjadi streamPath yang dipakai WHEPPlayer ('cam-{id}').
 const toStreamPath = (id: string) => `cam-${id}`;
 
+// =============================================================================
+// Konstanta & helper sesi streaming (masa tunggu 10 menit saat berpindah menu).
+// =============================================================================
+// Logika:
+//   - Selama user berada DI halaman Monitor, timer TIDAK berjalan (streaming bebas).
+//   - Saat user keluar dari halaman Monitor (buka menu lain), waktu keluar dicatat.
+//   - Jika kembali ke Monitor dalam < 10 menit, timer di-reset dan streaming lanjut.
+//   - Jika sudah > 10 menit, streaming dianggap berakhir → perlu klik Play ulang.
+
+// Kunci localStorage untuk menyimpan konfigurasi grid & waktu keluar.
+const LS_MONITOR = 'sigap_monitor_state';
+
+// Masa tunggu streaming saat berada di luar halaman Monitor (10 menit).
+const STREAM_GRACE_MS = 10 * 60 * 1000;
+
+// Struktur data monitor yang disimpan lintas halaman.
+interface MonitorState {
+  layout: '2x2' | '3x3' | '4x4';
+  selection: Record<number, string>;
+  // Waktu (ms) saat user meninggalkan halaman Monitor. Null bila sedang di halaman.
+  leftAt: number | null;
+}
+
+// Baca state monitor dari localStorage.
+function loadMonitorState(): MonitorState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LS_MONITOR);
+    if (!raw) return null;
+    return JSON.parse(raw) as MonitorState;
+  } catch {
+    return null;
+  }
+}
+
+// Simpan state monitor ke localStorage.
+function saveMonitorState(state: MonitorState | null) {
+  try {
+    if (state) {
+      localStorage.setItem(LS_MONITOR, JSON.stringify(state));
+    } else {
+      localStorage.removeItem(LS_MONITOR);
+    }
+  } catch {
+    // Abaikan bila penyimpanan diblokir.
+  }
+}
+
 export default function MonitorPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -83,9 +134,27 @@ export default function MonitorPage() {
   // Daftar id CCTV terpilih per sel; urutan sel = index array.
   const [selection, setSelection] = useState<Record<number, string>>({});
 
+  // Status streaming global: sedang menyala (auto-start saat kembali < 10 mnt) atau tidak.
+  const [isPlaying, setIsPlaying] = useState(false);
+  // Sedang memproses aksi play/stop (disable tombol).
+  const [acting, setActing] = useState(false);
+
+  // Modal konfigurasi massal (atur CCTV untuk setiap sel sekaligus).
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  // Salinan sementara selection saat mengedit di modal (disimpan saat "Terapkan").
+  const [draftSelection, setDraftSelection] = useState<Record<number, string>>({});
+
   // Ref kontainer untuk fullscreen seluruh grid.
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
+
+  // Ref nilai terbaru layout & selection, dipakai cleanup saat unmount (berpindah menu).
+  const layoutRef = useRef(layout);
+  const selectionRef = useRef(selection);
+  useEffect(() => {
+    layoutRef.current = layout;
+    selectionRef.current = selection;
+  }, [layout, selection]);
 
   // --- Guard admin: bukan admin dialihkan ke dashboard ---
   useEffect(() => {
@@ -122,6 +191,94 @@ export default function MonitorPage() {
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
+  // --- Masa tunggu streaming (10 menit) saat user berada DI LUAR halaman Monitor ---
+  // Selama user berada di halaman ini, timer TIDAK berjalan. Saat keluar (buka menu
+  // lain), waktu keluar dicatat. Kembali dalam < 10 menit → timer di-reset & streaming
+  // lanjut. Kembali setelah > 10 menit → streaming berakhir, perlu klik Play ulang.
+
+  // Saat halaman dimuat: pulihkan konfigurasi & tentukan status streaming dari leftAt.
+  useEffect(() => {
+    const state = loadMonitorState();
+    if (!state) return;
+
+    // Pulihkan konfigurasi grid.
+    setLayout(state.layout);
+    setSelection(state.selection);
+    loadCctvs();
+
+    if (state.leftAt != null) {
+      const elapsed = Date.now() - state.leftAt;
+      if (elapsed < STREAM_GRACE_MS) {
+        // Kembali dalam masa tunggu → streaming dianggap masih menyala & timer di-reset.
+        setIsPlaying(true);
+        saveMonitorState({ ...state, leftAt: null });
+      } else {
+        // Sudah lebih dari 10 menit → perlu klik Play ulang.
+        setIsPlaying(false);
+        saveMonitorState({ ...state, leftAt: null });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Deteksi saat user meninggalkan / kembali ke halaman Monitor.
+  useEffect(() => {
+    const recordLeave = () => {
+      const state = loadMonitorState() ?? { layout, selection, leftAt: null };
+      saveMonitorState({ layout: state.layout ?? layout, selection: state.selection ?? selection, leftAt: Date.now() });
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        // User meninggalkan halaman (buka tab/menu lain) → mulai hitung mundur 10 menit.
+        const state = loadMonitorState() ?? { layout, selection, leftAt: null };
+        saveMonitorState({ layout, selection, leftAt: Date.now() });
+      } else {
+        // User kembali ke halaman → cek masa tunggu.
+        const state = loadMonitorState();
+        if (state && state.leftAt != null) {
+          const elapsed = Date.now() - state.leftAt;
+          if (elapsed < STREAM_GRACE_MS) {
+            // Masih dalam masa tunggu → reset timer, streaming lanjut.
+            setIsPlaying(true);
+            saveMonitorState({ ...state, leftAt: null });
+          } else {
+            // Masa tunggu habis → perlu klik Play ulang.
+            setIsPlaying(false);
+            saveMonitorState({ ...state, leftAt: null });
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide', recordLeave);
+    window.addEventListener('blur', recordLeave);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide', recordLeave);
+      window.removeEventListener('blur', recordLeave);
+      window.removeEventListener('focus', handleVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, selection]);
+
+  // Catat waktu keluar saat komponen di-unmount (mis. berpindah ke menu lain via
+  // navigasi internal Next.js yang tidak memicu visibilitychange/pagehide).
+  useEffect(() => {
+    return () => {
+      const state = loadMonitorState() ?? { layout: '3x3', selection: {}, leftAt: null };
+      saveMonitorState({
+        layout: layoutRef.current ?? state.layout,
+        selection: selectionRef.current ?? state.selection,
+        leftAt: Date.now(),
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- Guard admin rendering awal (cegah render penuh sebelum role diketahui) ---
   if (loading || user?.role !== 'admin') {
     return (
@@ -155,6 +312,69 @@ export default function MonitorPage() {
     }
   };
 
+  // --- Nyalakan streaming untuk seluruh CCTV pada grid via backend ---
+  const handlePlay = async () => {
+    if (acting) return;
+    setActing(true);
+    setError('');
+    try {
+      const res = await apiRequest('/streams/start-all', { method: 'POST' });
+      if (res.status === 'success') {
+        setIsPlaying(true);
+        // Simpan konfigurasi grid; leftAt null = sedang berada di halaman (timer tak berjalan).
+        saveMonitorState({ layout, selection, leftAt: null });
+      } else {
+        setError(res.message || 'Gagal menyalakan streaming.');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menyalakan streaming.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  // --- Matikan seluruh streaming via backend ---
+  const handleStop = async () => {
+    if (acting) return;
+    setActing(true);
+    setError('');
+    try {
+      const res = await apiRequest('/streams/stop-all', { method: 'POST' });
+      setIsPlaying(false);
+      saveMonitorState(null);
+      if (res.status !== 'success') {
+        setError(res.message || 'Gagal mematikan streaming.');
+      }
+    } catch (e) {
+      setIsPlaying(false);
+      saveMonitorState(null);
+      setError(e instanceof Error ? e.message : 'Gagal mematikan streaming.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  // --- Buka modal konfigurasi massal (salin selection saat ini ke draft) ---
+  const openConfig = () => {
+    setDraftSelection({ ...selection });
+    setIsConfigOpen(true);
+  };
+
+  // --- Terapkan hasil konfigurasi massal dari modal ke grid ---
+  const applyConfig = () => {
+    // Bersihkan entri kosong / id tidak valid.
+    const validIds = new Set(cctvs.map((c) => c.id));
+    const next: Record<number, string> = {};
+    Object.entries(draftSelection).forEach(([cellIndex, cctvId]) => {
+      if (cctvId && validIds.has(cctvId)) {
+        next[Number(cellIndex)] = cctvId;
+      }
+    });
+    setSelection(next);
+    setError('');
+    setIsConfigOpen(false);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -165,33 +385,40 @@ export default function MonitorPage() {
               <MonitorPlay className="h-8 w-8 text-primary" />
               Monitor CCTV
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              Pantau beberapa kamera CCTV secara berdampingan. Pilih kamera pada tiap sel, ubah tata letak grid, atau
-              buka tiap kamera di jendela terpisah.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Toggle preset grid */}
-            <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1" aria-label="Ubah tata letak grid">
-              <LayoutGrid className="mx-2 h-4 w-4 text-muted" />
-              {(['2x2', '3x3', '4x4'] as const).map((presetKey) => (
-                <button
-                  key={presetKey}
-                  type="button"
-                  onClick={() => setLayout(presetKey)}
-                  aria-label={`Tata letak ${presetKey}`}
-                  title={`Tata letak ${presetKey}`}
-                  className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors ${
-                    layout === presetKey
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'text-muted hover:bg-background hover:text-foreground'
-                  }`}
-                >
-                  {presetKey}
-                </button>
-              ))}
-            </div>
+            {/* Tombol Konfigurasi (layout + CCTV per sel dalam satu modal) */}
+            <button
+              type="button"
+              onClick={openConfig}
+              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold transition-colors hover:border-primary"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Konfigurasi
+            </button>
+
+            {/* Tombol Play / Matikan streaming (hanya icon) */}
+            <button
+              type="button"
+              onClick={handlePlay}
+              disabled={acting || cctvs.length === 0}
+              aria-label={isPlaying ? 'Putar ulang streaming' : 'Nyalakan streaming'}
+              title={isPlaying ? 'Putar ulang streaming' : 'Nyalakan streaming'}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {acting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={acting || !isPlaying}
+              aria-label="Matikan streaming"
+              title="Matikan streaming"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-error/30 bg-error/10 text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {acting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+            </button>
 
             {/* Fullscreen seluruh grid */}
             <button
@@ -202,12 +429,6 @@ export default function MonitorPage() {
               {gridFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               {gridFullscreen ? 'Keluar fullscreen' : 'Fullscreen grid'}
             </button>
-
-            {/* Info jumlah kamera streaming aktif */}
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {cctvs.length} kamera streaming aktif
-            </div>
           </div>
         </header>
 
@@ -242,6 +463,7 @@ export default function MonitorPage() {
                   index={index}
                   cctvs={availableCctvs}
                   selectedCctv={selectedCctv}
+                  isPlaying={isPlaying}
                   onSelect={(id) =>
                     setSelection((prev) => ({ ...prev, [index]: id }))
                   }
@@ -251,6 +473,109 @@ export default function MonitorPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal konfigurasi massal CCTV per sel */}
+      {isConfigOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setIsConfigOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Konfigurasi CCTV per sel"
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header modal */}
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold tracking-[-0.015em]">Konfigurasi CCTV</h3>
+                <p className="mt-0.5 text-xs text-muted">
+                  Atur kamera untuk setiap sel ({layout}) sekaligus. Tata letak: {layout}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfigOpen(false)}
+                aria-label="Tutup konfigurasi"
+                className="rounded-lg p-2 text-muted transition-colors hover:bg-background hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body: pilihan layout + daftar sel */}
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {/* Pilihan tata letak grid */}
+              <div>
+                <p className="mb-1.5 text-xs font-semibold text-muted">Tata letak grid</p>
+                <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1">
+                  <LayoutGrid className="mx-2 h-4 w-4 text-muted" />
+                  {(['2x2', '3x3', '4x4'] as const).map((presetKey) => (
+                    <button
+                      key={presetKey}
+                      type="button"
+                      onClick={() => setLayout(presetKey)}
+                      aria-label={`Tata letak ${presetKey}`}
+                      title={`Tata letak ${presetKey}`}
+                      className={`h-8 flex-1 rounded-lg px-3 text-xs font-bold transition-colors ${
+                        layout === presetKey
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-muted hover:bg-background hover:text-foreground'
+                      }`}
+                    >
+                      {presetKey}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Daftar sel & pemilihan kamera */}
+              <div className="space-y-3">
+                {cells.map((index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <span className="w-14 shrink-0 text-sm font-semibold text-muted">Sel {index + 1}</span>
+                    <select
+                      value={draftSelection[index] ?? ''}
+                      onChange={(e) =>
+                        setDraftSelection((prev) => ({ ...prev, [index]: e.target.value }))
+                      }
+                      aria-label={`Pilih kamera untuk sel ${index + 1}`}
+                      className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="">— Kosong —</option>
+                      {cctvs.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.kode_cctv} — {c.nama}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer modal */}
+            <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setDraftSelection({})}
+                className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-muted transition-colors hover:text-foreground"
+              >
+                Kosongkan
+              </button>
+              <button
+                type="button"
+                onClick={applyConfig}
+                className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
+              >
+                Terapkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
@@ -266,10 +591,11 @@ interface GridCellProps {
   index: number;
   cctvs: CCTV[];
   selectedCctv?: CCTV;
+  isPlaying: boolean;
   onSelect: (id: string) => void;
 }
 
-function GridCell({ index, cctvs, selectedCctv, onSelect }: GridCellProps) {
+function GridCell({ index, cctvs, selectedCctv, isPlaying, onSelect }: GridCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -334,7 +660,7 @@ function GridCell({ index, cctvs, selectedCctv, onSelect }: GridCellProps) {
             </select>
           </div>
         </div>
-      ) : (
+      ) : isPlaying ? (
         <>
           {/* Pemutar streaming kamera terpilih */}
           <WHEPPlayer
@@ -370,6 +696,17 @@ function GridCell({ index, cctvs, selectedCctv, onSelect }: GridCellProps) {
             </div>
           </div>
         </>
+      ) : (
+        // CCTV terpilih tetapi streaming belum dinyalakan (menunggu tombol Play).
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-3">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <VideoOff className="h-8 w-8 text-white/40" />
+            <span className="text-xs font-semibold text-white/70">
+              {selectedCctv.kode_cctv} — {selectedCctv.nama}
+            </span>
+            <span className="text-[11px] text-white/50">Streaming belum dinyalakan. Klik Play untuk mulai.</span>
+          </div>
+        </div>
       )}
     </div>
   );

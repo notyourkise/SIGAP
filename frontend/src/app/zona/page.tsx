@@ -4,6 +4,8 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
@@ -86,6 +88,24 @@ export default function ZonaPage() {
   const [technicians, setTechnicians] = useState<UserItem[]>([]);
   const [selectedCctvIds, setSelectedCctvIds] = useState<string[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
+  // Sortir kolom (client-side) — hanya mengurutkan baris yang sudah ada di state
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<Zone>(zones, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'nama':
+          return row.nama;
+        case 'deskripsi':
+          return row.deskripsi ?? '';
+        case 'cctv':
+          return row.cctv_count ?? 0;
+        case 'teknisi':
+          return row.user_count ?? 0;
+        default:
+          return '';
+      }
+    },
+  });
 
   // Auth guard (admin only)
   useEffect(() => {
@@ -318,15 +338,23 @@ export default function ZonaPage() {
                 <table className="w-full min-w-[860px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-5 py-3.5">Nama</th>
-                      <th className="px-5 py-3.5">Deskripsi</th>
-                      <th className="px-5 py-3.5">CCTV</th>
-                      <th className="px-5 py-3.5">Teknisi</th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Nama" sortKey="nama" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Deskripsi" sortKey="deskripsi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {zones.map((zone) => (
+                    {sortedRows.map((zone) => (
                       <tr key={zone.id} className="transition-colors hover:bg-background/40">
                         <td className="px-5 py-4">
                           <p className="font-semibold">{zone.nama}</p>

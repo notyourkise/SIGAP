@@ -4,7 +4,9 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
+import SortableHeader from '@/components/SortableHeader';
 import { useAuth } from '@/context/AuthContext';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -57,6 +59,23 @@ export default function UsersPage() {
   const [selected, setSelected] = useState<ManagedUser | null>(null);
   const [form, setForm] = useState(initialForm);
   const [newPassword, setNewPassword] = useState('');
+
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<ManagedUser>(users, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'full_name':
+          return row.full_name;
+        case 'email':
+          return row.email;
+        case 'role':
+          return row.role;
+        default:
+          return null;
+      }
+    },
+    defaultKey: 'full_name',
+    defaultDirection: 'asc',
+  });
 
   useEffect(() => {
     if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
@@ -200,10 +219,15 @@ export default function UsersPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="border-b border-border bg-background/60 text-xs uppercase tracking-wider text-muted">
-                      <tr><th className="px-5 py-4">Pengguna</th><th className="px-5 py-4">Email</th><th className="px-5 py-4">Peran</th><th className="px-5 py-4 text-right">Tindakan</th></tr>
+                      <tr>
+                        <th className="px-5 py-4"><SortableHeader label="Pengguna" sortKey="full_name" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                        <th className="px-5 py-4"><SortableHeader label="Email" sortKey="email" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                        <th className="px-5 py-4"><SortableHeader label="Peran" sortKey="role" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                        <th className="px-5 py-4 text-right">Tindakan</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {users.map((item) => (
+                      {sortedRows.map((item) => (
                         <tr key={item.id} className="hover:bg-background/40">
                           <td className="px-5 py-4"><strong>{item.full_name}</strong><div className="mt-1 text-xs text-muted">@{item.username}</div></td>
                           <td className="px-5 py-4">{item.email}</td>

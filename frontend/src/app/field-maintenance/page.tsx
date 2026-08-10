@@ -9,6 +9,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 import { FIELD_CHECKLIST } from '@/components/FieldMaintenanceModal';
 import {
   Search,
@@ -139,6 +141,26 @@ export default function FieldMaintenancePage() {
   const [detailEntry, setDetailEntry] = useState<FieldMaintenance | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Sortir kolom (client-side) — hanya mengurutkan baris yang sudah ada di state
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<FieldMaintenance>(entries, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'cctv':
+          return row.cctv?.nama ?? '';
+        case 'teknisi':
+          return row.technician?.full_name ?? row.technician?.username ?? '';
+        case 'tanggal':
+          return row.created_at;
+        case 'hasil':
+          return row.checks?.filter((c) => c.result === 'ok').length ?? 0;
+        case 'status':
+          return row.overall_status;
+        default:
+          return '';
+      }
+    },
+  });
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -370,16 +392,26 @@ export default function FieldMaintenancePage() {
                 <table className="w-full min-w-[860px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-5 py-3.5">CCTV</th>
-                      <th className="px-5 py-3.5">Teknisi</th>
-                      <th className="px-5 py-3.5">Tanggal</th>
-                      <th className="px-5 py-3.5">Hasil Checklist</th>
-                      <th className="px-5 py-3.5">Status</th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Tanggal" sortKey="tanggal" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Hasil Checklist" sortKey="hasil" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
+                      <th className="px-5 py-3.5">
+                        <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                      </th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {entries.map((entry) => {
+                    {sortedRows.map((entry) => {
                       const okCount = entry.checks?.filter((c) => c.result === 'ok').length ?? 0;
                       const totalCount = entry.checks?.length ?? 0;
                       const meta = STATUS_META[entry.overall_status === 'ok' ? 'ok' : 'attention'];

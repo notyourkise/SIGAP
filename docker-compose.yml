@@ -115,6 +115,9 @@ services:
     volumes:
       # Bind mount untuk menyimpan foto lampiran di luar container (writable).
       - ./backend/uploads:/app/uploads
+      # Template email (rendered oleh backend) dibaca dari host agar bisa di-update
+      # tanpa rebuild image.
+      - ./backend/templates:/app/templates:ro
       # Named volume agar /app/logs & /tmp writable meskipun rootfs read-only.
       - api_logs:/app/logs
       - api_tmp:/tmp

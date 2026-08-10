@@ -8,6 +8,8 @@ import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { Plus, Trash2, CalendarClock, AlertTriangle, Settings, X, LoaderCircle, Power } from 'lucide-react';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 
 interface MasterCCTV {
   id: string;
@@ -86,6 +88,28 @@ export default function MaintenanceSchedulesPage() {
     technician_id: '',
     action_taken: '',
     frequency: 'daily' as Frequency,
+  });
+
+  // Sortir client-side kolom header.
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<MaintenanceSchedule>(schedules, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'cctv':
+          return row.cctv?.nama ?? '';
+        case 'pekerjaan':
+          return row.action_taken;
+        case 'teknisi':
+          return row.technician?.full_name ?? '';
+        case 'frekuensi':
+          return row.frequency;
+        case 'jalankan':
+          return row.next_run_at;
+        case 'status':
+          return row.is_active ? 'Aktif' : 'Nonaktif';
+        default:
+          return '';
+      }
+    },
   });
 
   const fetchSchedules = useCallback(async () => {
@@ -432,17 +456,17 @@ export default function MaintenanceSchedulesPage() {
               <table className="w-full min-w-[880px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                    <th className="px-5 py-3.5">CCTV</th>
-                    <th className="px-5 py-3.5">Pekerjaan</th>
-                    <th className="px-5 py-3.5">Teknisi</th>
-                    <th className="px-5 py-3.5">Frekuensi</th>
-                    <th className="px-5 py-3.5">Jalankan Berikutnya</th>
-                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Pekerjaan" sortKey="pekerjaan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Frekuensi" sortKey="frekuensi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Jalankan Berikutnya" sortKey="jalankan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                    <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                     <th className="px-5 py-3.5 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
-                  {schedules.map((schedule) => (
+                  {sortedRows.map((schedule) => (
                     <tr key={schedule.id} className="transition-colors hover:bg-background/40">
                       <td className="px-5 py-4">
                         <p className="font-semibold">{schedule.cctv?.nama || 'CCTV tidak tersedia'}</p>

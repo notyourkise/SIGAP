@@ -63,6 +63,21 @@ func BuildStreamPath(cctvID string) string {
 	return "cam-" + cctvID
 }
 
+// ResolveRTSPURL menentukan URL RTSP final untuk sebuah CCTV.
+//
+// Bila `rtspURL` (field rtsp_url pada master CCTV) diisi — misalnya
+//   rtsp://admin:hik12345@36.91.27.35:554/Streaming/channels/1901
+// — URL tersebut dipakai langsung sebagai sumber stream MediaMTX.
+//
+// Jika kosong, URL disusun otomatis dari channel port + kredensial NVR global
+// melalui BuildRTSPURL (perilaku lama, hanya cocok untuk satu NVR bersama).
+func ResolveRTSPURL(rtspURL string, channelPort int, decryptedPassword string, streamType StreamType) string {
+	if rtspURL != "" {
+		return rtspURL
+	}
+	return BuildRTSPURL(channelPort, decryptedPassword, streamType)
+}
+
 // GetRTSPPort membaca port NVR dari environment RTSP_NVR_PORT dengan fallback
 // default 554. Mengembalikan 554 bila nilai tidak dapat di-parse sebagai integer.
 func GetRTSPPort() int {

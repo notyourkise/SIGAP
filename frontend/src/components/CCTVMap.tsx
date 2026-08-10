@@ -4,9 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Eye, Maximize, Minimize, Network, ShieldCheck, Camera } from 'lucide-react';
-import Link from 'next/link';
-import AuthenticatedImage from '@/components/AuthenticatedImage';
+import { MapPin, Maximize, Minimize, ShieldCheck } from 'lucide-react';
 
 export interface CCTVMapItem {
   id: string;
@@ -241,26 +239,13 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
               <div className="text-xs font-bold font-sans">
                 {item.nama} <span className="font-mono text-[10px] text-muted">({item.kode_cctv})</span>
                 <div className="mt-0.5 text-[10px] font-semibold text-muted">Kesehatan: {normalizeHealthScore(item.health_score)}/100</div>
-                {item.snapshot_url ? (
-                  <div className="mt-1.5 h-[48px] w-[64px] overflow-hidden rounded-lg border border-border">
-                    <AuthenticatedImage
-                      imageUrl={item.snapshot_url}
-                      alt={`Snapshot ${item.nama}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-1.5 flex h-[48px] w-[64px] items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/40">
-                    <Camera className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                )}
               </div>
             </Tooltip>
 
             {/* Untuk kamera streaming dengan handler klik, Popup tidak dirender agar tidak terbuka saat diklik (buka modal stream). */}
             {!(onMarkerClick && item.stream_enabled === true) && (
               <Popup className="cctv-leaflet-popup">
-              <div className="p-1 max-w-[260px] space-y-3 font-sans text-foreground">
+              <div className="p-1 max-w-[260px] space-y-2 font-sans text-foreground">
                 <div className="flex items-start justify-between gap-2 border-b border-border pb-2">
                   <div>
                     <h4 className="font-bold text-sm text-foreground leading-snug">{item.nama}</h4>
@@ -282,41 +267,9 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
                   </div>
                 </div>
 
-                <div className="space-y-1.5 text-xs text-muted">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
-                    <span className="truncate">{item.lokasi_area || 'Kawasan KIPP IKN'}</span>
-                  </div>
-                  {item.ip_camera && (
-                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                      <Network className="h-3.5 w-3.5 text-muted shrink-0" />
-                      <span>IP: {item.ip_camera}</span>
-                    </div>
-                  )}
-                </div>
-
-                {item.snapshot_url ? (
-                  <div className="h-[48px] w-[64px] overflow-hidden rounded-lg border border-border">
-                    <AuthenticatedImage
-                      imageUrl={item.snapshot_url}
-                      alt={`Snapshot ${item.nama}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex h-[48px] w-[64px] items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/40">
-                    <Camera className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                )}
-
-                <div className="pt-2 border-t border-border flex justify-end">
-                  <Link
-                    href="/cctv"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-hover transition-colors shadow-sm"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    <span>Lihat di Master CCTV</span>
-                  </Link>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="truncate">{item.lokasi_area || 'Kawasan KIPP IKN'}</span>
                 </div>
               </div>
               </Popup>

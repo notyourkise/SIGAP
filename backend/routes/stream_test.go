@@ -34,13 +34,16 @@ func TestStreamRoutesRequireAdmin(t *testing.T) {
 	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
-// TestStreamRoutesRequireAuth memastikan endpoint streaming menolak akses tanpa
-// otentikasi (401) melalui rute statis /status.
-func TestStreamRoutesRequireAuth(t *testing.T) {
+// TestStreamRoutesPublic memastikan endpoint streaming dapat diakses TANPA
+// otentikasi (publik). Sebelumnya modul streaming diproteksi auth; kini dibuat
+// publik agar video CCTV dapat ditonton langsung tanpa proses sign-in. Rute
+// tetap terdaftar dan tidak menolak akses dengan 401.
+func TestStreamRoutesPublic(t *testing.T) {
 	app := fiber.New()
 	SetupStreamRoutes(app)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/streams/status", nil))
 	assert.NoError(t, err)
-	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	// Streaming publik: tidak boleh menolak akses tanpa otentikasi.
+	assert.NotEqual(t, fiber.StatusUnauthorized, resp.StatusCode)
 }

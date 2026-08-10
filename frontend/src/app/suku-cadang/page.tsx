@@ -17,6 +17,8 @@ import {
   X,
   LoaderCircle,
 } from 'lucide-react';
+import SortableHeader from '@/components/SortableHeader';
+import { useSortableRows } from '@/hooks/useSortableRows';
 
 // Daftar kategori suku cadang yang konsisten dengan backend.
 const KATEGORI = ['Kabel', 'Konektor', 'Power Supply', 'Lensa', 'Storage', 'Lainnya'];
@@ -99,6 +101,30 @@ export default function SparePartsPage() {
     satuan: 'pcs',
     harga_satuan: 0,
     keterangan: '',
+  });
+
+  // Sortir client-side kolom header.
+  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<SparePart>(items, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'sku':
+          return row.sku;
+        case 'nama':
+          return row.nama;
+        case 'kategori':
+          return row.kategori;
+        case 'stok':
+          return row.stok;
+        case 'minimum_order':
+          return row.minimum_order;
+        case 'satuan':
+          return row.satuan;
+        case 'harga':
+          return row.harga_satuan;
+        default:
+          return '';
+      }
+    },
   });
 
   const fetchSpareParts = useCallback(async () => {
@@ -366,18 +392,18 @@ export default function SparePartsPage() {
                 <table className="w-full min-w-[980px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                      <th className="px-5 py-3.5">SKU</th>
-                      <th className="px-5 py-3.5">Nama</th>
-                      <th className="px-5 py-3.5">Kategori</th>
-                      <th className="px-5 py-3.5">Stok</th>
-                      <th className="px-5 py-3.5">Min. Order</th>
-                      <th className="px-5 py-3.5">Satuan</th>
-                      <th className="px-5 py-3.5">Harga</th>
+                      <th className="px-5 py-3.5"><SortableHeader label="SKU" sortKey="sku" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Nama" sortKey="nama" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Kategori" sortKey="kategori" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Stok" sortKey="stok" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Min. Order" sortKey="minimum_order" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Satuan" sortKey="satuan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5"><SortableHeader label="Harga" sortKey="harga" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {items.map((item) => {
+                    {sortedRows.map((item) => {
                       const badge = stockBadge(item);
                       return (
                         <tr key={item.id} className="transition-colors hover:bg-background/40">
