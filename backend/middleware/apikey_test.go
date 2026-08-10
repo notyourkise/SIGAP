@@ -69,8 +69,7 @@ func TestAPIKeyAuth_ValidKey(t *testing.T) {
 	}).AddRow(id, time.Now(), time.Now(), nil, "Integrasi", string(hash), "key-ment", `["cctv:read"]`, nil, id, nil, nil)
 	mock.ExpectQuery(`SELECT \* FROM "api_keys"`).
 		WillReturnRows(rows)
-	// Update last_used_at (async — dipanggil dalam goroutine; di-mock agar tidak
-	// mengganggu bila selesai sebelum assertion).
+	// Update last_used_at (sinkron — dipanggil sebelum handler lanjut).
 	mock.ExpectExec(`^UPDATE "api_keys" SET "last_used_at"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -92,8 +91,9 @@ func TestAPIKeyAuth_ValidKey(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, id.String(), result["api_key_id"])
 	assert.Equal(t, "api_key", result["auth_method"])
-	// Tidak memakai mock.ExpectationsWereMet(): UPDATE last_used_at berjalan
-	// async di goroutine sehingga bisa dieksekusi sebelum/sesudah assertion.
+	// Update last_used_at berjalan sinkron; ekspektasi UPDATE dimock di atas.
+	// Tidak memakai mock.ExpectationsWereMet() agar toleran terhadap variasi
+	// argumen SQL dari GORM (updated_at dsb).
 }
 
 // TestAPIKeyAuth_WrongScope memastikan key tanpa scope yang diperlukan → 403.

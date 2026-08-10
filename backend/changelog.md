@@ -1,5 +1,23 @@
 # Changelog - Backend SIGAP
 
+## [0.53.1] - 2026-08-10
+
+### Fix: Race/Panic pada middleware API Key (last_used_at)
+
+perubahan yang dilakukan: **Update `last_used_at` API key diubah dari goroutine async menjadi sinkron, menghilangkan race/panic saat `config.DB` berubah.**
+
+before: `last_used_at` diperbarui dalam goroutine async yang memakai `config.DB` global setelah handler selesai; di lingkungan uji/CI `config.DB` bisa menjadi nil (cleanup `defer`) sehingga terjadi nil pointer dereference (flaky).
+
+after:
+- `backend/middleware/apikey.go`: update `last_used_at` dijalankan sinkron + guard `config.DB != nil`; hapus goroutine & import `uuid` yang tidak terpakai.
+- `backend/middleware/apikey_test.go`: perbarui komentar (sinkron).
+
+timestamp: 2026-08-10 14:45 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/middleware/apikey.go
+- backend/middleware/apikey_test.go
+
 ## [0.53.0] - 2026-08-10
 
 ### Fitur: Notifikasi & Preferensi Email (Sprint 32 - P6, P7a)
