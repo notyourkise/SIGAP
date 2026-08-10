@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"sigap-backend/config"
 	"sigap-backend/models"
 	"sigap-backend/utils"
-	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -45,22 +47,22 @@ type CreateCCTVRequest struct {
 	KodeCCTV      string `json:"kode_cctv" validate:"required,min=3,max=50"`
 	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
 	Nama          string `json:"nama" validate:"required,min=3,max=100"`
-	LokasiArea    string `json:"lokasi_area" validate:"omitempty,max=255"`
-	Longitude     string `json:"longitude" validate:"omitempty,max=50"`
-	Latitude      string `json:"latitude" validate:"omitempty,max=50"`
-	JenisCCTV     string `json:"jenis_cctv" validate:"omitempty,max=50"`
-	SumberListrik string `json:"sumber_listrik" validate:"omitempty,max=50"`
-	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
-	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
-	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
-	Status        string `json:"status" validate:"required,oneof=aktif pemeliharaan nonaktif"`
-	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
-	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
-	Keterangan    string `json:"keterangan" validate:"omitempty"`
-	ChannelPort   int    `json:"channel_port"`
-	RTSPPassword  string `json:"rtsp_password"`
-	StreamEnabled bool   `json:"stream_enabled"`
-	RTSPURL       string `json:"rtsp_url" validate:"omitempty,max=500"`
+	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
+	Longitude     *float64 `json:"longitude"`
+	Latitude      *float64 `json:"latitude"`
+	JenisCCTV     string   `json:"jenis_cctv" validate:"omitempty,max=50"`
+	SumberListrik string   `json:"sumber_listrik" validate:"omitempty,max=50"`
+	TipeKoneksi   string   `json:"tipe_koneksi" validate:"omitempty,max=50"`
+	IndoorOutdoor string   `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
+	Pemilik       string   `json:"pemilik" validate:"omitempty,max=100"`
+	Status        string   `json:"status" validate:"required,oneof=aktif pemeliharaan nonaktif"`
+	IPNVR         string   `json:"ip_nvr" validate:"omitempty,ip"`
+	IPCamera      string   `json:"ip_camera" validate:"omitempty,ip"`
+	Keterangan    string   `json:"keterangan" validate:"omitempty"`
+	ChannelPort   int      `json:"channel_port"`
+	RTSPPassword  string   `json:"rtsp_password"`
+	StreamEnabled bool     `json:"stream_enabled"`
+	RTSPURL       string   `json:"rtsp_url" validate:"omitempty,max=500"`
 }
 
 // Request body untuk update data CCTV
@@ -68,22 +70,22 @@ type UpdateCCTVRequest struct {
 	KodeCCTV      string `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
 	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
 	Nama          string `json:"nama" validate:"omitempty,min=3,max=100"`
-	LokasiArea    string `json:"lokasi_area" validate:"omitempty,max=255"`
-	Longitude     string `json:"longitude" validate:"omitempty,max=50"`
-	Latitude      string `json:"latitude" validate:"omitempty,max=50"`
-	JenisCCTV     string `json:"jenis_cctv" validate:"omitempty,max=50"`
-	SumberListrik string `json:"sumber_listrik" validate:"omitempty,max=50"`
-	TipeKoneksi   string `json:"tipe_koneksi" validate:"omitempty,max=50"`
-	IndoorOutdoor string `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
-	Pemilik       string `json:"pemilik" validate:"omitempty,max=100"`
-	Status        string `json:"status" validate:"omitempty,oneof=aktif pemeliharaan nonaktif"`
-	IPNVR         string `json:"ip_nvr" validate:"omitempty,ip"`
-	IPCamera      string `json:"ip_camera" validate:"omitempty,ip"`
-	Keterangan    string `json:"keterangan" validate:"omitempty"`
-	ChannelPort   *int   `json:"channel_port"`
-	RTSPPassword  string `json:"rtsp_password"`
-	StreamEnabled *bool  `json:"stream_enabled"`
-	RTSPURL       *string `json:"rtsp_url" validate:"omitempty,max=500"`
+	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
+	Longitude     *float64 `json:"longitude"`
+	Latitude      *float64 `json:"latitude"`
+	JenisCCTV     string   `json:"jenis_cctv" validate:"omitempty,max=50"`
+	SumberListrik string   `json:"sumber_listrik" validate:"omitempty,max=50"`
+	TipeKoneksi   string   `json:"tipe_koneksi" validate:"omitempty,max=50"`
+	IndoorOutdoor string   `json:"indoor_outdoor" validate:"omitempty,oneof=indoor outdoor INDOOR OUTDOOR"`
+	Pemilik       string   `json:"pemilik" validate:"omitempty,max=100"`
+	Status        string   `json:"status" validate:"omitempty,oneof=aktif pemeliharaan nonaktif"`
+	IPNVR         string   `json:"ip_nvr" validate:"omitempty,ip"`
+	IPCamera      string   `json:"ip_camera" validate:"omitempty,ip"`
+	Keterangan    string   `json:"keterangan" validate:"omitempty"`
+	ChannelPort   *int     `json:"channel_port"`
+	RTSPPassword  string   `json:"rtsp_password"`
+	StreamEnabled *bool    `json:"stream_enabled"`
+	RTSPURL       *string  `json:"rtsp_url" validate:"omitempty,max=500"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -97,6 +99,67 @@ const (
 // Request body untuk scanner QR Payload
 type ScanCCTVRequest struct {
 	QrPayload string `json:"qr_payload" validate:"required"`
+}
+
+// validateCoordinateRange memvalidasi rentang koordinat (Task 13.1).
+// Latitude harus -90..90, Longitude -180..180. Nilai nil dianggap valid (opsional).
+// Mengembalikan pesan error, atau "" bila valid.
+func validateCoordinateRange(lat, lng *float64) string {
+	if lat != nil && (*lat < -90 || *lat > 90) {
+		return "Latitude tidak valid (rentang -90 s.d. 90)"
+	}
+	if lng != nil && (*lng < -180 || *lng > 180) {
+		return "Longitude tidak valid (rentang -180 s.d. 180)"
+	}
+	return ""
+}
+
+// validateChannelPortForCreate memvalidasi range & keunikan ChannelPort (Task 13.4).
+// Mengembalikan pesan error, atau "" bila valid.
+func validateChannelPortForCreate(db *gorm.DB, port int) string {
+	if port == 0 {
+		return ""
+	}
+	if port < 1 || port > 35 {
+		return "ChannelPort harus antara 1-35"
+	}
+	var existing models.CCTV
+	if err := db.Where("channel_port = ?", port).First(&existing).Error; err == nil {
+		return "ChannelPort sudah digunakan oleh CCTV: " + existing.Nama
+	}
+	return ""
+}
+
+// validateChannelPortForUpdate memvalidasi range & keunikan ChannelPort, mengecualikan
+// CCTV itu sendiri (Task 13.4).
+func validateChannelPortForUpdate(db *gorm.DB, port *int, excludeID uuid.UUID) string {
+	if port == nil || *port == 0 {
+		return ""
+	}
+	if *port < 1 || *port > 35 {
+		return "ChannelPort harus antara 1-35"
+	}
+	var existing models.CCTV
+	if err := db.Where("channel_port = ? AND id <> ?", *port, excludeID).First(&existing).Error; err == nil {
+		return "ChannelPort sudah digunakan oleh CCTV: " + existing.Nama
+	}
+	return ""
+}
+
+// parseCoordinateCell mengurai nilai koordinat dari sel Excel menjadi *float64.
+// Nilai kosong dikembalikan nil. Bila format tidak valid, dicatat peringatan dan
+// mengembalikan nil (koordinat di-skip) agar seluruh baris impor tidak gagal.
+func parseCoordinateCell(value string, rowNum int, field string) *float64 {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		utils.Log.Warnf("⚠️ Impor CCTV baris %d: %s '%s' bukan angka valid — koordinat dilewati", rowNum, field, v)
+		return nil
+	}
+	return &f
 }
 
 // CreateCCTV membuat data CCTV baru & meng-generate QR Payload AES terenkripsi (Admin saja)
@@ -130,6 +193,22 @@ func CreateCCTV(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Validasi input gagal",
 			"errors":  errs,
+		})
+	}
+
+	// Validasi rentang koordinat (Task 13.1)
+	if msg := validateCoordinateRange(req.Latitude, req.Longitude); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
+		})
+	}
+
+	// Validasi range & keunikan ChannelPort (Task 13.4)
+	if msg := validateChannelPortForCreate(config.DB, req.ChannelPort); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
 		})
 	}
 
@@ -452,6 +531,22 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// Validasi rentang koordinat (Task 13.1)
+	if msg := validateCoordinateRange(req.Latitude, req.Longitude); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
+		})
+	}
+
+	// Validasi range & keunikan ChannelPort, mengecualikan CCTV ini (Task 13.4)
+	if msg := validateChannelPortForUpdate(config.DB, req.ChannelPort, id); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
+		})
+	}
+
 	// Update field jika disediakan
 	if req.KodeCCTV != "" && req.KodeCCTV != cctv.KodeCCTV {
 		// Validasi keunikan kode baru
@@ -474,10 +569,10 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	if req.LokasiArea != "" {
 		cctv.LokasiArea = req.LokasiArea
 	}
-	if req.Longitude != "" {
+	if req.Longitude != nil {
 		cctv.Longitude = req.Longitude
 	}
-	if req.Latitude != "" {
+	if req.Latitude != nil {
 		cctv.Latitude = req.Latitude
 	}
 	if req.JenisCCTV != "" {
@@ -846,12 +941,13 @@ func ImportCCTV(c *fiber.Ctx) error {
 			return ""
 		}
 
+		rowNum := idx + 1
 		kodeCCTV := getCell(0)
 		idChannel := getCell(1)
 		nama := getCell(2)
 		lokasiArea := getCell(3)
-		longitude := getCell(4)
-		latitude := getCell(5)
+		longitude := parseCoordinateCell(getCell(4), rowNum, "longitude")
+		latitude := parseCoordinateCell(getCell(5), rowNum, "latitude")
 		jenisCCTV := getCell(6)
 		sumberListrik := getCell(7)
 		tipeKoneksi := getCell(8)
@@ -863,7 +959,6 @@ func ImportCCTV(c *fiber.Ctx) error {
 		keterangan := getCell(14)
 
 		// Validasi kolom wajib
-		rowNum := idx + 1
 		if kodeCCTV == "" {
 			tx.Rollback()
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

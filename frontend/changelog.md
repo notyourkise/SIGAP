@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.44.0] - 2026-08-10
+
+### Fitur: Perbaikan Marker Peta Koordinat Kosong (Sprint 31 - P2, Task 13.2)
+
+perubahan yang dilakukan: **CCTV tanpa koordinat valid tidak lagi dirender sebagai marker palsu di peta sebaran; ditampilkan di panel terpisah dengan tombol Edit.**
+
+before: CCTV tanpa koordinat valid (atau 0/0) disebar secara acak di sekitar pusat IKN, menyesatkan admin tentang lokasi sebenarnya.
+
+after:
+- `CCTVMapItem` (interface): `latitude`/`longitude` → `number | null`.
+- `CCTVMap.tsx`: hapus scatter acak; hanya CCTV dengan koordinat valid dirender sebagai marker; panel "X CCTV belum memiliki koordinat" dengan daftar + tombol Edit (`/cctv?edit={id}`); status bar "Menampilkan X dari N CCTV (Y belum memiliki koordinat)".
+- `cctv/page.tsx`: interface CCTV koordinat → `number | null`; konversi string→number|null saat submit (`toCoordinateNumber`).
+- `field-maintenance/page.tsx` & `FieldCheckLocationMap.tsx`: interface koordinat disesuaikan.
+
+timestamp: 2026-08-10 13:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/field-maintenance/page.tsx
+- frontend/src/components/FieldCheckLocationMap.tsx
+
 ## [1.43.0] - 2026-08-09
 
 ### Fitur: UI API Key & Webhook (Task 12.1b + 12.3b - Sprint 29)

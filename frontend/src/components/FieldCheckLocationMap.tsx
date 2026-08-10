@@ -19,8 +19,8 @@ export interface FieldCheckMapCctv {
   kode_cctv?: string;
   nama?: string;
   lokasi_area?: string;
-  latitude?: string;
-  longitude?: string;
+  latitude?: number | null | string;
+  longitude?: number | null | string;
 }
 
 // Props komponen mini-map: data CCTV + koordinat lokasi pengecekan lapangan
@@ -55,8 +55,8 @@ export default function FieldCheckLocationMap({
   checkLongitude,
 }: FieldCheckLocationMapProps) {
   // Koordinat CCTV: gunakan data lat/long jika valid, jika tidak fallback ke pusat IKN
-  const cctvLat = parseFloat(cctv.latitude || '');
-  const cctvLng = parseFloat(cctv.longitude || '');
+  const cctvLat = parseFloat(String(cctv.latitude ?? ''));
+  const cctvLng = parseFloat(String(cctv.longitude ?? ''));
   const cctvPos: [number, number] =
     !Number.isNaN(cctvLat) && !Number.isNaN(cctvLng) && cctvLat !== 0 && cctvLng !== 0
       ? [cctvLat, cctvLng]

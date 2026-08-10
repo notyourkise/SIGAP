@@ -4,15 +4,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Maximize, Minimize, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { MapPin, Maximize, Minimize, ShieldCheck, AlertTriangle, ChevronDown } from 'lucide-react';
 
 export interface CCTVMapItem {
   id: string;
   kode_cctv: string;
   nama: string;
   lokasi_area?: string;
-  latitude?: string;
-  longitude?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   status: string;
   health_score?: number;
   ip_camera?: string;
@@ -50,6 +51,10 @@ const healthScoreClasses = (score?: number) => {
   if (value >= 40) return 'border-amber-500/20 bg-amber-500/10 text-amber-600';
   return 'border-red-500/20 bg-red-500/10 text-red-600';
 };
+
+// Koordinat dianggap valid bila berupa angka bukan nol dalam rentang semesta.
+const isValidCoord = (value?: number | null): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value !== 0;
 
 // Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
 // Param tambahan `isStreaming` menambah cincin hijau ganda (double-pulse) sebagai penanda kamera yang sedang streaming.
@@ -167,41 +172,46 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
   };
 
   // Olah koordinat CCTV & sediakan fallback terdistribusi jika lat/long belum terisi
+  // CCTV yang memiliki koordinat valid akan dirender sebagai marker. CCTV tanpa
+  // koordinat valid TIDAK dibuatkan marker palsu — ditampilkan di panel terpisah.
   const processedCCTVs = useMemo(() => {
     const coordinateCounts = new Map<string, number>();
 
-    return cctvs.map((cctv, index) => {
-      let lat = parseFloat(cctv.latitude || '');
-      let lng = parseFloat(cctv.longitude || '');
+    return cctvs
+      .filter((cctv) => isValidCoord(cctv.latitude) && isValidCoord(cctv.longitude))
+      .map((cctv) => {
+        let lat = Number(cctv.latitude);
+        let lng = Number(cctv.longitude);
 
-      // Jika koordinat tidak valid / kosong, sebar secara deterministik di sekitar KIPP IKN
-      if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
-        const angle = (index * 137.5) * (Math.PI / 180);
-        const radius = 0.008 + (index % 5) * 0.004;
-        lat = IKN_CENTER_LAT + radius * Math.cos(angle);
-        lng = IKN_CENTER_LNG + radius * Math.sin(angle);
-      }
+        // Geser marker dengan koordinat identik agar tidak saling menutupi
+        const coordinateKey = `${lat},${lng}`;
+        const occurrence = (coordinateCounts.get(coordinateKey) ?? 0) + 1;
+        coordinateCounts.set(coordinateKey, occurrence);
+        if (occurrence > 1) {
+          const offsetAngle = ((occurrence - 1) * 137.5) * (Math.PI / 180);
+          const offsetRadius = 0.005;
+          lat += offsetRadius * Math.cos(offsetAngle);
+          lng += offsetRadius * Math.sin(offsetAngle);
+        }
 
-      // Geser marker dengan koordinat identik agar tidak saling menutupi
-      const coordinateKey = `${lat},${lng}`;
-      const occurrence = (coordinateCounts.get(coordinateKey) ?? 0) + 1;
-      coordinateCounts.set(coordinateKey, occurrence);
-      if (occurrence > 1) {
-        const offsetAngle = ((occurrence - 1) * 137.5) * (Math.PI / 180);
-        const offsetRadius = 0.005;
-        lat += offsetRadius * Math.cos(offsetAngle);
-        lng += offsetRadius * Math.sin(offsetAngle);
-      }
-
-      return {
-        ...cctv,
-        lat,
-        lng,
-      };
-    });
+        return {
+          ...cctv,
+          lat,
+          lng,
+        };
+      });
   }, [cctvs]);
 
+  // CCTV tanpa koordinat valid (untuk panel & status bar).
+  const missingCoord = useMemo(
+    () => cctvs.filter((c) => !isValidCoord(c.latitude) || !isValidCoord(c.longitude)),
+    [cctvs]
+  );
+
+  const [showMissingList, setShowMissingList] = useState(false);
+
   return (
+    <>
     <div
       ref={containerRef}
       className={`relative w-full overflow-hidden transition-[height,border-radius] duration-300 ${
@@ -308,6 +318,56 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
       >
         {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
       </button>
+
+      {/* Panel CCTV tanpa koordinat */}
+      {missingCoord.length > 0 && (
+        <div className="absolute bottom-4 left-4 z-20 w-72 max-w-[calc(100%-2rem)] rounded-2xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur-md">
+          <button
+            type="button"
+            onClick={() => setShowMissingList((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <span className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {missingCoord.length} CCTV belum memiliki koordinat
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-muted transition-transform ${showMissingList ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showMissingList && (
+            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-border pt-2">
+              {missingCoord.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-xs">
+                    <span className="font-mono text-[10px] text-primary">{item.kode_cctv}</span>{' '}
+                    <span className="text-foreground">{item.nama}</span>
+                  </span>
+                  <Link
+                    href={`/cctv?edit=${item.id}`}
+                    className="shrink-0 rounded-lg border border-border px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-background"
+                  >
+                    Edit
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
+
+    {/* Status bar di bawah peta: jumlah yang ditampilkan vs total */}
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs text-muted">
+      <span>
+        Menampilkan <span className="font-bold text-foreground">{processedCCTVs.length}</span> dari{' '}
+        <span className="font-bold text-foreground">{cctvs.length}</span> CCTV
+      </span>
+      {missingCoord.length > 0 && (
+        <span className="font-semibold text-amber-600 dark:text-amber-400">
+          {missingCoord.length} belum memiliki koordinat
+        </span>
+      )}
+    </div>
+    </>
   );
 }

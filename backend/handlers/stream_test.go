@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"sigap-backend/models"
 	"sigap-backend/utils"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -29,7 +31,7 @@ func streamCCTVRow(id uuid.UUID, streamEnabled bool, channelPort int, rtspPasswo
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
 		"channel_port", "rtsp_password", "stream_enabled",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-STREAM", "CH-01", "Kamera Streaming", "Area Utama",
-		"117.1", "-0.5", "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
+		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
 		"192.168.1.10", "192.168.1.11", "Aman", "payload", 100, channelPort, rtspPassword, streamEnabled)
 }
 
@@ -45,12 +47,14 @@ func encryptedTestPassword(t *testing.T, plaintext string) string {
 
 // mockMTXConfig mengendalikan perilaku server MediaMTX tiruan.
 type mockMTXConfig struct {
-	addErr    error
-	removeErr error
-	getErr    error
-	listErr   error
-	getInfo   *utils.PathInfo
-	listPaths []utils.PathInfo
+	addErr              error
+	removeErr           error
+	getErr              error
+	listErr             error
+	pingErr             error
+	getInfo             *utils.PathInfo
+	listPaths           []utils.PathInfo
+	addFailBeforeSuccess int
 }
 
 // newMockMediaMTXClient membuat klien MediaMTX yang menunjuk ke server tiruan
@@ -58,10 +62,12 @@ type mockMTXConfig struct {
 // Mengembalikan klien dan fungsi cleanup untuk menutup server.
 func newMockMediaMTXClient(t *testing.T, cfg mockMTXConfig) (*utils.MediaMTXClient, func()) {
 	t.Helper()
+	addAttempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/config/paths/add/"):
-			if cfg.addErr != nil {
+			addAttempts++
+			if cfg.addErr != nil || (cfg.addFailBeforeSuccess > 0 && addAttempts <= cfg.addFailBeforeSuccess) {
 				http.Error(w, "gagal menambah path", http.StatusInternalServerError)
 				return
 			}
@@ -88,6 +94,12 @@ func newMockMediaMTXClient(t *testing.T, cfg mockMTXConfig) (*utils.MediaMTXClie
 				return
 			}
 			_ = json.NewEncoder(w).Encode(cfg.listPaths)
+		case strings.Contains(r.URL.Path, "/v3/config/global/get"):
+			if cfg.pingErr != nil {
+				http.Error(w, "belum siap", http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		default:
 			http.Error(w, "endpoint tidak dikenal", http.StatusNotFound)
 		}
@@ -284,4 +296,48 @@ func TestGetStreamURL(t *testing.T) {
 	assert.Equal(t, true, data["stream_ready"])
 	assert.Equal(t, float64(1), data["viewers"])
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRegisterActiveStreams_RetryOnFailure memastikan registerStreamWithRetry
+// mencoba ulang (retry) saat AddPath gagal sementara, lalu berhasil (Task 13.5).
+func TestRegisterActiveStreams_RetryOnFailure(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "stream-test-aes-secret-key-1234567890")
+	// Gagal 2 kali lalu berhasil.
+	injectMockMTX(t, mockMTXConfig{addFailBeforeSuccess: 2})
+
+	enc := encryptedTestPassword(t, "secret123")
+	id := uuid.New()
+	cctv := models.CCTV{
+		Base:          models.Base{ID: id},
+		KodeCCTV:      "CCTV-RETRY",
+		Nama:          "Kamera Retry",
+		ChannelPort:   19,
+		RTSPPassword:  enc,
+		StreamEnabled: true,
+	}
+
+	err := registerStreamWithRetry(cctv, 5)
+	assert.NoError(t, err, "registerStreamWithRetry harus berhasil setelah retry")
+}
+
+// TestRegisterActiveStreams_GiveUpAfterMaxRetry memastikan registerStreamWithRetry
+// menyerah (mengembalikan error) setelah seluruh percobaan gagal (Task 13.5).
+func TestRegisterActiveStreams_GiveUpAfterMaxRetry(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "stream-test-aes-secret-key-1234567890")
+	// Selalu gagal.
+	injectMockMTX(t, mockMTXConfig{addErr: errors.New("boom")})
+
+	enc := encryptedTestPassword(t, "secret123")
+	id := uuid.New()
+	cctv := models.CCTV{
+		Base:          models.Base{ID: id},
+		KodeCCTV:      "CCTV-GIVEUP",
+		Nama:          "Kamera GiveUp",
+		ChannelPort:   19,
+		RTSPPassword:  enc,
+		StreamEnabled: true,
+	}
+
+	err := registerStreamWithRetry(cctv, 2)
+	assert.Error(t, err, "registerStreamWithRetry harus gagal setelah max retry")
 }

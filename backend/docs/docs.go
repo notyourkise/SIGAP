@@ -6683,8 +6683,7 @@ const docTemplate = `{
         "handlers.ChangePasswordRequest": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "new_password"
             ],
             "properties": {
                 "new_password": {
@@ -6793,16 +6792,14 @@ const docTemplate = `{
                     "minLength": 3
                 },
                 "latitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "lokasi_area": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "longitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "nama": {
                     "type": "string",
@@ -6815,6 +6812,10 @@ const docTemplate = `{
                 },
                 "rtsp_password": {
                     "type": "string"
+                },
+                "rtsp_url": {
+                    "type": "string",
+                    "maxLength": 500
                 },
                 "status": {
                     "type": "string",
@@ -7307,16 +7308,14 @@ const docTemplate = `{
                     "minLength": 3
                 },
                 "latitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "lokasi_area": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "longitude": {
-                    "type": "string",
-                    "maxLength": 50
+                    "type": "number"
                 },
                 "nama": {
                     "type": "string",
@@ -7329,6 +7328,10 @@ const docTemplate = `{
                 },
                 "rtsp_password": {
                     "type": "string"
+                },
+                "rtsp_url": {
+                    "type": "string",
+                    "maxLength": 500
                 },
                 "status": {
                     "type": "string",

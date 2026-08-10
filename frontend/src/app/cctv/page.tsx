@@ -43,8 +43,8 @@ interface CCTV {
   id_channel: string;
   nama: string;
   lokasi_area: string;
-  longitude: string;
-  latitude: string;
+  longitude?: number | null;
+  latitude?: number | null;
   jenis_cctv: string;
   sumber_listrik: string;
   tipe_koneksi: string;
@@ -102,6 +102,15 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 
 const eventTypeLabel = (type: string) =>
   EVENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Konversi nilai koordinat dari input teks menjadi number | null. Kosong → null;
+// nilai yang tidak valid (bukan angka) → null; angka valid → number.
+const toCoordinateNumber = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+};
 
 export default function CCTVPage() {
   const { user } = useAuth();
@@ -467,8 +476,8 @@ export default function CCTVPage() {
         id_channel: cctv.id_channel || '',
         nama: cctv.nama,
         lokasi_area: cctv.lokasi_area || '',
-        longitude: cctv.longitude || '',
-        latitude: cctv.latitude || '',
+        longitude: cctv.longitude != null ? String(cctv.longitude) : '',
+        latitude: cctv.latitude != null ? String(cctv.latitude) : '',
         jenis_cctv: cctv.jenis_cctv || '',
         sumber_listrik: cctv.sumber_listrik || '',
         tipe_koneksi: cctv.tipe_koneksi || '',
@@ -518,9 +527,17 @@ export default function CCTVPage() {
       const endpoint = currentCCTV ? `/cctv/${currentCCTV.id}` : '/cctv';
       const method = currentCCTV ? 'PUT' : 'POST';
 
+      // Konversi koordinat dari string (input teks) menjadi number | null sesuai
+      // tipe data backend (double precision).
+      const payload = {
+        ...formData,
+        longitude: toCoordinateNumber(formData.longitude),
+        latitude: toCoordinateNumber(formData.latitude),
+      };
+
       const response = await apiRequest<CCTV>(endpoint, {
         method,
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.status === 'success') {
