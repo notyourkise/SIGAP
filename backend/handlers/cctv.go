@@ -1123,6 +1123,74 @@ func GetCCTVQRCode(c *fiber.Ctx) error {
 	return c.Send(qrBytes)
 }
 
+// RotateQRCode merotasi QR Code CCTV (Admin saja). Menghasilkan UUID baru,
+// mengenkripsinya ulang dengan AES-256 sebagai QrPayload baru, sehingga QR lama
+// tidak lagi valid untuk pemindaian. (Task 13.14, Sprint 34)
+// @Summary      Rotasi QR Code CCTV (Admin)
+// @Description  Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga QR Code lama tidak berlaku lagi. Khusus admin.
+// @Tags         Master CCTV
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "QR Code berhasil dirotasi (data CCTV terbaru)"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Gagal merotasi QR Code"
+// @Router       /cctv/{id}/rotate-qr [post]
+func RotateQRCode(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	// Generate UUID baru & enkripsi sebagai QrPayload baru.
+	newID := uuid.New()
+	encryptedPayload, err := utils.EncryptAES256(newID.String())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengenkripsi QR Code baru",
+		})
+	}
+	cctv.QrPayload = encryptedPayload
+
+	if err := config.DB.Save(&cctv).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menyimpan QR Code baru",
+		})
+	}
+
+	utils.LogAudit(config.DB, c, "ROTATE_QR_CODE", "CCTV",
+		"Merotasi QR Code CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
+	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+
+	// Password RTSP tidak boleh bocor ke klien pada respons.
+	cctv.RTSPPassword = ""
+	cctv.SnapshotURL = snapshotURLFor(cctv.ID.String())
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "QR Code berhasil dirotasi",
+		"data":    cctv,
+	})
+}
+
 // BulkDeleteCCTV menghapus beberapa data CCTV sekaligus atau mengosongkan seluruh tabel (Admin saja)
 // @Summary      Hapus Massal Data CCTV
 // @Description  Menghapus beberapa perangkat CCTV berdasarkan daftar UUID yang dipilih, atau mengosongkan seluruh tabel CCTV jika opsi 'all' bernilai true.

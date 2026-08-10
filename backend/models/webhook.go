@@ -31,6 +31,9 @@ type WebhookEndpoint struct {
 	Secret string `gorm:"type:text;not null" json:"-"`
 	// IsActive menandakan endpoint aktif menerima pengiriman.
 	IsActive bool `gorm:"type:boolean;not null;default:true" json:"is_active"`
+	// MaxLogRetentionDays adalah berapa hari log delivery disimpan sebelum
+	// dihapus oleh cleanup periodik (default 30). (Task 13.10, Sprint 34)
+	MaxLogRetentionDays int `gorm:"type:integer;not null;default:30" json:"max_log_retention_days"`
 	// CreatedBy menunjuk user admin pembuat endpoint.
 	CreatedBy uuid.UUID `gorm:"type:uuid;not null;index" json:"created_by"`
 	User      User      `gorm:"foreignKey:CreatedBy" json:"user,omitempty"`

@@ -184,6 +184,12 @@ func main() {
 	handlers.StartNotificationCleanup(config.DB)
 	utils.Log.Info("🗑️ Cleanup notifikasi lama diaktifkan (interval: 7 hari)")
 
+	// Jalankan cleanup log webhook delivery (Task 13.10, Sprint 34). Berjalan
+	// sekali saat startup lalu berulang setiap 7 hari, menghormati
+	// max_log_retention_days per endpoint.
+	handlers.StartWebhookLogCleanup(config.DB)
+	utils.Log.Info("🗑️ Cleanup log webhook delivery diaktifkan (interval: 7 hari)")
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
 	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =

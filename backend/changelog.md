@@ -1,5 +1,47 @@
 # Changelog - Backend SIGAP
 
+## [0.55.0] - 2026-08-10
+
+### Fitur: Infrastruktur & Integrasi (Sprint 34 - P10, P14, P16)
+
+perubahan yang dilakukan: **Menambahkan retensi log webhook delivery, endpoint rotasi QR Code CCTV, dan endpoint regenerasi API key.**
+
+before:
+- Log `webhook_deliveries` tumbuh tanpa batas (tidak ada retensi).
+- QR Code CCTV tidak bisa dirotasi (QrPayload tetap sama selamanya).
+- API key tidak bisa diregenerasi tanpa menghapus & membuat baru (mengganggu integrasi).
+
+after:
+- **P10 — Retensi log webhook (Task 13.10)**:
+  - Migration `000016_webhook_retention` + kolom `max_log_retention_days` (default 30) di `WebhookEndpoint`.
+  - `StartWebhookLogCleanup` (startup + tiap 7 hari) menghapus log delivery lebih tua dari retensi per endpoint.
+  - Endpoint admin `DELETE /api/webhooks/:id/deliveries?older_than=<hari>` untuk trigger manual.
+  - `GetAllWebhookEndpoints` mengembalikan `delivery_counts` (jumlah log per endpoint); `GetWebhookEndpointByID` mengembalikan `delivery_count`.
+  - `CreateWebhookRequest`/`UpdateWebhookRequest` mendukung `max_log_retention_days`.
+  - Unit test: `TestCleanupWebhookDeliveries`, `TestAdminCleanupWebhookDeliveries(_NotFound)`.
+- **P14 — Rotasi QR Code (Task 13.14)**:
+  - Handler `RotateQRCode` (`POST /api/cctv/:id/rotate-qr`, admin-only): generate UUID baru → enkripsi AES-256 sebagai `QrPayload` baru → simpan → audit + broadcast `CCTV_UPDATED`.
+  - Route di `routes/cctv.go` (sebelum `/:id`); unit test `TestRotateQRCode_Success(_NotFound)`.
+- **P16 — Regenerasi API key (Task 13.16)**:
+  - Handler `RegenerateAPIKey` (`POST /api/api-keys/:id/regenerate`, admin-only): generate key mentah baru → bcrypt hash → update `key_hash`/`key_prefix` → reset `last_used_at` → audit + broadcast `API_KEY_REGENERATED` → return `{ api_key }` (tampil 1×).
+  - Route di `routes/api_key.go`; unit test `TestRegenerateAPIKey_Success(_NotFound)`.
+
+timestamp: 2026-08-10 18:30 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/migrations/000016_webhook_retention.up.sql (baru)
+- backend/migrations/000016_webhook_retention.down.sql (baru)
+- backend/models/webhook.go
+- backend/handlers/webhook.go
+- backend/handlers/webhook_test.go
+- backend/handlers/api_key.go
+- backend/routes/api_key.go
+- backend/handlers/cctv.go
+- backend/routes/cctv.go
+- backend/handlers/infra_integration_test.go (baru)
+- backend/main.go
+- backend/docs/* (swag init)
+
 ## [0.54.0] - 2026-08-10
 
 ### Fitur: Kecerdasan Data & Eskalasi (Sprint 33 - P8, P9, P11)
