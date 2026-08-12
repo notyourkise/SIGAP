@@ -35,7 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
-| **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
+| **14** | **CCTV Intelligence — Live Status & AI Detection** | **1/3** | **🚧 Berjalan** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -887,7 +887,7 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 > - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati.
 > - **14B**: AI object detection berbasis YOLOv8 — mendeteksi dan menghitung **orang unik** yang terdeteksi oleh kamera yang sedang ditampilkan di `/monitor`.
 >
-> **Status: 🔲 Belum dimulai** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai.
+> **Status: 🚧 Berjalan** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai. Sprint 37 (14A) ✅ Selesai → progress **1/3**.
 
 ### Latar Belakang & Root Cause
 
@@ -1030,12 +1030,20 @@ ai/
 > **Branch:** `feature/rtsp-live-probe`
 > **Prasyarat:** Sprint 31 selesai (koordinat float + hardening)
 > **Estimasi:** 2–3 hari kerja
+> **Status: ✅ Selesai** (2026-08-12)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **14A.1** Migration + RTSP Probe Engine | Migration `000018_stream_live_status`. Model `CCTV` + `StreamLive bool`, `StreamCheckedAt *time.Time`. Fungsi `ProbeRTSPChannel(host, port, channelID int) bool` via TCP dial + RTSP OPTIONS. Goroutine `RunRTSPProber(db)`: probe semua CCTV `stream_enabled=true` tiap 2 menit, update `stream_live` + `stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED` via WebSocket. Endpoint `GET /api/streams/live-status` (admin) — return seluruh CCTV dengan `stream_live` + `stream_checked_at`. |
-| **Frontend** | Agent-FE | **14A.2** Map Badge + Monitor Border | `CCTVMap.tsx`: tambah field `stream_live` ke interface `CCTVMapItem`. Tambah badge kecil di pojok kanan atas marker SVG: 🟢 (online) / 🔴 (offline) / ⚪ (belum dicek). Listen WebSocket event `CCTV_LIVE_STATUS_UPDATED` → update badge tanpa reload. Status bar peta: `"X Online · Y Offline · Z Belum dicek"`. Di `/monitor` (`StreamGridView.tsx`): border hijau tipis = online, border merah = offline, border abu-abu = belum dicek. Tooltip per sel: `"Terakhir dicek: HH:mm WIB"`. |
-| **Backend** | Agent-BE | **14A.3** Fix StreamHealthMonitor | Hapus kondisi guardian `if _, wasUp := streamLastReady[path]; !wasUp { return }` di `evaluateStreamState()`. Ganti logika: jika `stream_live=false` setelah probe, langsung set `streamDownSince` tanpa perlu menunggu ada viewer dulu. Update unit test `stream_health_test.go`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **14A.1** Migration + RTSP Probe Engine | Migration `000019_stream_live_status`. Model `CCTV` + `StreamLive bool`, `StreamCheckedAt *time.Time`. Fungsi `ProbeRTSPHost`/`ProbeRTSPChannel` via TCP dial + RTSP OPTIONS. Goroutine `RunRTSPProber(db)`: probe semua CCTV `stream_enabled=true` tiap 2 menit, update `stream_live` + `stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED` via WebSocket. Endpoint `GET /api/streams/live-status` (admin) — return `summary` (online/offline/unchecked) + `data` seluruh CCTV dengan `stream_live` + `stream_checked_at`. | ✅ Selesai |
+| **Frontend** | Agent-FE | **14A.2** Map Badge + Monitor Border | `CCTVMap.tsx`: tambah field `stream_live` ke interface `CCTVMapItem`. Tambah badge kecil di pojok kanan atas marker SVG: 🟢 (online) / 🔴 (offline) / ⚪ (belum dicek). Listen WebSocket event `CCTV_LIVE_STATUS_UPDATED` → update badge tanpa reload. Status bar peta: `"X Online · Y Offline · Z Belum dicek"`. Di `/monitor` (`StreamGridView.tsx`): border hijau tipis = online, border merah = offline, border abu-abu = belum dicek. Tooltip per sel: `"Terakhir dicek: HH:mm WIB"`. | ✅ Selesai |
+| **Backend** | Agent-BE | **14A.3** Fix StreamHealthMonitor | Hapus kondisi guardian `if _, wasUp := streamLastReady[path]; !wasUp { return }` di `evaluateStreamState()`. Ganti logika: jika `stream_live=false` setelah probe, langsung set `streamDownSince` tanpa perlu menunggu ada viewer dulu. Update unit test `stream_health_test.go`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 37:** RTSP Live Status Detection (14A.1, 14A.2, 14A.3) selesai — **Fase 14 kini 1/3 🚧 Berjalan**.
+- **Backend**: migration `000019_stream_live_status` (kolom `stream_live` default `false` + `stream_checked_at` nullable di `cctvs`); model `CCTV` tambah `StreamLive bool` & `StreamCheckedAt *time.Time`; `utils/rtsp_probe.go` (`ProbeRTSPHost` TCP dial 3s, `ProbeRTSPChannel` RTSP OPTIONS 5s); `handlers/stream_probe.go` (`RunRTSPProber` startup + tiap 2 menit, update `stream_live`/`stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED` saat berubah, `GetLiveStatus` → `summary` + `data`); rute `GET /api/streams/live-status` admin-only.
+- **Frontend**: badge live di marker `CCTVMap.tsx` (🟢/🔴/⚪), status bar peta `"X Online · Y Offline · Z Belum dicek"`, border/ring per sel di `/monitor`, tooltip `"Terakhir dicek: HH:mm WIB"`, update real-time via WebSocket tanpa reload.
+- **Dokumen**: `docs/manual-test-rtsp-live-status.md` (baru — S1–S9 sesuai format manual test lain); `docs/ROADMAP.md` Fase 14 progress **0/3 → 1/3 🚧 Berjalan** & Sprint 37 ✅ Selesai; `docs/TESTING.md` matriks `handlers/stream_probe_test.go` + `stream_health_test.go` diperluas (total 62 → 63).
+
+Detail: `backend/changelog.md` · `frontend/changelog.md`.
 
 #### Verifikasi Sprint 37
 

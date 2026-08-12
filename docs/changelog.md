@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.42] — 2026-08-12 — Fitur: RTSP Live Status Detection (Sprint 37) — Fase 14 dimulai
+
+### Perubahan
+
+- **Fase 14 (CCTV Intelligence) dimulai** — Sprint 37 (Task 14A RTSP Live Status Detection) selesai. Progress ROADMAP Fase 14 **0/3 → 1/3 🚧 Berjalan**, Sprint 37 **✅ Selesai**.
+- **Backend**: migration `000019_stream_live_status` (kolom `stream_live BOOLEAN NOT NULL DEFAULT FALSE` + `stream_checked_at TIMESTAMPTZ` nullable di `cctvs`); model `CCTV` tambah `StreamLive bool` & `StreamCheckedAt *time.Time`; `utils/rtsp_probe.go` — `ProbeRTSPHost` (TCP dial 3s) & `ProbeRTSPChannel` (RTSP OPTIONS 5s, cek kode 200); `handlers/stream_probe.go` — goroutine `RunRTSPProber` (startup + tiap 2 menit, probe CCTV `stream_enabled=true`, update `stream_live`/`stream_checked_at`, broadcast WebSocket `CCTV_LIVE_STATUS_UPDATED` saat status berubah) + handler `GetLiveStatus` (`GET /api/streams/live-status` admin-only → `summary` online/offline/unchecked + `data` per CCTV); rute terdaftar di `routes/stream.go`.
+- **Frontend**: `CCTVMap.tsx` badge live di marker (🟢 online / 🔴 offline / ⚪ belum dicek) + status bar peta `"X Online · Y Offline · Z Belum dicek"`; `/monitor` (`StreamGridView.tsx`) border/ring warna per sel (hijau=online, merah=offline, abu-abu=belum dicek) + tooltip `"Terakhir dicek: HH:mm WIB"`; update real-time via WebSocket `CCTV_LIVE_STATUS_UPDATED` tanpa reload.
+- **Dokumen**: `docs/manual-test-rtsp-live-status.md` (baru — S1–S9 sesuai format manual test lain); `docs/ROADMAP.md` Fase 14 progress **0/3 → 1/3 🚧 Berjalan** & Sprint 37 ✅ Selesai; `docs/TESTING.md` matriks `handlers/stream_probe_test.go` + `stream_health_test.go` diperluas (total 62 → 63).
+- Verifikasi: `go build`/`go test ./... -run "TestRTSP|TestStream"`/`go vet` PASS; `npm run lint`/`npm run build` PASS.
+
+Detail: `backend/changelog.md` · `frontend/changelog.md`.
+
+Timestamp: 2026-08-12 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs)
+
 ## [1.28.41] — 2026-08-13 — Fitur: Multi-Site (Sprint 30) — Fase 12 Selesai
 
 ### Perubahan

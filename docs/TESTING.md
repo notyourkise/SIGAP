@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
+> Diperbarui: 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
 
 ---
 
@@ -72,7 +72,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `stream_test.go` (Task 9.3b) | `StartStream` (sukses → return `whep_url`; CCTV tidak ditemukan 404; `stream_enabled=false` → 400; tanpa `channel_port` → 400), `StopStream` (sukses → path dihapus), `GetStreamStatus` (list dengan `stream_active`/`stream_ready`/`viewers`), `GetStreamURL` (return `whep_url` + `hls_url`), enforcement role (`RequireRole("admin")` — teknisi → 403) |
 | `routes` | `stream_test.go` (Task 9.3b) | registrasi route `/api/streams` (grup admin-only: `Protected()` + `RequireRole("admin")`) — rute statis (`/status`, `/start-all`, `/stop-all`) tersedia sebelum dinamis (`/:id/start`, `/:id/stop`, `/:id/url`); endpoint stream wajib autentikasi |
 | `handlers` | `snapshot_test.go` (Task 10.1+10.2, Fase 10) | `GetCCTVSnapshot` (sukses → JPEG, belum ada snapshot → 404, CCTV not found → 404, tanpa identitas → 401), `GetCCTVTimeline` (sukses + paginasi, CCTV not found → 404, tanpa identitas → 401), rotasi snapshot (hanya menyimpan 10 terbaru) |
-| `handlers` | `stream_health_test.go` (Task 10.4, Fase 10) | `GetStreamHealth` (tanpa stream, unauthorized 401/403), `RunStreamHealthMonitor` (no MediaMTX, down > 15 menit → `STREAM_DOWN` + health -10, pulih → `STREAM_RESTORED`) |
+| `handlers` | `stream_health_test.go` (Task 10.4 + 14A.3, Fase 10/14) | `GetStreamHealth` (tanpa stream, unauthorized 401/403), `RunStreamHealthMonitor` (no MediaMTX, down > 15 menit → `STREAM_DOWN` + health -10, pulih → `STREAM_RESTORED`); Task 14A.3: deteksi down langsung saat `stream_live=false` hasil probe (tanpa menunggu viewer) — penghapusan guardian `streamLastReady` |
 | `handlers` | `spare_part_test.go` (Task 11.1, Sprint 26) | `CreateSparePart` (sukses, SKU duplikat → 400), `GetAllSpareParts` (paginasi), `GetSparePartByID` (sukses, not found → 404), `UpdateSparePart` (sukses), `DeleteSparePart` (soft delete), `RecordSparePartUsage` (stok berkurang, stok tidak cukup → 400, log bukan completed → 409), `GetSparePartUsageByLog`, `GetLowStockSpareParts` |
 | `handlers` | `email_test.go` (Task 11.3, Sprint 27) | `UpdateEmailPreferences` (sukses → simpan, field wajib hilang → 400, user not found → 404) |
 | `handlers` | `report_builder_test.go` (Task 11.2, Sprint 27) | `GenerateReport` (CSV sukses, entitas tak dikenal → 400, tanpa kolom valid → 400), `SaveReportTemplate` (sukses, config bukan JSON → 400), `ListReportTemplates` (sukses), `DeleteReportTemplate` (sukses, not found → 404) |
@@ -88,8 +88,9 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `site_test.go` (Task 12.2, Sprint 30) | `CreateSite` (sukses → 201, validasi kode/nama kosong → 400), `GetAllSites` (paginasi + `is_default`), `GetAllSitesForSelect` (dropdown `GET /api/sites/all`), `UpdateSite` (sukses), `DeleteSite` (soft delete), `DeleteSite` site default → ditolak, `AssignUsersToSite` (sukses → relasi dalam transaksi, user bukan teknisi → 400) |
 | `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
+| `handlers` | `stream_probe_test.go` (Task 14A, Sprint 37) | `ProbeRTSPHost` (host reachable via listener TCP → true, port tak terpakai → false), `ProbeRTSPChannel` (response RTSP/1.0 200 → true, koneksi gagal → false) — via `startTestRTSPListener` mock; (catatan: `utils/rtsp_probe_test.go` untuk `RunRTSPProber`/`GetLiveStatus` dijadwalkan pada Task 14A) |
 
-**Total: 62 file test** (14 utils, 6 middleware, 32 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+**Total: 63 file test** (14 utils, 6 middleware, 33 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -117,7 +118,7 @@ Ringkasan cakupan test stream health & deteksi down:
 
 | File Test | Task | Yang Diuji |
 |-----------|------|-----------|
-| `handlers/stream_health_test.go` | 10.4 | `GetStreamHealth` (tanpa stream → respons kosong/valid; unauthorized tanpa identitas → 401; role non-admin → 403), `RunStreamHealthMonitor` (MediaMTX tidak tersedia → tidak panic/tidak ada penalti; stream down > 15 menit → broadcast `STREAM_DOWN` + `health_score` turun 10; stream pulih → broadcast `STREAM_RESTORED`) |
+| `handlers/stream_health_test.go` | 10.4 + 14A.3 | `GetStreamHealth` (tanpa stream → respons kosong/valid; unauthorized tanpa identitas → 401; role non-admin → 403), `RunStreamHealthMonitor` (MediaMTX tidak tersedia → tidak panic/tidak ada penalti; stream down > 15 menit → broadcast `STREAM_DOWN` + `health_score` turun 10; stream pulih → broadcast `STREAM_RESTORED`); Task 14A.3: deteksi down langsung via `stream_live=false` tanpa menunggu viewer (guardian `streamLastReady` dihapus) |
 
 ### Matriks Inventaris Suku Cadang (Fase 11, Task 11.1 / Sprint 26)
 
@@ -218,6 +219,20 @@ Catatan gotchas test Sprint 34:
 - `RotateQRCode` memicu `LogAudit` async di goroutine — jangan mem-mock query user/audit pada test success.
 - `RegenerateAPIKey` memicu `LogAudit` + `BroadcastEvent` async; hanya mock `SELECT * FROM "api_keys"` dan `UPDATE "api_keys"`.
 - `webhookEndpointRows` kini menyertakan kolom `max_log_retention_days` (baris tabel bertambah satu kolom).
+
+### Matriks RTSP Live Status Detection (Fase 14, Task 14A / Sprint 37)
+
+Ringkasan cakupan test status live RTSP:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/stream_probe_test.go` | 14A.1 | `ProbeRTSPHost` (host reachable via listener TCP tiruan → true; port tak terpakai → false), `ProbeRTSPChannel` (response `RTSP/1.0 200` → true; koneksi gagal → false) — via helper `startTestRTSPListener` |
+| `handlers/stream_health_test.go` (diperluas) | 14A.3 | deteksi down langsung saat `stream_live=false` hasil probe (tanpa menunggu viewer) — guardian `streamLastReady` dihapus |
+
+Catatan gotchas test `stream_probe_test.go`:
+- `ProbeRTSPHost`/`ProbeRTSPChannel` melakukan koneksi TCP nyata; di unit test gunakan listener TCP tiruan (`startTestRTSPListener`) di `127.0.0.1:0` agar deterministik dan tidak bergantung pada NVR eksternal.
+- `ProbeRTSPChannel` memakai `bufio.Scanner` untuk membaca baris pertama respons; pastikan server tiruan menulis `RTSP/1.0 200 OK` lalu menutup koneksi.
+- **Perkiraan Task 14A**: `utils/rtsp_probe_test.go` (untuk `RunRTSPProber`/`runRTSPProbeCycle` dan `GetLiveStatus` — update `stream_live`/`stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED`, enforcement role) direncanakan dibuat agent backend. Jika telah dibuat, tambahkan baris matriksnya dan naikkan total file test (+1 → 64).
 
 ---
 

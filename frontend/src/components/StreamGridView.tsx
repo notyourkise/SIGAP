@@ -5,6 +5,19 @@ import dynamic from 'next/dynamic';
 import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 
+// Format waktu pengecekan status live menjadi HH:mm (waktu lokal). Mengembalikan
+// string kosong bila input tidak valid agar tidak merusak tampilan.
+const formatCheckTime = (value?: string | null): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
 // Lazy-load WHEPPlayer hanya ketika dibutuhkan (dan hanya di sisi klien karena WHEP butuh browser API).
 const WHEPPlayer = dynamic(() => import('@/components/WHEPPlayer'), {
   ssr: false,
@@ -67,6 +80,31 @@ function StreamCell({
     </span>
   );
 
+  // Ring/border warna berdasarkan status live streaming (RTSP) pada sel kamera:
+  //   true → emerald, false → merah, null/undefined → abu tipis.
+  const liveRingClass =
+    cctv.stream_live === true
+      ? 'ring-1 ring-emerald-500/60'
+      : cctv.stream_live === false
+        ? 'ring-1 ring-red-500/60 ring-inset'
+        : 'ring-1 ring-gray-500/20';
+
+  // Indikator kecil pojok kanan-atas: 🟢 Online, 🔴 Offline, ⚪ Belum dicek.
+  const liveIndicator =
+    cctv.stream_live === true
+      ? '🟢'
+      : cctv.stream_live === false
+        ? '🔴'
+        : '⚪';
+
+  const liveIndicatorTitle = cctv.stream_checked_at
+    ? `Terakhir dicek: ${formatCheckTime(cctv.stream_checked_at)}`
+    : cctv.stream_live === true
+      ? 'Online'
+      : cctv.stream_live === false
+        ? 'Offline'
+        : 'Belum dicek';
+
   return (
     <div
       ref={cellRef}
@@ -79,7 +117,7 @@ function StreamCell({
           onCctvClick?.(cctv);
         }
       }}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className={`group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${liveRingClass}`}
     >
       {/* Area video / placeholder (tinggi ~200px) */}
       <div className="relative h-[200px] w-full overflow-hidden bg-black">
@@ -131,7 +169,16 @@ function StreamCell({
       <div className="flex flex-1 flex-col gap-1 p-3">
         <div className="flex items-start justify-between gap-2">
           <h3 className="line-clamp-1 text-sm font-bold text-foreground">{cctv.nama}</h3>
-          <Video className="h-4 w-4 shrink-0 text-primary" />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span
+              title={liveIndicatorTitle}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-[10px] leading-none"
+              aria-label={liveIndicatorTitle}
+            >
+              {liveIndicator}
+            </span>
+            <Video className="h-4 w-4 shrink-0 text-primary" />
+          </div>
         </div>
         <p className="font-mono text-[11px] font-semibold text-muted">{cctv.kode_cctv}</p>
         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">

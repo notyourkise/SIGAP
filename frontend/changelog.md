@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.51.0] - 2026-08-13
+
+### Fitur: RTSP Live Status Detection (Sprint 37 - Task 14A.2)
+
+perubahan yang dilakukan: **Menambahkan badge online/offline real-time pada marker peta, status bar live counter, popup status live, border status per sel grid, dan WebSocket listener untuk update live status tanpa reload.**
+
+before:
+- Peta CCTV memakai field `status` (aktif/nonaktif/pemeliharaan) untuk warna marker — bukan status koneksi RTSP real-time. Kamera mati tetap tampak hijau meski offline.
+- Tidak ada indikator online/offline real-time di peta maupun grid monitor.
+
+after:
+- **`src/components/CCTVMap.tsx`**: `CCTVMapItem` tambah `stream_live?` & `stream_checked_at?`; `createCustomMarkerIcon` tambah param `streamLive` → badge bulat di pojok marker (🟢 online / 🔴 offline / ⚪ belum dicek); status bar "X Online · Y Offline · Z Belum dicek"; popup menampilkan status live + waktu terakhir dicek.
+- **`src/components/StreamGridView.tsx`**: border/ring warna per sel berdasarkan `stream_live` (hijau/merah/abu); indikator emoji kecil di pojok sel dengan tooltip waktu cek.
+- **`src/app/sebaran-cctv/page.tsx`**: enrich data CCTV dengan `GET /streams/live-status` (admin-only, fallback null untuk non-admin); subscribe WebSocket `CCTV_LIVE_STATUS_UPDATED` → update badge tanpa reload.
+
+timestamp: 2026-08-13 14:00 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+
 ## [1.50.0] - 2026-08-13
 
 ### Fitur: Multi-Site (Sprint 30 - Task 12.2b)

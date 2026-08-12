@@ -21,6 +21,11 @@ export interface CCTVMapItem {
   stream_enabled?: boolean;
   channel_port?: number;
   snapshot_url?: string;
+  // Status live streaming (RTSP) dari endpoint /streams/live-status (admin) atau event
+  // WebSocket CCTV_LIVE_STATUS_UPDATED. `null` berarti belum dicek / non-admin.
+  stream_live?: boolean | null;
+  // Waktu terakhir status live dicek oleh backend (string ISO). Opsional.
+  stream_checked_at?: string | null;
 }
 
 interface CCTVMapProps {
@@ -58,11 +63,46 @@ const healthScoreClasses = (score?: number) => {
 const isValidCoord = (value?: number | null): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value !== 0;
 
+// Format waktu pengecekan status live menjadi HH:mm (waktu lokal). Mengembalikan
+// string kosong bila input tidak valid agar tidak merusak tampilan.
+const formatCheckTime = (value?: string | null): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
 // Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
 // Param tambahan `isStreaming` menambah cincin hijau ganda (double-pulse) sebagai penanda kamera yang sedang streaming.
-const createCustomMarkerIcon = (healthScore?: number, isStreaming?: boolean) => {
+// Param `streamLive` menambah badge bulat kecil di pojok kanan-atas marker:
+//   true  → hijau (#22C55E), false → merah (#EF4444), null/undefined → abu (#9CA3AF).
+const createCustomMarkerIcon = (healthScore?: number, isStreaming?: boolean, streamLive?: boolean | null) => {
   const color = healthScoreColor(healthScore);
   const shadowColor = `${color}66`;
+
+  // Warna badge status live (indikator kecil di pojok kanan-atas marker).
+  const streamBadgeColor =
+    streamLive === true ? '#22C55E' : streamLive === false ? '#EF4444' : '#9CA3AF';
+
+  // Badge bulat kecil yang menandakan status live stream (RTSP).
+  const streamBadge = `
+    <div style="
+      position: absolute;
+      top: -1px;
+      right: -1px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background-color: ${streamBadgeColor};
+      border: 2px solid white;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      z-index: 3;
+    "></div>
+  `;
 
   const streamingRing = isStreaming
     ? `
@@ -93,6 +133,7 @@ const createCustomMarkerIcon = (healthScore?: number, isStreaming?: boolean) => 
       justify-content: center;
     ">
       ${streamingRing}
+      ${streamBadge}
       <div style="
         position: absolute;
         width: 32px;
@@ -210,6 +251,12 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
     [cctvs]
   );
 
+  // Statistik status live streaming (RTSP) dari seluruh CCTV.
+  // stream_live === true → online, false → offline, null/undefined → belum dicek.
+  const onlineCount = cctvs.filter((c) => c.stream_live === true).length;
+  const offlineCount = cctvs.filter((c) => c.stream_live === false).length;
+  const uncheckedCount = cctvs.filter((c) => c.stream_live == null).length;
+
   const [showMissingList, setShowMissingList] = useState(false);
 
   // Pusat peta: gunakan prop `center` bila tersedia, fallback ke pusat IKN.
@@ -247,7 +294,7 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
           <Marker
             key={item.id}
             position={[item.lat, item.lng]}
-            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled)}
+            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled, item.stream_live)}
             eventHandlers={{
               click: () => {
                 // Jika ada handler klik & kamera streaming aktif → buka modal stream, jangan buka Popup.
@@ -292,6 +339,16 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
                 <div className="flex items-center gap-1.5 text-xs text-muted">
                   <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="truncate">{item.lokasi_area || 'Kawasan KIPP IKN'}</span>
+                </div>
+
+                {/* Status live streaming (RTSP) */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  {item.stream_live === true && <span className="font-semibold text-emerald-600">🟢 Online</span>}
+                  {item.stream_live === false && <span className="font-semibold text-red-600">🔴 Offline</span>}
+                  {item.stream_live == null && <span className="font-semibold text-gray-500">⚪ Belum dicek</span>}
+                  {item.stream_checked_at && (
+                    <span className="text-muted">· Dicek {formatCheckTime(item.stream_checked_at)}</span>
+                  )}
                 </div>
               </div>
               </Popup>
@@ -379,6 +436,22 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
           {missingCoord.length} belum memiliki koordinat
         </span>
       )}
+    </div>
+
+    {/* Status bar live streaming (RTSP): online / offline / belum dicek */}
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+        <span className="text-emerald-600">{onlineCount} Online</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+        <span className="text-red-600">{offlineCount} Offline</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
+        <span className="text-gray-500">{uncheckedCount} Belum dicek</span>
+      </span>
     </div>
     </>
   );
