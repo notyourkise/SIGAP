@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/disintegration/imaging"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"golang.org/x/image/webp"
@@ -37,11 +39,26 @@ var allowedMIMETypes = map[string]bool{
 const (
 	// uploadsDir adalah lokasi fisik file lampiran
 	uploadsDir = "./uploads"
+	// thumbDir adalah lokasi fisik file thumbnail
+	thumbDir = "./uploads/thumbnails"
 	// uploadPrefix adalah prefix URL publik file lampiran
 	uploadPrefix = "/api/uploads/"
+	// thumbPrefix adalah prefix URL publik file thumbnail
+	thumbPrefix = "/api/uploads/thumbnails/"
 	// uploadGracePeriod adalah tenggang waktu sebelum file yatim dihapus
 	// (mencegah penghapusan file yang baru diupload tapi belum disimpan ke log)
 	uploadGracePeriod = 24 * time.Hour
+
+	// maxDimension adalah batas dimensi terpanjang (lebar/tinggi) gambar fullsize
+	// setelah dikompresi. Gambar lebih besar dari ini akan di-resize mempertahankan
+	// aspect ratio agar ukuran file tetap terkendali.
+	maxDimension = 1920
+	// thumbWidth dan thumbHeight adalah ukuran maksimal thumbnail yang dihasilkan
+	thumbWidth  = 400
+	thumbHeight = 300
+	// compressThreshold adalah ambang ukuran file asli (dalam byte) untuk memutuskan
+	// apakah gambar kecil perlu di-resize atau cukup disimpan apa adanya.
+	compressThreshold = 300 * 1024
 )
 
 // UploadFile mengunggah file gambar bukti pemeliharaan CCTV
@@ -126,36 +143,46 @@ func UploadFile(c *fiber.Ctx) error {
 		})
 	}
 
-	var outBuf bytes.Buffer
-	if err := jpegEncode(&outBuf, flattenToRGB(img)); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Gagal memproses gambar",
-		})
-	}
+	// Normalisasi ke RGB (hapus saluran alpha) agar encode JPEG tidak berlatar hitam.
+	imgForSave := flattenToRGB(img)
 
 	// Hasilkan nama file unik berbasis UUID (selalu JPEG hasil normalisasi)
 	uniqueFilename := uuid.New().String() + ".jpg"
 	savePath := filepath.Join(uploadsDir, uniqueFilename)
+	thumbPath := filepath.Join(thumbDir, uniqueFilename)
 
-	// Simpan file hasil normalisasi ke direktori ./uploads
-	if err := os.WriteFile(savePath, outBuf.Bytes(), 0o644); err != nil {
+	// Simpan versi fullsize (di-resize bila melebihi maxDimension) dan hitung ukuran
+	// hasil kompresi untuk dilaporkan ke header respons.
+	compSize, err := saveCompressed(imgForSave, savePath)
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menyimpan file ke server",
 		})
 	}
 
+	// Selalu buat thumbnail untuk versi kecil (mis. daftar / preview).
+	if err := generateThumbnail(imgForSave, thumbPath); err != nil {
+		// Jika thumbnail gagal dibuat, tetap lanjut: file fullsize sudah valid.
+		utils.Log.Warnf("⚠️ Gagal membuat thumbnail %s: %v", uniqueFilename, err)
+	}
+
+	// Laporkan ukuran asli vs hasil kompresi via header (dipakai log/UI).
+	c.Set("X-Original-Size", strconv.FormatInt(file.Size, 10))
+	c.Set("X-Compressed-Size", strconv.FormatInt(compSize, 10))
+
 	// Kembalikan URL path yang dilindungi JWT (bukan akses static langsung)
 	fileURL := uploadPrefix + uniqueFilename
+	thumbURL := thumbPrefix + uniqueFilename
 
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"url":      fileURL,
-			"filename": uniqueFilename,
-			"size":     outBuf.Len(),
-			"type":     "image/jpeg",
+			"url":       fileURL,
+			"filename":  uniqueFilename,
+			"size":      compSize,
+			"type":      "image/jpeg",
+			"thumb_url": thumbURL,
 		},
 	})
 }
@@ -210,6 +237,56 @@ func ServeUploadedFile(c *fiber.Ctx) error {
 	return c.SendFile(filePath)
 }
 
+// ServeUploadedThumbnail menyajikan file thumbnail gambar yang sudah diunggah,
+// hanya untuk user terautentikasi.
+// @Summary      Ambil Thumbnail Foto Pemeliharaan
+// @Description  Mengambil file thumbnail gambar yang sudah diunggah berdasarkan nama file. Memerlukan autentikasi JWT.
+// @Tags         Upload
+// @Produce      image/jpeg
+// @Security     BearerAuth
+// @Param        filename path string true "Nama file thumbnail (UUID.jpg)"
+// @Success      200 {file} binary "File thumbnail"
+// @Failure      400 {object} map[string]interface{} "Nama file tidak valid"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      404 {object} map[string]interface{} "File tidak ditemukan"
+// @Router       /uploads/thumbnails/{filename} [get]
+func ServeUploadedThumbnail(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+
+	// Validasi nama file: hanya boleh berisi karakter aman (UUID + ekstensi jpg).
+	// Mencegah path traversal attack (mis. ../../etc/passwd).
+	if filename == "" || strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Nama file tidak valid",
+		})
+	}
+
+	// Pastikan ekstensi hanya jpg (thumbnail selalu disimpan sebagai JPEG).
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext != ".jpg" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Tipe file tidak diizinkan",
+		})
+	}
+
+	// Bersihkan nama file dan bentuk path absolut yang aman di dalam thumbDir.
+	cleanFilename := filepath.Base(filename)
+	filePath := filepath.Join(thumbDir, cleanFilename)
+
+	// Periksa apakah file ada
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "File tidak ditemukan",
+		})
+	}
+
+	// Kirim file sebagai response stream
+	return c.SendFile(filePath)
+}
+
 // decodeImage mendecode gambar dari byte sesuai tipe MIME yang terdeteksi.
 // Mengembalikan error bila data bukan gambar valid.
 func decodeImage(data []byte, detectedType string) (image.Image, error) {
@@ -234,9 +311,60 @@ func flattenToRGB(img image.Image) image.Image {
 	return dst
 }
 
-// jpegEncode menulis gambar ke writer dalam format JPEG kualitas 88.
+// jpegEncode menulis gambar ke writer dalam format JPEG kualitas 85.
+// Kualitas ini menjadi patokan seluruh proses kompresi fullsize.
 func jpegEncode(w io.Writer, img image.Image) error {
-	return jpeg.Encode(w, img, &jpeg.Options{Quality: 88})
+	return jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
+}
+
+// saveCompressed menyimpan gambar versi fullsize ke dstPath. Bila dimensi gambar
+// lebih besar dari maxDimension, gambar di-resize mempertahankan aspect ratio
+// (menggunakan filtering Lanczos untuk hasil tajam) sebelum di-encode ke JPEG
+// kualitas 85. Mengembalikan ukuran file yang tersimpan dalam byte.
+func saveCompressed(img image.Image, dstPath string) (int64, error) {
+	// Pastikan direktori tujuan tersedia (aman bila main.go belum membuatnya).
+	if err := os.MkdirAll(uploadsDir, os.ModePerm); err != nil {
+		return 0, err
+	}
+
+	bounds := img.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+
+	// Hanya resize bila dimensi melebihi batas maksimal, agar gambar kecil
+	// tidak diturunkan kualitasnya secara tidak perlu.
+	out := img
+	if w > maxDimension || h > maxDimension {
+		out = imaging.Resize(img, maxDimension, maxDimension, imaging.Lanczos)
+	}
+
+	var buf bytes.Buffer
+	if err := jpegEncode(&buf, out); err != nil {
+		return 0, err
+	}
+	if err := os.WriteFile(dstPath, buf.Bytes(), 0o644); err != nil {
+		return 0, err
+	}
+	return int64(buf.Len()), nil
+}
+
+// generateThumbnail membuat gambar thumbnail berukuran maksimal thumbWidth x
+// thumbHeight (fit, mempertahankan aspect ratio) lalu menyimpannya ke thumbPath
+// sebagai JPEG kualitas 80.
+func generateThumbnail(img image.Image, thumbPath string) error {
+	// Pastikan direktori thumbnail tersedia (aman bila main.go belum membuatnya).
+	if err := os.MkdirAll(thumbDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	thumb := imaging.Fit(img, thumbWidth, thumbHeight, imaging.Lanczos)
+	f, err := os.Create(thumbPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	return jpeg.Encode(f, thumb, &jpeg.Options{Quality: 80})
 }
 
 // StartUploadCleanup menjalankan goroutine pembersihan file upload yatim

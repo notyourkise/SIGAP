@@ -1628,6 +1628,356 @@
                 }
             }
         },
+        "/checklist-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mendapatkan daftar template checklist pengecekan lapangan yang dapat dikustomisasi admin. Mendukung filter aktif (?aktif=true/false) dan paginasi (?page=\u0026limit=). Diurutkan berdasarkan urutan menaik.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Template Checklist"
+                ],
+                "summary": "Ambil Semua Template Checklist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan status aktif (true/false)",
+                        "name": "aktif",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Nomor Halaman (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah data per halaman (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar template checklist terpaginasi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil daftar template checklist",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat item template checklist pengecekan lapangan baru yang dapat dikustomisasi admin. Field aktif dan wajib default ke true bila tidak dikirim.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Template Checklist"
+                ],
+                "summary": "Tambah Template Checklist",
+                "parameters": [
+                    {
+                        "description": "Data Template Checklist Baru",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateChecklistTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Template checklist berhasil dibuat",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format input salah atau validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menyimpan template checklist",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/checklist-templates/reorder": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Memperbarui urutan banyak item template checklist sekaligus (batch update) dalam satu transaksi atomik.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Template Checklist"
+                ],
+                "summary": "Urutkan Template Checklist",
+                "parameters": [
+                    {
+                        "description": "Daftar Urutan Template Checklist",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ReorderChecklistTemplatesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Urutan template checklist berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Format body salah atau validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memperbarui urutan template checklist",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/checklist-templates/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Memperbarui item template checklist pengecekan lapangan. Hanya field yang dikirim yang akan diubah.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Template Checklist"
+                ],
+                "summary": "Update Template Checklist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template Checklist UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data Update Template Checklist",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateChecklistTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template checklist berhasil diperbarui",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid, format body salah, atau validasi gagal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Template checklist tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memperbarui template checklist",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menonaktifkan (soft delete) item template checklist dengan mengatur aktif menjadi false. Data tidak dihapus permanen.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Template Checklist"
+                ],
+                "summary": "Hapus Template Checklist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template Checklist UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template checklist berhasil dinonaktifkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Template checklist tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal menonaktifkan template checklist",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/dashboard/digest": {
             "get": {
                 "security": [
@@ -5382,6 +5732,61 @@
                 }
             }
         },
+        "/uploads/thumbnails/{filename}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengambil file thumbnail gambar yang sudah diunggah berdasarkan nama file. Memerlukan autentikasi JWT.",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "Upload"
+                ],
+                "summary": "Ambil Thumbnail Foto Pemeliharaan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nama file thumbnail (UUID.jpg)",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File thumbnail",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Nama file tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/uploads/{filename}": {
             "get": {
                 "security": [
@@ -7152,6 +7557,33 @@
                 }
             }
         },
+        "handlers.CreateChecklistTemplateRequest": {
+            "type": "object",
+            "required": [
+                "nama_item"
+            ],
+            "properties": {
+                "aktif": {
+                    "type": "boolean"
+                },
+                "deskripsi": {
+                    "type": "string",
+                    "maxLength": 2000
+                },
+                "nama_item": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                },
+                "urutan": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "wajib": {
+                    "type": "boolean"
+                }
+            }
+        },
         "handlers.CreateFieldMaintenanceRequest": {
             "type": "object",
             "required": [
@@ -7449,6 +7881,10 @@
                         "ok",
                         "not_ok"
                     ]
+                },
+                "wajib": {
+                    "description": "Wajib menandai apakah item ini bersifat wajib (Task 13.12). Nilai pointer\nmemungkinkan membedakan field yang tidak dikirim (nil → default true).",
+                    "type": "boolean"
                 }
             }
         },
@@ -7531,6 +7967,36 @@
                 },
                 "spare_part_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.ReorderChecklistTemplateItem": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "urutan": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "handlers.ReorderChecklistTemplatesRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handlers.ReorderChecklistTemplateItem"
+                    }
                 }
             }
         },
@@ -7675,6 +8141,30 @@
                 "tipe_koneksi": {
                     "type": "string",
                     "maxLength": 50
+                }
+            }
+        },
+        "handlers.UpdateChecklistTemplateRequest": {
+            "type": "object",
+            "properties": {
+                "aktif": {
+                    "type": "boolean"
+                },
+                "deskripsi": {
+                    "type": "string",
+                    "maxLength": 2000
+                },
+                "nama_item": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                },
+                "urutan": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "wajib": {
+                    "type": "boolean"
                 }
             }
         },

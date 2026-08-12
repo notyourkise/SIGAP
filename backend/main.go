@@ -112,6 +112,9 @@ func main() {
 	// Jalankan Seeder untuk Admin Default pertama kali
 	models.SeedAdmin(config.DB)
 
+	// Seed template checklist default (Task 13.12) — dijalankan setelah admin.
+	models.SeedChecklistTemplates(config.DB)
+
 	// Jalankan goroutine cleanup JWT blacklist setiap 30 menit
 	// Membersihkan token expired agar tidak terjadi memory leak
 	utils.StartBlacklistCleanup(30 * time.Minute)
@@ -260,6 +263,7 @@ func main() {
 	routes.SetupAuthRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
 	routes.SetupFieldMaintenanceRoutes(api)
+	routes.SetupChecklistTemplateRoutes(api)
 	routes.SetupUserRoutes(api)
 	routes.SetupCCTVRoutes(api)
 	routes.SetupUploadRoutes(api)

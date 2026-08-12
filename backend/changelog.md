@@ -1,5 +1,70 @@
 # Changelog - Backend SIGAP
 
+## [0.57.0] - 2026-08-12
+
+### Fitur: Kompresi Foto Upload & Thumbnail (Sprint 35 - P13a, Task 13.13)
+
+perubahan yang dilakukan: **Menambahkan kompresi gambar server-side (resize + re-encode JPEG) dan pembuatan thumbnail untuk foto bukti pemeliharaan.**
+
+before:
+- Foto yang diunggah hanya di-re-encode ke JPEG quality 88 tanpa resize — ukuran file bergantung resolusi sumber, berpotensi besar & boros bandwidth.
+- Tidak ada thumbnail; frontend tidak dapat menampilkan gambar kecil tanpa memuat file penuh.
+
+after:
+- **Dependency**: tambah `github.com/disintegration/imaging v1.6.2` untuk resize/thumbnail (pure Go).
+- **`handlers/upload.go`**:
+  - `saveCompressed(img, dstPath)`: resize gambar ke maks `maxDimension=1920` (pertahankan aspect ratio, filter Lanczos) bila lebih besar, lalu encode JPEG quality 85 & simpan; mengembalikan ukuran file.
+  - `generateThumbnail(img, thumbPath)`: buat thumbnail `imaging.Fit(img, 400, 300, Lanczos)`, encode JPEG quality 80, simpan ke `thumbDir`.
+  - `UploadFile`: memanggil keduanya, menyimpan fullsize + thumbnail; menambah header respons `X-Original-Size` & `X-Compressed-Size`; respons `data` kini memuat `thumb_url`.
+  - `jpegEncode` quality diubah 88 → 85.
+  - `ServeUploadedThumbnail`: endpoint pengambilan thumbnail (anti path-traversal, hanya `.jpg`).
+- **`routes/upload.go`**: tambah `GET /api/uploads/thumbnails/:filename` (protected JWT).
+- **Unit test** `handlers/upload_test.go`: `TestUploadCompress` — gambar besar (>300KB) → assert terkompresi, header `X-Compressed-Size`, thumbnail terbuat, cleanup direktori dengan `defer os.RemoveAll`.
+- **`main.go`**: direktori `./uploads/thumbnails` dibuat otomatis oleh `generateThumbnail` (tidak bergantung pada startup).
+
+timestamp: 2026-08-12 11:00 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/go.mod
+- backend/go.sum
+- backend/handlers/upload.go
+- backend/handlers/upload_test.go
+- backend/routes/upload.go
+
+## [0.56.0] - 2026-08-12
+
+### Fitur: Checklist Template yang Dapat Dikustomisasi (Sprint 35 - P12a, Task 13.12)
+
+perubahan yang dilakukan: **Menambahkan template checklist pengecekan lapangan yang dapat dikustomisasi admin (CRUD + reorder) dan kolom wajib pada hasil pengecekan.**
+
+before:
+- Checklist 9 item pengecekan lapangan tidak dikelola admin; tidak dapat diubah tanpa deploy ulang.
+- `FieldMaintenanceCheck` belum menyimpan apakah sebuah item bersifat wajib.
+
+after:
+- **Model** `ChecklistTemplate` (embed `Base`): `nama_item`, `deskripsi`, `urutan`, `wajib`, `aktif`.
+- **Migration** `000017_checklist_templates`: tabel baru + kolom `wajib` di `field_maintenance_checks` (default TRUE). ID di-generate di Go via hook GORM (tanpa `gen_random_uuid()`).
+- **Seeder** `SeedChecklistTemplates` (models/seeder.go): mengisi 9 item default bila tabel kosong, idempotent.
+- **Handler** `handlers/checklist_template.go`: `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `CreateChecklistTemplate`, `UpdateChecklistTemplate`, `DeleteChecklistTemplate` (soft delete via `aktif=false`), `ReorderChecklistTemplates` (batch update urutan dalam transaksi). Semua operasi tulis mencatat audit.
+- **Route** `routes/checklist_template.go`: `/checklist-templates` (statis `/reorder` didaftarkan sebelum `/:id`); CRUD khusus admin, daftar untuk semua role login.
+- **Integrasi** `CreateFieldMaintenance`: item `FieldMaintenanceCheck` kini menyimpan `Wajib` (dari request bila ada, default true). Kontrak API `Checks` dinamis tetap dipertahankan.
+- **Unit test** `handlers/checklist_template_test.go`: CRUD, reorder, validasi, dan guard admin (401/403).
+- **main.go**: registrasi `routes.SetupChecklistTemplateRoutes(api)` dan panggilan `models.SeedChecklistTemplates(config.DB)`.
+
+timestamp: 2026-08-12 10:30 WITA
+kategori: Sedang, Backend
+file yang diubah:
+- backend/migrations/000017_checklist_templates.up.sql (baru)
+- backend/migrations/000017_checklist_templates.down.sql (baru)
+- backend/models/checklist_template.go (baru)
+- backend/models/seeder.go
+- backend/models/field_maintenance.go
+- backend/handlers/checklist_template.go (baru)
+- backend/handlers/checklist_template_test.go (baru)
+- backend/handlers/field_maintenance.go
+- backend/routes/checklist_template.go (baru)
+- backend/main.go
+
 ## [0.55.0] - 2026-08-10
 
 ### Fitur: Infrastruktur & Integrasi (Sprint 34 - P10, P14, P16)

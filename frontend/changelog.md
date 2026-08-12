@@ -1,5 +1,40 @@
 # Changelog - Frontend SIGAP
 
+## [1.48.0] - 2026-08-12
+
+### Fitur: Manajemen Template Checklist & Thumbnail Daftar Pemeliharaan (Sprint 35 - P12b, P13b)
+
+perubahan yang dilakukan: **Menambahkan UI kelola template checklist pengecekan lapangan (admin) serta thumbnail foto CCTV di tabel pemeliharaan.**
+
+before:
+- Daftar item pengecekan lapangan terhardcode di konstanta `FIELD_CHECKLIST` (tidak bisa dikelola admin).
+- Tabel pemeliharaan tidak menampilkan thumbnail foto CCTV (foto hanya tampil di modal detail).
+
+after:
+- **P12b — UI Manajemen Template Checklist**:
+  - Fungsi & tipe API di `src/lib/api.ts`: `ChecklistTemplate`, `getChecklistTemplates`, `createChecklistTemplate`, `updateChecklistTemplate`, `deleteChecklistTemplate`, `reorderChecklistTemplates`.
+  - Komponen baru `ChecklistTemplateManager` (mode `page` & `modal`): tabel No Urut/Nama Item/Deskripsi/Wajib/Aktif/Aksi, tombol tambah/edit inline, reorder naik-turun (tanpa dependency DnD eksternal), toggle wajib/aktif, hapus soft-delete dengan konfirmasi, serta loading/error/empty state.
+  - Tombol "⚙️ Kelola Template" (khusus admin) di halaman `field-maintenance` yang membuka manager dalam modal.
+  - Halaman baru `src/app/checklist-templates/page.tsx` (admin) yang merender manager full-page.
+  - `FieldMaintenanceModal` kini membaca template aktif dari server (`getChecklistTemplates`) sebagai `activeList`, dengan `FIELD_CHECKLIST` sebagai fallback; `answers`, `totalSteps`, dan nama item saat submit mengikuti `activeList`.
+  - Item menu sidebar "Template Checklist" (ikon `ListChecks`) + guard proxy (`ADMIN_PATHS` & `config.matcher`).
+- **P13b — Thumbnail di Daftar Pemeliharaan**:
+  - Helper `toThumbUrl` yang mengubah `/api/uploads/` atau `/uploads/` menjadi `/api/uploads/thumbnails/`.
+  - Thumbnail 40x40 di sel CCTV (kolom pertama tabel maintenance) memakai `AuthenticatedImage`; klik thumbnail membuka detail log. Fallback ikon `Camera` abu-abu bila tidak ada `image_url`.
+
+timestamp: 2026-08-12 10:35 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/lib/api.ts
+- frontend/src/components/ChecklistTemplateManager.tsx
+- frontend/src/components/FieldMaintenanceModal.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/app/checklist-templates/page.tsx
+- frontend/src/app/field-maintenance/page.tsx
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+
 ## [1.47.0] - 2026-08-10
 
 ### Fitur: UI Infrastruktur & Integrasi (Sprint 34 - P14b, P16b, P10)

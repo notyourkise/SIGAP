@@ -1,5 +1,27 @@
 # Changelog - Mobile SIGAP
 
+## [1.1.0] - 2026-08-12
+
+### Fitur: Checkup Wizard Memakai Template Checklist dari Server (Sprint 35 - P12c)
+
+perubahan yang dilakukan: **Checkup Wizard kini memuat item checklist aktif dari endpoint `/checklist-templates` agar admin dapat mengkustomisasi tanpa deploy ulang, dengan fallback ke konstanta default bila gagal.**
+
+before: Daftar 9 tahap checklist pengecekan di-hardcode sebagai konstanta `CHECKLIST` di `CheckupWizardScreen.tsx` — tidak dapat dikustomisasi admin.
+
+after:
+- `mobile/src/screens/CheckupWizardScreen.tsx`: tambah state `checklist` (default `CHECKLIST`); saat screen dimuat, fetch `GET /checklist-templates?aktif=true&limit=100` → ambil `data.rows` yang aktif, urutkan `urutan`, set sebagai daftar item.
+- Render, validasi "seluruh item wajib", dan payload `checkItems` kini memakai `checklist` (bukan konstanta).
+- Label judul dinamis mengikuti jumlah item (`Checklist N Tahap`).
+- `CHECKLIST` tetap dipertahankan sebagai fallback bila template gagal dimuat / kosong.
+- Import `apiGet` ditambahkan di `client` import.
+- Verifikasi: `npx tsc --noEmit` lulus (0 error).
+
+timestamp: 2026-08-12 11:20 WITA
+kategori: Sedang, Mobile
+file yang diubah:
+- mobile/src/screens/CheckupWizardScreen.tsx
+- mobile/changelog.md
+
 ## [1.0.0] - 2026-08-09
 
 ### Fitur: Mobile App (Task 12.4 - Sprint 30)

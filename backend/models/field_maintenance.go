@@ -44,6 +44,10 @@ type FieldMaintenanceCheck struct {
 	Name               string    `gorm:"type:varchar(150);not null" json:"name"`
 	Result             string    `gorm:"type:varchar(20);not null" json:"result"`
 	Note               string    `gorm:"type:text" json:"note"`
+	// Wajib menandai apakah item ini bersifat wajib dalam checklist hasil
+	// pengecekan lapangan (Task 13.12). Default true; nilai dapat diambil dari
+	// template checklist aktif atau dari request client.
+	Wajib bool `gorm:"type:boolean;not null;default:true" json:"wajib"`
 }
 
 // FieldMaintenanceImage adalah foto bukti pengecekan yang diunggah teknisi

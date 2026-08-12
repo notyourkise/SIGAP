@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.39] — 2026-08-12 — Fitur: Performa Backend & Checklist Fleksibel (Sprint 35)
+
+### Perubahan
+
+- **Backend** ([0.56.0] + [0.57.0]): template checklist pengecekan lapangan yang dapat dikustomisasi admin — model `ChecklistTemplate` + migrasi `000017_checklist_templates` (tabel baru + kolom `wajib` di `field_maintenance_checks`), seeder 9 item default, handler/rute CRUD + reorder `/api/checklist-templates` (admin-only untuk tulis), `CreateFieldMaintenance` menyimpan `Wajib` pada item. Kompresi foto server-side (resize ≤1920, JPEG q85, header `X-Original/Compressed-Size`) + thumbnail 400×300 via `github.com/disintegration/imaging`; endpoint `GET /api/uploads/thumbnails/:filename`.
+- **Frontend** ([1.48.0]): halaman admin `/checklist-templates` + `ChecklistTemplateManager` (tambah/edit/reorder/toggle/hapus); `FieldMaintenanceModal` memuat template dari server (fallback `FIELD_CHECKLIST`); thumbnail 40×40 di tabel `/maintenance` (klik → detail fullsize); menu sidebar "Template Checklist" + guard proxy.
+- **Mobile** ([1.1.0]): Checkup Wizard memuat item checklist dari `/checklist-templates` (fallback konstanta).
+- **Dokumen**: `docs/manual-test-checklist-template.md` (baru), `docs/manual-test-image-compression.md` (baru); `docs/ROADMAP.md` Fase 13 progress **13/18 → 15/18** & Sprint 35 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS; `npm run lint` (0 error)/`npm run build` PASS; `npx tsc --noEmit` PASS (frontend & mobile).
+
+Detail: `backend/changelog.md` [0.56.0] + [0.57.0] · `frontend/changelog.md` [1.48.0] · `mobile/changelog.md` [1.1.0].
+
+Timestamp: 2026-08-12 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs)
+
 ## [1.28.38] — 2026-08-09 — Fitur: Mobile App (Task 12.4)
 
 ### Perubahan

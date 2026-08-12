@@ -47,7 +47,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `digest_generator_test.go` | GenerateDailyDigestAt (agregasi dan pembuatan digest), idempotensi tanggal, jadwal 06:00 WITA, notifikasi admin, dan role non-admin endpoint → 403 |
 | `handlers` | `technician_performance_test.go` | Dashboard kinerja teknisi: struktur respons, filter rentang tanggal, kalkulasi rate/quality, dan role non-admin → 403 |
 | `handlers` | `audit_test.go` | GetAuditLogs (sukses, filter modul), ExportAuditLogs CSV |
-| `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404 |
+| `handlers` | `upload_test.go` | tanpa file 400, tipe invalid, JPEG valid (magic bytes), path traversal 400, ekstensi salah 400, not found 404; `TestUploadCompress` (Task 13.13, Sprint 35): gambar besar → terkompresi (header `X-Original-Size`/`X-Compressed-Size`), thumbnail terbuat, cleanup `defer os.RemoveAll` |
 | `handlers` | `report_test.go` | PDF valid prefix `%PDF`, scope teknisi |
 | `handlers` | `health_test.go` | HealthCheck Connected |
 | `handlers` | `notification_test.go` (Fase 5.1) | GetNotifications (sukses + paginasi, filter unread, tanpa identitas 401), GetUnreadNotificationCount (sukses, tanpa identitas 401), MarkNotificationRead (sukses, milik orang lain 403, not found 404, UUID invalid 400), MarkAllNotificationsRead (sukses, tanpa identitas 401) |
@@ -85,8 +85,9 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `webhook_test.go` (Task 12.3, Sprint 29) | `CreateWebhookEndpoint` (sukses → 201, event invalid → 400, validasi → 400), `GetAllWebhookEndpoints` (paginasi), `UpdateWebhookEndpoint` (sukses), `DeleteWebhookEndpoint` (soft delete), `GetWebhookDeliveries` (paginasi), `SignPayload` (HMAC-SHA256 hex 64), `ValidWebhookEvent` |
 | `middleware` | `apikey_test.go` (Task 12.1, Sprint 29) | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals terisi, scope kurang → 403) |
 | `routes` | `routes_test.go` (Sprint 29, diperluas) | `TestAPIKeyRoutesRequireAuthentication`, `TestWebhookRoutesRequireAuthentication`, registrasi `SetupAPIKeyRoutes`/`SetupWebhookRoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
+| `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 
-**Total: 59 file test** (14 utils, 5 middleware, 30 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+**Total: 60 file test** (14 utils, 5 middleware, 31 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
