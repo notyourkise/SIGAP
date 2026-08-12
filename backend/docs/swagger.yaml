@@ -142,6 +142,25 @@ definitions:
     - nama
     - status
     type: object
+  handlers.CreateChecklistTemplateRequest:
+    properties:
+      aktif:
+        type: boolean
+      deskripsi:
+        maxLength: 2000
+        type: string
+      nama_item:
+        maxLength: 255
+        minLength: 1
+        type: string
+      urutan:
+        minimum: 0
+        type: integer
+      wajib:
+        type: boolean
+    required:
+    - nama_item
+    type: object
   handlers.CreateFieldMaintenanceRequest:
     properties:
       cctv_id:
@@ -357,6 +376,11 @@ definitions:
         - ok
         - not_ok
         type: string
+      wajib:
+        description: |-
+          Wajib menandai apakah item ini bersifat wajib (Task 13.12). Nilai pointer
+          memungkinkan membedakan field yang tidak dikirim (nil → default true).
+        type: boolean
     required:
     - name
     - result
@@ -417,6 +441,26 @@ definitions:
     required:
     - jumlah
     - spare_part_id
+    type: object
+  handlers.ReorderChecklistTemplateItem:
+    properties:
+      id:
+        type: string
+      urutan:
+        minimum: 0
+        type: integer
+    required:
+    - id
+    type: object
+  handlers.ReorderChecklistTemplatesRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/handlers.ReorderChecklistTemplateItem'
+        minItems: 1
+        type: array
+    required:
+    - items
     type: object
   handlers.ResetUserPasswordRequest:
     properties:
@@ -519,6 +563,23 @@ definitions:
       tipe_koneksi:
         maxLength: 50
         type: string
+    type: object
+  handlers.UpdateChecklistTemplateRequest:
+    properties:
+      aktif:
+        type: boolean
+      deskripsi:
+        maxLength: 2000
+        type: string
+      nama_item:
+        maxLength: 255
+        minLength: 1
+        type: string
+      urutan:
+        minimum: 0
+        type: integer
+      wajib:
+        type: boolean
     type: object
   handlers.UpdateMaintenanceLogRequest:
     properties:
@@ -1768,6 +1829,245 @@ paths:
       summary: Unduh Template Excel CCTV
       tags:
       - Master CCTV
+  /checklist-templates:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar template checklist pengecekan lapangan yang
+        dapat dikustomisasi admin. Mendukung filter aktif (?aktif=true/false) dan
+        paginasi (?page=&limit=). Diurutkan berdasarkan urutan menaik.
+      parameters:
+      - description: Filter berdasarkan status aktif (true/false)
+        in: query
+        name: aktif
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar template checklist terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar template checklist
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Template Checklist
+      tags:
+      - Template Checklist
+    post:
+      consumes:
+      - application/json
+      description: Membuat item template checklist pengecekan lapangan baru yang dapat
+        dikustomisasi admin. Field aktif dan wajib default ke true bila tidak dikirim.
+      parameters:
+      - description: Data Template Checklist Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateChecklistTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Template checklist berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan template checklist
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Template Checklist
+      tags:
+      - Template Checklist
+  /checklist-templates/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menonaktifkan (soft delete) item template checklist dengan mengatur
+        aktif menjadi false. Data tidak dihapus permanen.
+      parameters:
+      - description: Template Checklist UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template checklist berhasil dinonaktifkan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Template checklist tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menonaktifkan template checklist
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Template Checklist
+      tags:
+      - Template Checklist
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui item template checklist pengecekan lapangan. Hanya
+        field yang dikirim yang akan diubah.
+      parameters:
+      - description: Template Checklist UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Template Checklist
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateChecklistTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template checklist berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Template checklist tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui template checklist
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Template Checklist
+      tags:
+      - Template Checklist
+  /checklist-templates/reorder:
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui urutan banyak item template checklist sekaligus (batch
+        update) dalam satu transaksi atomik.
+      parameters:
+      - description: Daftar Urutan Template Checklist
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ReorderChecklistTemplatesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Urutan template checklist berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format body salah atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui urutan template checklist
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Urutkan Template Checklist
+      tags:
+      - Template Checklist
   /dashboard/digest:
     get:
       description: Mengembalikan daftar ringkasan operasional harian yang dibuat otomatis
@@ -4370,6 +4670,43 @@ paths:
       security:
       - BearerAuth: []
       summary: Ambil File Foto Pemeliharaan
+      tags:
+      - Upload
+  /uploads/thumbnails/{filename}:
+    get:
+      description: Mengambil file thumbnail gambar yang sudah diunggah berdasarkan
+        nama file. Memerlukan autentikasi JWT.
+      parameters:
+      - description: Nama file thumbnail (UUID.jpg)
+        in: path
+        name: filename
+        required: true
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: File thumbnail
+          schema:
+            type: file
+        "400":
+          description: Nama file tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Thumbnail Foto Pemeliharaan
       tags:
       - Upload
   /users:

@@ -246,6 +246,93 @@ export async function apiRequest<T>(
   return data;
 }
 
+// ===== Template Checklist Pengecekan Lapangan =====
+// Entitas template item checklist yang dikelola admin. Daftar ini dipakai
+// wizard FieldMaintenanceModal untuk menyusun langkah pengecekan lapangan.
+
+export interface ChecklistTemplate {
+  id: string;
+  nama_item: string;
+  deskripsi: string;
+  urutan: number;
+  wajib: boolean;
+  aktif: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Param tambahan untuk pencarian template (mis. paginasi & filter aktif).
+export interface ChecklistTemplateQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+// Ambil daftar template checklist. Parameter `aktif` menyaring template aktif
+// (backend menyediakan ?aktif=true). Respons mengikuti konvensi SIGAP:
+// { status, data: { rows, pagination } }.
+export async function getChecklistTemplates(
+  aktif?: boolean,
+  params?: ChecklistTemplateQuery
+): Promise<ApiResponse<{ rows: ChecklistTemplate[]; pagination: { page: number; limit: number; total_rows: number; total_pages: number } }>> {
+  const query = new URLSearchParams();
+  if (typeof aktif === 'boolean') query.set('aktif', String(aktif));
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+
+  const qs = query.toString();
+  return apiRequest(`/checklist-templates${qs ? `?${qs}` : ''}`);
+}
+
+// Buat template checklist baru (admin).
+export async function createChecklistTemplate(data: {
+  nama_item: string;
+  deskripsi: string;
+  urutan: number;
+  wajib: boolean;
+  aktif: boolean;
+}): Promise<ApiResponse<ChecklistTemplate>> {
+  return apiRequest('/checklist-templates', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// Perbarui template checklist berdasarkan id (admin).
+export async function updateChecklistTemplate(
+  id: string,
+  data: Partial<{
+    nama_item: string;
+    deskripsi: string;
+    urutan: number;
+    wajib: boolean;
+    aktif: boolean;
+  }>
+): Promise<ApiResponse<ChecklistTemplate>> {
+  return apiRequest(`/checklist-templates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+// Nonaktifkan template checklist (soft delete, admin). Pengecekan yang sudah
+// ada tidak terpengaruh — hanya menyembunyikannya dari wizard baru.
+export async function deleteChecklistTemplate(id: string): Promise<ApiResponse<ChecklistTemplate>> {
+  return apiRequest(`/checklist-templates/${id}`, { method: 'DELETE' });
+}
+
+// Atur ulang urutan template sekaligus (admin). `items` berisi pasangan
+// { id, urutan } dengan urutan baru sesuai susunan pada tabel.
+export async function reorderChecklistTemplates(
+  items: { id: string; urutan: number }[]
+): Promise<ApiResponse<ChecklistTemplate[]>> {
+  return apiRequest('/checklist-templates/reorder', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  });
+}
+
 export async function downloadApiFile(endpoint: string, fallbackName: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     credentials: 'include',

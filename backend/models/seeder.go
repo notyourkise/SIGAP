@@ -47,3 +47,34 @@ func SeedAdmin(db *gorm.DB) {
 	}
 	log.Println("🚀 Akun Admin default berhasil dibuat (username: admin)")
 }
+
+// SeedChecklistTemplates mengisi tabel checklist_templates dengan 9 item
+// template default HANYA jika tabel masih kosong (Task 13.12). Data default
+// disediakan agar daftar checklist pengecekan lapangan siap dipakai begitu
+// server pertama kali dijalankan. Fungsi idempotent — bila sudah ada data,
+// tidak melakukan apa-apa agar kustomisasi admin tidak tertimpa.
+func SeedChecklistTemplates(db *gorm.DB) {
+	var existing ChecklistTemplate
+	if err := db.First(&existing).Error; err == nil {
+		// Template sudah terisi — biarkan kustomisasi admin yang ada tetap berlaku.
+		log.Println("✅ Template checklist pengecekan sudah ada, kustomisasi admin tidak diubah.")
+		return
+	}
+
+	defaults := []ChecklistTemplate{
+		{NamaItem: "Pengecekan jaringan", Deskripsi: "Pastikan koneksi jaringan kamera ke NVR normal.", Urutan: 1, Wajib: true, Aktif: true},
+		{NamaItem: "Pengecekan pasokan listrik", Deskripsi: "Periksa adaptor/PoE/panel surya; pastikan tegangan stabil.", Urutan: 2, Wajib: true, Aktif: true},
+		{NamaItem: "Pembersihan lensa", Deskripsi: "Bersihkan lensa dari debu/kotoran/sarang laba-laba.", Urutan: 3, Wajib: true, Aktif: true},
+		{NamaItem: "Pemeriksaan fisik kamera", Deskripsi: "Periksa housing, bracket, segel kedap air.", Urutan: 4, Wajib: true, Aktif: true},
+		{NamaItem: "Pengecekan kualitas gambar", Deskripsi: "Pastikan fokus, kecerahan, warna gambar baik.", Urutan: 5, Wajib: true, Aktif: true},
+		{NamaItem: "Pengujian perekaman", Deskripsi: "Pastikan rekaman tersimpan normal di NVR.", Urutan: 6, Wajib: true, Aktif: true},
+		{NamaItem: "Pengecekan akses jarak jauh", Deskripsi: "Pastikan kamera dapat diakses remote view.", Urutan: 7, Wajib: true, Aktif: true},
+		{NamaItem: "Pemeriksaan kabel & konektor", Deskripsi: "Periksa kabel, konektor, jalur instalasi.", Urutan: 8, Wajib: true, Aktif: true},
+		{NamaItem: "Pengecekan lingkungan sekitar", Deskripsi: "Pastikan area sekitar kamera bersih, tidak ada halangan.", Urutan: 9, Wajib: true, Aktif: true},
+	}
+
+	if err := db.Create(&defaults).Error; err != nil {
+		log.Fatalf("❌ Gagal membuat template checklist default: %v", err)
+	}
+	log.Println("🚀 Template checklist pengecekan default berhasil dibuat (9 item)")
+}

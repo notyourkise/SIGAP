@@ -13,7 +13,7 @@ import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { apiClient, apiPost, extractError } from '../api/client';
+import { apiClient, apiGet, apiPost, extractError } from '../api/client';
 import type { CCTV, FieldCheckItem } from '../api/types';
 import { PrimaryButton, TextField } from '../components/ui';
 import { saveDraft } from '../offline/storage';
@@ -22,7 +22,9 @@ import type { RootStackParamList } from '../navigation/types';
 
 type Route = RouteProp<RootStackParamList, 'Checkup'>;
 
-// 9 tahap checklist pengecekan (konsisten dengan frontend web).
+// 9 tahap checklist pengecekan (fallback bila template dari server gagal dimuat).
+// Sejak Sprint 35 (P12), item sebenarnya dimuat dari endpoint /checklist-templates
+// agar dapat dikustomisasi admin tanpa deploy ulang.
 const CHECKLIST = [
   'Pengecekan jaringan',
   'Pengecekan pasokan listrik',
@@ -41,6 +43,8 @@ export default function CheckupWizardScreen() {
   const route = useRoute<Route>();
   const cctv: CCTV | undefined = route.params?.cctv;
 
+  // Daftar item checklist aktif dari server; fallback ke CHECKLIST bila gagal.
+  const [checklist, setChecklist] = useState<string[]>(CHECKLIST);
   const [checks, setChecks] = useState<Record<string, CheckStatus>>({});
   const [notes, setNotes] = useState('');
   const [location, setLocation] = useState<{ lat: string; lng: string } | null>(null);
@@ -64,6 +68,32 @@ export default function CheckupWizardScreen() {
         // Lokasi opsional — lanjut tanpa GPS.
       }
     })();
+  }, []);
+
+  // Muat template checklist aktif dari server (Sprint 35, P12). Bila gagal /
+  // kosong, tetap memakai CHECKLIST sebagai fallback agar teknisi tidak terblokir.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet<{ rows?: { nama_item: string; urutan: number; aktif: boolean }[] }>(
+          '/checklist-templates?aktif=true&limit=100'
+        );
+        if (cancelled) return;
+        const rows = res.data?.rows ?? [];
+        if (rows.length > 0) {
+          const items = [...rows]
+            .sort((a, b) => a.urutan - b.urutan)
+            .map((r) => r.nama_item);
+          setChecklist(items);
+        }
+      } catch {
+        // Gagal memuat template — pertahankan fallback CHECKLIST.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const toggleCheck = (name: string, status: CheckStatus) => {
@@ -107,9 +137,9 @@ export default function CheckupWizardScreen() {
       setError('Data CCTV tidak ditemukan.');
       return;
     }
-    const allOk = CHECKLIST.every((name) => checks[name]);
+    const allOk = checklist.every((name) => checks[name]);
     if (!allOk) {
-      setError('Seluruh 9 tahap checklist wajib diisi (ok / tidak ok).');
+      setError('Seluruh tahap checklist wajib diisi (ok / tidak ok).');
       return;
     }
     if (photos.length === 0) {
@@ -122,7 +152,7 @@ export default function CheckupWizardScreen() {
     setMessage('');
 
     // Susun payload field-maintenance.
-    const checkItems: FieldCheckItem[] = CHECKLIST.map((name) => ({
+    const checkItems: FieldCheckItem[] = checklist.map((name) => ({
       name,
       result: checks[name] === 'ok' ? 'ok' : 'not_ok',
       note: '',
@@ -176,8 +206,8 @@ export default function CheckupWizardScreen() {
           </>
         ) : null}
 
-        <Text style={styles.section}>Checklist 9 Tahap</Text>
-        {CHECKLIST.map((name) => (
+        <Text style={styles.section}>Checklist {checklist.length} Tahap</Text>
+        {checklist.map((name) => (
           <View key={name} style={styles.checkRow}>
             <Text style={styles.checkName}>{name}</Text>
             <View style={styles.checkActions}>

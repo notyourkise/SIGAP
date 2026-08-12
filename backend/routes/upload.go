@@ -16,4 +16,7 @@ func SetupUploadRoutes(api fiber.Router) {
 	// SECURITY: File tidak lagi disajikan via app.Static() yang publik.
 	// Semua request ke file gambar harus melalui endpoint ini yang memverifikasi token.
 	api.Get("/uploads/:filename", middleware.Protected(), handlers.ServeUploadedFile)
+
+	// GET /api/uploads/thumbnails/:filename — Ambil thumbnail foto (dilindungi JWT)
+	api.Get("/uploads/thumbnails/:filename", middleware.Protected(), handlers.ServeUploadedThumbnail)
 }

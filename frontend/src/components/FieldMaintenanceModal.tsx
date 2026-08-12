@@ -14,7 +14,7 @@ import {
   FileCheck2,
   MapPin,
 } from 'lucide-react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getChecklistTemplates } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
 
@@ -98,6 +98,11 @@ export default function FieldMaintenanceModal({
   const isCompleteMode = mode === 'complete';
 
   const [step, setStep] = useState(0);
+  // Daftar item checklist aktif yang diambil dari server (template checklist).
+  // Kosong saat belum terisi / gagal dimuat — pada kondisi itu kita jatuh ke
+  // fallback FIELD_CHECKLIST.
+  const [templates, setTemplates] = useState<{ name: string; desc: string }[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [answers, setAnswers] = useState<FieldCheckAnswer[]>(
     FIELD_CHECKLIST.map(() => ({ result: null, note: '' }))
   );
@@ -111,9 +116,55 @@ export default function FieldMaintenanceModal({
   const [coords, setCoords] = useState<{ lat: string; lng: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const totalSteps = FIELD_CHECKLIST.length + 1; // item checklist + tahap foto bukti
-  const isPhotoStep = step === FIELD_CHECKLIST.length;
+  // Daftar aktif: pakai template dari server bila tersedia, selain itu fallback.
+  const activeList = templates.length > 0 ? templates : FIELD_CHECKLIST;
+
+  const totalSteps = activeList.length + 1; // item checklist + tahap foto bukti
+  const isPhotoStep = step === activeList.length;
   const currentAnswer = isPhotoStep ? null : answers[step];
+
+  // Saat modal dibuka, muat template checklist aktif dari server. Template ini
+  // menentukan jumlah langkah wizard. Bila gagal/kosong, kita memakai
+  // FIELD_CHECKLIST sebagai fallback.
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const loadTemplates = async () => {
+      setLoadingTemplates(true);
+      try {
+        const response = await getChecklistTemplates(true, { limit: 100 });
+        if (cancelled) return;
+        if (response.status === 'success' && response.data) {
+          // Backend sudah menyaring aktif; urutkan tetap berdasarkan `urutan`.
+          const rows = [...response.data.rows].sort((a, b) => a.urutan - b.urutan);
+          setTemplates(rows.map((r) => ({ name: r.nama_item, desc: r.deskripsi })));
+        } else {
+          setTemplates([]);
+        }
+      } catch {
+        // Gagal memuat template — gunakan fallback FIELD_CHECKLIST.
+        if (!cancelled) setTemplates([]);
+      } finally {
+        if (!cancelled) setLoadingTemplates(false);
+      }
+    };
+    void loadTemplates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Sinkronkan jumlah jawaban dengan daftar aktif. Karena template dimuat
+  // secara asinkron, jumlah langkah bisa berubah setelah modal dibuka — pastikan
+  // `answers` selalu sesuai panjang `activeList` agar index tidak melebihi batas.
+  useEffect(() => {
+    if (!open) return;
+    setAnswers(activeList.map(() => ({ result: null, note: '' })));
+    // activeList referensinya stabil (state templates atau konstanta FIELD_CHECKLIST).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeList]);
 
   useEffect(() => {
     if (!open) return;
@@ -166,7 +217,7 @@ export default function FieldMaintenanceModal({
 
   const resetState = () => {
     setStep(0);
-    setAnswers(FIELD_CHECKLIST.map(() => ({ result: null, note: '' })));
+    setAnswers(activeList.map(() => ({ result: null, note: '' })));
     setImages([]);
     setNotes('');
     setSubmitting(false);
@@ -252,7 +303,7 @@ export default function FieldMaintenanceModal({
         ? {
             notes,
             checks: answers.map((a, i) => ({
-              name: FIELD_CHECKLIST[i].name,
+              name: activeList[i]?.name ?? '',
               result: a.result,
               note: a.note,
             })),
@@ -262,7 +313,7 @@ export default function FieldMaintenanceModal({
             cctv_id: cctv.id,
             notes,
             checks: answers.map((a, i) => ({
-              name: FIELD_CHECKLIST[i].name,
+              name: activeList[i]?.name ?? '',
               result: a.result,
               note: a.note,
             })),
@@ -334,7 +385,7 @@ export default function FieldMaintenanceModal({
           <div className="flex items-center justify-between text-[11px] font-semibold text-muted">
             <span className="flex items-center gap-1.5">
               <Wrench className="h-3.5 w-3.5 text-primary" />
-              {isPhotoStep ? 'Tahap akhir: Bukti foto' : `Item ${step + 1} dari ${FIELD_CHECKLIST.length}`}
+              {isPhotoStep ? 'Tahap akhir: Bukti foto' : `Item ${step + 1} dari ${activeList.length}`}
             </span>
             <span>
               {isPhotoStep ? answeredCount + 1 : answeredCount}/{totalSteps}
@@ -346,6 +397,13 @@ export default function FieldMaintenanceModal({
               style={{ width: `${((isPhotoStep ? step + 1 : step) / totalSteps) * 100}%` }}
             />
           </div>
+          {/* Indikator saat daftar item template masih dimuat dari server */}
+          {loadingTemplates && templates.length === 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted">
+              <LoaderCircle className="h-3 w-3 animate-spin" />
+              Memuat template checklist…
+            </p>
+          )}
         </div>
 
         {/* Body */}
@@ -354,9 +412,9 @@ export default function FieldMaintenanceModal({
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <h4 className="text-sm font-bold">
-                  {step + 1}. {FIELD_CHECKLIST[step].name}
+                  {step + 1}. {activeList[step]?.name}
                 </h4>
-                <p className="text-xs leading-relaxed text-muted">{FIELD_CHECKLIST[step].desc}</p>
+                <p className="text-xs leading-relaxed text-muted">{activeList[step]?.desc}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

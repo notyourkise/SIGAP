@@ -33,6 +33,9 @@ type FieldCheckItem struct {
 	Name   string `json:"name" validate:"required,min=3,max=150"`
 	Result string `json:"result" validate:"required,oneof=ok not_ok"`
 	Note   string `json:"note" validate:"omitempty,max=500"`
+	// Wajib menandai apakah item ini bersifat wajib (Task 13.12). Nilai pointer
+	// memungkinkan membedakan field yang tidak dikirim (nil → default true).
+	Wajib *bool `json:"wajib"`
 }
 
 type FieldImageItem struct {
@@ -195,11 +198,17 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			return createErr
 		}
 		for _, check := range req.Checks {
+			// Wajib default true; nilai dari request (bila ada) tetap dihormati.
+			wajib := true
+			if check.Wajib != nil {
+				wajib = *check.Wajib
+			}
 			item := models.FieldMaintenanceCheck{
 				FieldMaintenanceID: entry.ID,
 				Name:               strings.TrimSpace(check.Name),
 				Result:             check.Result,
 				Note:               strings.TrimSpace(check.Note),
+				Wajib:              wajib,
 			}
 			if createErr := tx.Create(&item).Error; createErr != nil {
 				return createErr

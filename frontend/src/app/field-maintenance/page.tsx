@@ -10,6 +10,7 @@ import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
 import SortableHeader from '@/components/SortableHeader';
+import ChecklistTemplateManager from '@/components/ChecklistTemplateManager';
 import { useSortableRows } from '@/hooks/useSortableRows';
 import { FIELD_CHECKLIST } from '@/components/FieldMaintenanceModal';
 import {
@@ -28,6 +29,7 @@ import {
   FileDown,
   SlidersHorizontal,
   RotateCcw,
+  Settings2,
 } from 'lucide-react';
 
 // Peta mini lokasi pengecekan dimuat secara dinamis (ssr: false) karena
@@ -141,6 +143,9 @@ export default function FieldMaintenancePage() {
   const [detailEntry, setDetailEntry] = useState<FieldMaintenance | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Modal pengelolaan template checklist (khusus admin).
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
 
   // Sortir kolom (client-side) — hanya mengurutkan baris yang sudah ada di state
   const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<FieldMaintenance>(entries, {
@@ -327,20 +332,33 @@ export default function FieldMaintenancePage() {
                 Catatan pengecekan spontan teknisi di lapangan — berbeda dari jadwal pemeliharaan rutin.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={openSortModal}
-              disabled={loading}
-              className="relative inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              Sortir
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-5 text-white">
-                  {activeFilterCount}
-                </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setIsTemplateManagerOpen(true)}
+                  disabled={loading}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Kelola Template
+                </button>
               )}
-            </button>
+              <button
+                type="button"
+                onClick={openSortModal}
+                disabled={loading}
+                className="relative inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Sortir
+                {activeFilterCount > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-5 text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="border-b border-border px-5 py-4">
@@ -620,6 +638,14 @@ export default function FieldMaintenancePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Kelola Template Checklist (khusus admin) */}
+      {isTemplateManagerOpen && (
+        <ChecklistTemplateManager
+          mode="modal"
+          onClose={() => setIsTemplateManagerOpen(false)}
+        />
       )}
 
       {/* Detail Modal */}

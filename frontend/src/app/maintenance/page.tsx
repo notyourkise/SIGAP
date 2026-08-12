@@ -28,6 +28,7 @@ import {
   RotateCcw,
   ArrowLeftRight,
   PackagePlus,
+  Camera,
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import SortableHeader from '@/components/SortableHeader';
@@ -105,6 +106,21 @@ const toDatetimeLocalInput = (value: string) => (value ? `${value.replace(' ', '
 
 // nilai input datetime-local "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM:SS"
 const fromDatetimeLocalInput = (value: string) => (value ? `${value}:00`.replace('T', ' ') : '');
+
+// Ubah path gambar upload menjadi path thumbnail. Mendukung format baru
+// "/api/uploads/nama" dan format lama "/uploads/nama" → keduanya diarahkan ke
+// "/api/uploads/thumbnails/nama". Bila gambar tidak memakai path uploads,
+// kembalikan URL aslinya agar AuthenticatedImage menampilkan placeholder.
+const toThumbUrl = (imageUrl?: string): string | null => {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith('/api/uploads/')) {
+    return imageUrl.replace('/api/uploads/', '/api/uploads/thumbnails/');
+  }
+  if (imageUrl.startsWith('/uploads/')) {
+    return `/api/uploads/thumbnails/${imageUrl.slice('/uploads/'.length)}`;
+  }
+  return null;
+};
 
 export default function MaintenanceLogsPage() {
   const { user } = useAuth();
@@ -807,8 +823,37 @@ export default function MaintenanceLogsPage() {
                   {sortedRows.map((log) => (
                     <tr key={log.id} className="transition-colors hover:bg-background/40">
                       <td className="px-5 py-4">
-                        <p className="font-semibold">{log.cctv?.nama || 'CCTV tidak tersedia'}</p>
-                        {log.cctv?.kode_cctv && <p className="mt-0.5 font-mono text-xs text-muted">{log.cctv.kode_cctv}</p>}
+                        <div className="flex items-center gap-3">
+                          {/* Thumbnail foto CCTV: klik membuka detail log. */}
+                          {toThumbUrl(log.image_url) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleViewLog(log.id)}
+                              disabled={actionLoading !== null}
+                              title="Lihat foto & detail pemeliharaan"
+                              aria-label={`Lihat detail pemeliharaan ${log.cctv?.nama || 'CCTV'}`}
+                              className="shrink-0 rounded-lg border border-border transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              <AuthenticatedImage
+                                imageUrl={toThumbUrl(log.image_url)!}
+                                alt={`Foto ${log.cctv?.nama || 'CCTV'}`}
+                                className="h-10 w-10 rounded-lg object-cover"
+                              />
+                            </button>
+                          ) : (
+                            <span
+                              title="Tidak ada foto"
+                              aria-label="Tidak ada foto"
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-background text-muted/50"
+                            >
+                              <Camera className="h-4 w-4" />
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold">{log.cctv?.nama || 'CCTV tidak tersedia'}</p>
+                            {log.cctv?.kode_cctv && <p className="mt-0.5 font-mono text-xs text-muted">{log.cctv.kode_cctv}</p>}
+                          </div>
+                        </div>
                       </td>
                       
                       <td className="max-w-xs px-5 py-4">

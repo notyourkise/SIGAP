@@ -34,7 +34,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
-| **13** | **Perbaikan & Penguatan Fitur Existing** | **13/18 (Sprint 31–34)** | **🔶 Berjalan** |
+| **13** | **Perbaikan & Penguatan Fitur Existing** | **15/18 (Sprint 31–35)** | **🔶 Berjalan** |
 | **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -787,13 +787,22 @@ cd frontend && npm run lint && npm run build
 > **Branch:** `feature/performance-checklist`
 > **Prasyarat:** Sprint 31 selesai
 > **Estimasi:** 4–5 hari kerja
+> **Status: ✅ Selesai** (2026-08-12)
 
-| ID | Jobdesk | Sub-Agent | Task | Deliverable |
-|----|---------|-----------|------|-------------|
-| **P12a** | **Backend** | Agent-BE | **13.12** Checklist Template yang Dapat Dikustomisasi | Buat migrasi `000016_checklist_templates.up.sql`: `CREATE TABLE checklist_templates (id uuid PRIMARY KEY, nama_item varchar(255) NOT NULL, deskripsi text, urutan integer NOT NULL DEFAULT 0, wajib boolean NOT NULL DEFAULT TRUE, aktif boolean NOT NULL DEFAULT TRUE, created_at timestamptz, updated_at timestamptz)`. Seed data: 9 item checklist default (sama dengan yang saat ini hardcoded). CRUD handler `/api/checklist-templates` (admin only): GetAll, Create, Update, Delete (soft: set `aktif=false`). Update `CreateFieldMaintenance` handler: ambil item dari DB (filter `aktif=true`, order by `urutan`) bukan dari konstanta hardcoded. Pertahankan backward compat: `FieldMaintenanceCheck` existing tidak terpengaruh. |
-| **P12b** | **Frontend** | Agent-FE | **13.12b** UI Manajemen Template Checklist | Di halaman `/field-maintenance` (atau halaman pengaturan admin baru): tambah tab/section "Template Checklist". Tabel: nomor urut, nama item, wajib/opsional, aktif/nonaktif. Aksi: edit nama, drag-reorder urutan, toggle aktif. Buat komponen `ChecklistTemplateManager`. |
-| **P13a** | **Backend** | Agent-BE | **13.13** Kompresi Foto Upload Server-Side | Di `handlers/upload.go`, setelah file diterima dan sebelum disimpan ke disk, tambah kompresi gambar: gunakan library `golang.org/x/image` atau `github.com/disintegration/imaging`. Logic: 1) Decode JPEG/PNG, 2) Resize ke max 1920×1080 (pertahankan aspect ratio), 3) Encode JPEG quality 85. Simpan file terkompresi. Generate juga thumbnail 400×300 JPEG dengan suffix `_thumb.jpg` → simpan di `uploads/thumbnails/`. Skip kompresi jika ukuran file sudah < 300KB. Tambah header `X-Original-Size` dan `X-Compressed-Size` di response untuk transparency. |
-| **P13b** | **Frontend** | Agent-FE | **13.13b** Tampilkan Thumbnail di Daftar Maintenance | Di tabel maintenance (`/maintenance`): ganti placeholder foto dengan `<img src="/api/uploads/{id}_thumb.jpg">` menggunakan `AuthenticatedImage` component yang sudah ada. Di modal detail: tampilkan foto fullsize saat diklik thumbnail. Fallback ke ikon kamera jika thumbnail tidak ada. |
+| ID | Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|----|---------|-----------|------|-------------|--------|
+| **P12a** | **Backend** | Agent-BE | **13.12** Checklist Template yang Dapat Dikustomisasi | Buat migrasi `000016_checklist_templates.up.sql`: `CREATE TABLE checklist_templates (id uuid PRIMARY KEY, nama_item varchar(255) NOT NULL, deskripsi text, urutan integer NOT NULL DEFAULT 0, wajib boolean NOT NULL DEFAULT TRUE, aktif boolean NOT NULL DEFAULT TRUE, created_at timestamptz, updated_at timestamptz)`. Seed data: 9 item checklist default (sama dengan yang saat ini hardcoded). CRUD handler `/api/checklist-templates` (admin only): GetAll, Create, Update, Delete (soft: set `aktif=false`). Update `CreateFieldMaintenance` handler: ambil item dari DB (filter `aktif=true`, order by `urutan`) bukan dari konstanta hardcoded. Pertahankan backward compat: `FieldMaintenanceCheck` existing tidak terpengaruh. | ✅ Selesai |
+| **P12b** | **Frontend** | Agent-FE | **13.12b** UI Manajemen Template Checklist | Di halaman `/field-maintenance` (atau halaman pengaturan admin baru): tambah tab/section "Template Checklist". Tabel: nomor urut, nama item, wajib/opsional, aktif/nonaktif. Aksi: edit nama, drag-reorder urutan, toggle aktif. Buat komponen `ChecklistTemplateManager`. | ✅ Selesai |
+| **P13a** | **Backend** | Agent-BE | **13.13** Kompresi Foto Upload Server-Side | Di `handlers/upload.go`, setelah file diterima dan sebelum disimpan ke disk, tambah kompresi gambar: gunakan library `golang.org/x/image` atau `github.com/disintegration/imaging`. Logic: 1) Decode JPEG/PNG, 2) Resize ke max 1920×1080 (pertahankan aspect ratio), 3) Encode JPEG quality 85. Simpan file terkompresi. Generate juga thumbnail 400×300 JPEG dengan suffix `_thumb.jpg` → simpan di `uploads/thumbnails/`. Skip kompresi jika ukuran file sudah < 300KB. Tambah header `X-Original-Size` dan `X-Compressed-Size` di response untuk transparency. | ✅ Selesai |
+| **P13b** | **Frontend** | Agent-FE | **13.13b** Tampilkan Thumbnail di Daftar Maintenance | Di tabel maintenance (`/maintenance`): ganti placeholder foto dengan `<img src="/api/uploads/{id}_thumb.jpg">` menggunakan `AuthenticatedImage` component yang sudah ada. Di modal detail: tampilkan foto fullsize saat diklik thumbnail. Fallback ke ikon kamera jika thumbnail tidak ada. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 35:** Performa Backend & Checklist Fleksibel (P12, P13) selesai.
+- **Backend (`0.56.0` + `0.57.0`)**: model `ChecklistTemplate` + migrasi `000017_checklist_templates` (tabel + kolom `wajib` di `field_maintenance_checks`); seeder 9 item default; handler/rute CRUD + reorder `/api/checklist-templates` (admin-only untuk tulis); `CreateFieldMaintenance` menyimpan `Wajib` pada item. Kompresi foto server-side (resize ≤1920, JPEG q85, header `X-Original/Compressed-Size`) + thumbnail 400×300 via `github.com/disintegration/imaging`; endpoint `GET /api/uploads/thumbnails/:filename`.
+- **Frontend (`1.48.0`)**: halaman admin `/checklist-templates` + `ChecklistTemplateManager` (tambah/edit/reorder/toggle/hapus); `FieldMaintenanceModal` memuat template dari server (fallback `FIELD_CHECKLIST`); thumbnail 40×40 di tabel `/maintenance` (klik → detail fullsize); menu sidebar "Template Checklist" + guard proxy.
+- **Mobile (`1.1.0`)**: Checkup Wizard memuat item checklist dari `/checklist-templates` (fallback konstanta).
+- **Dokumen**: `docs/manual-test-checklist-template.md` (baru), `docs/manual-test-image-compression.md` (baru); ROADMAP Fase 13 progress **13/18 → 15/18** & Sprint 35 ✅ Selesai.
+
+Detail: `backend/changelog.md` [0.56.0] + [0.57.0] · `frontend/changelog.md` [1.48.0] · `mobile/changelog.md` [1.1.0].
 
 #### Verifikasi Sprint 35
 

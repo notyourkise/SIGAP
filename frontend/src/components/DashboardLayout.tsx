@@ -29,6 +29,7 @@ import {
   Target,
   KeyRound,
   Webhook,
+  ListChecks,
   Cctv,
   CalendarRange,
   BarChart3,
@@ -153,6 +154,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { name: 'Zona', href: '/zona', icon: MapPinned },
             { name: 'API Keys', href: '/api-keys', icon: KeyRound },
             { name: 'Webhooks', href: '/webhooks', icon: Webhook },
+            { name: 'Template Checklist', href: '/checklist-templates', icon: ListChecks },
           ]
         : [],
     },
