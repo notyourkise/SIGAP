@@ -17,6 +17,17 @@ definitions:
     required:
     - technician_id
     type: object
+  handlers.AssignSiteUsersRequest:
+    properties:
+      user_ids:
+        description: UserIDs adalah daftar ID user (teknisi) yang akan ditetapkan
+          ke site.
+        items:
+          type: string
+        type: array
+    required:
+    - user_ids
+    type: object
   handlers.AssignUsersRequest:
     properties:
       user_ids:
@@ -258,6 +269,28 @@ definitions:
     - nama
     - target_jam_respon
     - target_jam_selesai
+    type: object
+  handlers.CreateSiteRequest:
+    properties:
+      alamat:
+        type: string
+      is_default:
+        type: boolean
+      kode:
+        maxLength: 20
+        minLength: 1
+        type: string
+      koordinat_lat:
+        type: number
+      koordinat_lng:
+        type: number
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - kode
+    - nama
     type: object
   handlers.CreateSparePartRequest:
     properties:
@@ -645,6 +678,25 @@ definitions:
       target_jam_selesai:
         minimum: 1
         type: integer
+    type: object
+  handlers.UpdateSiteRequest:
+    properties:
+      alamat:
+        type: string
+      is_default:
+        type: boolean
+      kode:
+        maxLength: 20
+        minLength: 1
+        type: string
+      koordinat_lat:
+        type: number
+      koordinat_lng:
+        type: number
+      nama:
+        maxLength: 100
+        minLength: 2
+        type: string
     type: object
   handlers.UpdateSparePartRequest:
     properties:
@@ -3801,6 +3853,324 @@ paths:
       summary: Hapus Template Laporan
       tags:
       - Laporan
+  /sites:
+    get:
+      consumes:
+      - application/json
+      description: Mendapatkan daftar kawasan operasional (site) terpaginasi dengan
+        pencarian nama dan jumlah user per site.
+      parameters:
+      - description: Pencarian berdasarkan nama site
+        in: query
+        name: search
+        type: string
+      - description: 'Nomor Halaman (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Jumlah data per halaman (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Kolom pengurutan (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Arah pengurutan: asc, desc (default: desc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar site terpaginasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar site
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Site
+      tags:
+      - Site
+    post:
+      consumes:
+      - application/json
+      description: Membuat kawasan operasional (site) baru.
+      parameters:
+      - description: Data Site Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateSiteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Site berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format input salah, validasi gagal, atau kode duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menyimpan site ke database
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah Site
+      tags:
+      - Site
+  /sites/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Menghapus site (soft-delete). Site default tidak dapat dihapus.
+      parameters:
+      - description: Site UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Site berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid atau site adalah site default
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Site tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menghapus site
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus Site
+      tags:
+      - Site
+    get:
+      description: Mendapatkan detail satu site beserta user yang ditugaskan.
+      parameters:
+      - description: Site UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data site ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Site tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Site Detail
+      tags:
+      - Site
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui nama, kode, alamat, koordinat, atau status default
+        site.
+      parameters:
+      - description: Site UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data Update Site
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateSiteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Site berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid, format body salah, validasi gagal, atau kode
+            duplikat
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Site tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memperbarui site
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update Site
+      tags:
+      - Site
+  /sites/{id}/assign-users:
+    post:
+      consumes:
+      - application/json
+      description: Menetapkan daftar teknisi ke sebuah site. Seluruh penugasan user
+        lama pada site digantikan daftar baru (bila user_ids kosong, penugasan dibersihkan).
+      parameters:
+      - description: Site UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Daftar ID User
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AssignSiteUsersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Teknisi berhasil ditugaskan ke site
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid atau ada user tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Site tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal menetapkan teknisi ke site
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign Teknisi ke Site
+      tags:
+      - Site
+  /sites/all:
+    get:
+      description: Mendapatkan seluruh site (id + nama + kode) tanpa paginasi untuk
+        keperluan dropdown/filter.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar site (tanpa paginasi)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil daftar site
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil Semua Site (Select)
+      tags:
+      - Site
   /sla-policies:
     get:
       description: Mendapatkan daftar kebijakan SLA terpaginasi.

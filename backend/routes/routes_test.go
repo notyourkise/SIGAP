@@ -95,6 +95,15 @@ func TestZoneRoutesRequireAuthentication(t *testing.T) {
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }
 
+func TestSiteRoutesRequireAuthentication(t *testing.T) {
+	app := fiber.New()
+	SetupSiteRoutes(app)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/sites/", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
 func TestSLAPoliciesRoutesRequireAuthentication(t *testing.T) {
 	app := fiber.New()
 	SetupSLARoutes(app)

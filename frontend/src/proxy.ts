@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'sigap_session';
-const ADMIN_PATHS = ['/audit-logs', '/users', '/field-maintenance', '/schedules', '/kinerja-teknisi', '/ringkasan', '/suku-cadang', '/laporan-kustom', '/zona', '/sla', '/api-keys', '/webhooks', '/checklist-templates'];
+const ADMIN_PATHS = ['/audit-logs', '/users', '/field-maintenance', '/schedules', '/kinerja-teknisi', '/ringkasan', '/suku-cadang', '/laporan-kustom', '/zona', '/sla', '/api-keys', '/webhooks', '/checklist-templates', '/sites'];
 
 function redirectToLogin(request: NextRequest) {
   const loginURL = new URL('/login', request.url);
@@ -45,5 +45,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/audit-logs/:path*', '/users/:path*', '/field-maintenance/:path*', '/schedules/:path*', '/kinerja-teknisi/:path*', '/ringkasan/:path*', '/suku-cadang/:path*', '/laporan-kustom/:path*', '/zona/:path*', '/sla/:path*', '/api-keys/:path*', '/webhooks/:path*', '/checklist-templates/:path*'],
+  matcher: ['/audit-logs/:path*', '/users/:path*', '/field-maintenance/:path*', '/schedules/:path*', '/kinerja-teknisi/:path*', '/ringkasan/:path*', '/suku-cadang/:path*', '/laporan-kustom/:path*', '/zona/:path*', '/sla/:path*', '/api-keys/:path*', '/webhooks/:path*', '/checklist-templates/:path*', '/sites/:path*'],
 };

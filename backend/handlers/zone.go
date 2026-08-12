@@ -65,6 +65,12 @@ func GetAllZones(c *fiber.Ctx) error {
 	var items []models.Zone
 	query := config.DB.Model(&models.Zone{})
 
+	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
+	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		query = query.Where("site_id = ?", siteID)
+	}
+
 	if search := strings.TrimSpace(c.Query("search")); search != "" {
 		query = query.Where("nama ILIKE ?", "%"+search+"%")
 	}

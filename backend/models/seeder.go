@@ -78,3 +78,28 @@ func SeedChecklistTemplates(db *gorm.DB) {
 	}
 	log.Println("🚀 Template checklist pengecekan default berhasil dibuat (9 item)")
 }
+
+// EnsureDefaultSite memastikan site default "OIKN" selalu ada saat startup
+// (Task 12.2, Sprint 30). Fungsi idempotent: bila site dengan kode OIKN sudah
+// ada, tidak melakukan apa-apa. Guard "tabel belum ada" menjaga fungsi tetap
+// aman bila dijalankan di luar urutan migrasi (mis. pada test).
+func EnsureDefaultSite(db *gorm.DB) {
+	var site Site
+	if err := db.Where("kode = ?", "OIKN").First(&site).Error; err == nil {
+		// Site default sudah ada — biarkan tetap.
+		return
+	}
+
+	// Tabel belum ada (atau belum ada data OIKN). Coba buat idempoten.
+	newSite := Site{
+		Nama:      "Kawasan OIKN",
+		Kode:      "OIKN",
+		Alamat:    "Ibu Kota Nusantara, Kalimantan Timur",
+		IsDefault: true,
+	}
+	if err := db.Create(&newSite).Error; err != nil {
+		log.Printf("⚠️ Gagal memastikan site default OIKN: %v", err)
+		return
+	}
+	log.Println("🚀 Site default OIKN berhasil dipastikan ada")
+}

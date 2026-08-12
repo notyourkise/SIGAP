@@ -168,6 +168,12 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
 	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
 
+	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
+	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		query = query.Where("site_id = ?", siteID)
+	}
+
 	// SECURITY: Teknisi hanya dapat melihat log miliknya (lewat penugasan)
 	query = applyRoleScope(c, query)
 

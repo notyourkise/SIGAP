@@ -19,6 +19,9 @@ type Zone struct {
 	// Users adalah daftar teknisi yang ditugaskan ke zona ini
 	// (many-to-many via join table user_zones).
 	Users []User `gorm:"many2many:user_zones;" json:"users,omitempty"`
+	// SiteID menunjuk ke kawasan operasional (multi-site, Task 12.2). Opsional
+	// — data existing otomatis masuk ke site default "OIKN" saat migrasi.
+	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
 }
 
 // UserZone adalah model eksplisit untuk join table many-to-many User ↔ Zone.

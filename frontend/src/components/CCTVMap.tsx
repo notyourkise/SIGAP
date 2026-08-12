@@ -26,6 +26,8 @@ export interface CCTVMapItem {
 interface CCTVMapProps {
   cctvs: CCTVMapItem[];
   onMarkerClick?: (cctv: CCTVMapItem) => void;
+  /** Pusat awal peta [lat, lng]. Default ke pusat IKN. */
+  center?: [number, number];
 }
 
 // Koordinat Pusat IKN Nusantara (KIPP IKN)
@@ -140,7 +142,7 @@ const markerKeyframesStyle = `
   .custom-cctv-marker { background: transparent; border: none; }
 `;
 
-export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
+export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -210,6 +212,15 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
 
   const [showMissingList, setShowMissingList] = useState(false);
 
+  // Pusat peta: gunakan prop `center` bila tersedia, fallback ke pusat IKN.
+  // `mapCenterKey` dipakai sebagai key MapContainer agar peta di-reinit bila
+  // koordinat site aktif berubah (MapContainer tidak bersifat controlled).
+  const mapCenter: [number, number] =
+    center && isValidCoord(center[0]) && isValidCoord(center[1])
+      ? center
+      : [IKN_CENTER_LAT, IKN_CENTER_LNG];
+  const mapCenterKey = `${mapCenter[0]},${mapCenter[1]}`;
+
   return (
     <>
     <div
@@ -221,7 +232,8 @@ export default function CCTVMap({ cctvs, onMarkerClick }: CCTVMapProps) {
       }`}
     >
       <MapContainer
-        center={[IKN_CENTER_LAT, IKN_CENTER_LNG]}
+        key={mapCenterKey}
+        center={mapCenter}
         zoom={13}
         scrollWheelZoom={false}
         className="w-full h-full z-10"
