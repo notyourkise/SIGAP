@@ -22,6 +22,7 @@ import {
   CircleX,
   CircleDashed,
   Clock3,
+  Plus,
 } from "lucide-react";
 
 // Ringkasan satu tugas untuk ditampilkan di kalender (tanpa beban data penuh).
@@ -42,6 +43,8 @@ export interface CalendarGridProps {
   onNextMonth: () => void;
   onToday: () => void;
   onSelectDay: (dayKey: string | null) => void;
+  // Dipanggil saat tombol "+" di pojok sel diklik (untuk membuat tugas baru).
+  onDayClick?: (date: Date) => void;
 }
 
 // Urutan hari mulai Senin (index 0) hingga Minggu (index 6).
@@ -113,6 +116,7 @@ export default function CalendarGrid({
   onNextMonth,
   onToday,
   onSelectDay,
+  onDayClick,
 }: CalendarGridProps) {
   // Hari pertama bulan (untuk menghitung offset sel kosong).
   const firstOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -198,37 +202,57 @@ export default function CalendarGrid({
           const extraCount = tasks.length - dots.length;
 
           return (
-            <button
+            <div
               key={dayKey}
-              type="button"
-              onClick={() => onSelectDay(isSelected ? null : dayKey)}
-              aria-pressed={isSelected}
-              aria-label={`${day} ${formatMonthTitle(month)}${tasks.length ? `, ${tasks.length} tugas` : ""}`}
-              className={`flex min-h-20 flex-col items-stretch justify-between p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+              className={`group relative min-h-20 transition-colors ${
                 isSelected ? "bg-primary/10 ring-1 ring-inset ring-primary" : "bg-card hover:bg-background"
               }`}
             >
-              <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
-                  isToday ? "bg-primary text-white" : "text-foreground"
-                } ${tasks.length ? "" : "opacity-70"}`}
+              {/* Tombol utama sel: membuka detail hari. */}
+              <button
+                type="button"
+                onClick={() => onSelectDay(isSelected ? null : dayKey)}
+                aria-pressed={isSelected}
+                aria-label={`${day} ${formatMonthTitle(month)}${tasks.length ? `, ${tasks.length} tugas` : ""}`}
+                className="flex min-h-20 w-full flex-col items-stretch justify-between p-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
               >
-                {day}
-              </span>
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
+                    isToday ? "bg-primary text-white" : "text-foreground"
+                  } ${tasks.length ? "" : "opacity-70"}`}
+                >
+                  {day}
+                </span>
 
-              <span className="flex flex-wrap gap-1">
-                {dots.map((task) => (
-                  <span
-                    key={task.id}
-                    title={`${task.cctvName} (${STATUS_META[task.status].label})`}
-                    className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASS[task.status]}`}
-                  />
-                ))}
-                {extraCount > 0 && (
-                  <span className="text-[10px] font-semibold text-muted">+{extraCount}</span>
-                )}
-              </span>
-            </button>
+                <span className="flex flex-wrap gap-1">
+                  {dots.map((task) => (
+                    <span
+                      key={task.id}
+                      title={`${task.cctvName} (${STATUS_META[task.status].label})`}
+                      className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASS[task.status]}`}
+                    />
+                  ))}
+                  {extraCount > 0 && (
+                    <span className="text-[10px] font-semibold text-muted">+{extraCount}</span>
+                  )}
+                </span>
+              </button>
+
+              {/* Tombol "+" kecil di pojok: membuat tugas baru pada hari ini. */}
+              {onDayClick && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDayClick(new Date(month.getFullYear(), month.getMonth(), day, 12, 0, 0));
+                  }}
+                  aria-label={`Tambah tugas ${day} ${formatMonthTitle(month)}`}
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

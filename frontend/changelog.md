@@ -1,5 +1,38 @@
 # Changelog - Frontend SIGAP
 
+## [1.49.0] - 2026-08-13
+
+### Fitur: Polish Frontend & UX (Sprint 36 - P15, P17, P18b)
+
+perubahan yang dilakukan: **Menambahkan pagination, pause/resume, dan lazy-load pada grid streaming; pembuatan tugas pemeliharaan langsung dari kalender; serta filter periode (7 hari / 30 hari / 3 bulan / 1 tahun) pada dashboard kinerja teknisi.**
+
+before:
+- `/monitor` memuat seluruh `WHEPPlayer` sekaligus; tidak ada pagination, pause, maupun counter jumlah kamera.
+- Kalender hanya menampilkan tugas existing — tidak bisa membuat tugas dari klik tanggal.
+- `/kinerja-teknisi` hanya punya preset 7/30 hari + kustom; belum ada preset 3 bulan / 1 tahun.
+
+after:
+- **P15 — `StreamGridView`**:
+  - Pagination grid: state `page`/`pageSize` (default 12), dropdown "4 / 8 / 12 / Semua", kontrol prev/next, guard halaman.
+  - Counter header "Menampilkan {start}–{end} dari {total} kamera aktif".
+  - Tombol Pause/Resume per sel: saat pause WHEPPlayer di-unmount (koneksi terputus) & placeholder "Dijeda"; saat resume di-mount ulang.
+  - Lazy-load IntersectionObserver yang sudah ada dipertahankan (`isNear && !paused` → WHEPPlayer).
+- **P17 — Kalender**:
+  - `CalendarGrid` tambah prop `onDayClick` + tombol "+" per sel (muncul saat hover, stopPropagation).
+  - Halaman `/kalender` tambah modal "Buat Tugas Pemeliharaan" (pilih CCTV, action_taken, scheduled_date pre-filled, notes) via `useToast`; submit `POST /maintenance-logs` lalu `loadLogs()` refresh; tutup via Escape/overlay/X.
+- **P18b — `/kinerja-teknisi`**:
+  - `RangePreset` menjadi `'7d'|'30d'|'90d'|'365d'|'custom'` (default `'30d'`); tombol filter "7 Hari / 30 Hari / 3 Bulan / 1 Tahun / Kustom".
+  - Preset memakai `?period=...`; custom tetap `start_date`/`end_date`.
+  - Subtitle "Data kinerja dalam {N} terakhir" sesuai periode aktif.
+
+timestamp: 2026-08-13 09:00 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/components/CalendarGrid.tsx
+- frontend/src/app/kalender/page.tsx
+- frontend/src/app/kinerja-teknisi/page.tsx
+
 ## [1.48.0] - 2026-08-12
 
 ### Fitur: Manajemen Template Checklist & Thumbnail Daftar Pemeliharaan (Sprint 35 - P12b, P13b)

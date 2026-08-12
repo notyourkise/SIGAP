@@ -1,5 +1,28 @@
 # Changelog - Backend SIGAP
 
+## [0.58.0] - 2026-08-13
+
+### Fitur: Filter Periode Kinerja Teknisi (Sprint 36 - P18a, Task 13.18)
+
+perubahan yang dilakukan: **Menambahkan query parameter `?period=7d|30d|90d|365d` pada endpoint `GET /dashboard/technician-performance` untuk memilih preset rentang berjalan (default 30 hari).**
+
+before:
+- Endpoint kinerja teknisi hanya menerima `start_date`/`end_date` dengan default 30 hari terakhir; frontend harus menghitung tanggal sendiri untuk preset.
+
+after:
+- **`handlers/dashboard.go`** (`GetTechnicianPerformance`):
+  - Membaca `period := c.Query("period", "")` dan mencocokkannya ke map preset `{7d:7, 30d:30, 90d:90, 365d:365}`.
+  - Bila `period` valid, `startDate = now.AddDate(0,0,-periodDays)` dan `endDate = now`, mengesampingkan `start_date`/`end_date`.
+  - Bila `period` kosong/tidak valid, tetap memakai perilaku existing (`start_date`/`end_date`, default 30 hari).
+  - Menambahkan anotasi Swagger `@Param period query string false "Preset periode (7d/30d/90d/365d)"`.
+- **Unit test** `handlers/technician_performance_test.go`: `TestTechnicianPerformanceWithPeriod` — request `?period=7d` menghasilkan query 5 argumen (now + dua pasang tanggal) dan sukses 200.
+
+timestamp: 2026-08-13 08:00 WITA
+kategori: Kecil, Backend
+file yang diubah:
+- backend/handlers/dashboard.go
+- backend/handlers/technician_performance_test.go
+
 ## [0.57.0] - 2026-08-12
 
 ### Fitur: Kompresi Foto Upload & Thumbnail (Sprint 35 - P13a, Task 13.13)

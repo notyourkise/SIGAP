@@ -2204,6 +2204,12 @@ const docTemplate = `{
                         "description": "Tanggal akhir (YYYY-MM-DD, inklusif, default hari ini)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Preset periode (7d/30d/90d/365d)",
+                        "name": "period",
+                        "in": "query"
                     }
                 ],
                 "responses": {

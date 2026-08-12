@@ -8,7 +8,7 @@ import {
   CalendarDays,
   ChevronDown,
   LoaderCircle,
-  MapPin,
+  Plus,
   User as UserIcon,
   Wrench,
   X,
@@ -22,6 +22,7 @@ import CalendarGrid, {
 } from "@/components/CalendarGrid";
 import { useAuth } from "@/context/AuthContext";
 import { apiRequest } from "@/lib/api";
+import { useToast } from "@/components/Toast";
 
 interface MasterCCTV {
   id: string;
@@ -67,6 +68,14 @@ function toDayKeyOfLog(value: string | null): string | null {
   return value.slice(0, 10);
 }
 
+// Konversi objek Date menjadi nilai input datetime-local "YYYY-MM-DDTHH:mm".
+function toDatetimeLocal(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
 export default function CalendarPage() {
   const { user, loading: authLoading } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -82,6 +91,19 @@ export default function CalendarPage() {
   const [technicianFilter, setTechnicianFilter] = useState("all"); // admin only
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Modal "Buat Tugas Pemeliharaan".
+  const toast = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDate, setCreateDate] = useState<Date | null>(null);
+  const [cctvs, setCctvs] = useState<MasterCCTV[]>([]);
+  const [cctvLoading, setCctvLoading] = useState(false);
+  const [createCctvId, setCreateCctvId] = useState("");
+  const [createAction, setCreateAction] = useState("");
+  const [createNotes, setCreateNotes] = useState("");
+  const [createScheduledDate, setCreateScheduledDate] = useState("");
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createFormError, setCreateFormError] = useState("");
 
   // Arahkan non-admin ke halaman lain bila perlu (kalender terbuka untuk admin & teknisi).
   useEffect(() => {
@@ -164,6 +186,111 @@ export default function CalendarPage() {
     setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
   const goToday = () => setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
 
+  // Buka modal "Buat Tugas Pemeliharaan" dengan tanggal hari yang diklik.
+  const handleDayClick = (date: Date) => {
+    setCreateDate(date);
+    setCreateScheduledDate(toDatetimeLocal(date));
+    setCreateFormError("");
+    setCreateOpen(true);
+  };
+
+  // Muat daftar CCTV untuk dropdown form create (dipanggil saat modal dibuka).
+  const fetchCctvs = useCallback(async () => {
+    setCctvLoading(true);
+    try {
+      const response = await apiRequest<{ rows?: MasterCCTV[] }>(
+        "/cctv?page=1&limit=100"
+      );
+      setCctvs(response.data?.rows ?? []);
+    } catch (err: unknown) {
+      setCctvs([]);
+      setCreateFormError(
+        err instanceof Error
+          ? err.message
+          : "Daftar CCTV belum dapat dimuat. Muat ulang sebelum membuat tugas."
+      );
+    } finally {
+      setCctvLoading(false);
+    }
+  }, []);
+
+  // Muat daftar CCTV saat modal dibuka.
+  useEffect(() => {
+    if (createOpen) void fetchCctvs();
+  }, [createOpen, fetchCctvs]);
+
+  // Tutup modal: tombol X, overlay, atau tombol Escape.
+  const closeCreateModal = () => {
+    if (createSubmitting) return;
+    setCreateOpen(false);
+    setCreateDate(null);
+    setCreateFormError("");
+  };
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || createSubmitting) return;
+      setCreateOpen(false);
+      setCreateDate(null);
+      setCreateFormError("");
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [createOpen, createSubmitting]);
+
+  // Simpan tugas pemeliharaan baru.
+  const handleSubmitCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createCctvId) {
+      setCreateFormError("Pilih CCTV yang akan dipelihara.");
+      return;
+    }
+    if (createAction.trim().length < 5) {
+      setCreateFormError("Tindakan yang dilakukan minimal 5 karakter.");
+      return;
+    }
+
+    setCreateSubmitting(true);
+    setCreateFormError("");
+    try {
+      // Konversi datetime-local "YYYY-MM-DDTHH:mm" → "YYYY-MM-DD HH:MM:SS".
+      const scheduledDate =
+        createScheduledDate.length > 0
+          ? `${createScheduledDate}:00`.replace("T", " ")
+          : undefined;
+
+      const response = await apiRequest("/maintenance-logs", {
+        method: "POST",
+        body: JSON.stringify({
+          cctv_id: createCctvId,
+          action_taken: createAction.trim(),
+          notes: createNotes.trim() || undefined,
+          scheduled_date: scheduledDate,
+        }),
+      });
+
+      if (response.status === "success") {
+        closeCreateModal();
+        toast.success("Tugas pemeliharaan berhasil dibuat.");
+        await loadLogs();
+      }
+    } catch (err: unknown) {
+      setCreateFormError(
+        err instanceof Error
+          ? err.message
+          : "Tugas belum dapat dibuat. Periksa isian lalu coba lagi."
+      );
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -239,6 +366,7 @@ export default function CalendarPage() {
                 onNextMonth={nextMonth}
                 onToday={goToday}
                 onSelectDay={setSelectedDay}
+                onDayClick={user ? handleDayClick : undefined}
               />
 
               {/* Panel detail hari */}
@@ -319,6 +447,136 @@ export default function CalendarPage() {
           )}
         </section>
       </div>
+
+      {/* MODAL BUAT TUGAS PEMELIHARAAN */}
+      {createOpen && createDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreateModal} />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kalender-create-title"
+            aria-describedby="kalender-create-description"
+            className="z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 id="kalender-create-title" className="text-xl font-bold tracking-[-0.015em]">Buat Tugas Pemeliharaan</h3>
+                <p id="kalender-create-description" className="mt-1 text-sm text-muted">
+                  Jadwalkan pemeliharaan CCTV pada {formatLongDate(toDayKey(createDate))}.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Tutup formulir"
+                onClick={closeCreateModal}
+                disabled={createSubmitting}
+                className="shrink-0 rounded-lg p-2.5 text-muted transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {createFormError && (
+              <div
+                role="alert"
+                className="mb-4 flex items-start gap-3 rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error"
+              >
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                <span>{createFormError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitCreate} className="space-y-4">
+              {/* Pilih CCTV */}
+              <div>
+                <label htmlFor="kalender-create-cctv" className="mb-1.5 block text-xs font-semibold text-muted">CCTV *</label>
+                <select
+                  id="kalender-create-cctv"
+                  value={createCctvId}
+                  onChange={(e) => setCreateCctvId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  required
+                  disabled={cctvLoading || createSubmitting}
+                >
+                  <option value="" disabled>
+                    {cctvLoading ? "Memuat daftar CCTV…" : "Pilih CCTV"}
+                  </option>
+                  {cctvs.map((cctv) => (
+                    <option key={cctv.id} value={cctv.id}>
+                      {cctv.nama} ({cctv.kode_cctv})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tindakan yang dilakukan */}
+              <div>
+                <label htmlFor="kalender-create-action" className="mb-1.5 block text-xs font-semibold text-muted">Tindakan yang dilakukan *</label>
+                <textarea
+                  id="kalender-create-action"
+                  rows={3}
+                  autoFocus
+                  value={createAction}
+                  onChange={(e) => setCreateAction(e.target.value)}
+                  placeholder="Contoh: pembersihan lensa dan pengecekan konektor"
+                  className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  required
+                  minLength={5}
+                />
+                <p className="mt-1.5 text-[11px] text-muted">Minimal 5 karakter.</p>
+              </div>
+
+              {/* Waktu terjadwal (pre-filled dari tanggal yang diklik) */}
+              <div>
+                <label htmlFor="kalender-create-time" className="mb-1.5 block text-xs font-semibold text-muted">Waktu terjadwal *</label>
+                <input
+                  id="kalender-create-time"
+                  type="datetime-local"
+                  value={createScheduledDate}
+                  onChange={(e) => setCreateScheduledDate(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                  required
+                />
+                <p className="mt-1.5 text-[11px] text-muted">Tugas akan ditugaskan ke teknisi oleh admin sebelum dikerjakan.</p>
+              </div>
+
+              {/* Catatan tambahan */}
+              <div>
+                <label htmlFor="kalender-create-notes" className="mb-1.5 block text-xs font-semibold text-muted">Catatan tambahan</label>
+                <textarea
+                  id="kalender-create-notes"
+                  rows={2}
+                  value={createNotes}
+                  onChange={(e) => setCreateNotes(e.target.value)}
+                  placeholder="Tambahkan hasil pemeriksaan atau temuan teknis"
+                  className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  disabled={createSubmitting}
+                  className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={createSubmitting || cctvLoading}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-wait disabled:opacity-65"
+                >
+                  {createSubmitting && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                  {createSubmitting ? "Menyimpan…" : <><Plus className="h-4 w-4" /> Simpan</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

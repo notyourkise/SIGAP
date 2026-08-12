@@ -248,6 +248,7 @@ type technicianPerformanceRow struct {
 // @Security     BearerAuth
 // @Param        start_date query string false "Tanggal mulai (YYYY-MM-DD, default 30 hari terakhir)"
 // @Param        end_date query string false "Tanggal akhir (YYYY-MM-DD, inklusif, default hari ini)"
+// @Param        period query string false "Preset periode (7d/30d/90d/365d)"
 // @Success      200 {object} map[string]interface{} "Daftar kinerja teknisi"
 // @Failure      400 {object} map[string]interface{} "Rentang tanggal tidak valid"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
@@ -263,14 +264,33 @@ func GetTechnicianPerformance(c *fiber.Ctx) error {
 	}
 
 	now := time.Now()
+
+	// Preset periode: bila `period` valid (7d/30d/90d/365d), mengesampingkan
+	// start_date/end_date dan memakai rentang berjalan dari hari ini.
+	periodPresets := map[string]int{
+		"7d":   7,
+		"30d":  30,
+		"90d":  90,
+		"365d": 365,
+	}
+	period := c.Query("period", "")
+
 	start, end := utils.ParseDateRangeParams(c)
 	startDate := now.AddDate(0, 0, -30)
 	endDate := now
-	if start != nil {
-		startDate = *start
-	}
-	if end != nil {
-		endDate = *end
+
+	if periodDays, ok := periodPresets[period]; ok {
+		// Period valid -> abaikan start_date/end_date.
+		startDate = now.AddDate(0, 0, -periodDays)
+		endDate = now
+	} else {
+		// Period kosong/tidak valid -> perilaku existing (start_date/end_date).
+		if start != nil {
+			startDate = *start
+		}
+		if end != nil {
+			endDate = *end
+		}
 	}
 	if !endDate.After(startDate) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

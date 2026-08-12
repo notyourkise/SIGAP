@@ -23,7 +23,9 @@ interface TechnicianPerformance {
   quality_score: number;
 }
 
-type RangePreset = '7' | '30' | 'custom';
+// Preset rentang laporan: 7d/30d/90d/365d dipakai backend via param `period`,
+// sedangkan `custom` memakai start_date/end_date eksplisit.
+type RangePreset = '7d' | '30d' | '90d' | '365d' | 'custom';
 type SortKey =
   | 'full_name'
   | 'total_tasks'
@@ -117,7 +119,7 @@ function LoadingRows() {
 export default function TechnicianPerformancePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [range, setRange] = useState<RangePreset>('30');
+  const [range, setRange] = useState<RangePreset>('30d');
   const [customStart, setCustomStart] = useState(dateDaysAgo(29));
   const [customEnd, setCustomEnd] = useState(toDateInputValue(new Date()));
   const [performance, setPerformance] = useState<TechnicianPerformance[]>([]);
@@ -133,15 +135,26 @@ export default function TechnicianPerformancePage() {
   const loadPerformance = useCallback(async () => {
     if (user?.role !== 'admin') return;
 
-    let startDate = customStart;
-    let endDate = customEnd;
-    if (range === '7') {
-      startDate = dateDaysAgo(6);
-      endDate = toDateInputValue(new Date());
-    } else if (range === '30') {
-      startDate = dateDaysAgo(29);
-      endDate = toDateInputValue(new Date());
+    setLoading(true);
+    setError('');
+
+    // Preset periode memakai param `period` di backend; hanya `custom` yang
+    // mengirim start_date/end_date eksplisit.
+    if (range !== 'custom') {
+      const params = new URLSearchParams({ period: range });
+      try {
+        const response = await apiRequest<TechnicianPerformance[]>(`/dashboard/technician-performance?${params.toString()}`);
+        setPerformance(response.data || []);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Data kinerja teknisi belum dapat dimuat. Coba lagi.');
+      } finally {
+        setLoading(false);
+      }
+      return;
     }
+
+    const startDate = customStart;
+    const endDate = customEnd;
 
     if (!startDate || !endDate || startDate > endDate) {
       setPerformance([]);
@@ -150,10 +163,7 @@ export default function TechnicianPerformancePage() {
       return;
     }
 
-    setLoading(true);
-    setError('');
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-
     try {
       const response = await apiRequest<TechnicianPerformance[]>(`/dashboard/technician-performance?${params.toString()}`);
       setPerformance(response.data || []);
@@ -191,12 +201,22 @@ export default function TechnicianPerformancePage() {
     .sort((a, b) => b.completion_rate - a.completion_rate || a.full_name.localeCompare(b.full_name, 'id'))
     .map(({ user_id, full_name, completion_rate }) => ({ user_id, full_name, completion_rate }));
 
-  const activeStart = range === '7'
-    ? dateDaysAgo(6)
-    : range === '30'
-      ? dateDaysAgo(29)
-      : customStart;
+  // Hari mundur untuk tiap preset, dipakai untuk label subtitle dan rentang aktif.
+  const periodDaysByPreset: Record<Exclude<RangePreset, 'custom'>, number> = {
+    '7d': 7,
+    '30d': 30,
+    '90d': 90,
+    '365d': 365,
+  };
+  const activeStart = range === 'custom'
+    ? customStart
+    : dateDaysAgo(periodDaysByPreset[range as Exclude<RangePreset, 'custom'>] - 1);
   const activeEnd = range === 'custom' ? customEnd : toDateInputValue(new Date());
+
+  // Label "Data kinerja dalam {N} terakhir" sesuai periode aktif.
+  const periodLabel = range === 'custom'
+    ? 'rentang kustom'
+    : `${periodDaysByPreset[range as Exclude<RangePreset, 'custom'>]} hari terakhir`;
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -239,7 +259,7 @@ export default function TechnicianPerformancePage() {
             </div>
             <h1 className="mt-2 text-3xl font-bold tracking-[-0.025em]">Kinerja Teknisi</h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              Bandingkan beban tugas, kecepatan penyelesaian, dan kualitas pengecekan dalam satu rentang laporan.
+              Data kinerja dalam {periodLabel}. Bandingkan beban tugas, kecepatan penyelesaian, dan kualitas pengecekan.
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
@@ -256,8 +276,10 @@ export default function TechnicianPerformancePage() {
             </div>
             <div className="flex flex-wrap gap-2" role="group" aria-label="Pilihan rentang waktu">
               {([
-                ['7', '7 Hari'],
-                ['30', '30 Hari'],
+                ['7d', '7 Hari'],
+                ['30d', '30 Hari'],
+                ['90d', '3 Bulan'],
+                ['365d', '1 Tahun'],
                 ['custom', 'Kustom'],
               ] as const).map(([value, label]) => (
                 <button

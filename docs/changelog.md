@@ -3,6 +3,19 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.40] — 2026-08-13 — Fitur: Polish Frontend & UX (Sprint 36)
+
+### Perubahan
+
+- **Backend** ([0.58.0]): `GET /api/dashboard/technician-performance` tambah query `?period=7d|30d|90d|365d` (default 30d) yang mengesampingkan `start_date`/`end_date`; unit test `TestTechnicianPerformanceWithPeriod`.
+- **Frontend** ([1.49.0]): `StreamGridView` pagination grid (4/8/12/Semua) + counter "Menampilkan X–Y dari N kamera aktif" + tombol Pause/Resume per sel (lazy-load IntersectionObserver dipertahankan); `CalendarGrid` + halaman `/kalender` mendukung pembuatan tugas pemeliharaan dari klik tanggal (modal, tanggal pre-filled, refresh); `/kinerja-teknisi` filter periode 7 Hari / 30 Hari / 3 Bulan / 1 Tahun / Kustom memakai `?period=`.
+- **Dokumen**: `docs/manual-test-frontend-ux-polish.md` (baru); `docs/ROADMAP.md` Fase 13 progress **15/18 → 18/18 ✅ Selesai** & Sprint 36 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS; `npm run lint` (0 error)/`npm run build` PASS; `npx tsc --noEmit` PASS.
+
+Detail: `backend/changelog.md` [0.58.0] · `frontend/changelog.md` [1.49.0].
+
+Timestamp: 2026-08-13 WITA | Kategori: Sedang, Fitur (Backend + Frontend + Docs)
+
 ## [1.28.39] — 2026-08-12 — Fitur: Performa Backend & Checklist Fleksibel (Sprint 35)
 
 ### Perubahan

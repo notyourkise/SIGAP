@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin } from 'lucide-react';
+import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 
 // Lazy-load WHEPPlayer hanya ketika dibutuhkan (dan hanya di sisi klien karena WHEP butuh browser API).
@@ -30,6 +30,7 @@ function StreamCell({
 }) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isNear, setIsNear] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const el = cellRef.current;
@@ -83,9 +84,15 @@ function StreamCell({
       {/* Area video / placeholder (tinggi ~200px) */}
       <div className="relative h-[200px] w-full overflow-hidden bg-black">
         {cctv.stream_enabled ? (
-          isNear ? (
+          isNear && !paused ? (
             // Pemutar mini: kualitas sub untuk menghemat bandwidth.
             <WHEPPlayer streamPath={`cam-${cctv.id}`} quality="sub" />
+          ) : isNear && paused ? (
+            // Placeholder saat stream dijeda (WHEPPlayer tidak dimount sehingga koneksi tertutup).
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black/90 text-white/70">
+              <Pause className="h-8 w-8" />
+              <span className="text-xs font-semibold">Dijeda</span>
+            </div>
           ) : (
             // Placeholder/skeleton sebelum sel masuk viewport.
             <div className="flex h-full w-full items-center justify-center bg-black/90">
@@ -102,6 +109,22 @@ function StreamCell({
 
         {/* Badge status di pojok atas video */}
         <div className="absolute left-2 top-2">{statusBadge}</div>
+
+        {/* Tombol pause/resume hanya untuk CCTV yang streaming aktif */}
+        {cctv.stream_enabled && (
+          <button
+            type="button"
+            aria-label={paused ? 'Lanjutkan stream' : 'Jeda stream'}
+            onClick={(e) => {
+              // Cegah event klik naik ke sel (menghindari memicu onCctvClick).
+              e.stopPropagation();
+              setPaused((p) => !p);
+            }}
+            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/90 backdrop-blur transition-colors hover:bg-black/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+          </button>
+        )}
       </div>
 
       {/* Info CCTV */}
@@ -121,6 +144,25 @@ function StreamCell({
 }
 
 export default function StreamGridView({ cctvs, onCctvClick }: StreamGridViewProps) {
+  // Opsi ukuran halaman: "Semua" diwakili dengan nilai besar agar semua kamera dirender sekaligus.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
+
+  const total = cctvs.length;
+  const effectivePageSize = pageSize >= total ? total : pageSize;
+  const totalPages = Math.max(1, Math.ceil(total / effectivePageSize));
+  const currentPage = Math.min(page, totalPages);
+
+  const start = total === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1;
+  const end = Math.min(currentPage * effectivePageSize, total);
+  const pagedCctvs = cctvs.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize);
+
+  // Ganti ukuran halaman → reset ke halaman pertama.
+  const handlePageSizeChange = (value: number) => {
+    setPageSize(value);
+    setPage(1);
+  };
+
   if (!cctvs.length) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border bg-card text-muted">
@@ -132,10 +174,62 @@ export default function StreamGridView({ cctvs, onCctvClick }: StreamGridViewPro
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {cctvs.map((cctv) => (
-        <StreamCell key={cctv.id} cctv={cctv} onCctvClick={onCctvClick} />
-      ))}
+    <div className="flex flex-col gap-4">
+      {/* Header: counter + kontrol pagination dan ukuran halaman */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Menampilkan <span className="font-semibold text-foreground">{start}</span>–
+          <span className="font-semibold text-foreground">{end}</span> dari{' '}
+          <span className="font-semibold text-foreground">{total}</span> kamera aktif
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Dropdown ukuran halaman */}
+          <select
+            aria-label="Ukuran halaman"
+            value={pageSize >= total ? total : pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <option value={4}>4</option>
+            <option value={8}>8</option>
+            <option value={12}>12</option>
+            <option value={total}>Semua</option>
+          </select>
+
+          {/* Kontrol prev/next halaman */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Halaman sebelumnya"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-[56px] text-center text-xs font-semibold text-muted">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              aria-label="Halaman berikutnya"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid halaman saat ini */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {pagedCctvs.map((cctv) => (
+          <StreamCell key={cctv.id} cctv={cctv} onCctvClick={onCctvClick} />
+        ))}
+      </div>
     </div>
   );
 }
