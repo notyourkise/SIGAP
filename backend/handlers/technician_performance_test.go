@@ -87,6 +87,34 @@ func TestTechnicianPerformance_DateFilter(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTechnicianPerformanceWithPeriod(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	// `period=7d` harus menghasilkan query dengan 5 argumen (now + dua pasang
+	// startDate/endDate) seperti query kinerja pada umumnya. Nilai tanggal
+	// tepatnya memakai `now` saat handler berjalan sehingga tidak bisa
+	// diprediksi eksak; AnyArg memastikan struktur query tetap terjaga.
+	mock.ExpectQuery(`^SELECT\s+u\.id\s+AS user_id`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "full_name", "username", "total_tasks", "completed", "failed", "ongoing",
+			"avg_completion_hours", "overdue_count", "field_check_count", "ok_count",
+		}))
+
+	app := newTestApp()
+	app.Get("/dashboard/technician-performance", withUserLocals(uuid.New().String(), "admin"), GetTechnicianPerformance)
+
+	request := httptest.NewRequest("GET", "/dashboard/technician-performance?period=7d", nil)
+	resp, err := app.Test(request)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "success", result["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestTechnicianPerformance_NonAdminForbidden(t *testing.T) {
 	app := newTestApp()
 	app.Get("/dashboard/technician-performance", withUserLocals(uuid.New().String(), "teknisi"), GetTechnicianPerformance)

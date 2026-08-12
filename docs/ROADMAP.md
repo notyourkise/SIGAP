@@ -34,7 +34,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
-| **13** | **Perbaikan & Penguatan Fitur Existing** | **15/18 (Sprint 31–35)** | **🔶 Berjalan** |
+| **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
 | **14** | **CCTV Intelligence — Live Status & AI Detection** | **0/3** | **🔲 Belum dimulai** |
 
 > **Urutan pengerjaan:**
@@ -823,13 +823,21 @@ cd frontend && npm run lint && npm run build
 > **Branch:** `fix/frontend-ux-polish`
 > **Prasyarat:** Tidak ada — bisa paralel dengan sprint lain
 > **Estimasi:** 2–3 hari kerja
+> **Status: ✅ Selesai** (2026-08-13)
 
-| ID | Jobdesk | Sub-Agent | Task | Deliverable |
-|----|---------|-----------|------|-------------|
-| **P15** | **Frontend** | Agent-FE | **13.15** Lazy Loading StreamGridView | Di `StreamGridView.tsx`: implementasi `IntersectionObserver` — `WHEPPlayer` hanya di-mount saat sel memasuki viewport. Tambah tombol "⏸ Pause" per sel yang menutup `RTCPeerConnection` sementara (bukan unmount komponen — pertahankan placeholder). Tambah pagination grid: tampilkan 12 kamera per halaman (configurable via dropdown: 4/8/12/all). Tambah counter "Menampilkan X dari Y kamera aktif" di header grid. |
-| **P17** | **Frontend** | Agent-FE | **13.17** Buat Tugas dari Kalender | Di `CalendarGrid.tsx`: tambah handler `onDayClick(date: Date)` — klik pada sel tanggal membuka modal create maintenance baru dengan field `scheduled_date` sudah terisi tanggal yang diklik. Reuse komponen modal form yang sudah ada di `/maintenance` (lift state atau gunakan portal). Setelah submit berhasil: refresh kalender via `loadMap()` / WebSocket `MAINTENANCE_UPDATED` event. |
-| **P18a** | **Backend** | Agent-BE | **13.18** Filter Periode Kinerja Teknisi | Di `handlers/dashboard.go`, update handler `GetTechnicianPerformance`: tambah query parameter `?period=7d|30d|90d|365d` (default: `30d`). Konversi ke `start_date = NOW() - INTERVAL 'X days'`. Terapkan filter ke semua query (completion rate, avg response time, task count). |
-| **P18b** | **Frontend** | Agent-FE | **13.18b** UI Filter Periode Kinerja Teknisi | Di halaman `/kinerja-teknisi`: tambah dropdown filter periode di header ("7 Hari", "30 Hari", "3 Bulan", "1 Tahun"). State `period` memicu fetch ulang ke API dengan query param. Update komponen `TechnicianPerformanceChart` untuk menerima data baru. Label axis X di chart menyesuaikan granularitas periode (harian/mingguan/bulanan). |
+| ID | Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|----|---------|-----------|------|-------------|--------|
+| **P15** | **Frontend** | Agent-FE | **13.15** Lazy Loading StreamGridView | Di `StreamGridView.tsx`: implementasi `IntersectionObserver` — `WHEPPlayer` hanya di-mount saat sel memasuki viewport. Tambah tombol "⏸ Pause" per sel yang menutup `RTCPeerConnection` sementara (bukan unmount komponen — pertahankan placeholder). Tambah pagination grid: tampilkan 12 kamera per halaman (configurable via dropdown: 4/8/12/all). Tambah counter "Menampilkan X dari Y kamera aktif" di header grid. | ✅ Selesai |
+| **P17** | **Frontend** | Agent-FE | **13.17** Buat Tugas dari Kalender | Di `CalendarGrid.tsx`: tambah handler `onDayClick(date: Date)` — klik pada sel tanggal membuka modal create maintenance baru dengan field `scheduled_date` sudah terisi tanggal yang diklik. Reuse komponen modal form yang sudah ada di `/maintenance` (lift state atau gunakan portal). Setelah submit berhasil: refresh kalender via `loadMap()` / WebSocket `MAINTENANCE_UPDATED` event. | ✅ Selesai |
+| **P18a** | **Backend** | Agent-BE | **13.18** Filter Periode Kinerja Teknisi | Di `handlers/dashboard.go`, update handler `GetTechnicianPerformance`: tambah query parameter `?period=7d|30d|90d|365d` (default: `30d`). Konversi ke `start_date = NOW() - INTERVAL 'X days'`. Terapkan filter ke semua query (completion rate, avg response time, task count). | ✅ Selesai |
+| **P18b** | **Frontend** | Agent-FE | **13.18b** UI Filter Periode Kinerja Teknisi | Di halaman `/kinerja-teknisi`: tambah dropdown filter periode di header ("7 Hari", "30 Hari", "3 Bulan", "1 Tahun"). State `period` memicu fetch ulang ke API dengan query param. Update komponen `TechnicianPerformanceChart` untuk menerima data baru. Label axis X di chart menyesuaikan granularitas periode (harian/mingguan/bulanan). | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 36:** Polish Frontend & UX (P15, P17, P18) selesai — **Fase 13 kini 18/18 ✅ Selesai**.
+- **Backend (`0.58.0`)**: `GET /dashboard/technician-performance` tambah query `?period=7d|30d|90d|365d` (default 30d) yang mengesampingkan `start_date`/`end_date`; unit test `TestTechnicianPerformanceWithPeriod`.
+- **Frontend (`1.49.0`)**: `StreamGridView` pagination (4/8/12/Semua) + counter "Menampilkan X–Y dari N" + pause/resume per sel (lazy-load IntersectionObserver dipertahankan); `CalendarGrid` + halaman `/kalender` mendukung create maintenance dari klik tanggal (modal, pre-filled, refresh); `/kinerja-teknisi` filter periode 7/30/90/365 hari/kustom memakai `?period=`.
+- **Dokumen**: `docs/manual-test-frontend-ux-polish.md` (baru); ROADMAP Fase 13 progress **15/18 → 18/18** & Sprint 36 ✅ Selesai.
+
+Detail: `backend/changelog.md` [0.58.0] · `frontend/changelog.md` [1.49.0].
 
 #### Verifikasi Sprint 36
 

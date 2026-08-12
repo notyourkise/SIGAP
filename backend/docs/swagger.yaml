@@ -2213,6 +2213,10 @@ paths:
         in: query
         name: end_date
         type: string
+      - description: Preset periode (7d/30d/90d/365d)
+        in: query
+        name: period
+        type: string
       produces:
       - application/json
       responses:
