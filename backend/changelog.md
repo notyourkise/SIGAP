@@ -1,5 +1,47 @@
 # Changelog - Backend SIGAP
 
+## [0.59.0] - 2026-08-13
+
+### Fitur: Multi-Site (Sprint 30 - Task 12.2)
+
+perubahan yang dilakukan: **Menambahkan kawasan operasional (site) sebagai kelompok data CCTV, log pemeliharaan, dan zona melalui tabel baru `sites` + join `user_sites`, lengkap dengan middleware `SiteContext`, CRUD `/api/sites`, dan filter opsional per-site.**
+
+before:
+- Seluruh data CCTV/log/zona tidak dikelompokkan per kawasan; tidak ada konsep site. Semua user dapat melihat seluruh data tanpa batasan kawasan.
+- Tidak ada endpoint untuk mengelola kawasan operasional maupun menugaskan teknisi ke suatu kawasan.
+
+after:
+- **`models/site.go`** (baru): model `Site` (nama, kode unik, alamat, koordinat, `is_default`) + join table `UserSite`. Menambah kolom `SiteID *uuid.UUID` pada `models/cctv.go`, `models/setup.go` (`MaintenanceLog`), dan `models/zone.go`.
+- **`migrations/000018_multi_site.up.sql`** (baru): membuat tabel `sites` & `user_sites`, menambah kolom `site_id` ke `cctvs`/`maintenance_logs`/`zones` (idempoten), menyisipkan site default `OIKN`, dan menetapkan site default ke semua data existing yang masih NULL. `.down.sql` menghapusnya.
+- **`middleware/site.go`** (baru): `SiteContext()` membaca `X-Site-ID` (fallback `?site_id=`), validasi UUID & keberadaan site, lalu set `c.Locals("site_id", ...)`. Tanpa header → dibiarkan kosong (tanpa filter) agar tidak mengubah perilaku existing.
+- **`handlers/site.go`** (baru): `GetAllSites` (paginasi + `user_count`), `GetAllSitesForSelect` (dropdown), `CreateSite` (validasi kode unik incl soft-delete via Unscoped), `UpdateSite`, `DeleteSite` (cegah hapus site default), `AssignUsersToSite` (validasi role teknisi, timpa assignment). Semua operasi tulis mencatat audit via `utils.LogAudit`.
+- **`routes/site.go`** (baru): `SetupSiteRoutes` — `/api/sites` dengan `Protected()` + `SiteContext()`; rute statis `/all` sebelum `/:id`.
+- **`main.go`**: memanggil `routes.SetupSiteRoutes(api)` dan seeder `models.EnsureDefaultSite(config.DB)`.
+- **`models/seeder.go`**: `EnsureDefaultSite(db)` idempoten memastikan site default OIKN ada saat startup (guard anti-error bila tabel belum ada).
+- **Filter opsional `site_id`**: ditambahkan ke `GetAllCCTV`, `GetAllMaintenanceLogs`, `GetAllZones` — hanya aktif bila `c.Locals("site_id")` terisi (X-Site-ID valid disediakan). Tanpa header, query tetap sama sehingga perilaku/test existing tidak berubah. (Tidak diterapkan ke `GetAllFieldMaintenances` karena tabel `field_maintenances` tidak memiliki kolom `site_id`.)
+- **Unit test**: `handlers/site_test.go` (Create/Get/Update/Delete/Assign, termasuk kode duplikat, nama kosong, hapus site default, user bukan teknisi) dan `middleware/site_test.go` (tanpa header, header valid, query valid, header invalid, site tidak ditemukan). Menambah `routes/routes_test.go` `TestSiteRoutesRequireAuthentication`.
+
+timestamp: 2026-08-13 10:00 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/site.go
+- backend/models/cctv.go
+- backend/models/setup.go
+- backend/models/zone.go
+- backend/models/seeder.go
+- backend/migrations/000018_multi_site.up.sql
+- backend/migrations/000018_multi_site.down.sql
+- backend/middleware/site.go
+- backend/middleware/site_test.go
+- backend/handlers/site.go
+- backend/handlers/site_test.go
+- backend/handlers/cctv.go
+- backend/handlers/maintenance.go
+- backend/handlers/zone.go
+- backend/routes/site.go
+- backend/routes/routes_test.go
+- backend/main.go
+
 ## [0.58.0] - 2026-08-13
 
 ### Fitur: Filter Periode Kinerja Teknisi (Sprint 36 - P18a, Task 13.18)

@@ -115,6 +115,10 @@ func main() {
 	// Seed template checklist default (Task 13.12) — dijalankan setelah admin.
 	models.SeedChecklistTemplates(config.DB)
 
+	// Seed site default OIKN (Task 12.2, multi-site) — idempoten; migrasi
+	// 000018 juga menyisipkan site default ini bila belum ada.
+	models.EnsureDefaultSite(config.DB)
+
 	// Jalankan goroutine cleanup JWT blacklist setiap 30 menit
 	// Membersihkan token expired agar tidak terjadi memory leak
 	utils.StartBlacklistCleanup(30 * time.Minute)
@@ -278,6 +282,7 @@ func main() {
 	routes.SetupProfileRoutes(api)
 	routes.SetupReportRoutes(api)
 	routes.SetupZoneRoutes(api)
+	routes.SetupSiteRoutes(api)
 	routes.SetupSLARoutes(api)
 	routes.SetupAPIKeyRoutes(api)
 	routes.SetupWebhookRoutes(api)

@@ -145,6 +145,28 @@ export function getCookie(name: string): string | null {
   return last;
 }
 
+// Simpan sebuah cookie di sisi klien (non-httpOnly) dengan masa berlaku opsional
+// (dalam hari). Dipakai untuk menyimpan preferensi multi-site (mis. sigap_site_id)
+// agar nilai bisa dibaca/ditulis oleh JavaScript dan dikirim sebagai header X-Site-ID.
+export function setCookie(name: string, value: string, days?: number): void {
+  if (typeof document === 'undefined') return;
+  let expires = '';
+  if (typeof days === 'number') {
+    const date = new Date();
+    date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+    expires = `; expires=${date.toUTCString()}`;
+  }
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; SameSite=Lax${expires}${secure}`;
+}
+
+// Hapus sebuah cookie di sisi klien (non-httpOnly) bila diperlukan.
+export function clearCookie(name: string): void {
+  if (typeof document === 'undefined') return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
 // Hapus cookie CSRF di sisi klien (dipanggil saat sesi berakhir/401).
 // PENTING: Cookie sesi (sigap_session) bersifat httpOnly dan TIDAK BISA
 // dihapus oleh JavaScript. Hanya server yang bisa menghapusnya melalui
@@ -194,6 +216,14 @@ export async function apiRequest<T>(
   const csrf = getCookie(CSRF_COOKIE);
   if (csrf && isMutatingMethod(fetchOptions.method)) {
     headers.set(CSRF_HEADER, csrf);
+  }
+
+  // Kirim header X-Site-ID dari cookie site yang sedang dipilih (multi-site).
+  // Backend (middleware SiteContext) memakai nilai ini untuk memfilter data
+  // per site. Bila tidak ada site terpilih, header diabaikan (data semua site).
+  const siteId = getCookie('sigap_site_id');
+  if (siteId && !headers.has('X-Site-ID')) {
+    headers.set('X-Site-ID', siteId);
   }
 
   // credentials: 'include' — cookie sesi httpOnly dikirim otomatis.
@@ -365,4 +395,93 @@ export async function downloadApiFile(endpoint: string, fallbackName: string): P
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+// ===== Multi-Site (Kawasan) =====
+// Entitas site/kawasan yang dikelola admin. `is_default` menandai site utama
+// (tidak boleh dihapus). `user_count` mengisi jumlah teknisi yang ditugaskan.
+
+export interface Site {
+  id: string;
+  nama: string;
+  kode: string;
+  alamat: string;
+  koordinat_lat: number | null;
+  koordinat_lng: number | null;
+  is_default: boolean;
+  user_count?: number;
+}
+
+// Param untuk list site (paginasi + pencarian).
+export interface SiteQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+// Respons list site mengikuti konvensi SIGAP: { status, data: { rows, pagination } }.
+export interface SiteListResponse {
+  rows: Site[];
+  pagination: {
+    page: number;
+    limit: number;
+    total_rows: number;
+    total_pages: number;
+  };
+}
+
+// Data untuk membuat/memperbarui site.
+export interface SitePayload {
+  nama: string;
+  kode: string;
+  alamat: string;
+  koordinat_lat: number | null;
+  koordinat_lng: number | null;
+  is_default: boolean;
+}
+
+// Ambil daftar site (semua role) dengan paginasi & pencarian.
+export async function getSites(params?: SiteQuery): Promise<ApiResponse<SiteListResponse>> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search) query.set('search', params.search);
+
+  const qs = query.toString();
+  return apiRequest(`/sites${qs ? `?${qs}` : ''}`);
+}
+
+// Ambil daftar semua site untuk dropdown (tanpa paginasi) — semua role.
+// Respons: { status, data: Site[] }.
+export async function getAllSitesForSelect(): Promise<ApiResponse<Site[]>> {
+  return apiRequest<Site[]>('/sites/all');
+}
+
+// Buat site baru (admin).
+export async function createSite(data: SitePayload): Promise<ApiResponse<Site>> {
+  return apiRequest('/sites', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// Perbarui site berdasarkan id (admin).
+export async function updateSite(id: string, data: Partial<SitePayload>): Promise<ApiResponse<Site>> {
+  return apiRequest(`/sites/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+// Hapus site (admin). Site default biasanya ditolak backend.
+export async function deleteSite(id: string): Promise<ApiResponse<Site>> {
+  return apiRequest(`/sites/${id}`, { method: 'DELETE' });
+}
+
+// Atur penugasan teknisi ke site (replace seluruh penugasan site).
+export async function assignUsersToSite(id: string, user_ids: string[]): Promise<ApiResponse<Site>> {
+  return apiRequest(`/sites/${id}/assign-users`, {
+    method: 'POST',
+    body: JSON.stringify({ user_ids }),
+  });
 }

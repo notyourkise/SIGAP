@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.41] — 2026-08-13 — Fitur: Multi-Site (Sprint 30) — Fase 12 Selesai
+
+### Perubahan
+
+- **Fase 12 (Integrasi & Skalabilitas) selesai** — Sprint 30 (Task 12.2 Multi-Site) selesai. Progress ROADMAP Fase 12 **3/4 → 4/4 ✅ Selesai**, Sprint 30 **✅ Selesai**.
+- **Backend**: model `Site` (nama, kode, alamat, koordinat_pusat, `is_default`); FK `site_id` di `CCTV`/`MaintenanceLog`/zona; migrasi data existing → site default "Kawasan OIKN" (kode `OIKN`, `is_default=true`); CRUD `/api/sites` (paginasi `GET /api/sites`, dropdown `GET /api/sites/all`) admin-only untuk tulis; `POST /api/sites/:id/assign-users` (assign teknisi, admin-only); perlindungan penghapusan site default; unit test `handlers/site_test.go` & `middleware/site_test.go`; Swagger + `swag init`.
+- **Frontend**: site switcher (dropdown) di header; cookie `sigap_site_id` untuk menyimpan site aktif; reload halaman + filter global per site (CCTV/log/zona); halaman manajemen site admin.
+- **Dokumen**: `docs/manual-test-multi-site.md` (baru — S1–S7 sesuai format manual test lain); `docs/ROADMAP.md` Fase 12 progress 3/4 → **4/4 ✅ Selesai** & Sprint 30 ✅ Selesai; `docs/TESTING.md` matriks `handlers/site_test.go` & `middleware/site_test.go` (total 60 → 62).
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS.
+
+Detail: `backend/changelog.md` · `frontend/changelog.md`.
+
+Timestamp: 2026-08-13 WITA | Kategori: Besar, Fitur (Backend + Frontend + Docs)
+
 ## [1.28.40] — 2026-08-13 — Fitur: Polish Frontend & UX (Sprint 36)
 
 ### Perubahan

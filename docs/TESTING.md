@@ -85,9 +85,11 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `webhook_test.go` (Task 12.3, Sprint 29) | `CreateWebhookEndpoint` (sukses → 201, event invalid → 400, validasi → 400), `GetAllWebhookEndpoints` (paginasi), `UpdateWebhookEndpoint` (sukses), `DeleteWebhookEndpoint` (soft delete), `GetWebhookDeliveries` (paginasi), `SignPayload` (HMAC-SHA256 hex 64), `ValidWebhookEvent` |
 | `middleware` | `apikey_test.go` (Task 12.1, Sprint 29) | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals terisi, scope kurang → 403) |
 | `routes` | `routes_test.go` (Sprint 29, diperluas) | `TestAPIKeyRoutesRequireAuthentication`, `TestWebhookRoutesRequireAuthentication`, registrasi `SetupAPIKeyRoutes`/`SetupWebhookRoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
+| `handlers` | `site_test.go` (Task 12.2, Sprint 30) | `CreateSite` (sukses → 201, validasi kode/nama kosong → 400), `GetAllSites` (paginasi + `is_default`), `GetAllSitesForSelect` (dropdown `GET /api/sites/all`), `UpdateSite` (sukses), `DeleteSite` (soft delete), `DeleteSite` site default → ditolak, `AssignUsersToSite` (sukses → relasi dalam transaksi, user bukan teknisi → 400) |
+| `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 
-**Total: 60 file test** (14 utils, 5 middleware, 31 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+**Total: 62 file test** (14 utils, 6 middleware, 32 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -184,6 +186,22 @@ Catatan gotchas test `api_key_test.go` / `webhook_test.go`:
   pada test success (pola sama dengan test CRUD lain).
 - Middleware API key menulis `last_used_at` async di goroutine — hindari `mock.ExpectationsWereMet()`
   pada test `ValidKey` (menunggu UPDATE async).
+
+### Matriks Multi-Site (Fase 12, Task 12.2 / Sprint 30)
+
+Ringkasan cakupan test multi-site:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/site_test.go` | 12.2 | `CreateSite` (sukses → 201, validasi nama/kode kosong → 400, kode duplikat → 400), `GetAllSites` (paginasi + `is_default`), `GetAllSitesForSelect` (dropdown `GET /api/sites/all`), `UpdateSite` (sukses), `DeleteSite` (soft delete → `deleted_at`), `DeleteSite` site default → 4xx (tidak bisa dihapus), `AssignUsersToSite` (sukses → relasi user↔site dalam transaksi, user bukan teknisi → 400) |
+| `middleware/site_test.go` | 12.2 | guard penulisan site (`RequireRole("admin")`) — teknisi → 403; pembacaan site (`GET /api/sites`, `GET /api/sites/all`) tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
+
+Catatan gotchas test `site_test.go`:
+- `CreateSite`/`DeleteSite`/`AssignUsersToSite` memicu `LogAudit` async di goroutine — jangan mem-mock query
+  user/audit pada test success (pola sama dengan test CRUD lain).
+- `AssignUsersToSite` memakai `config.DB.Transaction`, sehingga test wajib menambah `mock.ExpectBegin()` /
+  `mock.ExpectCommit()` (sukses) atau `mock.ExpectRollback()` (gagal) di sekitar query transaksi.
+- `DeleteSite` site default memakai guard sebelum query hapus — assert respons 4xx tanpa `ExpectExec` hapus.
 
 ### Matriks Infrastruktur & Integrasi (Fase 13, Task 13.10 + 13.14 + 13.16 / Sprint 34)
 

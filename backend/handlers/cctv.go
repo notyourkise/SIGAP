@@ -318,6 +318,12 @@ func GetAllCCTV(c *fiber.Ctx) error {
 	var cctvs []models.CCTV
 	query := config.DB.Model(&models.CCTV{})
 
+	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
+	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		query = query.Where("site_id = ?", siteID)
+	}
+
 	// Filter
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)

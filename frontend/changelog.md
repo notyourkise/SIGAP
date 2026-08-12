@@ -1,5 +1,34 @@
 # Changelog - Frontend SIGAP
 
+## [1.50.0] - 2026-08-13
+
+### Fitur: Multi-Site (Sprint 30 - Task 12.2b)
+
+perubahan yang dilakukan: **Menambahkan site switcher di header, header `X-Site-ID` pada seluruh request API, halaman admin kawasan (CRUD + assign teknisi), dan pemusatan peta sebaran ke koordinat site aktif.**
+
+before:
+- SIGAP hanya melayani satu kawasan (OIKN); tidak ada cara memilih kawasan maupun melihat data per kawasan.
+
+after:
+- **`src/lib/api.ts`**: helper `setCookie`/`clearCookie`, interface `Site`, `apiRequest` kini menyisipkan header `X-Site-ID` dari cookie `sigap_site_id`; fungsi `getSites`, `getAllSitesForSelect`, `createSite`, `updateSite`, `deleteSite`, `assignUsersToSite`.
+- **`src/components/SiteSwitcher.tsx`** (baru): dropdown pemilih kawasan di header; pilih → simpan cookie `sigap_site_id` → reload agar seluruh data difilter.
+- **`src/app/sites/page.tsx`** (baru): halaman admin CRUD kawasan (nama, kode, alamat, koordinat, default), modal assign teknisi multi-select, hapus dengan konfirmasi (site default ditolak backend).
+- **`src/components/DashboardLayout.tsx`**: `SiteSwitcher` di header (mobile & desktop); menu sidebar "Kawasan" (`Building2`) → `/sites`.
+- **`src/proxy.ts`**: `/sites` ditambahkan ke `ADMIN_PATHS` & `config.matcher`.
+- **`src/components/CCTVMap.tsx`**: tambah prop `center` untuk memusatkan peta.
+- **`src/app/sebaran-cctv/page.tsx`**: memusatkan peta ke koordinat site aktif (dari cookie `sigap_site_id`); data `/cctv` otomatis difilter via header `X-Site-ID`.
+
+timestamp: 2026-08-13 13:30 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/lib/api.ts
+- frontend/src/components/SiteSwitcher.tsx
+- frontend/src/app/sites/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+
 ## [1.49.0] - 2026-08-13
 
 ### Fitur: Polish Frontend & UX (Sprint 36 - P15, P17, P18b)

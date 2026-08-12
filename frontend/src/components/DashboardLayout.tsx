@@ -36,10 +36,12 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
+  Building2,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
 import ProfileMenu from './ProfileMenu';
+import SiteSwitcher from './SiteSwitcher';
 
 const SIDEBAR_STORAGE_KEY = 'sigap_sidebar_collapsed';
 const SIDEBAR_CHANGE_EVENT = 'sigap-sidebar-change';
@@ -149,6 +151,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       items: isAdmin
         ? [
             { name: 'Manajemen Pengguna', href: '/users', icon: Users },
+            { name: 'Kawasan', href: '/sites', icon: Building2 },
             { name: 'Audit Log', href: '/audit-logs', icon: ShieldCheck },
             { name: 'Suku Cadang', href: '/suku-cadang', icon: Package },
             { name: 'Zona', href: '/zona', icon: MapPinned },
@@ -194,6 +197,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             SIGAP
           </Link>
           <div className="flex items-center gap-2">
+            <SiteSwitcher />
             <ProfileMenu showDetails={false} />
             <button
               type="button"
@@ -450,7 +454,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto px-6 py-8 md:px-10">
           <div className="max-w-6xl w-full mx-auto">
             {pathname !== '/dashboard' && (
-              <div className="mb-6 hidden items-center justify-end md:flex">
+              <div className="mb-6 hidden items-center justify-end gap-2 md:flex">
+                <SiteSwitcher />
                 <ProfileMenu />
               </div>
             )}

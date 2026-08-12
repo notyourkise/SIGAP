@@ -42,7 +42,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 > Fase 1–11 ✅ (semua selesai)
 >     │
 >     ▼
-> Fase 12 (Integrasi) 🔶
+> Fase 12 (Integrasi) ✅
 >     │
 >     ▼
 > Fase 13 (Perbaikan & Penguatan) ← kerjakan paralel dengan Fase 14
@@ -588,7 +588,7 @@ Detail: `backend/changelog.md` [0.50.0] · `frontend/changelog.md` [1.42.0].
 
 > Mempersiapkan SIGAP untuk integrasi dengan sistem lain.
 > Fokus saat ini: **Kawasan OIKN**.
-> **Status: 🔶 Berjalan** — 3/4 task selesai (Sprint 29 ✅, Task 12.4 ✅, Task 12.2 belum dimulai).
+> **Status: ✅ Selesai** — 4/4 task selesai (Sprint 29 ✅, Task 12.4 ✅, Sprint 30 ✅).
 
 ### Sprint 29 — API Key & Webhook (Task 12.1 + 12.3)
 
@@ -611,12 +611,20 @@ Detail: `backend/changelog.md` [0.51.0] · `frontend/changelog.md` [1.43.0].
 ### Sprint 30 — Multi-Site (Task 12.2)
 
 > **Branch:** `feature/multi-site`
+> **Status: ✅ Selesai**
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Backend** | Agent-BE | **12.2a** Model & Migrasi Multi-Site | Model `Site` (nama, kode, alamat, koordinat_pusat). FK `site_id` di CCTV, MaintenanceLog, dll. Migrasi: semua data existing → Site "OIKN" (default). CRUD `/api/sites`. |
-| **Frontend** | Agent-FE | **12.2b** UI Multi-Site | Switch site di navigasi (dropdown header). Dashboard per site. Filter global per site. User assignment ke multiple sites. |
-| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-multi-site.md`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Backend** | Agent-BE | **12.2a** Model & Migrasi Multi-Site | Model `Site` (nama, kode, alamat, koordinat_pusat). FK `site_id` di CCTV, MaintenanceLog, dll. Migrasi: semua data existing → Site "OIKN" (default). CRUD `/api/sites`. | ✅ Selesai |
+| **Frontend** | Agent-FE | **12.2b** UI Multi-Site | Switch site di navigasi (dropdown header). Dashboard per site. Filter global per site. User assignment ke multiple sites. | ✅ Selesai |
+| **QA/Docs** | Agent-QA | Manual Test | `docs/manual-test-multi-site.md`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 30:** Multi-Site (Task 12.2) selesai.
+- **Backend**: model `Site` (nama, kode, alamat, koordinat_pusat, `is_default`); FK `site_id` di `CCTV`/`MaintenanceLog`/zona; migrasi data existing → site default "Kawasan OIKN" (kode `OIKN`, `is_default=true`); CRUD `/api/sites` (paginasi `GET /api/sites`, dropdown `GET /api/sites/all`) admin-only untuk tulis; `POST /api/sites/:id/assign-users` (assign teknisi, admin-only); perlindungan penghapusan site default; unit test `handlers/site_test.go` & `middleware/site_test.go`; Swagger + `swag init`.
+- **Frontend**: site switcher (dropdown) di header; cookie `sigap_site_id` untuk menyimpan site aktif; reload halaman + filter global per site (CCTV/log/zona); halaman manajemen site admin.
+- **Dokumen**: `docs/manual-test-multi-site.md` (baru — S1–S7 sesuai format manual test lain).
+
+Detail: `docs/changelog.md` [1.28.41].
 
 ### Task 12.4 — Mobile App (React Native / Expo)
 
@@ -1205,7 +1213,7 @@ BERJALAN / BERIKUTNYA (Fase 12)
 ───────────────────────────────────────────────────────────────
 Sprint 29: API Key & Webhook (12.1 + 12.3)  ✅ ......  3–4 hari
 Task 12.4: Mobile App (React Native)  ✅ ............  10–15 hari
-Sprint 30: Multi-Site (12.2)  🔲 ...................  4–5 hari
+Sprint 30: Multi-Site (12.2)  ✅ ...................  4–5 hari
 ───────────────────────────────────────────────────────────────
 
 PERBAIKAN FITUR EXISTING (Fase 13 — mulai setelah Sprint 29)

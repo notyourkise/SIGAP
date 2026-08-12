@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useWebSocket } from '@/context/WebSocketContext';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getAllSitesForSelect, getCookie } from '@/lib/api';
+import type { Site } from '@/lib/api';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 import { MonitorPlay, LayoutGrid, Map as MapIcon, Filter } from 'lucide-react';
 
@@ -62,6 +63,9 @@ export default function SebaranCCTVPage() {
   const [zones, setZones] = useState<Array<{ id: string; nama: string }>>([]);
   const [zoneFilter, setZoneFilter] = useState('');
 
+  // Pusat peta — diarahkan ke koordinat site aktif bila tersedia (multi-site).
+  const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
+
   // Muat daftar zona untuk dropdown filter.
   const loadZones = useCallback(async () => {
     try {
@@ -78,6 +82,36 @@ export default function SebaranCCTVPage() {
   useEffect(() => {
     void loadZones();
   }, [loadZones]);
+
+  // Pusatkan peta ke koordinat site aktif (dari cookie sigap_site_id).
+  // Peta tetap difilter oleh header X-Site-ID secara otomatis lewat apiRequest.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await getAllSitesForSelect();
+        if (cancelled || response.status !== 'success' || !response.data) return;
+
+        const activeSiteId = getCookie('sigap_site_id');
+        const active: Site | undefined = activeSiteId
+          ? response.data.find((s) => s.id === activeSiteId)
+          : response.data.find((s) => s.is_default);
+
+        if (
+          active &&
+          typeof active.koordinat_lat === 'number' &&
+          typeof active.koordinat_lng === 'number'
+        ) {
+          setMapCenter([active.koordinat_lat, active.koordinat_lng]);
+        }
+      } catch {
+        // Bila daftar site gagal dimuat, peta tetap di pusat default (tidak fatal).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadMap = useCallback(async () => {
     setLoading(true);
@@ -245,6 +279,7 @@ export default function SebaranCCTVPage() {
               <section aria-label="Peta GIS Sebaran CCTV IKN">
                 <CCTVMap
                   cctvs={cctvs}
+                  center={mapCenter}
                   onMarkerClick={(cctv) => cctv.stream_enabled && setSelectedCctv(cctv)}
                 />
               </section>

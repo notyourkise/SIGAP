@@ -43,4 +43,8 @@ type CCTV struct {
 	ZoneID *uuid.UUID `gorm:"type:uuid;index" json:"zone_id,omitempty"`
 	// Zone adalah relasi one-to-many ke master zona (preload untuk detail).
 	Zone *Zone `gorm:"foreignKey:ZoneID" json:"zone,omitempty"`
+	// SiteID menunjuk ke kawasan operasional (multi-site, Task 12.2). Opsional
+	// — CCTV dapat belum dimasukkan ke site mana pun; data existing otomatis
+	// masuk ke site default "OIKN" saat migrasi.
+	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
 }
