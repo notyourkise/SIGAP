@@ -242,6 +242,63 @@ func GetAICountByCCTV(c *fiber.Ctx) error {
 	})
 }
 
+// GetAICountTrend menampilkan tren hitungan orang unik harian per kamera
+// selama N hari terakhir (default 7 hari, rentang 1–90 hari). Hanya Admin
+// yang dapat mengakses. Data diambil dari tabel ai_detection_sessions yang
+// di-upsert setiap hari oleh ReceiveDetectionEvent.
+//
+//	@Summary      Tren Hitungan AI per Kamera (Admin)
+//	@Description  Menampilkan jumlah orang unik terdeteksi per hari untuk satu CCTV selama 1–90 hari terakhir (default 7 hari), diurutkan ascending berdasarkan tanggal sesi.
+//	@Tags         AI Detection
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id path string true "CCTV UUID"
+//	@Param        days query int false "Jumlah hari (1–90, default 7)"
+//	@Success      200 {object} map[string]interface{} "Tren harian per kamera"
+//	@Failure      400 {object} map[string]interface{} "ID tidak valid"
+//	@Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+//	@Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+//	@Failure      500 {object} map[string]interface{} "Gagal mengambil data"
+//	@Router       /ai/counts/{id}/trend [get]
+func GetAICountTrend(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID tidak valid",
+		})
+	}
+
+	days := c.QueryInt("days", 7)
+	if days < 1 {
+		days = 1
+	}
+	if days > 90 {
+		days = 90
+	}
+
+	var sessions []models.AIDetectionSession
+	if err := config.DB.
+		Where("cctv_id = ? AND session_date >= ?", id, time.Now().AddDate(0, 0, -days)).
+		Order("session_date ASC").
+		Find(&sessions).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mengambil data tren AI",
+		})
+	}
+
+	result := make([]fiber.Map, 0, len(sessions))
+	for _, s := range sessions {
+		result = append(result, fiber.Map{
+			"date":         s.SessionDate,
+			"unique_count": s.UniquePersonCount,
+		})
+	}
+
+	return c.JSON(fiber.Map{"status": "success", "data": result})
+}
+
 // ProxyActivateAISession meneruskan permintaan aktivasi AI session dari
 // frontend ke service sigap_ai. Body dikirim sebagai {active_cctv_ids:[...]}.
 //

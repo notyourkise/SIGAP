@@ -26,6 +26,8 @@ func SetupAIRoutes(router fiber.Router) {
 	// Ringkasan & detail hitungan — khusus Admin.
 	ai.Get("/counts", middleware.RequireRole("admin"), handlers.GetAICounts)
 	ai.Get("/counts/:id", middleware.RequireRole("admin"), handlers.GetAICountByCCTV)
+	// Tren hitungan harian per kamera (1–90 hari) — khusus Admin.
+	ai.Get("/counts/:id/trend", middleware.RequireRole("admin"), handlers.GetAICountTrend)
 
 	// Proxy ke service sigap_ai (frontend memanggil ini).
 	ai.Post("/sessions", middleware.Protected(), handlers.ProxyActivateAISession)

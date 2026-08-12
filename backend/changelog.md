@@ -1,5 +1,32 @@
 # Changelog - Backend SIGAP
 
+## [0.62.0] - 2026-08-13
+
+### Fitur: Sprint 39 — Endpoint tren AI analytics + RBAC halaman (Task 14C.3)
+
+perubahan yang dilakukan: **Menambahkan endpoint tren hitungan orang unik harian per kamera `GET /api/ai/counts/:id/trend` (admin-only) beserta unit test, untuk mendukung halaman admin AI Analytics (`/ai-analytics`) pada Task 14C.3 Sprint 39.**
+
+before:
+- Backend hanya menyediakan ringkasan hitungan hari ini (`GET /api/ai/counts`) dan detail per kamera (`GET /api/ai/counts/:id`) — belum ada data historis/tren per kamera untuk halaman analytics.
+- Frontend tidak memiliki halaman admin AI Analytics (dibuat di `frontend/` — lihat docs/changelog).
+
+after:
+- **`handlers/ai.go`**: handler baru `GetAICountTrend` — validasi UUID `:id` (invalid → 400), query `days` via `c.QueryInt("days", 7)` di-clamp 1–90, query `config.DB.Where("cctv_id = ? AND session_date >= ?", id, time.Now().AddDate(0, 0, -days)).Order("session_date ASC").Find(&sessions)` pada `ai_detection_sessions`, respons `{status:"success", data:[{date, unique_count}]}` (ascending by date). Swagger annotations (Tags "AI Detection", `@Router /ai/counts/{id}/trend [get]`, admin-only) + `swag init`.
+- **`routes/ai.go`**: rute baru `ai.Get("/counts/:id/trend", middleware.RequireRole("admin"), handlers.GetAICountTrend)` didaftarkan tepat setelah `/counts/:id` — admin-only, konsisten dengan endpoint AI lainnya.
+- **`handlers/ai_test.go`**: `TestGetAICountTrend` (UUID valid + `days=7` → 200, mock `SELECT * FROM "ai_detection_sessions" WHERE cctv_id = $1 AND session_date >= $2 ORDER BY session_date ASC` dengan 3 baris sesi → `data` panjang 3, urutan ascending, field `date` & `unique_count` terisi) dan `TestGetAICountTrend_InvalidID` (UUID invalid → 400 tanpa query DB). Memakai helper yang ada: `setupMockGORM`, `newTestApp`, `withUserLocals("admin")`, pola kolom baris sesi `id,cctv_id,session_date,unique_person_count,last_tracking_ids,created_at,updated_at`.
+- **`backend/docs/*`**: regenerated via `swag init` (endpoint `/api/ai/counts/{id}/trend` masuk Swagger).
+
+timestamp: 2026-08-13 22:00 WITA
+kategori: Kecil, Backend (Fitur + Test)
+file yang diubah:
+- backend/handlers/ai.go
+- backend/routes/ai.go
+- backend/handlers/ai_test.go
+- backend/docs/docs.go (swag init)
+- backend/docs/swagger.json (swag init)
+- backend/docs/swagger.yaml (swag init)
+alasan perubahan: Halaman admin AI Analytics (Task 14C.3) membutuhkan data tren 7 hari per kamera; endpoint baru menyediakan data tersebut dengan validasi & RBAC yang konsisten dengan endpoint AI yang ada.
+
 ## [0.61.1] - 2026-08-13
 
 ### Fix: errcheck CI & RBAC Stream Admin-Only (Sprint 38 lanjutan)

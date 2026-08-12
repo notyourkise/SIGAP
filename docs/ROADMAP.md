@@ -35,7 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
-| **14** | **CCTV Intelligence — Live Status & AI Detection** | **2/3** | **🚧 Berjalan** |
+| **14** | **CCTV Intelligence — Live Status & AI Detection** | **3/3** | **✅ Selesai** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -887,7 +887,7 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 > - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati.
 > - **14B**: AI object detection berbasis YOLOv8 — mendeteksi dan menghitung **orang unik** yang terdeteksi oleh kamera yang sedang ditampilkan di `/monitor`.
 >
-> **Status: 🚧 Berjalan** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai. Sprint 37 (14A) ✅ Selesai → progress **2/3** (Sprint 38 / 14B ✅ Selesai).
+> **Status: ✅ Selesai** — 3 sprint (Sprint 37–39) selesai. Sprint 37 (14A) ✅ Selesai, Sprint 38 (14B) ✅ Selesai, Sprint 39 (14C) ✅ Selesai → progress **3/3 ✅ Selesai**.
 
 ### Latar Belakang & Root Cause
 
@@ -1113,25 +1113,27 @@ curl http://localhost:8010/counts/test
 > **Branch:** `feature/ai-frontend-overlay`
 > **Prasyarat:** Sprint 38 selesai
 > **Estimasi:** 3–4 hari kerja
+> **Status: ✅ Selesai** (2026-08-13)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **Frontend** | Agent-FE | **14C.1** Canvas Overlay Bounding Box | Di `StreamGridView.tsx` atau `WHEPPlayer.tsx`: tambah `<canvas>` yang overlay tepat di atas `<video>` (CSS `position: absolute, top: 0, left: 0, pointer-events: none`). Listen WebSocket event `AI_DETECTION_UPDATE { cctv_id, bboxes }`. Saat event diterima: `ctx.clearRect(...)` → draw box per `bbox` (warna hijau `#22C55E`, line width 2). Label per box: `"Person"`. Box otomatis fade dalam 1.5 detik jika tidak ada update baru. Aktifkan canvas hanya jika AI session aktif untuk kamera tersebut. |
-| **Frontend** | Agent-FE | **14C.2** AI Session Control + Counter UI | Di `StreamGridView.tsx`: tambah tombol toggle "🤖 AI" di header grid. Klik ON: kirim `POST /api/ai/sessions` untuk setiap kamera yang aktif di grid. Klik OFF: kirim `DELETE /api/ai/sessions/{id}` untuk semua. Per sel kamera: tampilkan badge kecil `"👥 42 orang hari ini"` di pojok kiri bawah video. Badge update via WebSocket tanpa reload. Saat ganti layout grid (2×2 → 3×3): otomatis hentikan session kamera yang tidak lagi tampil, aktifkan session kamera baru. State AI on/off tersimpan di localStorage per sesi browser. |
-| **Frontend** | Agent-FE | **14C.3** Dashboard AI Analytics | Tambah halaman `/ai-analytics` (admin only) di sidebar menu (ikon `BrainCircuit`). Konten: Tabel per kamera — nama, zona, unique_today, max_today (peak), terakhir aktif. Card ringkasan: total orang unik seluruh kamera hari ini, rata-rata per kamera. Line chart per kamera (7 hari terakhir, ambil dari `ai_detection_events` grouped by date). Filter: dropdown pilih kamera, pilih tanggal. Tambah item menu sidebar (admin only): `{ label: "AI Analytics", icon: BrainCircuit, href: "/ai-analytics" }`. Proteksi route di `middleware.ts`. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **Frontend** | Agent-FE | **14C.1** Canvas Overlay Bounding Box | Di `StreamGridView.tsx` atau `WHEPPlayer.tsx`: tambah `<canvas>` yang overlay tepat di atas `<video>` (CSS `position: absolute, top: 0, left: 0, pointer-events: none`). Listen WebSocket event `AI_DETECTION_UPDATE { cctv_id, bboxes }`. Saat event diterima: `ctx.clearRect(...)` → draw box per `bbox` (warna hijau `#22C55E`, line width 2). Label per box: `"Person"`. Box otomatis fade dalam 1.5 detik jika tidak ada update baru. Aktifkan canvas hanya jika AI session aktif untuk kamera tersebut. | ✅ Selesai |
+| **Frontend** | Agent-FE | **14C.2** AI Session Control + Counter UI | Di `StreamGridView.tsx`: tambah tombol toggle "🤖 AI" di header grid. Klik ON: kirim `POST /api/ai/sessions` untuk setiap kamera yang aktif di grid. Klik OFF: kirim `DELETE /api/ai/sessions/{id}` untuk semua. Per sel kamera: tampilkan badge kecil `"👥 42 orang hari ini"` di pojok kiri bawah video. Badge update via WebSocket tanpa reload. Saat ganti layout grid (2×2 → 3×3): otomatis hentikan session kamera yang tidak lagi tampil, aktifkan session kamera baru. State AI on/off tersimpan di localStorage per sesi browser. | ✅ Selesai |
+| **Frontend** | Agent-FE | **14C.3** Dashboard AI Analytics | Halaman `/ai-analytics` (admin only) — kartu ringkasan (total orang unik hari ini, jumlah kamera dipantau, kamera dengan hitungan > 0), tabel per kamera (nama, kode CCTV, `unique_today`, terakhir diperbarui), grafik tren 7 hari per kamera (`GET /api/ai/counts/:id/trend?days=7`, SVG mandiri tanpa library chart eksternal), dropdown pilih kamera; item menu sidebar (admin only) `{ name: "AI Analytics", icon: BrainCircuit, href: "/ai-analytics" }` di grup "Pelaporan & Analisis"; proteksi route di `frontend/src/proxy.ts` (`ADMIN_PATHS` + `config.matcher`). | ✅ Selesai |
+| **Backend** | Agent-BE | **14C.3b** Endpoint Tren AI | `GET /api/ai/counts/:id/trend` (admin-only) di `handlers/ai.go` (`GetAICountTrend`) + rute di `routes/ai.go` + Swagger; unit test `TestGetAICountTrend` & `TestGetAICountTrend_InvalidID` di `handlers/ai_test.go`. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 39:** Frontend AI overlay & E2E integration (Task 14C) selesai — **Fase 14 kini 3/3 ✅ Selesai**.
+- **Frontend**: halaman admin `/ai-analytics` (baru) — ringkasan hari ini + tren 7 hari per kamera dengan grafik garis SVG mandiri; menu sidebar "AI Analytics" (`BrainCircuit`) di grup "Pelaporan & Analisis"; guard proxy `/ai-analytics`; overlay bounding box hijau `#22C55E` di atas video + counter "👥 X orang hari ini" per sel + toggle "🤖 AI" di `/monitor` (14C.1/14C.2, agent paralel).
+- **Backend (`0.62.0`)**: endpoint tren `GET /api/ai/counts/:id/trend` (admin-only) — validasi UUID → 400, `days` default 7 clamp 1–90, query `ai_detection_sessions` ascending by date, respons `{date, unique_count}`; rute + Swagger; unit test tren (sukses + invalid UUID).
+- **Dokumen**: `docs/manual-test-ai-analytics.md` (baru — S1–S7); `docs/TESTING.md` matriks `handlers/ai_test.go` diperluas (Task 14C.3); ROADMAP Fase 14 progress **2/3 → 3/3 ✅ Selesai** & Sprint 39 ✅ Selesai.
+
+Detail: `backend/changelog.md` [0.62.0] · `docs/changelog.md` [1.28.44].
 
 #### Verifikasi Sprint 39
 
 ```bash
 cd frontend && npm run lint && npm run build && npx tsc --noEmit
-
-# Manual E2E:
-# 1. Buka /monitor, set grid 2x2
-# 2. Klik tombol "🤖 AI"
-# 3. Pastikan bounding box muncul di atas video stream saat ada orang
-# 4. Counter "X orang hari ini" bertambah
-# 5. Ganti ke grid 3x3 → AI otomatis aktif untuk 9 kamera
-# 6. Buka /ai-analytics → tampil data hitungan
+cd backend && go build ./... && go test ./... -count=1 -run "TestGetAICountTrend|TestAI" && go vet ./... && golangci-lint run ./...
 ```
 
 > **Acceptance Criteria Sprint 39:**
@@ -1139,7 +1141,7 @@ cd frontend && npm run lint && npm run build && npx tsc --noEmit
 > - Box fade setelah 1.5 detik jika tidak ada person di frame
 > - Counter "X orang hari ini" per sel kamera akurat dan tidak double-count
 > - Ganti layout grid → AI session otomatis menyesuaikan (aktif hanya untuk kamera yang tampil)
-> - Halaman `/ai-analytics` menampilkan data hitungan orang per kamera per hari
+> - Halaman `/ai-analytics` menampilkan data hitungan orang per kamera per hari + tren 7 hari (admin only; teknisi → redirect dashboard)
 > - Sprint lengkap tidak menyebabkan error di halaman lain
 
 ---
@@ -1150,11 +1152,11 @@ cd frontend && npm run lint && npm run build && npx tsc --noEmit
 ═══════════════════════════════════════════════════════════════
 FASE 14 — CCTV Intelligence
 ───────────────────────────────────────────────────────────────
-Sprint 37: RTSP Live Status Detection (14A) ......... 2–3 hari  ← mulai sini
-Sprint 38: AI Microservice & Person Counting (14B) .. 4–5 hari
-Sprint 39: Frontend AI Overlay & E2E (14C) ......... 3–4 hari
+Sprint 37: RTSP Live Status Detection (14A)  ✅ .......  2–3 hari
+Sprint 38: AI Microservice & Person Counting (14B) ✅ ...  4–5 hari
+Sprint 39: Frontend AI Overlay & E2E (14C) ✅ ........  3–4 hari
 ───────────────────────────────────────────────────────────────
-Total Estimasi: 9–12 hari kerja
+FASE 14 SELESAI — 3/3 ✅
 ───────────────────────────────────────────────────────────────
 Requirement Server (minimum):
   CPU   : 4 vCPU (2 untuk app, 2 untuk AI)
@@ -1244,14 +1246,14 @@ Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
 Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
 ───────────────────────────────────────────────────────────────
 
-CCTV INTELLIGENCE (Fase 14 — mulai setelah Sprint 31)
-───────────────────────────────────────────────────────────────
-Sprint 37: RTSP Live Status Detection (14A)  🔲 ....  2–3 hari  ← SEGERA
-Sprint 38: AI Microservice & Person Counting (14B) 🔲 4–5 hari
-Sprint 39: Frontend AI Overlay & E2E (14C)  🔲 ....  3–4 hari
-═══════════════════════════════════════════════════════════════
+CCTV INTELLIGENCE (Fase 14 — selesai)
+──────────────────────────────────────────────
+Sprint 37: RTSP Live Status Detection (14A)  ✅ ....  2–3 hari
+Sprint 38: AI Microservice & Person Counting (14B) ✅  4–5 hari
+Sprint 39: Frontend AI Overlay & E2E (14C)  ✅ ......  3–4 hari
+──────────────────────────────────────────────────────────────
 Total Fase 13: 16–22 hari kerja
-Total Fase 14:  9–12 hari kerja
+Total Fase 14:  9–12 hari kerja (✅ selesai — 3/3)
 ═══════════════════════════════════════════════════════════════
 ```
 

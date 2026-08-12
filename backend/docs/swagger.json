@@ -115,6 +115,75 @@
                 }
             }
         },
+        "/ai/counts/{id}/trend": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menampilkan jumlah orang unik terdeteksi per hari untuk satu CCTV selama 1–90 hari terakhir (default 7 hari), diurutkan ascending berdasarkan tanggal sesi.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Detection"
+                ],
+                "summary": "Tren Hitungan AI per Kamera (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah hari (1–90, default 7)",
+                        "name": "days",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tren harian per kamera",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "ID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal mengambil data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/ai/detection-event": {
             "post": {
                 "description": "Menerima hasil deteksi orang dari service sigap_ai, meng-update sesi harian (upsert), mencatat event, dan mem-broadcast AI_DETECTION_UPDATE via WebSocket. Endpoint internal diproteksi X-AI-Secret.",

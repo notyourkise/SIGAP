@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CCTVMapItem } from '@/components/CCTVMap';
+import { apiRequest } from '@/lib/api';
+import { useWebSocket } from '@/context/WebSocketContext';
 
 // Format waktu pengecekan status live menjadi HH:mm (waktu lokal). Mengembalikan
 // string kosong bila input tidak valid agar tidak merusak tampilan.
@@ -31,15 +33,24 @@ const WHEPPlayer = dynamic(() => import('@/components/WHEPPlayer'), {
 export interface StreamGridViewProps {
   cctvs: CCTVMapItem[]; // daftar CCTV (diharapkan sudah difilter hanya yang streaming aktif)
   onCctvClick?: (cctv: CCTVMapItem) => void;
+  // Dukungan AI person counter (Sprint 39): toggle & jumlah orang per kamera.
+  // Opsional — bila tidak diberikan, komponen memakai state lokalnya sendiri.
+  aiEnabled?: boolean;
+  onAiToggle?: () => void;
+  aiCounts?: Record<string, number>;
 }
 
 // Komponen sel individual: memuat WHEPPlayer hanya saat sel berada di dekat viewport (IntersectionObserver).
 function StreamCell({
   cctv,
   onCctvClick,
+  aiEnabled,
+  aiCount,
 }: {
   cctv: CCTVMapItem;
   onCctvClick?: (cctv: CCTVMapItem) => void;
+  aiEnabled?: boolean;
+  aiCount?: number;
 }) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isNear, setIsNear] = useState(false);
@@ -124,7 +135,7 @@ function StreamCell({
         {cctv.stream_enabled ? (
           isNear && !paused ? (
             // Pemutar mini: kualitas sub untuk menghemat bandwidth.
-            <WHEPPlayer streamPath={`cam-${cctv.id}`} quality="sub" />
+            <WHEPPlayer streamPath={`cam-${cctv.id}`} quality="sub" cctvId={cctv.id} aiEnabled={aiEnabled} />
           ) : isNear && paused ? (
             // Placeholder saat stream dijeda (WHEPPlayer tidak dimount sehingga koneksi tertutup).
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black/90 text-white/70">
@@ -147,6 +158,14 @@ function StreamCell({
 
         {/* Badge status di pojok atas video */}
         <div className="absolute left-2 top-2">{statusBadge}</div>
+
+        {/* Badge penghitung orang (AI) di pojok kiri-bawah saat AI aktif */}
+        {aiEnabled && aiCount != null && (
+          <div className="pointer-events-none absolute bottom-1 left-1 z-10 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white backdrop-blur-sm">
+            <span>👥</span>
+            <span>{aiCount} orang hari ini</span>
+          </div>
+        )}
 
         {/* Tombol pause/resume hanya untuk CCTV yang streaming aktif */}
         {cctv.stream_enabled && (
@@ -190,10 +209,97 @@ function StreamCell({
   );
 }
 
-export default function StreamGridView({ cctvs, onCctvClick }: StreamGridViewProps) {
+export default function StreamGridView({ cctvs, onCctvClick, aiEnabled: aiEnabledProp, onAiToggle, aiCounts: aiCountsProp }: StreamGridViewProps) {
   // Opsi ukuran halaman: "Semua" diwakili dengan nilai besar agar semua kamera dirender sekaligus.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
+
+  // --- AI person counter (Sprint 39) ---
+  // Bila parent tidak mengelola status AI (prop aiEnabled/onAiToggle tidak diberikan),
+  // komponen ini mandiri: state lokal + localStorage + sinkronisasi sesi sendiri.
+  const [localAiEnabled, setLocalAiEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sigap_ai_enabled') === 'true';
+  });
+  const [localAiCounts, setLocalAiCounts] = useState<Record<string, number>>({});
+
+  const aiEnabled = aiEnabledProp ?? localAiEnabled;
+  const aiCounts = aiCountsProp ?? localAiCounts;
+
+  const { subscribe } = useWebSocket();
+
+  // Update jumlah orang per kamera secara real-time (event AI_DETECTION_UPDATE).
+  useEffect(() => {
+    const unsub = subscribe('AI_DETECTION_UPDATE', (payload: any) => {
+      if (payload?.cctv_id) {
+        setLocalAiCounts((prev) => ({ ...prev, [payload.cctv_id]: payload.unique_today }));
+      }
+    });
+    return unsub;
+  }, [subscribe]);
+
+  // Sinkronkan sesi AI dengan CCTV yang tampil pada halaman saat ini.
+  const previousAiIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!aiEnabled) return;
+
+    const currentIds = cctvs.map((c) => c.id);
+    const previousIds = previousAiIdsRef.current;
+
+    // Kamera yang keluar dari daftar → hentikan sesi AI-nya.
+    const removed = previousIds.filter((id) => !currentIds.includes(id));
+    removed.forEach((id) => {
+      apiRequest(`/ai/sessions/${id}`, { method: 'DELETE' }).catch((e) =>
+        console.error('Gagal menghentikan sesi AI untuk kamera', id, e)
+      );
+    });
+
+    // Kamera yang baru muncul → mulai sesi AI-nya.
+    const added = currentIds.filter((id) => !previousIds.includes(id));
+    added.forEach((id) => {
+      apiRequest('/ai/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ cctv_id: id }),
+      }).catch((e) => console.error('Gagal memulai sesi AI untuk kamera', id, e));
+    });
+
+    previousAiIdsRef.current = currentIds;
+  }, [cctvs, aiEnabled]);
+
+  // Toggle AI: buat/hentikan sesi untuk semua kamera yang sedang tampil.
+  const handleAiToggle = async () => {
+    // Bila parent menyediakan onAiToggle, serahkan kepadanya (parent mengelola state).
+    if (onAiToggle) {
+      onAiToggle();
+      return;
+    }
+    const next = !localAiEnabled;
+    setLocalAiEnabled(next);
+    try {
+      localStorage.setItem('sigap_ai_enabled', String(next));
+      if (next) {
+        // Sinkronkan ref agar effect sinkronisasi tidak membuat sesi ganda.
+        previousAiIdsRef.current = cctvs.map((c) => c.id);
+        await apiRequest('/ai/sessions', {
+          method: 'POST',
+          body: JSON.stringify({ active_cctv_ids: cctvs.map((c) => c.id) }),
+        });
+      } else {
+        previousAiIdsRef.current = [];
+        await Promise.all(
+          cctvs.map((id) =>
+            apiRequest(`/ai/sessions/${id}`, { method: 'DELETE' }).catch((e) =>
+              console.error('Gagal menghentikan sesi AI untuk kamera', id, e)
+            )
+          )
+        );
+        setLocalAiCounts({});
+      }
+    } catch (e) {
+      // Kegagalan sinkronisasi sesi tidak menghentikan toggle UI.
+      console.error('Gagal mengubah status AI:', e);
+    }
+  };
 
   const total = cctvs.length;
   const effectivePageSize = pageSize >= total ? total : pageSize;
@@ -231,6 +337,22 @@ export default function StreamGridView({ cctvs, onCctvClick }: StreamGridViewPro
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Tombol AI: aktifkan deteksi orang per kamera (Sprint 39).
+              Selalu dirender — komponen mandiri dengan state lokal, atau
+              mengikuti state parent bila prop aiEnabled/onAiToggle diberikan. */}
+          <button
+            type="button"
+            onClick={handleAiToggle}
+            className={
+              aiEnabled
+                ? 'flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-400'
+                : 'flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold transition-colors hover:border-primary'
+            }
+          >
+            <span className={`h-2 w-2 rounded-full ${aiEnabled ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'}`} />
+            {aiEnabled ? 'AI Aktif' : '🤖 AI'}
+          </button>
+
           {/* Dropdown ukuran halaman */}
           <select
             aria-label="Ukuran halaman"
@@ -274,7 +396,13 @@ export default function StreamGridView({ cctvs, onCctvClick }: StreamGridViewPro
       {/* Grid halaman saat ini */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {pagedCctvs.map((cctv) => (
-          <StreamCell key={cctv.id} cctv={cctv} onCctvClick={onCctvClick} />
+          <StreamCell
+            key={cctv.id}
+            cctv={cctv}
+            onCctvClick={onCctvClick}
+            aiEnabled={aiEnabled}
+            aiCount={aiCounts[cctv.id]}
+          />
         ))}
       </div>
     </div>

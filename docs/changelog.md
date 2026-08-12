@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.44] — 2026-08-13 — Fitur: Frontend AI Overlay & Admin AI Analytics (Sprint 39) — Fase 14 3/3 ✅ Selesai
+
+### Perubahan
+
+- **Fase 14 (CCTV Intelligence)** — Sprint 39 (Task 14C Frontend AI Overlay & E2E Integration) selesai. Progress ROADMAP Fase 14 **2/3 → 3/3 ✅ Selesai**, Sprint 39 **✅ Selesai**.
+- **Frontend**: halaman admin `/ai-analytics` (baru, `frontend/src/app/ai-analytics/page.tsx`) — kartu ringkasan (Total Orang Hari Ini, Jumlah Kamera Dipantau, Kamera dengan Hitungan > 0), tabel "Per Kamera — Hari Ini" (nama, kode CCTV, orang unik, terakhir diperbarui), section "Tren 7 Hari" dengan dropdown pilih kamera + grafik garis SVG mandiri (`AITrendChart`, tanpa dependency chart eksternal) dari `GET /api/ai/counts/:id/trend?days=7`; state loading/error/empty ("Belum ada data AI hari ini"); item menu sidebar "AI Analytics" (`BrainCircuit`) di grup "Pelaporan & Analisis" (admin-only); guard proxy `/ai-analytics` di `frontend/src/proxy.ts` (`ADMIN_PATHS` + `config.matcher`); overlay bounding box & counter AI di `/monitor` (Task 14C.1/14C.2, agent paralel).
+- **Backend (`0.62.0`)**: endpoint tren `GET /api/ai/counts/:id/trend` (admin-only) di `handlers/ai.go` (`GetAICountTrend` — validasi UUID → 400, `days` query default 7 clamp 1–90, query `ai_detection_sessions` filter `cctv_id` + `session_date >= now-days` order ascending, respons `{status, data:[{date, unique_count}]}`) + rute di `routes/ai.go` + Swagger (`swag init`); unit test `TestGetAICountTrend` & `TestGetAICountTrend_InvalidID` di `handlers/ai_test.go`.
+- **Dokumen**: `docs/manual-test-ai-analytics.md` (baru — S1–S7 sesuai format manual test lain); `docs/TESTING.md` matriks `handlers/ai_test.go` diperluas (Task 14C.3); ROADMAP Fase 14 progress **2/3 → 3/3 ✅ Selesai** & Sprint 39 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1 -run "TestGetAICountTrend|TestAI"`/`go vet`/`golangci-lint` (0 issues) PASS; `npx tsc --noEmit`/`npm run lint` (0 error)/`npm run build` PASS.
+
+Detail: `backend/changelog.md` [0.62.0].
+
+Timestamp: 2026-08-13 WITA | Kategori: Besar, Fitur (Frontend + Backend + Docs)
+
 ## [1.28.43] — 2026-08-13 — Fitur: AI Microservice & Person Counting (Sprint 38) — Fase 14 2/3
 
 ### Perubahan
