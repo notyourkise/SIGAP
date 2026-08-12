@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
+> Diperbarui: 2026-08-13 (Task 14B, Sprint 38: test `handlers/ai_test.go` — AI detection backend: `ReceiveDetectionEvent` (validasi `X-AI-Secret`, upsert sesi harian `ai_detection_sessions`, insert `ai_detection_events`, broadcast `AI_DETECTION_UPDATE`), `GetAICounts`, `GetAICountByCCTV`). Sebelumnya diperbarui 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
 
 ---
 
@@ -89,8 +89,9 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 | `handlers` | `stream_probe_test.go` (Task 14A, Sprint 37) | `ProbeRTSPHost` (host reachable via listener TCP → true, port tak terpakai → false), `ProbeRTSPChannel` (response RTSP/1.0 200 → true, koneksi gagal → false) — via `startTestRTSPListener` mock; (catatan: `utils/rtsp_probe_test.go` untuk `RunRTSPProber`/`GetLiveStatus` dijadwalkan pada Task 14A) |
+| `handlers` | `ai_test.go` (Task 14B, Sprint 38) | `ReceiveDetectionEvent` — validasi `X-AI-Secret` (tanpa/salah → 401), `cctv_id` bukan UUID → 400, upsert sesi `ai_detection_sessions` (baru → Create, sudah ada → Save/Update), insert `ai_detection_events` saat `person_count>0`, sukses → 200 `{"status":"success"}` + broadcast `AI_DETECTION_UPDATE`; `GetAICounts` — tanpa session → 200 `data:[]`, dengan data → 200 + `nama`/`kode_cctv`/`unique_today`; `GetAICountByCCTV` — `:id` valid → 200 `unique_today`, `:id` invalid → 400 |
 
-**Total: 63 file test** (14 utils, 6 middleware, 33 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+**Total: 65 file test** (14 utils, 7 middleware, 34 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
 ### Matriks Streaming (Fase 9)
 
@@ -233,6 +234,20 @@ Catatan gotchas test `stream_probe_test.go`:
 - `ProbeRTSPHost`/`ProbeRTSPChannel` melakukan koneksi TCP nyata; di unit test gunakan listener TCP tiruan (`startTestRTSPListener`) di `127.0.0.1:0` agar deterministik dan tidak bergantung pada NVR eksternal.
 - `ProbeRTSPChannel` memakai `bufio.Scanner` untuk membaca baris pertama respons; pastikan server tiruan menulis `RTSP/1.0 200 OK` lalu menutup koneksi.
 - **Perkiraan Task 14A**: `utils/rtsp_probe_test.go` (untuk `RunRTSPProber`/`runRTSPProbeCycle` dan `GetLiveStatus` — update `stream_live`/`stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED`, enforcement role) direncanakan dibuat agent backend. Jika telah dibuat, tambahkan baris matriksnya dan naikkan total file test (+1 → 64).
+
+### Matriks AI Detection & Person Counting (Fase 14, Task 14B / Sprint 38)
+
+Ringkasan cakupan test integrasi AI detection backend:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/ai_test.go` | 14B.3 | `ReceiveDetectionEvent`: validasi `X-AI-Secret` (benar → 200, salah/kosong → 401), `cctv_id` invalid → 400, upsert `ai_detection_sessions` (baris baru via `Create`, existing via `Save`/`UPDATE`), insert `ai_detection_events` hanya saat `person_count > 0`, broadcast `AI_DETECTION_UPDATE`; `GetAICounts` (empty → data `[]`, ada data → join CCTV → `nama`/`kode_cctv`/`unique_today`); `GetAICountByCCTV` (sukses, UUID invalid → 400) |
+
+Catatan gotchas test `ai_test.go`:
+- **GORM `Save()` selalu UPDATE bila ID non-zero** — karena handler mengisi ID sesi baru dengan `uuid.New()`, sesi baru harus dibuat dengan `Create()` (INSERT), bukan `Save()`. Handler memakai `session.CreatedAt.IsZero()` untuk membedakan baris baru vs existing.
+- **Upsert existing memakai `UPDATE "ai_detection_sessions" SET ...`** (tanpa RETURNING untuk model tanpa kolom default yang perlu dibaca) — ekspektasi sqlmock memakai `ExpectExec` dengan regex `^UPDATE "ai_detection_sessions" SET`.
+- **Query CCTV join memakai `SELECT id,nama,kode_cctv FROM "cctvs" WHERE id = $1 AND deleted_at IS NULL ORDER BY ... LIMIT 1`** — regex ekspektasi harus memuat `WHERE` (GORM menambahkan soft-delete clause).
+- **Tidak me-embed `Base`** pada model AI → tanpa hook `BeforeCreate`, tanpa soft delete, tanpa kolom `deleted_at`.
 
 ---
 

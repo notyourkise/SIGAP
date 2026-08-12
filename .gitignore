@@ -1,6 +1,12 @@
 # AI Agent working artifacts (jangan pernah di-commit)
 /.opencode/
 
+# Python (AI service Task 14B)
+__pycache__/
+*.pyc
+.venv/
+ai/.venv/
+
 # Node & Dependencies
 node_modules/
 npm-debug.log

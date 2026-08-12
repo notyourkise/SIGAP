@@ -35,7 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
-| **14** | **CCTV Intelligence — Live Status & AI Detection** | **1/3** | **🚧 Berjalan** |
+| **14** | **CCTV Intelligence — Live Status & AI Detection** | **2/3** | **🚧 Berjalan** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -887,7 +887,7 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 > - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati.
 > - **14B**: AI object detection berbasis YOLOv8 — mendeteksi dan menghitung **orang unik** yang terdeteksi oleh kamera yang sedang ditampilkan di `/monitor`.
 >
-> **Status: 🚧 Berjalan** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai. Sprint 37 (14A) ✅ Selesai → progress **1/3**.
+> **Status: 🚧 Berjalan** — 3 sprint (Sprint 37–39). Prasyarat: Sprint 31 selesai. Sprint 37 (14A) ✅ Selesai → progress **2/3** (Sprint 38 / 14B ✅ Selesai).
 
 ### Latar Belakang & Root Cause
 
@@ -1066,12 +1066,22 @@ cd frontend && npm run lint && npm run build
 > **Branch:** `feature/ai-detection-service`
 > **Prasyarat:** Sprint 37 selesai (stream_live tersedia)
 > **Estimasi:** 4–5 hari kerja
+> **Status: ✅ Selesai** (2026-08-13)
 
-| Jobdesk | Sub-Agent | Task | Deliverable |
-|---------|-----------|------|-------------|
-| **AI Service** | Agent-AI | **14B.1** Setup AI Microservice | Buat folder `ai/` di root repo. `Dockerfile` (python:3.11-slim). `requirements.txt`: `fastapi==0.111`, `uvicorn`, `ultralytics==8.2`, `opencv-python-headless`, `numpy`, `httpx`. `main.py`: FastAPI app dengan router `session` dan `health`. `core/detector.py`: load YOLOv8n, fungsi `detect_persons(frame: np.ndarray) → List[Detection]` — filter class=0, confidence≥0.5. `core/tracker.py`: ByteTrack wrapper (gunakan `supervision` library dari Roboflow). `core/session_manager.py`: class `SessionManager` — `activate(cctv_id, rtsp_url)`, `deactivate(cctv_id)`, `get_active()`. RTSP pull via OpenCV `cv2.VideoCapture`. Update `docker-compose.yml`: tambah service `sigap_ai` (network `sigap_network`, port 8010 internal, depends_on: `mediamtx`). |
-| **AI Service** | Agent-AI | **14B.2** Person Counting + API Endpoints | `core/person_counter.py`: class `PersonCounter` — method `process(tracking_ids: Set[int], cctv_id: str, db_session_date: date)` → update `seen_ids` set, hitung `new_unique = seen_ids - previously_seen`. Endpoint `POST /sessions`: `{ "cctv_id": "uuid", "rtsp_url": "rtsp://..." }` → aktifkan stream + tracking. Endpoint `DELETE /sessions/{cctv_id}` → nonaktifkan. Endpoint `GET /sessions` → list aktif + count per kamera. Endpoint `GET /counts/{cctv_id}` → `{ "unique_today": 42, "current_in_frame": 2 }`. Kirim deteksi ke backend Go via `POST /api/ai/detection-event` tiap ada deteksi baru. Reset `seen_ids` otomatis tiap 00:00 WITA. |
-| **Backend** | Agent-BE | **14B.3** Backend AI Integration + DB | Migration `000019_ai_detection_sessions` + `000020_ai_detection_events`. Handler `handlers/ai.go` (file baru): `POST /api/ai/detection-event` (internal only — auth via shared secret header `X-AI-Secret`). Terima payload `{ cctv_id, person_count, unique_count, tracking_ids, confidence_avg }`. Update `ai_detection_sessions` (upsert per `cctv_id + session_date`). Insert ke `ai_detection_events`. Broadcast WebSocket `AI_DETECTION_UPDATE { cctv_id, bboxes: [...], unique_today, current_in_frame }`. Endpoint `GET /api/ai/counts` (admin) → ringkasan semua kamera hari ini. Endpoint `GET /api/ai/counts/:cctv_id` → detail per kamera. Route di `routes/ai.go` (file baru). Register goroutine `RunAIDailyReset(db)` di `main.go`: tiap 00:00 WITA, trigger `POST /sessions/reset-all` ke AI service. |
+| Jobdesk | Sub-Agent | Task | Deliverable | Status |
+|---------|-----------|------|-------------|--------|
+| **AI Service** | Agent-AI | **14B.1** Setup AI Microservice | Buat folder `ai/` di root repo. `Dockerfile` (python:3.11-slim). `requirements.txt`: `fastapi==0.111`, `uvicorn`, `ultralytics==8.2`, `opencv-python-headless`, `numpy`, `httpx`. `main.py`: FastAPI app dengan router `session` dan `health`. `core/detector.py`: load YOLOv8n, fungsi `detect_persons(frame: np.ndarray) → List[Detection]` — filter class=0, confidence≥0.5. `core/tracker.py`: ByteTrack wrapper (gunakan `supervision` library dari Roboflow). `core/session_manager.py`: class `SessionManager` — `activate(cctv_id, rtsp_url)`, `deactivate(cctv_id)`, `get_active()`. RTSP pull via OpenCV `cv2.VideoCapture`. Update `docker-compose.yml`: tambah service `sigap_ai` (network `sigap_network`, port 8010 internal, depends_on: `mediamtx`). | ✅ Selesai |
+| **AI Service** | Agent-AI | **14B.2** Person Counting + API Endpoints | `core/person_counter.py`: class `PersonCounter` — method `process(tracking_ids: Set[int], cctv_id: str, db_session_date: date)` → update `seen_ids` set, hitung `new_unique = seen_ids - previously_seen`. Endpoint `POST /sessions`: `{ "cctv_id": "uuid", "rtsp_url": "rtsp://..." }` → aktifkan stream + tracking. Endpoint `DELETE /sessions/{cctv_id}` → nonaktifkan. Endpoint `GET /sessions` → list aktif + count per kamera. Endpoint `GET /counts/{cctv_id}` → `{ "unique_today": 42, "current_in_frame": 2 }`. Kirim deteksi ke backend Go via `POST /api/ai/detection-event` tiap ada deteksi baru. Reset `seen_ids` otomatis tiap 00:00 WITA. | ✅ Selesai |
+| **Backend** | Agent-BE | **14B.3** Backend AI Integration + DB | Migration `000019_ai_detection_sessions` + `000020_ai_detection_events`. Handler `handlers/ai.go` (file baru): `POST /api/ai/detection-event` (internal only — auth via shared secret header `X-AI-Secret`). Terima payload `{ cctv_id, person_count, unique_count, tracking_ids, confidence_avg }`. Update `ai_detection_sessions` (upsert per `cctv_id + session_date`). Insert ke `ai_detection_events`. Broadcast WebSocket `AI_DETECTION_UPDATE { cctv_id, bboxes: [...], unique_today, current_in_frame }`. Endpoint `GET /api/ai/counts` (admin) → ringkasan semua kamera hari ini. Endpoint `GET /api/ai/counts/:cctv_id` → detail per kamera. Route di `routes/ai.go` (file baru). Register goroutine `RunAIDailyReset(db)` di `main.go`: tiap 00:00 WITA, trigger `POST /sessions/reset-all` ke AI service. | ✅ Selesai |
+
+**✅ Selesai — Ringkasan Sprint 38:** AI microservice & person counting (Task 14B) selesai — **Fase 14 kini 2/3 🚧 Berjalan**.
+- **AI Service (`ai/`, baru)**: `Dockerfile` (python:3.11-slim + lib OpenCV, pre-download `yolov8n.pt`), `requirements.txt` (fastapi 0.111.0, uvicorn 0.29.0, ultralytics 8.2.0, opencv-python-headless, numpy, httpx, supervision 0.20.0), `core/` — `detector.py` (YOLOv8n class 0, conf ≥ 0.50), `tracker.py` (ByteTrack via supervision), `person_counter.py` (unique person/hari, thread-safe, auto-reset 00:00 WITA), `session_manager.py` (`CameraSession` async — pull RTSP `rtsp://mediamtx:8554/cam-{cctv_id}`, ~1 fps, bbox ternormalisasi 0–1, POST ke backend + `X-AI-Secret`); `routers/session.py` & `health.py`; `main.py` (FastAPI + daily reset); `README.md`.
+- **Docker Compose**: service `sigap_ai` (network `sigap_network`, depends_on `mediamtx`+`api`, env `BACKEND_URL`/`MEDIAMTX_RTSP_URL`/`AI_SECRET`, limits 2 CPU/2048M, port 8010 internal TIDAK dipublish).
+- **Backend (`0.61.0`)**: migrasi `000020_ai_detection_sessions` & `000021_ai_detection_events`; model `AIDetectionSession`/`AIDetectionEvent`; `handlers/ai.go` — `ReceiveDetectionEvent` (internal X-AI-Secret, upsert sesi + event, broadcast `AI_DETECTION_UPDATE`), `GetAICounts`/`GetAICountByCCTV` (admin), proxy session (`POST/DELETE/GET /api/ai/sessions` ke `http://sigap_ai:8010`); `routes/ai.go`; registrasi `main.go`; env `AI_SECRET` & `AI_SERVICE_URL`; `swag init`.
+- **Test**: `handlers/ai_test.go` (baru — 7 kasus: validasi secret, UUID, upsert sesi baru/existing, counts).
+- **Dokumen**: `docs/manual-test-ai.md` (baru — S1–S9); `docs/TESTING.md` matriks AI.
+
+Detail: `backend/changelog.md` [0.61.0] · `docs/changelog.md` [1.28.43].
 
 #### Verifikasi Sprint 38
 

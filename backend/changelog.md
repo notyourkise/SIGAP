@@ -1,5 +1,54 @@
 # Changelog - Backend SIGAP
 
+## [0.61.0] - 2026-08-13
+
+### Fitur: AI Microservice & Person Counting (Sprint 38 - Task 14B.1, 14B.2 & 14B.3)
+
+perubahan yang dilakukan: **Menambahkan service AI deteksi orang (YOLOv8n + ByteTrack) di folder `ai/` (FastAPI) dan integrasi backend Go: migrasi tabel `ai_detection_sessions` & `ai_detection_events`, endpoint internal `POST /api/ai/detection-event` (diproteksi `X-AI-Secret`), proxy session AI (`POST/DELETE/GET /api/ai/sessions`), serta ringkasan hitungan orang unik per hari (`GET /api/ai/counts`, `GET /api/ai/counts/:id`).**
+
+before:
+- Belum ada deteksi orang real-time; tidak ada cara menghitung orang unik per kamera per hari.
+- Tidak ada endpoint untuk mengaktifkan/menghentikan session AI maupun menerima hasil deteksi dari service eksternal.
+
+after:
+- **Service `ai/`** (baru, root repo): `ai/Dockerfile` (python:3.11-slim + lib OpenCV, pre-download `yolov8n.pt`), `ai/requirements.txt` (fastapi, uvicorn, ultralytics 8.2.0, opencv-python-headless, numpy, httpx, supervision 0.20.0, python-dotenv), `ai/core/` (`detector.py` — YOLOv8n hanya class 0, conf ≥ 0.50; `tracker.py` — ByteTrack via supervision; `person_counter.py` — unique person per hari, thread-safe, auto-reset; `session_manager.py` — `CameraSession` async: pull RTSP `rtsp://mediamtx:8554/cam-{cctv_id}`, throttle ~1 fps, bbox ternormalisasi 0–1, POST hasil ke backend dengan `X-AI-Secret`), `ai/routers/` (`session.py`, `health.py`), `ai/main.py` (FastAPI + daily reset 00:00 WITA), `ai/README.md`.
+- **`docker-compose.yml`**: service `sigap_ai` (build `./ai`, network `sigap_network`, depends_on `mediamtx`+`api`, env `BACKEND_URL`/`MEDIAMTX_RTSP_URL`/`AI_SECRET`, resource limits 2 CPU/2048M, port 8010 internal TIDAK dipublish).
+- **`migrations/000020_ai_detection_sessions.up/down.sql`** (baru): tabel `ai_detection_sessions` (cctv_id FK, session_date, unique_person_count, last_tracking_ids jsonb, UNIQUE (cctv_id, session_date)).
+- **`migrations/000021_ai_detection_events.up/down.sql`** (baru): tabel `ai_detection_events` (cctv_id FK, event_type, person_count, unique_count, confidence_avg, detected_at + index).
+- **`models/ai_detection.go`** (baru): `AIDetectionSession` & `AIDetectionEvent` (tidak me-embed Base — tanpa soft delete; ID diisi `uuid.New()` di handler).
+- **`handlers/ai.go`** (baru): `ReceiveDetectionEvent` (validasi `X-AI-Secret` → 401 bila salah; parse & validasi UUID; upsert sesi harian — baris baru via `Create()` karena GORM `Save()` selalu UPDATE untuk ID non-zero; insert event hanya bila `person_count > 0`; broadcast `AI_DETECTION_UPDATE` via WebSocket), `GetAICounts` (admin, join CCTV), `GetAICountByCCTV` (admin), `ProxyActivateAISession` (`POST /api/ai/sessions` body `{active_cctv_ids:[...]}` → forward per-id ke `http://sigap_ai:8010/sessions`), `ProxyDeactivateAISession`, `ProxyListAISessions`. Swagger annotations + `swag init`.
+- **`routes/ai.go`** (baru): `SetupAIRoutes` — `/ai/detection-event` (internal, X-AI-Secret), `/ai/counts` & `/ai/counts/:id` (admin), `/ai/sessions` POST (protected semua role) / DELETE (protected) / GET (admin).
+- **`main.go`**: registrasi `routes.SetupAIRoutes(api)` + log "🤖 Rute AI detection diaktifkan".
+- **`.env.example` (root)** & **`backend/.env.docker.example`**: tambah `AI_SECRET` (shared secret, fallback `sigap-ai-secret-change-me`) & `AI_SERVICE_URL` (default `http://sigap_ai:8010`).
+- **Test**: `handlers/ai_test.go` (baru) — `ReceiveDetectionEvent` (secret benar/salah 401, UUID invalid 400, sesi baru & existing, insert event), `GetAICounts` (empty & with data), `GetAICountByCCTV` (sukses & invalid).
+
+timestamp: 2026-08-13 15:45 WITA
+kategori: Besar, Backend + AI Service + Infra
+file yang diubah:
+- ai/Dockerfile (baru)
+- ai/requirements.txt (baru)
+- ai/main.py (baru)
+- ai/core/detector.py (baru)
+- ai/core/tracker.py (baru)
+- ai/core/person_counter.py (baru)
+- ai/core/session_manager.py (baru)
+- ai/routers/session.py (baru)
+- ai/routers/health.py (baru)
+- ai/README.md (baru)
+- docker-compose.yml
+- backend/migrations/000020_ai_detection_sessions.up.sql (baru)
+- backend/migrations/000020_ai_detection_sessions.down.sql (baru)
+- backend/migrations/000021_ai_detection_events.up.sql (baru)
+- backend/migrations/000021_ai_detection_events.down.sql (baru)
+- backend/models/ai_detection.go (baru)
+- backend/handlers/ai.go (baru)
+- backend/handlers/ai_test.go (baru)
+- backend/routes/ai.go (baru)
+- backend/main.go
+- backend/.env.docker.example
+- .env.example
+- backend/docs/* (swag init)
+
 ## [0.60.0] - 2026-08-13
 
 ### Fitur: RTSP Live Status Detection (Sprint 37 - Task 14A.1 & 14A.3)
