@@ -1,0 +1,10 @@
+fastapi==0.111.0
+uvicorn==0.29.0
+ultralytics==8.2.0
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+httpx==0.27.0
+supervision==0.20.0
+python-dotenv==1.0.1
+# NOTE: torch & torchvision dipasang terpisah di Dockerfile dengan index CPU-only
+# (inference YOLOv8n berjalan di CPU; menghindari download CUDA toolkit multi-GB).

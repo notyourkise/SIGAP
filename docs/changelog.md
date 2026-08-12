@@ -3,6 +3,21 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.43] — 2026-08-13 — Fitur: AI Microservice & Person Counting (Sprint 38) — Fase 14 2/3
+
+### Perubahan
+
+- **Fase 14 (CCTV Intelligence)** — Sprint 38 (Task 14B AI Microservice & Person Counting) selesai. Progress ROADMAP Fase 14 **1/3 → 2/3 🚧 Berjalan**, Sprint 38 **✅ Selesai**.
+- **AI Service (`ai/`, baru)**: service Python FastAPI `sigap_ai` — deteksi orang YOLOv8n (class 0, conf ≥ 0.50, ~1 fps/kamera) + tracking ByteTrack (supervision), pull RTSP internal `rtsp://mediamtx:8554/cam-{cctv_id}` (sourceOnDemand — AI menjadi viewer pertama yang mengaktifkan stream), unique person counter per hari (auto-reset 00:00 WITA), POST hasil ke backend `POST /api/ai/detection-event` (header `X-AI-Secret`). Dockerfile + requirements + routers `/sessions` `/health` `/counts` `/reset-all`.
+- **Docker Compose**: service `sigap_ai` (network `sigap_network`, depends_on `mediamtx`+`api`, env `BACKEND_URL`/`MEDIAMTX_RTSP_URL`/`AI_SECRET`, limits 2 CPU/2048M, port 8010 internal tidak dipublish).
+- **Backend** (`0.61.0`): migrasi `000020_ai_detection_sessions` & `000021_ai_detection_events`; model `AIDetectionSession`/`AIDetectionEvent` (`models/ai_detection.go`); handler `handlers/ai.go` — `ReceiveDetectionEvent` (internal X-AI-Secret, upsert sesi + event, broadcast `AI_DETECTION_UPDATE`), `GetAICounts`/`GetAICountByCCTV` (admin), `ProxyActivateAISession`/`ProxyDeactivateAISession`/`ProxyListAISessions` (proxy ke `sigap_ai:8010`); routes `routes/ai.go`; registrasi `main.go`; env `AI_SECRET` & `AI_SERVICE_URL`; `swag init`.
+- **Dokumen**: `docs/manual-test-ai.md` (baru — S1–S9 sesuai format manual test lain); `docs/TESTING.md` matriks `handlers/ai_test.go` (validasi secret, upsert sesi, counts); ROADMAP Fase 14 progress **1/3 → 2/3 🚧 Berjalan** & Sprint 38 ✅ Selesai.
+- Verifikasi: `go build`/`go test ./... -count=1`/`go vet` PASS; `docker compose config --quiet` VALID (service `sigap_ai` terdaftar); `docker build -t sigap_ai ./ai` (validasi).
+
+Detail: `backend/changelog.md` [0.61.0].
+
+Timestamp: 2026-08-13 WITA | Kategori: Besar, Fitur (AI Service + Backend + Infra + Docs)
+
 ## [1.28.42] — 2026-08-12 — Fitur: RTSP Live Status Detection (Sprint 37) — Fase 14 dimulai
 
 ### Perubahan
