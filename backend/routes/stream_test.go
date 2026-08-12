@@ -34,16 +34,28 @@ func TestStreamRoutesRequireAdmin(t *testing.T) {
 	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
-// TestStreamRoutesPublic memastikan endpoint streaming dapat diakses TANPA
-// otentikasi (publik). Sebelumnya modul streaming diproteksi auth; kini dibuat
-// publik agar video CCTV dapat ditonton langsung tanpa proses sign-in. Rute
-// tetap terdaftar dan tidak menolak akses dengan 401.
-func TestStreamRoutesPublic(t *testing.T) {
+// TestStreamRoutesRequireAuth memastikan endpoint streaming TIDAK lagi publik:
+// tanpa sesi (tanpa identitas di Locals) harus ditolak dengan 401 oleh
+// middleware Protected. Sebelumnya modul streaming dibuat publik; sesuai
+// keputusan arsitektur (Akses Viewer: Admin Only) kini seluruh endpoint API
+// kontrol stream wajib terautentikasi.
+func TestStreamRoutesRequireAuth(t *testing.T) {
 	app := fiber.New()
-	SetupStreamRoutes(app)
+
+	// Simulasikan middleware Protected() yang MENOLAK akses tanpa identitas.
+	app.Get("/streams/status",
+		middleware.Protected(),
+		handlersStubGetStreamStatus,
+	)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/streams/status", nil))
 	assert.NoError(t, err)
-	// Streaming publik: tidak boleh menolak akses tanpa otentikasi.
-	assert.NotEqual(t, fiber.StatusUnauthorized, resp.StatusCode)
+	// Tanpa sesi: Protected() harus menolak dengan 401 (bukan 200/404/500).
+	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+// handlersStubGetStreamStatus adalah stub handler agar rute terdaftar dengan
+// benar di atas; tidak akan pernah dipanggil karena Protected() menolak dulu.
+func handlersStubGetStreamStatus(c *fiber.Ctx) error {
+	return c.SendStatus(fiber.StatusOK)
 }

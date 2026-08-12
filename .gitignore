@@ -6,6 +6,9 @@ __pycache__/
 *.pyc
 .venv/
 ai/.venv/
+# Log build Docker lokal (artefak debug, jangan di-commit)
+build_log.txt
+ai/build_log.txt
 
 # Node & Dependencies
 node_modules/

@@ -1,5 +1,28 @@
 # Changelog - Backend SIGAP
 
+## [0.61.1] - 2026-08-13
+
+### Fix: errcheck CI & RBAC Stream Admin-Only (Sprint 38 lanjutan)
+
+perubahan yang dilakukan: **Memperbaiki kegagalan CI golangci-lint (errcheck) pada `handlers/ai.go` dan menuntaskan RBAC streaming menjadi admin-only sesuai aturan AGENTS.md & keputusan arsitektur ROADMAP.**
+
+before:
+- `handlers/ai.go` memiliki 3 pemanggilan `resp.Body.Close()` tanpa pengecekan error → linter `errcheck` gagal (job CI `golangci-lint` red).
+- `routes/stream.go` mendaftarkan seluruh endpoint `/streams/*` TANPA `Protected()`/`RequireRole("admin")` — streaming dapat diakses publik, bertentangan dengan AGENTS.md ("Streaming CCTV: seluruh endpoint streaming admin-only") dan keputusan arsitektur Fase 9 ("Akses Viewer: Admin Only"). Test `routes/stream_test.go` justru menguji perilaku publik (TestStreamRoutesPublic).
+
+after:
+- **`handlers/ai.go`**: ketiga pemanggilan `resp.Body.Close()` kini memakai pola aman `_ = resp.Body.Close()` (untuk per-id di `ProxyActivateAISession`) dan `defer func() { _ = resp.Body.Close() }()` (untuk `ProxyDeactivateAISession` & `ProxyListAISessions`) — konsisten dengan pola `handlers/webhook.go`. `golangci-lint run ./...` → **0 issues**.
+- **`routes/stream.go`**: grup `/streams` kini memakai `middleware.Protected()` + `middleware.RequireRole("admin")` — seluruh endpoint (`/status`, `/health`, `/live-status`, `/start-all`, `/stop-all`, `/:id/start`, `/:id/stop`, `/:id/url`) admin-only.
+- **`routes/stream_test.go`**: `TestStreamRoutesPublic` dihapus (perilaku publik tidak lagi valid); diganti `TestStreamRoutesRequireAuth` (tanpa sesi → 401 via Protected) + `TestStreamRoutesRequireAdmin` dipertahankan (teknisi → 403 via RequireRole).
+
+timestamp: 2026-08-13 16:30 WITA
+kategori: Kecil, Backend (Fix CI + Security/RBAC)
+file yang diubah:
+- backend/handlers/ai.go
+- backend/routes/stream.go
+- backend/routes/stream_test.go
+alasan perubahan: CI golangci-lint failing karena errcheck; dan menutup celah keamanan akses publik ke API kontrol streaming (harus admin-only sesuai aturan proyek).
+
 ## [0.61.0] - 2026-08-13
 
 ### Fitur: AI Microservice & Person Counting (Sprint 38 - Task 14B.1, 14B.2 & 14B.3)

@@ -293,7 +293,7 @@ func ProxyActivateAISession(c *fiber.Ctx) error {
 			continue
 		}
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			activated = append(activated, id)
 		} else {
@@ -346,7 +346,7 @@ func ProxyDeactivateAISession(c *fiber.Ctx) error {
 			"message": "Gagal menghubungi service AI",
 		})
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 300 {
@@ -383,7 +383,7 @@ func ProxyListAISessions(c *fiber.Ctx) error {
 			"message": "Gagal menghubungi service AI",
 		})
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
