@@ -1,5 +1,42 @@
 # Changelog - Backend SIGAP
 
+## [0.60.0] - 2026-08-13
+
+### Fitur: RTSP Live Status Detection (Sprint 37 - Task 14A.1 & 14A.3)
+
+perubahan yang dilakukan: **Menambahkan RTSP Probe Engine yang secara berkala (tiap 2 menit) memeriksa ketersediaan host NVR & channel kamera lalu menyimpan hasilnya pada kolom `stream_live` & `stream_checked_at` di `cctvs`. Endpoint admin `GET /streams/live-status` menampilkan ringkasan online/offline/unchecked. Memperbaiki guardian bug pada StreamHealthMonitor sehingga kamera yang tidak pernah ditonton kini tetap dapat terdeteksi down.**
+
+before:
+- Kolom `stream_live`/`stream_checked_at` belum ada; tidak ada mekanisme deteksi live kamera berbasis probe RTSP TCP.
+- `evaluateStreamState` di StreamHealthMonitor hanya menghitung durasi down bila stream pernah terlihat up (`streamLastReady`); kamera yang tidak pernah ditonton tidak pernah dianggap down (guardian bug baris 694-696).
+
+after:
+- **`migrations/000019_stream_live_status.up.sql`** (baru): menambah kolom `stream_live boolean NOT NULL DEFAULT FALSE` & `stream_checked_at timestamptz` pada tabel `cctvs`. `.down.sql` menghapusnya.
+- **`models/cctv.go`**: menambah `StreamLive bool` (json `stream_live`) & `StreamCheckedAt *time.Time` (json `stream_checked_at,omitempty`).
+- **`utils/rtsp.go`**: menambah `GetRTSPHost()` (baca env `RTSP_NVR_HOST`, fallback `36.91.27.35`).
+- **`utils/rtsp_probe.go`** (baru): `ProbeRTSPHost(host, port)` (TCP dial timeout 3 detik) dan `ProbeRTSPChannel(host, port, channelID)` (kirim `OPTIONS` RTSP, cek response berisi `200`, deadline 5 detik).
+- **`handlers/stream_probe.go`** (baru): `RunRTSPProber(db)` goroutine interval 2 menit → `runRTSPProbeCycle(db)` memprobe tiap CCTV `stream_enabled`, meng-update `stream_live`/`stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED`, dan log online/offline. `GetLiveStatus` endpoint admin mengembalikan `{status, summary:{online,offline,unchecked}, data}`.
+- **`routes/stream.go`**: menambah rute statis `GET /streams/live-status` (didaftarkan sebelum rute dinamis `/:id/...`).
+- **`main.go`**: memanggil `go handlers.RunRTSPProber(config.DB)` + log "📡 RTSP Probe Engine aktif (interval: 2 menit)" setelah `RunStreamReRegistrar`.
+- **`handlers/stream.go`** (fix 14A.3): menghapus guardian `if _, wasUp := streamLastReady[path]; !wasUp { return }`; `evaluateStreamState` kini memakai `cctv.StreamLive` dari DB sebagai sumber kebenaran saat path tidak siap (down countdown tanpa menunggu viewer pernah ada), logika webhook/email/health_score dipertahankan utuh, dan `live==true` mereset state down (mirip blok `isReady`).
+- **Test**: `streamCCTVRow` di `handlers/stream_test.go` menjadi variadic untuk mendukung `stream_live`/`stream_checked_at`. `handlers/stream_health_test.go` `TestRunStreamHealthOnce_DownAndRestored` diperbarui (DOWN pakai `stream_live=false`, RESTORE pakai `stream_live=true`). `handlers/stream_probe_test.go` (baru) menguji `ProbeRTSPHost` & `ProbeRTSPChannel` sukses/gagal via mock TCP listener.
+
+timestamp: 2026-08-13 12:00 WITA
+kategori: Besar, Backend
+file yang diubah:
+- backend/models/cctv.go
+- backend/utils/rtsp.go
+- backend/utils/rtsp_probe.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/handlers/stream_health_test.go
+- backend/routes/stream.go
+- backend/migrations/000019_stream_live_status.up.sql
+- backend/migrations/000019_stream_live_status.down.sql
+- backend/main.go
+
 ## [0.59.0] - 2026-08-13
 
 ### Fitur: Multi-Site (Sprint 30 - Task 12.2)

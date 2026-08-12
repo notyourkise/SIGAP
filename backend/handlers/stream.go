@@ -689,52 +689,67 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 		return
 	}
 
-	// Path tidak siap. Abaikan bila stream belum pernah terlihat up (tidak ada
-	// durasi down untuk dihitung).
-	if _, wasUp := streamLastReady[path]; !wasUp {
-		return
-	}
-
-	if _, alreadyDown := streamDownSince[path]; !alreadyDown {
-		// Mulai menghitung durasi down.
-		streamDownSince[path] = now
-		return
-	}
-
-	// Sudah dalam status down — cek apakah melewati ambang 15 menit.
-	if now.Sub(streamDownSince[path]) > streamDownThreshold {
-		if streamDownNotified[path] {
-			return
+	// Path tidak siap (isReady=false).
+	// Gunakan hasil probe RTSP (stream_live) sebagai sumber kebenaran bila
+	// tersedia. Nilai ini dimuat dari DB saat runStreamHealthOnce sehingga
+	// mencerminkan hasil probe terakhir dari RTSP Probe Engine (Task 14A.1).
+	live := cctv.StreamLive
+	if !live {
+		// Kamera dianggap down oleh probe — mulai countdown tanpa perlu menunggu
+		// pernah ada viewer (memperbaiki bug kamera yang tidak pernah ditonton).
+		if _, alreadyDown := streamDownSince[path]; !alreadyDown {
+			streamDownSince[path] = now
 		}
-		streamDownNotified[path] = true
-		utils.Log.Warnf("🔴 Stream CCTV %s (%s) down lebih dari 15 menit — path %s", cctv.Nama, cctv.KodeCCTV, path)
-		broadcastStreamEvent("STREAM_DOWN", fiber.Map{
+
+		// Sudah dalam status down — cek apakah melewati ambang 15 menit.
+		if now.Sub(streamDownSince[path]) > streamDownThreshold {
+			if streamDownNotified[path] {
+				return
+			}
+			streamDownNotified[path] = true
+			utils.Log.Warnf("🔴 Stream CCTV %s (%s) down lebih dari 15 menit — path %s", cctv.Nama, cctv.KodeCCTV, path)
+			broadcastStreamEvent("STREAM_DOWN", fiber.Map{
+				"cctv_id": cctv.ID.String(),
+				"path":    path,
+			})
+
+			// Task 12.3: dispatch event webhook stream.down.
+			DispatchWebhook(db, models.EventWebhookStreamDown, fiber.Map{
+				"cctv_id":    cctv.ID.String(),
+				"kode_cctv":  cctv.KodeCCTV,
+				"nama":       cctv.Nama,
+				"path":       path,
+				"down_since": streamDownSince[path].Format(time.RFC3339),
+				"timestamp":  now.Format(time.RFC3339),
+			})
+
+			// Task 11.3: kirim email peringatan CCTV offline ke seluruh admin yang
+			// opt-in. Async agar tidak memperlambat monitor.
+			go SendCCTVStreamDownEmail(db, &cctv)
+
+			// Kurangi skor kesehatan 10 poin (clamp min 0).
+			newScore := cctv.HealthScore - 10
+			if newScore < 0 {
+				newScore = 0
+			}
+			if err := db.Model(&models.CCTV{}).Where("id = ?", cctv.ID).Update("health_score", newScore).Error; err != nil {
+				utils.Log.Errorf("❌ Gagal memperbarui health_score CCTV %s: %v", cctv.ID.String(), err)
+			}
+		}
+		return
+	}
+
+	// live=true: stream dianggap ready — reset state down (mirip blok isReady di atas).
+	_, wasDown := streamDownSince[path]
+	streamLastReady[path] = now
+	delete(streamDownSince, path)
+	if wasDown {
+		delete(streamDownNotified, path)
+		utils.Log.Infof("🟢 Stream CCTV %s (%s) pulih — path %s", cctv.Nama, cctv.KodeCCTV, path)
+		broadcastStreamEvent("STREAM_RESTORED", fiber.Map{
 			"cctv_id": cctv.ID.String(),
 			"path":    path,
 		})
-
-		// Task 12.3: dispatch event webhook stream.down.
-		DispatchWebhook(db, models.EventWebhookStreamDown, fiber.Map{
-			"cctv_id":    cctv.ID.String(),
-			"kode_cctv":  cctv.KodeCCTV,
-			"nama":       cctv.Nama,
-			"path":       path,
-			"down_since": streamDownSince[path].Format(time.RFC3339),
-			"timestamp":  now.Format(time.RFC3339),
-		})
-
-		// Task 11.3: kirim email peringatan CCTV offline ke seluruh admin yang
-		// opt-in. Async agar tidak memperlambat monitor.
-		go SendCCTVStreamDownEmail(db, &cctv)
-
-		// Kurangi skor kesehatan 10 poin (clamp min 0).
-		newScore := cctv.HealthScore - 10
-		if newScore < 0 {
-			newScore = 0
-		}
-		if err := db.Model(&models.CCTV{}).Where("id = ?", cctv.ID).Update("health_score", newScore).Error; err != nil {
-			utils.Log.Errorf("❌ Gagal memperbarui health_score CCTV %s: %v", cctv.ID.String(), err)
-		}
 	}
 }
 

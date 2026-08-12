@@ -4856,6 +4856,40 @@ paths:
       summary: Status Kesehatan Stream
       tags:
       - Streaming
+  /streams/live-status:
+    get:
+      consumes:
+      - application/json
+      description: Menampilkan ringkasan status live (online/offline/unchecked) seluruh
+        CCTV berdasarkan hasil probe RTSP terakhir.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ringkasan & daftar status live stream
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat data CCTV
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Status Live Stream CCTV
+      tags:
+      - Streaming
   /streams/start-all:
     post:
       consumes:

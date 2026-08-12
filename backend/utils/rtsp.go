@@ -78,6 +78,11 @@ func ResolveRTSPURL(rtspURL string, channelPort int, decryptedPassword string, s
 	return BuildRTSPURL(channelPort, decryptedPassword, streamType)
 }
 
+// GetRTSPHost membaca host NVR dari environment RTSP_NVR_HOST (fallback default).
+func GetRTSPHost() string {
+	return getenvOr("RTSP_NVR_HOST", "36.91.27.35")
+}
+
 // GetRTSPPort membaca port NVR dari environment RTSP_NVR_PORT dengan fallback
 // default 554. Mengembalikan 554 bila nilai tidak dapat di-parse sebagai integer.
 func GetRTSPPort() int {

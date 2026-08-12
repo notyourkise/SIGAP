@@ -45,6 +45,28 @@ interface PaginationPayload<T> {
   };
 }
 
+// Respons endpoint GET /api/streams/live-status (admin-only). Endpoint ini
+// DILINDUNGI oleh RequireRole admin, sehingga pada non-admin fetch bisa 403
+// dan data live status dibiarkan null.
+interface LiveStatusItem {
+  cctv_id: string;
+  nama?: string;
+  kode_cctv?: string;
+  stream_live?: boolean | null;
+  stream_checked_at?: string | null;
+}
+
+interface LiveStatusResponse {
+  status: string;
+  message?: string;
+  summary?: {
+    online: number;
+    offline: number;
+    unchecked: number;
+  };
+  data?: LiveStatusItem[];
+}
+
 const normalizeStatus = (status: string) => status.trim().toUpperCase();
 const isActiveCCTV = (status: string) => ['ACTIVE', 'AKTIF'].includes(normalizeStatus(status));
 const isInactiveCCTV = (status: string) => ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK'].includes(normalizeStatus(status));
@@ -119,15 +141,37 @@ export default function SebaranCCTVPage() {
     setHealth('Memeriksa');
     try {
       const cctvQuery = `/cctv?page=1&limit=1000&sort_by=nama&order=asc${zoneFilter ? `&zone_id=${encodeURIComponent(zoneFilter)}` : ''}`;
-      const [cctvResult, healthResult] = await Promise.allSettled([
+      const [cctvResult, healthResult, liveResult] = await Promise.allSettled([
         apiRequest<PaginationPayload<CCTVMapItem>>(cctvQuery),
         apiRequest<Record<string, unknown>>('/health'),
+        // Endpoint live-status admin-only: pada non-admin bisa mengembalikan 403,
+        // maka Promise.allSettled menanganinya dengan aman (stream_live tetap null).
+        apiRequest<LiveStatusResponse>('/streams/live-status'),
       ]);
 
       if (cctvResult.status === 'fulfilled') {
         const cctvData = cctvResult.value.data;
         const cctvRows = cctvData?.rows || [];
-        setCctvs(cctvRows);
+
+        // Enrich baris CCTV dengan status live streaming dari /streams/live-status.
+        // Bila endpoint gagal (mis. 403 karena non-admin) atau tidak tersedia, seluruh
+        // baris tetap dipakai dengan stream_live bernilai undefined/null.
+        let enrichedRows = cctvRows;
+        if (liveResult.status === 'fulfilled') {
+          const liveItems = liveResult.value.data?.data || [];
+          const liveMap = new Map<string, LiveStatusItem>();
+          for (const item of liveItems) {
+            liveMap.set(item.cctv_id, item);
+          }
+          enrichedRows = cctvRows.map((c) => {
+            const live = liveMap.get(c.id);
+            return live
+              ? { ...c, stream_live: live.stream_live ?? null, stream_checked_at: live.stream_checked_at ?? null }
+              : c;
+          });
+        }
+
+        setCctvs(enrichedRows);
         setTotalCctv(cctvData?.pagination?.total_rows ?? cctvRows.length);
       } else {
         setError(cctvResult.reason instanceof Error ? cctvResult.reason.message : 'Data CCTV belum dapat dimuat. Muat ulang halaman.');
@@ -149,8 +193,23 @@ export default function SebaranCCTVPage() {
   useEffect(() => {
     const unsubCCTV = subscribe('CCTV_UPDATED', () => loadMap());
 
+    // Update status live streaming secara real-time tanpa reload penuh peta.
+    // Payload: { cctv_id, stream_live, stream_checked_at, nama, kode_cctv }.
+    const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload: any) => {
+      if (payload?.cctv_id) {
+        setCctvs((prev) =>
+          prev.map((c) =>
+            c.id === payload.cctv_id
+              ? { ...c, stream_live: payload.stream_live ?? null, stream_checked_at: payload.stream_checked_at ?? null }
+              : c
+          )
+        );
+      }
+    });
+
     return () => {
       unsubCCTV();
+      unsubLive();
     };
   }, [subscribe, loadMap]);
 

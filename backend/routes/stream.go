@@ -16,6 +16,7 @@ func SetupStreamRoutes(router fiber.Router) {
 	// Rute STATIS didaftarkan sebelum rute dinamis (gotcha Fiber route ordering).
 	streamGroup.Get("/status", handlers.GetStreamStatus)
 	streamGroup.Get("/health", handlers.GetStreamHealth)
+	streamGroup.Get("/live-status", handlers.GetLiveStatus)
 	streamGroup.Post("/start-all", handlers.StartAllStreams)
 	streamGroup.Post("/stop-all", handlers.StopAllStreams)
 

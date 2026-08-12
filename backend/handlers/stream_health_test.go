@@ -128,7 +128,7 @@ func TestRunStreamHealthOnce_DownAndRestored(t *testing.T) {
 	seedStreamDownState(path, now.Add(-1*time.Hour), now.Add(-16*time.Minute), false)
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
-		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp"))
+		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp", false, now.Add(-16*time.Minute)))
 	// Decrement health_score 100 → 90.
 	mock.ExpectExec(`^UPDATE "cctvs" SET "health_score"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -148,7 +148,7 @@ func TestRunStreamHealthOnce_DownAndRestored(t *testing.T) {
 	//    Setup mock baru untuk siklus kedua.
 	db2, mock2 := setupMockGORM(t)
 	mock2.ExpectQuery(`^SELECT \* FROM "cctvs"`).
-		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp"))
+		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp", true, now))
 
 	runStreamHealthOnce(db2, map[string]bool{path: true})
 

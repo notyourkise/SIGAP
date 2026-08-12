@@ -1,6 +1,10 @@
 package models
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // CCTV mewakili master data perangkat CCTV tanpa menyimpan kredensial
 type CCTV struct {
@@ -47,4 +51,11 @@ type CCTV struct {
 	// — CCTV dapat belum dimasukkan ke site mana pun; data existing otomatis
 	// masuk ke site default "OIKN" saat migrasi.
 	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
+	// === Field Status Live Stream (Task 14A.1, Sprint 37) ===
+	// StreamLive mencerminkan hasil probe RTSP terakhir: true bila kamera
+	// merespons probe (dianggap live), false bila down/belum pernah diperiksa.
+	StreamLive bool `gorm:"column:stream_live;default:false" json:"stream_live"`
+	// StreamCheckedAt mencatat waktu pemeriksaan (probe) terakhir. Nilai nil
+	// berarti CCTV belum pernah diperiksa oleh probe engine.
+	StreamCheckedAt *time.Time `gorm:"column:stream_checked_at" json:"stream_checked_at,omitempty"`
 }

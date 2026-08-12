@@ -165,6 +165,12 @@ func main() {
 	go handlers.RunStreamReRegistrar(config.DB)
 	utils.Log.Info("🔁 Re-registrar stream otomatis diaktifkan (interval: 10 menit)")
 
+	// Jalankan engine probe status live RTSP (Task 14A.1, Sprint 37). Berjalan
+	// sekali segera lalu berulang setiap 2 menit; memperbarui stream_live &
+	// stream_checked_at berdasarkan hasil probe host & channel NVR.
+	go handlers.RunRTSPProber(config.DB)
+	utils.Log.Info("📡 RTSP Probe Engine aktif (interval: 2 menit)")
+
 	// Jalankan scheduler snapshot otomatis (Task 10.1). Berjalan sekali segera,
 	// lalu berulang setiap 15 menit untuk seluruh CCTV stream_enabled.
 	go handlers.RunSnapshotScheduler(config.DB)
