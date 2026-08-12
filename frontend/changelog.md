@@ -1,5 +1,34 @@
 # Changelog - Frontend SIGAP
 
+## [1.52.0] - 2026-08-13
+
+### Fitur: AI Overlay & E2E Integration (Sprint 39 - Task 14C.1, 14C.2 & 14C.3)
+
+perubahan yang dilakukan: **Menambahkan overlay bounding box AI real-time di atas video streaming, tombol toggle AI session di grid monitor, counter orang unik per kamera, dan halaman admin AI Analytics.**
+
+before:
+- /monitor dan grid peta hanya menampilkan video tanpa indikator deteksi orang; tidak ada cara mengaktifkan/menghentikan session AI dari UI.
+- Tidak ada halaman ringkasan hitungan orang per kamera.
+
+after:
+- **`components/WHEPPlayer.tsx`** (14C.1): props baru `cctvId` & `aiEnabled`; `<canvas>` overlay (z-[5], pointer-events-none) yang menggambar bounding box hijau (#22C55E) + label "Person {track_id}" dengan koordinat relatif 0–1 di-scale ke ukuran video; auto-fade 1.5 detik; subscribe WebSocket `AI_DETECTION_UPDATE` via `useWebSocket()` (pola resmi codebase).
+- **`app/monitor/page.tsx`** (14C.2): state `aiEnabled` (persist localStorage `sigap_ai_enabled`) + `aiCounts`; tombol toggle "🤖 AI" / "AI Aktif" hijau; sync session AI saat ganti layout/selection (POST/DELETE `/ai/sessions`); badge counter "👥 N orang hari ini" per sel.
+- **`components/StreamGridView.tsx`** (14C.2): props opsional `aiEnabled`/`onAiToggle`/`aiCounts` + fallback state lokal (self-sufficient); tombol AI di header grid; badge counter per sel; `cctvId`/`aiEnabled` diteruskan ke WHEPPlayer.
+- **`app/ai-analytics/page.tsx`** (14C.3, baru): halaman admin — kartu ringkasan (Total Orang, Kamera Dipantau, Aktif), tabel "Per Kamera — Hari Ini" (`GET /api/ai/counts`), dropdown kamera + grafik tren SVG mandiri 7 hari (`GET /api/ai/counts/:id/trend?days=7`); loading/error/empty state.
+- **`components/DashboardLayout.tsx`**: menu sidebar "AI Analytics" (ikon `BrainCircuit`) di grup "Pelaporan & Analisis" (admin).
+- **`proxy.ts`**: `/ai-analytics` ditambahkan ke `ADMIN_PATHS` & `config.matcher` (proteksi admin server-side).
+
+timestamp: 2026-08-13 18:00 WITA
+kategori: Besar, Frontend
+file yang diubah:
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/app/monitor/page.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/ai-analytics/page.tsx (baru)
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+
 ## [1.51.0] - 2026-08-13
 
 ### Fitur: RTSP Live Status Detection (Sprint 37 - Task 14A.2)

@@ -245,3 +245,63 @@ func TestGetAICountByCCTV_InvalidID(t *testing.T) {
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestGetAICountTrend menguji tren hitungan harian per kamera (days=7):
+// query sesi dengan filter cctv_id + session_date >= (N hari lalu) diurutkan
+// ascending → 200 dengan data berisi {date, unique_count}.
+func TestGetAICountTrend(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	now := time.Now()
+
+	// GORM: SELECT * FROM "ai_detection_sessions" WHERE cctv_id = $1 AND
+	// session_date >= $2 ORDER BY session_date ASC (tanpa soft delete — model
+	// AI tidak me-embed Base).
+	mock.ExpectQuery(`SELECT \* FROM "ai_detection_sessions" WHERE cctv_id = \$1 AND session_date >= \$2 ORDER BY session_date ASC`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "cctv_id", "session_date", "unique_person_count", "last_tracking_ids",
+			"created_at", "updated_at",
+		}).
+			AddRow(uuid.New(), cctvID, now.AddDate(0, 0, -2), 3, nil, now, now).
+			AddRow(uuid.New(), cctvID, now.AddDate(0, 0, -1), 5, nil, now, now).
+			AddRow(uuid.New(), cctvID, now, 7, nil, now, now))
+
+	app := newTestApp()
+	app.Get("/ai/counts/:id/trend", withUserLocals(uuid.New().String(), "admin"), GetAICountTrend)
+
+	req := httptest.NewRequest("GET", "/ai/counts/"+cctvID.String()+"/trend?days=7", nil)
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result struct {
+		Status string `json:"status"`
+		Data   []struct {
+			Date        string `json:"date"`
+			UniqueCount int    `json:"unique_count"`
+		} `json:"data"`
+	}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "success", result.Status)
+	assert.Len(t, result.Data, 3)
+	// Urutan ascending berdasarkan session_date.
+	assert.Equal(t, 3, result.Data[0].UniqueCount)
+	assert.Equal(t, 5, result.Data[1].UniqueCount)
+	assert.Equal(t, 7, result.Data[2].UniqueCount)
+	assert.NotEmpty(t, result.Data[0].Date)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetAICountTrend_InvalidID memastikan ID bukan UUID → 400 (tanpa query DB).
+func TestGetAICountTrend_InvalidID(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	app := newTestApp()
+	app.Get("/ai/counts/:id/trend", withUserLocals(uuid.New().String(), "admin"), GetAICountTrend)
+
+	req := httptest.NewRequest("GET", "/ai/counts/bukan-uuid/trend?days=7", nil)
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

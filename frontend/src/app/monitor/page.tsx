@@ -21,6 +21,7 @@ import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useWebSocket } from '@/context/WebSocketContext';
 import {
   MonitorPlay,
   LayoutGrid,
@@ -122,6 +123,16 @@ function saveMonitorState(state: MonitorState | null) {
 export default function MonitorPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { subscribe } = useWebSocket();
+
+  // --- AI person counter (Sprint 39) ---
+  // Toggle deteksi AI & jumlah orang per kamera. Status toggle disimpan di
+  // localStorage ('sigap_ai_enabled') agar tetap aktif antar kunjungan.
+  const [aiEnabled, setAiEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sigap_ai_enabled') === 'true';
+  });
+  const [aiCounts, setAiCounts] = useState<Record<string, number>>({});
 
   // Data & status muat daftar CCTV.
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
@@ -155,6 +166,82 @@ export default function MonitorPage() {
     layoutRef.current = layout;
     selectionRef.current = selection;
   }, [layout, selection]);
+
+  // --- AI: update jumlah orang per kamera secara real-time ---
+  // Payload AI_DETECTION_UPDATE: { cctv_id, bboxes, unique_today, current_in_frame }.
+  useEffect(() => {
+    const unsub = subscribe('AI_DETECTION_UPDATE', (payload: any) => {
+      if (payload?.cctv_id) {
+        setAiCounts((prev) => ({ ...prev, [payload.cctv_id]: payload.unique_today }));
+      }
+    });
+    return unsub;
+  }, [subscribe]);
+
+  // --- AI: sinkronkan sesi deteksi dengan CCTV yang tampil di grid ---
+  // Saat AI aktif, setiap perubahan layout/selection akan membuat sesi untuk
+  // kamera yang baru muncul dan menghentikan sesi kamera yang sudah tidak tampil.
+  const previousAiIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!aiEnabled) return;
+
+    const currentIds = Object.values(selection).filter(Boolean) as string[];
+    const previousIds = previousAiIdsRef.current;
+
+    // Kamera yang keluar dari grid → hentikan sesi AI-nya.
+    const removed = previousIds.filter((id) => !currentIds.includes(id));
+    removed.forEach((id) => {
+      apiRequest(`/ai/sessions/${id}`, { method: 'DELETE' }).catch((e) =>
+        console.error('Gagal menghentikan sesi AI untuk kamera', id, e)
+      );
+    });
+
+    // Kamera yang baru masuk grid → mulai sesi AI-nya.
+    const added = currentIds.filter((id) => !previousIds.includes(id));
+    added.forEach((id) => {
+      apiRequest('/ai/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ cctv_id: id }),
+      }).catch((e) => console.error('Gagal memulai sesi AI untuk kamera', id, e));
+    });
+
+    previousAiIdsRef.current = currentIds;
+  }, [layout, selection, aiEnabled]);
+
+  // --- AI: toggle nyala/mati dari tombol header ---
+  const handleAIToggle = async () => {
+    const next = !aiEnabled;
+    setAiEnabled(next);
+    try {
+      localStorage.setItem('sigap_ai_enabled', String(next));
+      if (next) {
+        // Nyalakan AI → buat sesi untuk seluruh kamera yang tampil di grid.
+        const currentIds = Object.values(selection).filter(Boolean) as string[];
+        previousAiIdsRef.current = currentIds;
+        await apiRequest('/ai/sessions', {
+          method: 'POST',
+          body: JSON.stringify({ active_cctv_ids: currentIds }),
+        });
+      } else {
+        // Matikan AI → hentikan semua sesi & kosongkan penghitung.
+        const currentIds = previousAiIdsRef.current.length
+          ? previousAiIdsRef.current
+          : (Object.values(selection).filter(Boolean) as string[]);
+        previousAiIdsRef.current = [];
+        await Promise.all(
+          currentIds.map((id) =>
+            apiRequest(`/ai/sessions/${id}`, { method: 'DELETE' }).catch((e) =>
+              console.error('Gagal menghentikan sesi AI untuk kamera', id, e)
+            )
+          )
+        );
+        setAiCounts({});
+      }
+    } catch (e) {
+      // Kegagalan sinkronisasi sesi tidak menghentikan toggle UI.
+      console.error('Gagal mengubah status AI:', e);
+    }
+  };
 
   // --- Guard admin: bukan admin dialihkan ke dashboard ---
   useEffect(() => {
@@ -388,6 +475,20 @@ export default function MonitorPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Tombol AI: aktifkan deteksi orang per kamera (Sprint 39) */}
+            <button
+              type="button"
+              onClick={handleAIToggle}
+              className={
+                aiEnabled
+                  ? 'flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-3.5 py-2 text-xs font-semibold text-emerald-400'
+                  : 'flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold transition-colors hover:border-primary'
+              }
+            >
+              <span className={`h-2 w-2 rounded-full ${aiEnabled ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'}`} />
+              {aiEnabled ? 'AI Aktif' : '🤖 AI'}
+            </button>
+
             {/* Tombol Konfigurasi (layout + CCTV per sel dalam satu modal) */}
             <button
               type="button"
@@ -464,6 +565,8 @@ export default function MonitorPage() {
                   cctvs={availableCctvs}
                   selectedCctv={selectedCctv}
                   isPlaying={isPlaying}
+                  aiEnabled={aiEnabled}
+                  aiCount={aiCounts[selectedId]}
                   onSelect={(id) =>
                     setSelection((prev) => ({ ...prev, [index]: id }))
                   }
@@ -592,10 +695,13 @@ interface GridCellProps {
   cctvs: CCTV[];
   selectedCctv?: CCTV;
   isPlaying: boolean;
+  // Status AI + jumlah orang hari ini untuk kamera pada sel ini (Sprint 39).
+  aiEnabled: boolean;
+  aiCount?: number;
   onSelect: (id: string) => void;
 }
 
-function GridCell({ index, cctvs, selectedCctv, isPlaying, onSelect }: GridCellProps) {
+function GridCell({ index, cctvs, selectedCctv, isPlaying, aiEnabled, aiCount, onSelect }: GridCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -667,8 +773,17 @@ function GridCell({ index, cctvs, selectedCctv, isPlaying, onSelect }: GridCellP
             streamPath={toStreamPath(selectedCctv.id)}
             quality="sub"
             showControls={false}
+            cctvId={selectedCctv.id}
+            aiEnabled={aiEnabled}
             className="h-full w-full rounded-2xl"
           />
+          {/* Badge penghitung orang (AI) di pojok kiri-bawah saat AI aktif */}
+          {aiEnabled && aiCount != null && (
+            <div className="pointer-events-none absolute bottom-1 left-1 z-20 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white backdrop-blur-sm">
+              <span>👥</span>
+              <span>{aiCount} orang hari ini</span>
+            </div>
+          )}
           {/* Overlay info + aksi per-sel */}
           <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent p-2.5">
             <span className="pointer-events-auto max-w-[70%] truncate rounded-md bg-black/60 px-2 py-1 text-[11px] font-bold text-white">

@@ -859,6 +859,54 @@ paths:
       summary: Detail Hitungan AI per Kamera (Admin)
       tags:
       - AI Detection
+  /ai/counts/{id}/trend:
+    get:
+      description: Menampilkan jumlah orang unik terdeteksi per hari untuk satu CCTV
+        selama 1–90 hari terakhir (default 7 hari), diurutkan ascending berdasarkan
+        tanggal sesi.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Jumlah hari (1–90, default 7)
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tren harian per kamera
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal mengambil data
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tren Hitungan AI per Kamera (Admin)
+      tags:
+      - AI Detection
   /ai/detection-event:
     post:
       consumes:

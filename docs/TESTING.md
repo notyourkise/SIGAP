@@ -89,7 +89,7 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 | `handlers` | `stream_probe_test.go` (Task 14A, Sprint 37) | `ProbeRTSPHost` (host reachable via listener TCP → true, port tak terpakai → false), `ProbeRTSPChannel` (response RTSP/1.0 200 → true, koneksi gagal → false) — via `startTestRTSPListener` mock; (catatan: `utils/rtsp_probe_test.go` untuk `RunRTSPProber`/`GetLiveStatus` dijadwalkan pada Task 14A) |
-| `handlers` | `ai_test.go` (Task 14B, Sprint 38) | `ReceiveDetectionEvent` — validasi `X-AI-Secret` (tanpa/salah → 401), `cctv_id` bukan UUID → 400, upsert sesi `ai_detection_sessions` (baru → Create, sudah ada → Save/Update), insert `ai_detection_events` saat `person_count>0`, sukses → 200 `{"status":"success"}` + broadcast `AI_DETECTION_UPDATE`; `GetAICounts` — tanpa session → 200 `data:[]`, dengan data → 200 + `nama`/`kode_cctv`/`unique_today`; `GetAICountByCCTV` — `:id` valid → 200 `unique_today`, `:id` invalid → 400 |
+| `handlers` | `ai_test.go` (Task 14B, Sprint 38 + 14C.3, Sprint 39) | `ReceiveDetectionEvent` — validasi `X-AI-Secret` (tanpa/salah → 401), `cctv_id` bukan UUID → 400, upsert sesi `ai_detection_sessions` (baru → Create, sudah ada → Save/Update), insert `ai_detection_events` saat `person_count>0`, sukses → 200 `{"status":"success"}` + broadcast `AI_DETECTION_UPDATE`; `GetAICounts` — tanpa session → 200 `data:[]`, dengan data → 200 + `nama`/`kode_cctv`/`unique_today`; `GetAICountByCCTV` — `:id` valid → 200 `unique_today`, `:id` invalid → 400; `GetAICountTrend` (14C.3) — `:id` valid + `days=7` → 200 `data:[{date, unique_count}]` ascending, `:id` invalid → 400 |
 
 **Total: 65 file test** (14 utils, 7 middleware, 34 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
@@ -235,19 +235,21 @@ Catatan gotchas test `stream_probe_test.go`:
 - `ProbeRTSPChannel` memakai `bufio.Scanner` untuk membaca baris pertama respons; pastikan server tiruan menulis `RTSP/1.0 200 OK` lalu menutup koneksi.
 - **Perkiraan Task 14A**: `utils/rtsp_probe_test.go` (untuk `RunRTSPProber`/`runRTSPProbeCycle` dan `GetLiveStatus` — update `stream_live`/`stream_checked_at`, broadcast `CCTV_LIVE_STATUS_UPDATED`, enforcement role) direncanakan dibuat agent backend. Jika telah dibuat, tambahkan baris matriksnya dan naikkan total file test (+1 → 64).
 
-### Matriks AI Detection & Person Counting (Fase 14, Task 14B / Sprint 38)
+### Matriks AI Detection & Person Counting (Fase 14, Task 14B / Sprint 38 + 14C.3 / Sprint 39)
 
 Ringkasan cakupan test integrasi AI detection backend:
 
 | File Test | Task | Yang Diuji |
 |-----------|------|-----------|
 | `handlers/ai_test.go` | 14B.3 | `ReceiveDetectionEvent`: validasi `X-AI-Secret` (benar → 200, salah/kosong → 401), `cctv_id` invalid → 400, upsert `ai_detection_sessions` (baris baru via `Create`, existing via `Save`/`UPDATE`), insert `ai_detection_events` hanya saat `person_count > 0`, broadcast `AI_DETECTION_UPDATE`; `GetAICounts` (empty → data `[]`, ada data → join CCTV → `nama`/`kode_cctv`/`unique_today`); `GetAICountByCCTV` (sukses, UUID invalid → 400) |
+| `handlers/ai_test.go` | 14C.3 | `GetAICountTrend`: `:id` valid + `days=7` → 200 dengan `data` berisi `{date, unique_count}` (3 baris sesi, urutan ascending berdasarkan `session_date` — regex ekspektasi `SELECT * FROM "ai_detection_sessions" WHERE cctv_id = $1 AND session_date >= $2 ORDER BY session_date ASC`); `:id` bukan UUID → 400 tanpa query DB |
 
 Catatan gotchas test `ai_test.go`:
 - **GORM `Save()` selalu UPDATE bila ID non-zero** — karena handler mengisi ID sesi baru dengan `uuid.New()`, sesi baru harus dibuat dengan `Create()` (INSERT), bukan `Save()`. Handler memakai `session.CreatedAt.IsZero()` untuk membedakan baris baru vs existing.
 - **Upsert existing memakai `UPDATE "ai_detection_sessions" SET ...`** (tanpa RETURNING untuk model tanpa kolom default yang perlu dibaca) — ekspektasi sqlmock memakai `ExpectExec` dengan regex `^UPDATE "ai_detection_sessions" SET`.
 - **Query CCTV join memakai `SELECT id,nama,kode_cctv FROM "cctvs" WHERE id = $1 AND deleted_at IS NULL ORDER BY ... LIMIT 1`** — regex ekspektasi harus memuat `WHERE` (GORM menambahkan soft-delete clause).
 - **Tidak me-embed `Base`** pada model AI → tanpa hook `BeforeCreate`, tanpa soft delete, tanpa kolom `deleted_at`.
+- **Tren (`GetAICountTrend`) memakai `session_date >= $2`** — GORM merender filter tanggal sebagai `session_date >= $1`/`$2` (placeholder parameter); regex ekspektasi sqlmock memakai `session_date >= \$2` (escaped). Model AI tanpa soft delete → query tanpa `deleted_at IS NULL`.
 
 ---
 

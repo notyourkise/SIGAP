@@ -28,6 +28,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { useWebSocket } from '@/context/WebSocketContext';
 
 // Status koneksi WHEP — dipakai oleh komponen lain (StreamModal) untuk menampilkan UI.
 export type ConnectionStatus =
@@ -46,6 +47,21 @@ export interface WHEPPlayerProps {
   showControls?: boolean; // default: true
   autoPlay?: boolean; // default: true
   onQualityChange?: (quality: 'main' | 'sub') => void; // dipicu saat pengguna mengganti kualitas
+  // ID CCTV yang diputar; diperlukan untuk mencocokkan event AI deteksi orang.
+  cctvId?: string;
+  // Aktifkan overlay bounding-box AI di atas video (deteksi orang real-time).
+  aiEnabled?: boolean;
+}
+
+// Kotak pembatas hasil deteksi AI — koordinat ternormalisasi 0.0–1.0 relatif
+// terhadap dimensi video (dikirim oleh layanan AI melalui WebSocket).
+export interface AIBBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  confidence: number;
+  track_id?: number | null;
 }
 
 // Batas atas jeda reconnect (exponential backoff).
@@ -61,9 +77,12 @@ export default function WHEPPlayer({
   showControls = true,
   autoPlay = true,
   onQualityChange,
+  cctvId,
+  aiEnabled = false,
 }: WHEPPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   // Referensi path stream agar handler timeout/ontrack selalu membaca nilai terbaru.
   const streamPathRef = useRef(streamPath);
@@ -74,6 +93,8 @@ export default function WHEPPlayer({
   const unmountedRef = useRef(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
+  // Timer untuk memudarkan (fade) bounding-box AI 1,5 detik setelah pembaruan terakhir.
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Referensi fungsi connect agar scheduleReconnect (yang dideklarasikan lebih
   // dulu) bisa memanggilnya tanpa referensi maju yang memicu peringatan lint.
   const connectRef = useRef<() => Promise<void>>(async () => {});
@@ -127,6 +148,57 @@ export default function WHEPPlayer({
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+  }, []);
+
+  // Gambar bounding-box hasil deteksi AI di atas video. Koordinat bbox bersifat
+  // ternormalisasi (0.0–1.0), sehingga diskalakan ke ukuran piksel video yang tampil.
+  const drawBBoxes = useCallback((bboxes: AIBBox[]) => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    // Sinkronkan ukuran kanvas dengan ukuran video yang benar-benar tampil.
+    canvas.width = video.clientWidth;
+    canvas.height = video.clientHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Bersihkan kanvas sebelum menggambar ulang.
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (const bbox of bboxes) {
+      // Konversi koordinat ternormalisasi ke piksel aktual pada kanvas.
+      const x = bbox.x1 * canvas.width;
+      const y = bbox.y1 * canvas.height;
+      const w = (bbox.x2 - bbox.x1) * canvas.width;
+      const h = (bbox.y2 - bbox.y1) * canvas.height;
+
+      // Kotak pembatas berwarna hijau.
+      ctx.strokeStyle = '#22C55E';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+
+      // Latar belakang label — dijepit agar tidak keluar dari tepi atas video.
+      const labelY = Math.max(0, y - 20);
+      ctx.fillStyle = 'rgba(34,197,94,0.85)';
+      ctx.fillRect(x, labelY, 72, 20);
+
+      // Teks label: "Person <track_id>" (track_id opsional).
+      const textY = Math.max(0, y - 5);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.fillText(`Person ${bbox.track_id ?? ''}`, x + 4, textY);
+    }
+
+    // Fade otomatis: kosongkan kanvas 1,5 detik setelah pembaruan terakhir.
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+    }
+    fadeTimerRef.current = setTimeout(() => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      fadeTimerRef.current = null;
+    }, 1500);
   }, []);
 
   // Mulai proses reconnect dengan exponential backoff (2s, 4s, 8s, … max 30s).
@@ -252,11 +324,32 @@ export default function WHEPPlayer({
       stoppedRef.current = true;
       clearRetryTimer();
       cleanupPc();
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
     };
   }, [clearRetryTimer, cleanupPc]);
+
+  const { subscribe } = useWebSocket();
+
+  // Langganan event AI deteksi orang: gambar bounding-box di atas video secara
+  // real-time. Payload: { cctv_id, bboxes: [{x1,y1,x2,y2,confidence,track_id}] }.
+  useEffect(() => {
+    if (!aiEnabled || !cctvId) return;
+
+    const unsub = subscribe('AI_DETECTION_UPDATE', (payload: any) => {
+      // Hanya proses deteksi untuk CCTV yang sedang diputar komponen ini.
+      if (payload?.cctv_id === cctvId) {
+        drawBBoxes(payload.bboxes || []);
+      }
+    });
+
+    return unsub;
+  }, [aiEnabled, cctvId, drawBBoxes, subscribe]);
 
   // Toggle play / pause.
   const togglePlay = () => {
@@ -329,6 +422,14 @@ export default function WHEPPlayer({
         className="h-full w-full object-contain"
         onClick={showControls ? togglePlay : undefined}
       />
+
+      {/* Overlay bounding-box AI (deteksi orang real-time) */}
+      {aiEnabled && (
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
+        />
+      )}
 
       {/* Overlay status */}
       {!isLive && (

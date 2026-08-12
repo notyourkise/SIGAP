@@ -37,6 +37,7 @@ import {
   ChevronDown,
   ChevronRight,
   Building2,
+  BrainCircuit,
 } from 'lucide-react';
 import Link from 'next/link';
 import NotificationsMenu from './NotificationsMenu';
@@ -142,6 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { name: 'Ringkasan', href: '/ringkasan', icon: ClipboardList },
             { name: 'Laporan', href: '/laporan-kustom', icon: FileSpreadsheet },
             { name: 'SLA', href: '/sla', icon: Target },
+            { name: 'AI Analytics', href: '/ai-analytics', icon: BrainCircuit },
           ]
         : [],
     },
