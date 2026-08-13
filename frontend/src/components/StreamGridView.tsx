@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getLiveBadge, formatLatency } from '@/components/CCTVMap';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 import { apiRequest } from '@/lib/api';
 import { useWebSocket } from '@/context/WebSocketContext';
@@ -100,21 +101,24 @@ function StreamCell({
         ? 'ring-1 ring-red-500/60 ring-inset'
         : 'ring-1 ring-gray-500/20';
 
-  // Indikator kecil pojok kanan-atas: 🟢 Online, 🔴 Offline, ⚪ Belum dicek.
-  const liveIndicator =
-    cctv.stream_live === true
-      ? '🟢'
-      : cctv.stream_live === false
-        ? '🔴'
-        : '⚪';
+  // Badge status live (Sprint 37-PATCH): memakai logika yang sama dengan marker peta —
+  // getLiveBadge dari CCTVMap menangani Metro-E binary vs GSM 4-state
+  // (🟢 Online / 🟡 Pernah aktif hari ini / 🔴 Offline / ⚪ Tidak diketahui).
+  const badge = getLiveBadge(cctv);
+  const liveIndicator = badge.dot;
 
-  const liveIndicatorTitle = cctv.stream_checked_at
-    ? `Terakhir dicek: ${formatCheckTime(cctv.stream_checked_at)}`
-    : cctv.stream_live === true
-      ? 'Online'
-      : cctv.stream_live === false
-        ? 'Offline'
-        : 'Belum dicek';
+  // Tooltip indikator: untuk Metro-E sertakan latensi ping bila tersedia; untuk GSM
+  // gunakan label badge (mis. "Pernah aktif hari ini"); selalu lampirkan waktu dicek.
+  const badgeTitle = badge.label;
+  const liveIndicatorTitle = [
+    cctv.network_type === 'metro-e' && cctv.ping_latency_ms != null ? formatLatency(cctv.ping_latency_ms) : '',
+    cctv.stream_checked_at ? `Dicek ${formatCheckTime(cctv.stream_checked_at)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const liveIndicatorFullTitle = liveIndicatorTitle
+    ? `${badgeTitle} · ${liveIndicatorTitle}`
+    : badgeTitle;
 
   return (
     <div
@@ -190,9 +194,9 @@ function StreamCell({
           <h3 className="line-clamp-1 text-sm font-bold text-foreground">{cctv.nama}</h3>
           <div className="flex shrink-0 items-center gap-1.5">
             <span
-              title={liveIndicatorTitle}
+              title={liveIndicatorFullTitle}
               className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-[10px] leading-none"
-              aria-label={liveIndicatorTitle}
+              aria-label={liveIndicatorFullTitle}
             >
               {liveIndicator}
             </span>

@@ -58,4 +58,11 @@ type CCTV struct {
 	// StreamCheckedAt mencatat waktu pemeriksaan (probe) terakhir. Nilai nil
 	// berarti CCTV belum pernah diperiksa oleh probe engine.
 	StreamCheckedAt *time.Time `gorm:"column:stream_checked_at" json:"stream_checked_at,omitempty"`
+	// PingLatencyMs menyimpan latensi ping/probe terakhir (ms) — HANYA untuk
+	// kamera Metro-E (jaringan dedicated OIKN). Nilai nil bila belum pernah
+	// diprobe atau kamera GSM (tidak diprobe).
+	PingLatencyMs *int `gorm:"column:ping_latency_ms" json:"ping_latency_ms,omitempty"`
+	// StreamLastActiveAt mencatat waktu terakhir stream kamera aktif
+	// (Ready di MediaMTX). Dipakai badge GSM ("Pernah aktif hari ini").
+	StreamLastActiveAt *time.Time `gorm:"column:stream_last_active_at" json:"stream_last_active_at,omitempty"`
 }

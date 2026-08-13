@@ -1,5 +1,35 @@
 # Changelog - Backend SIGAP
 
+## [0.63.0] - 2026-08-13
+
+### Fitur: Sprint 37-PATCH — Probe Strategy Metro-E vs GSM
+
+perubahan yang dilakukan: **Mem-patch RTSP Probe Engine agar membedakan kamera Metro-E vs GSM sesuai kebijakan docs/AGENTS.md § 11.2: Metro-E diprobe langsung (TCP dial port 554/80 dengan pengukuran latensi) setiap 2 menit; kamera GSM TIDAK pernah disentuh sama sekali — statusnya hanya dibaca pasif dari daftar path MediaMTX (lokal VPS), dengan jejak aktivitas `stream_last_active_at` untuk badge "pernah aktif".**
+
+before:
+- `runRTSPProbeCycle` memprobe SEMUA CCTV `stream_enabled` via `ProbeRTSPHost`+`ProbeRTSPChannel` ke host NVR tunggal (`RTSP_NVR_HOST`) — termasuk kamera GSM yang memakai kuota data seluler, melanggar kebijakan § 11.2 (dilarang ping/background-stream pada GSM).
+- Belum ada kolom latensi ping (`ping_latency_ms`) maupun jejak terakhir stream aktif (`stream_last_active_at`); `GetLiveStatus` belum menampilkan tipe jaringan.
+
+after:
+- **`migrations/000022_stream_ping_fields.up.sql`** (baru): menambah kolom `ping_latency_ms INTEGER` (nullable) & `stream_last_active_at TIMESTAMPTZ` (nullable) pada tabel `cctvs`. `.down.sql` menghapusnya.
+- **`models/cctv.go`**: menambah `PingLatencyMs *int` (json `ping_latency_ms,omitempty`) & `StreamLastActiveAt *time.Time` (json `stream_last_active_at,omitempty`).
+- **`utils/rtsp_probe.go`**: menambah `IsMetroE(cctv)` — deteksi Metro-E dari prefix IP `10.20.105.`; `ProbeICMP(ip, timeout)` — probe konektivitas + ukur latensi via TCP dial port 554 dengan fallback port 80 (ICMP raw socket butuh privilege NET_RAW). Import `sigap-backend/models` (tanpa import cycle: models tidak mengimpor utils).
+- **`handlers/stream_probe.go`**: `runRTSPProbeCycle` di-rewrite — sekali per siklus baca `streamClient.ListPaths()` → peta path Ready (error hanya log warning, GSM dianggap offline); per CCTV: Metro-E → `ProbeICMP(IP, 3s)` update `stream_live`+`ping_latency_ms`; GSM → cek `BuildStreamPath(cctvID)` di peta MediaMTX (live = exists && ready), update `stream_last_active_at` bila live. Status berubah → broadcast `CCTV_LIVE_STATUS_UPDATED` dengan payload `{cctv_id, stream_live, stream_checked_at, ping_latency_ms, network_type, stream_last_active_at, nama, kode_cctv}` + log 🟢/🔴. Status live bertahan → update tetap (refresh last_active). Ringkasan `✅ Probe cycle: N kamera dicek`. Helper baru `networkType(cctv)` ("metro-e"/"gsm"). `GetLiveStatus` menampilkan `stream_last_active_at`, `ping_latency_ms`, `network_type` per item. Tetap memakai `streamClient`/`setStreamClient` package-level (stream.go) agar testable.
+- **Test**: `utils/rtsp_probe_test.go` (baru) — `IsMetroE` true/false/empty + `ProbeICMP` sukses (listener lokal port 80) / gagal (port 1). `handlers/stream_probe_test.go` — `TestRunProbeCycle_MetroE` (UPDATE stream_checked_at; ListPaths sekali per siklus, bukan per kamera), `TestRunProbeCycle_GSM` (path Ready → UPDATE stream_live=true + stream_last_active_at), `TestRunProbeCycle_GSMNotReady` (Ready=false → hanya checked_at), `TestRunProbeCycle_GSMReadyKeepsLive` (live bertahan → refresh), `TestNetworkType`, `TestGetLiveStatus_NetworkFields` (network_type/ping_latency_ms/stream_last_active_at di respons).
+
+timestamp: 2026-08-13 16:00 WITA
+kategori: Kecil, Backend (Probe strategy + Test)
+file yang diubah:
+- backend/migrations/000022_stream_ping_fields.up.sql (baru)
+- backend/migrations/000022_stream_ping_fields.down.sql (baru)
+- backend/models/cctv.go
+- backend/utils/rtsp_probe.go
+- backend/utils/rtsp_probe_test.go (baru)
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- backend/changelog.md
+alasan perubahan: Kebijakan § 11.2 melarang probe berkala ke kamera GSM (biaya kuota data seluler); hanya 17 kamera Metro-E yang boleh di-ping. Strategi GSM diubah menjadi pasif (baca status path MediaMTX lokal VPS + tracking last-active) sehingga konsumsi data GSM = nol.
+
 ## [0.62.1] - 2026-08-13
 
 ### Fix: StartNotificationCleanup memblokir main thread (API tidak listen)
