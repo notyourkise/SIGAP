@@ -12,6 +12,8 @@ FROM python:3.11-slim
 # libsm, libxext, dll). libgl1 diperlukan untuk libGL.so.1 (dibutuhkan cv2 saat
 # import ultralytics), sedangkan libgomp1 untuk OpenMP/threading numpy.
 # curl dipakai ultralytics untuk mengunduh model saat build & runtime.
+# ffmpeg dipakai untuk MEMBACA stream RTSP H265/H264 — OpenCV headless tidak
+# bisa decode H265/HEVC, sedangkan kamera NVR mengirim H265.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
@@ -20,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgomp1 \
     curl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

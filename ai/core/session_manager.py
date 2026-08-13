@@ -4,16 +4,22 @@
 RTSP dari MediaMTX (rtsp://mediamtx:8554/cam-{cctv_id}), menjalankan deteksi
 YOLOv8n + tracking ByteTrack pada kecepatan ~1 fps, lalu mengirim hasilnya ke
 backend sigap_api melalui endpoint /api/ai/detection-event.
+
+CATATAN PENTING (decode H265):
+Kamera NVR mengirim stream H265/HEVC. `cv2.VideoCapture` (opencv-python
+headless) TIDAK bisa mendecode H265 dan akan hang saat `read()`. Karena itu
+pembacaan frame memakai ffmpeg subprocess (binary `ffmpeg` di-install di image)
+yang output rawvideo BGR ke pipe, lalu dibaca per-frame sebagai numpy array.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-import cv2
 import httpx
 import numpy as np
 
@@ -25,6 +31,11 @@ logger = logging.getLogger("sigap_ai.session")
 
 # Interval minimum antar-frame yang diproses (~1 fps)
 FRAME_INTERVAL_SECONDS = 1.0
+
+# Resolusi target saat decode via ffmpeg (dikecilkan agar inferensi cepat).
+# Dipakai sebagai fallback bila resolusi asli tidak diketahui.
+_FFMPEG_WIDTH = 1280
+_FFMPEG_HEIGHT = 720
 
 
 class CameraSession:
@@ -68,6 +79,8 @@ class CameraSession:
         self._stop_event = asyncio.Event()
         self._client: Optional[httpx.AsyncClient] = None
         self._last_process_time: float = 0.0
+        # Proses ffmpeg aktif (None = belum terbuka / sedang reconnect).
+        self._ffmpeg: Optional[subprocess.Popen] = None
 
     async def start(self) -> None:
         """Mulai loop pemrosesan kamera di background task."""
@@ -96,12 +109,106 @@ class CameraSession:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        self._close_ffmpeg()
         logger.info("Sesi kamera %s dihentikan.", self.cctv_id)
 
     @property
     def is_active(self) -> bool:
         """True jika task pemrosesan sedang berjalan."""
         return self._task is not None and not self._task.done()
+
+    # ------------------------------------------------------------------
+    # Baca frame via ffmpeg (mendukung H265/HEVC yang tidak bisa dibaca
+    # oleh cv2.VideoCapture). Output rawvideo BGR, dibaca per-frame.
+    # ------------------------------------------------------------------
+    def _open_ffmpeg(self) -> subprocess.Popen:
+        """Buka proses ffmpeg untuk decode stream RTSP ke rawvideo BGR.
+
+        Opsi penting:
+        - `-fflags nobuffer+discardcorrupt` : buang frame korup (stream live
+          H265 sering punya frame reference hilang saat sourceOnDemand baru
+          mulai di-pull).
+        - `-err_detect ignore_err`           : jangan berhenti saat error decode.
+        - `-analyzeduration/-probesize` kecil: mulai decode lebih cepat.
+        """
+        cmd = [
+            "ffmpeg",
+            "-rtsp_transport", "tcp",
+            "-fflags", "nobuffer+discardcorrupt",
+            "-err_detect", "ignore_err",
+            "-analyzeduration", "2000000",
+            "-probesize", "1000000",
+            "-i", self.rtsp_url,
+            "-an",
+            "-f", "rawvideo",
+            "-pix_fmt", "bgr24",
+            "-vf", f"scale={_FFMPEG_WIDTH}:{_FFMPEG_HEIGHT}:force_original_aspect_ratio=decrease,pad={_FFMPEG_WIDTH}:{_FFMPEG_HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+            "-loglevel", "error",
+            "pipe:1",
+        ]
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+
+    def _close_ffmpeg(self) -> None:
+        """Tutup proses ffmpeg bila ada (idempoten)."""
+        proc = self._ffmpeg
+        if proc is not None:
+            try:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            except Exception:
+                pass
+            self._ffmpeg = None
+
+    def _read_frame_ffmpeg(self, timeout: float = 15.0) -> Tuple[bool, Optional[np.ndarray]]:
+        """Baca satu frame BGR dari stdout ffmpeg dengan batas waktu.
+
+        Args:
+            timeout: Detik maksimal menunggu data frame (default 15s). Diberi
+                cukup longgar karena saat sourceOnDemand MediaMTX baru mulai
+                pull dari NVR, ffmpeg perlu menunggu IDR/keyframe H265 pertama
+                sebelum bisa decode. Bila lewat batas, dianggap gagal → reconnect.
+
+        Returns:
+            (True, frame) bila berhasil, (False, None) bila timeout/error.
+        """
+        proc = self._ffmpeg
+        if proc is None or proc.stdout is None:
+            return False, None
+
+        # Ukuran satu frame rawvideo BGR 1280x720
+        frame_size = _FFMPEG_WIDTH * _FFMPEG_HEIGHT * 3
+        try:
+            # Non-blocking read (Linux): hindari hang selamanya saat stream macet.
+            import os
+            os.set_blocking(proc.stdout.fileno(), False)
+            raw = bytearray()
+            deadline = time.monotonic() + timeout
+            while len(raw) < frame_size and time.monotonic() < deadline:
+                chunk = proc.stdout.read(frame_size - len(raw))
+                if chunk:
+                    raw.extend(chunk)
+                else:
+                    time.sleep(0.05)
+            if len(raw) < frame_size:
+                # Timeout / stream tidak menghasilkan frame.
+                err = proc.stderr.read(200).decode(errors="ignore") if proc.stderr else ""
+                if err:
+                    logger.warning("ffmpeg kamera %s: %s", self.cctv_id, err.strip())
+                return False, None
+            frame = np.frombuffer(bytes(raw), dtype=np.uint8).reshape(
+                (_FFMPEG_HEIGHT, _FFMPEG_WIDTH, 3)
+            )
+            return True, frame
+        except Exception:
+            return False, None
 
     def _build_payload(
         self,
@@ -170,38 +277,36 @@ class CameraSession:
             logger.exception("Error tak terduga saat mengirim event kamera %s", self.cctv_id)
 
     async def _run(self) -> None:
-        """Loop utama: baca frame RTSP, inferensi + tracking, kirim hasil."""
-        cap: Optional[cv2.VideoCapture] = None
+        """Loop utama: baca frame RTSP (via ffmpeg), inferensi + tracking, kirim hasil."""
         loop = asyncio.get_running_loop()
 
         while not self._stop_event.is_set():
-            # --- Fase 1: pastikan koneksi video terbuka ---
-            if cap is None:
+            # --- Fase 1: pastikan proses ffmpeg terbuka ---
+            if self._ffmpeg is None:
                 try:
-                    cap = cv2.VideoCapture(self.rtsp_url)
-                    # Buffer kecil agar latency tetap rendah (frame terbaru saja)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    logger.info("Stream RTSP kamera %s terbuka", self.cctv_id)
+                    # Buka ffmpeg di thread pool (Popen cepat, tidak blocking lama).
+                    proc = await loop.run_in_executor(None, self._open_ffmpeg)
+                    self._ffmpeg = proc
+                    logger.info("Stream RTSP kamera %s terbuka (ffmpeg)", self.cctv_id)
                 except Exception:
                     logger.exception("Gagal membuka stream kamera %s", self.cctv_id)
-                    cap = None
+                    self._ffmpeg = None
 
-            if cap is None:
+            if self._ffmpeg is None:
                 # Tunggu sebelum reconnect (jaringan/stream belum siap)
                 await self._sleep(2.0)
                 continue
 
             # --- Fase 2: baca satu frame (non-blocking via executor) ---
             try:
-                ok, frame = await loop.run_in_executor(None, cap.read)
+                ok, frame = await loop.run_in_executor(None, self._read_frame_ffmpeg)
             except Exception:
                 logger.exception("Error membaca frame kamera %s", self.cctv_id)
                 ok, frame = False, None
 
             if not ok or frame is None:
                 logger.warning("Gagal membaca frame kamera %s, mencoba reconnect...", self.cctv_id)
-                cap.release()
-                cap = None
+                self._close_ffmpeg()
                 await self._sleep(2.0)
                 continue
 
@@ -237,8 +342,7 @@ class CameraSession:
             )
 
         # --- Bersih-bersih saat sesi dihentikan ---
-        if cap is not None:
-            cap.release()
+        self._close_ffmpeg()
         logger.info("Loop kamera %s selesai.", self.cctv_id)
 
     def _infer_and_track(self, frame: np.ndarray) -> List[Detection]:

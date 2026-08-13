@@ -193,8 +193,10 @@ func main() {
 	utils.Log.Info("🔗 Worker pengiriman webhook diaktifkan")
 
 	// Jalankan cleanup notifikasi lama (Task 13.6, Sprint 32). Berjalan sekali
-	// saat startup lalu berulang setiap 7 hari.
-	handlers.StartNotificationCleanup(config.DB)
+	// saat startup lalu berulang setiap 7 hari. Dijalankan sebagai goroutine
+	// (StartNotificationCleanup memblokir dengan loop ticker — tanpa `go`,
+	// main thread tidak akan pernah sampai ke app.Listen).
+	go handlers.StartNotificationCleanup(config.DB)
 	utils.Log.Info("🗑️ Cleanup notifikasi lama diaktifkan (interval: 7 hari)")
 
 	// Jalankan cleanup log webhook delivery (Task 13.10, Sprint 34). Berjalan
