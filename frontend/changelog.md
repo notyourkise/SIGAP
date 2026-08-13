@@ -1,5 +1,29 @@
 # Changelog - Frontend SIGAP
 
+## [1.54.0] - 2026-08-13
+
+### Sprint 40 — AI Feature Takedown (hapus fitur AI detection)
+
+perubahan yang dilakukan: **Menghapus seluruh fitur AI detection dari frontend: halaman admin `/ai-analytics`, canvas bounding box overlay + toggle AI di `WHEPPlayer.tsx`/`StreamGridView.tsx`, badge counter orang per sel, dan menu sidebar "AI Analytics". Sistem kembali ke pure CCTV management tanpa AI inference.**
+
+before:
+- Frontend memiliki halaman `/ai-analytics` (admin) dengan ringkasan hitungan orang + tren 7 hari, overlay bounding box hijau di atas video streaming, tombol toggle "🤖 AI" + badge "👥 N orang hari ini" di `/monitor`, dan item menu sidebar "AI Analytics".
+
+after:
+- Halaman `/ai-analytics` dihapus (404); canvas overlay & toggle AI dihapus dari `WHEPPlayer.tsx`/`StreamGridView.tsx`; badge counter dihapus; item menu sidebar "AI Analytics" dihapus dari `DashboardLayout.tsx`; guard proxy `/ai-analytics` dihapus dari `proxy.ts`.
+
+timestamp: 2026-08-13 20:30 WITA
+kategori: Besar, Frontend (Takedown)
+file yang diubah:
+- frontend/src/app/ai-analytics/page.tsx (dihapus)
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/monitor/page.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/proxy.ts
+- frontend/changelog.md
+alasan perubahan: Fitur AI detection (person counting, bounding box, YOLOv8) dihapus pada Sprint 40 (AI Feature Takedown) — SIGAP kembali menjadi pure CCTV management tanpa AI inference.
+
 ## [1.53.0] - 2026-08-13
 
 ### Fitur: Badge Probe Strategy Metro-E vs GSM (Sprint 37-PATCH)

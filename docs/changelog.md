@@ -3,6 +3,19 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.46] — 2026-08-13 — Sprint 40: AI Feature Takedown
+
+### Perubahan
+
+- **Keputusan: AI detection dihapus seluruhnya** — Fitur AI detection (person counting, bounding box overlay, YOLOv8n + ByteTrack) di-remove sehingga SIGAP kembali menjadi **pure CCTV management** tanpa AI inference. Sistem kembali ke **7 Docker service** (tanpa `sigap_ai`).
+- **Backend**: hapus `handlers/ai.go`, `routes/ai.go`, `models/ai_detection.go`, dan `handlers/ai_test.go`; migrasi baru `000023_remove_ai_detection` (DROP TABLE `ai_detection_events`, `ai_detection_sessions`); hapus registrasi `SetupAIRoutes` di `main.go`; hapus env `AI_SECRET`/`AI_SERVICE_URL`.
+- **Frontend**: hapus halaman `/ai-analytics`, canvas bounding box overlay & toggle AI di `WHEPPlayer.tsx`/`StreamGridView.tsx`, badge counter orang, dan menu sidebar "AI Analytics".
+- **Infra**: hapus service `sigap_ai` dari `docker-compose.yml`; folder `ai/` dihapus.
+- **Dokumen**: `docs/AGENTS.md` (hapus referensi AI Detection § 5 & § 7; service count 8 → 7), `docs/ROADMAP.md` (Fase 14 → "Live Status & AI Takedown"; Sprint 38/39 DIBATALKAN; Sprint 40 🚧 berjalan), `docs/TESTING.md` (hapus matriks & gotchas `handlers/ai_test.go`; total file test 65 → 64).
+- **Branch**: `bugfix/remove-ai-detection`.
+
+Timestamp: 2026-08-13 WITA | Kategori: Besar, Takedown (Backend + Frontend + Infra + Docs)
+
 ## [1.28.45] — 2026-08-13 — Perbaikan: AI tidak mendeteksi manusia (H265) + Fix startup API & backup
 
 ### Perubahan

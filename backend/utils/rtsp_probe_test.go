@@ -51,9 +51,10 @@ func TestProbeICMP_Success(t *testing.T) {
 }
 
 func TestProbeICMP_Fail(t *testing.T) {
-	// Port 1 pada localhost tidak terpakai (tidak ada service) — dial port 554
-	// dan fallback port 80 harus gagal → ok=false.
-	latencyMs, ok := ProbeICMP("127.0.0.1", 3*time.Second)
+	// 192.0.2.1 adalah alamat TEST-NET-1 (RFC 5737) yang dijamin tidak routable
+	// dan tidak ada host — dial port 554 dan fallback port 80 harus gagal
+	// (connection refused/timeout) → ok=false.
+	latencyMs, ok := ProbeICMP("192.0.2.1", time.Second)
 	assert.False(t, ok)
 	assert.Equal(t, int64(0), latencyMs)
 }
