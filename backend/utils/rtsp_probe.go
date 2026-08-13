@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"sigap-backend/models"
 )
 
 // ProbeRTSPHost mengecek apakah host NVR dapat dijangkau via TCP pada port
@@ -42,4 +44,29 @@ func ProbeRTSPChannel(host string, port int, channelID int) bool {
 		return strings.Contains(scanner.Text(), "200")
 	}
 	return false
+}
+
+// IsMetroE mengecek apakah kamera terhubung via jaringan Metro-E OIKN.
+// Metro-E diidentifikasi dari prefix IP kamera 10.20.105 (jaringan dedicated).
+// Referensi: docs/AGENTS.md § 11.2
+func IsMetroE(cctv models.CCTV) bool {
+	return strings.HasPrefix(cctv.IPCamera, "10.20.105.")
+}
+
+// ProbeICMP mengirim probe konektivitas ke IP target dan mengukur latensi.
+// Digunakan HANYA untuk kamera Metro-E — TIDAK untuk kamera GSM (biaya data).
+// Implementasi memakai TCP dial ke port 554 (RTSP) dengan fallback port 80 —
+// ICMP raw socket butuh privilege NET_RAW yang tidak selalu tersedia.
+// Mengembalikan latensi ms dan status ok.
+func ProbeICMP(ip string, timeout time.Duration) (latencyMs int64, ok bool) {
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:554", ip), timeout)
+	if err != nil {
+		conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:80", ip), timeout)
+		if err != nil {
+			return 0, false
+		}
+	}
+	_ = conn.Close()
+	return time.Since(start).Milliseconds(), true
 }

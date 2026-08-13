@@ -54,6 +54,10 @@ interface LiveStatusItem {
   kode_cctv?: string;
   stream_live?: boolean | null;
   stream_checked_at?: string | null;
+  // Sprint 37-PATCH: strategi probe jaringan — Metro-E (ICMP, binary) vs GSM (4-state).
+  network_type?: 'metro-e' | 'gsm' | null;
+  ping_latency_ms?: number | null;
+  stream_last_active_at?: string | null;
 }
 
 interface LiveStatusResponse {
@@ -166,7 +170,17 @@ export default function SebaranCCTVPage() {
           enrichedRows = cctvRows.map((c) => {
             const live = liveMap.get(c.id);
             return live
-              ? { ...c, stream_live: live.stream_live ?? null, stream_checked_at: live.stream_checked_at ?? null }
+              ? {
+                  ...c,
+                  stream_live: live.stream_live ?? null,
+                  stream_checked_at: live.stream_checked_at ?? null,
+                  // Sprint 37-PATCH: bawa field strategi probe jaringan dari live-status
+                  // agar badge Metro-E vs GSM berfungsi; bila field absen (data lama)
+                  // tetap undefined → komponen memakai fallback perilaku lama.
+                  network_type: live.network_type ?? null,
+                  ping_latency_ms: live.ping_latency_ms ?? null,
+                  stream_last_active_at: live.stream_last_active_at ?? null,
+                }
               : c;
           });
         }
@@ -194,15 +208,29 @@ export default function SebaranCCTVPage() {
     const unsubCCTV = subscribe('CCTV_UPDATED', () => loadMap());
 
     // Update status live streaming secara real-time tanpa reload penuh peta.
-    // Payload: { cctv_id, stream_live, stream_checked_at, nama, kode_cctv }.
+    // Payload: { cctv_id, stream_live, stream_checked_at, nama, kode_cctv } (+ Sprint 37-PATCH:
+    // network_type, ping_latency_ms, stream_last_active_at).
     const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload: any) => {
       if (payload?.cctv_id) {
         setCctvs((prev) =>
-          prev.map((c) =>
-            c.id === payload.cctv_id
-              ? { ...c, stream_live: payload.stream_live ?? null, stream_checked_at: payload.stream_checked_at ?? null }
-              : c
-          )
+          prev.map((c) => {
+            if (c.id !== payload.cctv_id) return c;
+            const prevItem = c;
+            return {
+              ...c,
+              stream_live: payload.stream_live ?? null,
+              stream_checked_at: payload.stream_checked_at ?? null,
+              // Sprint 37-PATCH: pertahankan field probe jaringan; payload tanpa field
+              // (event lama) tidak menimpa nilai yang sudah ada di item.
+              ping_latency_ms: payload.ping_latency_ms ?? prevItem.ping_latency_ms ?? null,
+              network_type: payload.network_type ?? prevItem.network_type ?? null,
+              // stream_last_active_at hanya diperbarui saat kamera live (payload membawa
+              // stream_checked_at sebagai waktu aktif); saat offline riwayat dipertahankan.
+              stream_last_active_at: payload.stream_live
+                ? (payload.stream_checked_at ?? prevItem.stream_last_active_at ?? null)
+                : (prevItem.stream_last_active_at ?? null),
+            };
+          })
         );
       }
     });

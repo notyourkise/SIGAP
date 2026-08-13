@@ -26,6 +26,16 @@ export interface CCTVMapItem {
   stream_live?: boolean | null;
   // Waktu terakhir status live dicek oleh backend (string ISO). Opsional.
   stream_checked_at?: string | null;
+  // Jenis jaringan koneksi kamera (Sprint 37-PATCH): 'metro-e' (serat optik — di-probe
+  // ICMP tiap 2 menit, status binary online/offline) atau 'gsm' (tidak pernah di-probe —
+  // status berdasar state lokal MediaMTX + riwayat aktif). Opsional; data lama/non-admin
+  // tidak memiliki field ini sehingga badge memakai fallback perilaku lama.
+  network_type?: 'metro-e' | 'gsm' | null;
+  // Latensi ping ICMP (ms) untuk Metro-E — null bila bukan Metro-E / belum terukur.
+  ping_latency_ms?: number | null;
+  // Waktu terakhir stream benar-benar aktif (string ISO) — dipakai badge GSM 4-state
+  // ("Pernah aktif hari ini" / "Offline") saat kamera sedang tidak live.
+  stream_last_active_at?: string | null;
 }
 
 interface CCTVMapProps {
@@ -76,17 +86,78 @@ const formatCheckTime = (value?: string | null): string => {
   });
 };
 
+// Format latensi ping ICMP (ms) untuk kamera Metro-E dengan emoji indikator:
+//   <50ms → 🟢, <100ms → 🟡, ≥100ms → 🔴. Bila null/tidak valid → string kosong.
+export const formatLatency = (ms?: number | null): string => {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '';
+  if (ms < 50) return `Ping: ${ms}ms 🟢`;
+  if (ms < 100) return `Ping: ${ms}ms 🟡`;
+  return `Ping: ${ms}ms 🔴`;
+};
+
+// Badge status live sesuai strategi probe jaringan (Sprint 37-PATCH):
+//   Metro-E → di-probe ICMP tiap 2 menit, status BINARY (online/offline):
+//     stream_live=true  → 🟢 Online (Live)
+//     stream_live=false → 🔴 Offline
+//     stream_live=null  → ⚪ Tidak diketahui
+//   GSM → TIDAK pernah di-probe; hanya state lokal MediaMTX + riwayat aktif:
+//     stream_live=true  → 🟢 Online (Live)
+//     stream_live=false && stream_last_active_at < 24 jam → 🟡 "Pernah aktif hari ini"
+//     stream_live=false && ada stream_last_active_at (≥ 24 jam) → 🔴 Offline
+//     stream_live=false && tidak ada stream_last_active_at → ⚪ Tidak diketahui
+//     stream_live=null  → ⚪ Tidak diketahui
+//   Tanpa network_type (data lama / non-admin) → perilaku lama berbasis stream_live.
+// Mengembalikan { color (hex untuk marker), label (teks), dot (emoji) }.
+export const getLiveBadge = (cctv: Pick<CCTVMapItem, 'stream_live' | 'stream_last_active_at' | 'network_type'>): {
+  color: string;
+  label: string;
+  dot: string;
+} => {
+  const { stream_live, stream_last_active_at, network_type } = cctv;
+
+  // Metro-E: status binary hasil probe ICMP — abaikan stream_last_active_at.
+  if (network_type === 'metro-e') {
+    if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
+    if (stream_live === false) return { color: '#EF4444', label: 'Offline', dot: '🔴' };
+    return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
+  }
+
+  // GSM: 4-state — live, pernah aktif hari ini (<24 jam), offline (punya riwayat), tidak diketahui.
+  if (network_type === 'gsm') {
+    if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
+    if (stream_live === false && stream_last_active_at) {
+      const lastActive = new Date(stream_last_active_at);
+      if (!Number.isNaN(lastActive.getTime())) {
+        const hoursAgo = (Date.now() - lastActive.getTime()) / 3_600_000;
+        if (hoursAgo >= 0 && hoursAgo < 24) {
+          return { color: '#EAB308', label: 'Pernah aktif hari ini', dot: '🟡' };
+        }
+      }
+      return { color: '#EF4444', label: 'Offline', dot: '🔴' };
+    }
+    return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
+  }
+
+  // Fallback perilaku lama (data lama / non-admin): hanya berdasar stream_live.
+  if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
+  if (stream_live === false) return { color: '#EF4444', label: 'Offline', dot: '🔴' };
+  return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
+};
+
 // Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
 // Param tambahan `isStreaming` menambah cincin hijau ganda (double-pulse) sebagai penanda kamera yang sedang streaming.
-// Param `streamLive` menambah badge bulat kecil di pojok kanan-atas marker:
-//   true  → hijau (#22C55E), false → merah (#EF4444), null/undefined → abu (#9CA3AF).
-const createCustomMarkerIcon = (healthScore?: number, isStreaming?: boolean, streamLive?: boolean | null) => {
+// Param `cctv` dipakai untuk badge bulat kecil di pojok kanan-atas marker — warnanya
+// mengikuti getLiveBadge(cctv) sesuai strategi probe jaringan (Metro-E binary / GSM 4-state).
+const createCustomMarkerIcon = (
+  healthScore?: number,
+  isStreaming?: boolean,
+  cctv?: Pick<CCTVMapItem, 'stream_live' | 'stream_last_active_at' | 'network_type'>
+) => {
   const color = healthScoreColor(healthScore);
   const shadowColor = `${color}66`;
 
   // Warna badge status live (indikator kecil di pojok kanan-atas marker).
-  const streamBadgeColor =
-    streamLive === true ? '#22C55E' : streamLive === false ? '#EF4444' : '#9CA3AF';
+  const streamBadgeColor = cctv ? getLiveBadge(cctv).color : '#9CA3AF';
 
   // Badge bulat kecil yang menandakan status live stream (RTSP).
   const streamBadge = `
@@ -294,7 +365,7 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
           <Marker
             key={item.id}
             position={[item.lat, item.lng]}
-            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled, item.stream_live)}
+            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled, item)}
             eventHandlers={{
               click: () => {
                 // Jika ada handler klik & kamera streaming aktif → buka modal stream, jangan buka Popup.
@@ -341,11 +412,20 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
                   <span className="truncate">{item.lokasi_area || 'Kawasan KIPP IKN'}</span>
                 </div>
 
-                {/* Status live streaming (RTSP) */}
-                <div className="flex items-center gap-1.5 text-xs">
-                  {item.stream_live === true && <span className="font-semibold text-emerald-600">🟢 Online</span>}
-                  {item.stream_live === false && <span className="font-semibold text-red-600">🔴 Offline</span>}
-                  {item.stream_live == null && <span className="font-semibold text-gray-500">⚪ Belum dicek</span>}
+                {/* Status live streaming (RTSP) — badge mengikuti strategi probe jaringan:
+                    Metro-E binary (Online/Offline) vs GSM 4-state (Online/Pernah aktif hari ini/Offline/Tidak diketahui). */}
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+                  <span className="font-semibold" style={{ color: getLiveBadge(item).color }}>
+                    {getLiveBadge(item).dot} {getLiveBadge(item).label}
+                  </span>
+                  {/* Metro-E: latensi ping ICMP bila tersedia. */}
+                  {item.network_type === 'metro-e' && item.ping_latency_ms != null && (
+                    <span className="text-muted">· {formatLatency(item.ping_latency_ms)}</span>
+                  )}
+                  {/* GSM: waktu terakhir stream aktif (tidak pernah di-probe ICMP). */}
+                  {item.network_type === 'gsm' && item.stream_last_active_at && (
+                    <span className="text-muted">· Aktif {formatCheckTime(item.stream_last_active_at)}</span>
+                  )}
                   {item.stream_checked_at && (
                     <span className="text-muted">· Dicek {formatCheckTime(item.stream_checked_at)}</span>
                   )}

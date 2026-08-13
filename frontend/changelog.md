@@ -1,5 +1,28 @@
 # Changelog - Frontend SIGAP
 
+## [1.53.0] - 2026-08-13
+
+### Fitur: Badge Probe Strategy Metro-E vs GSM (Sprint 37-PATCH)
+
+perubahan yang dilakukan: **Membedakan badge status live kamera berdasarkan jenis jaringan: Metro-E (serat optik, di-probe ICMP tiap 2 menit — status binary online/offline) vs GSM (tidak pernah di-probe — status berdasar state lokal MediaMTX + riwayat aktif dengan state "Pernah aktif hari ini").**
+
+before:
+- Semua kamera memakai badge 3-state sederhana berbasis `stream_live` (🟢 Online / 🔴 Offline / ⚪ Belum dicek) tanpa membedakan cara deteksi per jaringan. Kamera GSM yang baru mati tampak "Offline" merah meski masih ada aktivitas hari ini, dan tidak ada informasi latensi ping untuk Metro-E.
+
+after:
+- **`src/components/CCTVMap.tsx`**: `CCTVMapItem` tambah `network_type` ('metro-e'|'gsm'|null), `ping_latency_ms` (null|number), `stream_last_active_at` (null|string ISO). Helper baru `getLiveBadge(cctv)` (diexport) — Metro-E binary (🟢 Online (Live) / 🔴 Offline / ⚪ Tidak diketahui) vs GSM 4-state (🟢 Online (Live) / 🟡 "Pernah aktif hari ini" bila stream_last_active_at < 24 jam / 🔴 Offline bila ada riwayat ≥ 24 jam / ⚪ Tidak diketahui) dengan fallback perilaku lama untuk data tanpa network_type. Helper baru `formatLatency(ms)` → `Ping: Xms` + 🟢 (<50ms) / 🟡 (<100ms) / 🔴 (≥100ms). `createCustomMarkerIcon` kini menerima objek `cctv` (bukan `streamLive` mentah) — warna badge marker mengikuti `getLiveBadge(cctv).color`. Popup marker menampilkan `{dot} {label}`, untuk Metro-E `· Ping: Xms` bila ada latensi, untuk GSM `· Aktif HH:mm` dari stream_last_active_at, dan selalu `· Dicek HH:mm`.
+- **`src/components/StreamGridView.tsx`**: indikator emoji + tooltip sel memakai `getLiveBadge`/`formatLatency` yang diimpor dari CCTVMap (tanpa duplikasi logika); tooltip Metro-E menyertakan `Ping: Xms`, GSM memakai label badge (mis. "Pernah aktif hari ini"), selalu disertai waktu dicek. Ring/border sel tetap berbasis `stream_live` (hijau/merah/abu).
+- **`src/app/sebaran-cctv/page.tsx`**: merge `/streams/live-status` kini membawa `network_type`, `ping_latency_ms`, `stream_last_active_at` (fallback null bila absen); handler WebSocket `CCTV_LIVE_STATUS_UPDATED` memperbarui `ping_latency_ms`/`network_type` hanya bila payload menyediakannya (mempertahankan nilai lama), dan `stream_last_active_at` hanya diperbarui saat kamera live (stream_checked_at sebagai waktu aktif) — saat offline riwayat dipertahankan.
+
+timestamp: 2026-08-13 19:00 WITA
+kategori: Sedang, Frontend
+file yang diubah:
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Kamera GSM tidak pernah di-probe ICMP sehingga badge binary lama menyesatkan (menampilkan Offline padahal masih ada aktivitas hari ini); Metro-E perlu menampilkan latensi ping hasil probe sebagai indikator kualitas koneksi. Membedakan strategi badge per jenis jaringan membuat status live akurat sesuai mekanisme deteksi backend.
+
 ## [1.52.0] - 2026-08-13
 
 ### Fitur: AI Overlay & E2E Integration (Sprint 39 - Task 14C.1, 14C.2 & 14C.3)
