@@ -1,5 +1,27 @@
 # Changelog - Backend SIGAP
 
+## [0.62.1] - 2026-08-13
+
+### Fix: StartNotificationCleanup memblokir main thread (API tidak listen)
+
+perubahan yang dilakukan: **Menambahkan prefix `go` pada pemanggilan `handlers.StartNotificationCleanup(config.DB)` di `main.go` agar dijalankan sebagai goroutine. Tanpa ini, fungsi yang berisi loop `for range ticker.C` memblokir main thread sehingga aplikasi tidak pernah mencapai `app.Listen(":3000")` — API tidak mendengarkan port, healthcheck gagal, dan container `api` tidak pernah healthy (memblokir `mediamtx`/`nginx` via depends_on).**
+
+before:
+- `main.go:197` memanggil `handlers.StartNotificationCleanup(config.DB)` tanpa `go`.
+- `StartNotificationCleanup` (handlers/notification.go) berisi `CleanupOldNotifications(db)` lalu `for range ticker.C { ... }` — loop tak berujung yang memblokir pemanggil.
+- Akibat: startup berhenti setelah log "Worker pengiriman webhook diaktifkan"; log "Trusted proxy", "Swagger", "Server menyala" tidak pernah muncul; port 3000 tidak terbuka; container api unhealthy (ditemukan saat menjalankan stack Docker penuh).
+
+after:
+- `main.go:199` kini `go handlers.StartNotificationCleanup(config.DB)` — konsisten dengan fungsi background lain (`RunScheduleGenerator`, `RunOverdueChecker`, dll.) yang semuanya dijalankan sebagai goroutine.
+- API berhasil listen di :3000, healthcheck `GET /api/health` hijau, dan chain dependency (api → mediamtx → nginx) berjalan normal.
+- Diverifikasi saat `docker compose up -d` stack penuh: semua container Up, api healthy, login admin sukses.
+
+timestamp: 2026-08-13 13:30 WITA
+kategori: Kecil, Backend (Fix startup/blocking)
+file yang diubah:
+- backend/main.go
+alasan perubahan: Startup API macet karena fungsi cleanup notifikasi yang blocking dijalankan di main thread; harus dijalankan sebagai goroutine seperti pola fungsi background lainnya.
+
 ## [0.62.0] - 2026-08-13
 
 ### Fitur: Sprint 39 — Endpoint tren AI analytics + RBAC halaman (Task 14C.3)

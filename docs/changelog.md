@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.45] — 2026-08-13 — Perbaikan: AI tidak mendeteksi manusia (H265) + Fix startup API & backup
+
+### Perubahan
+
+- **Fix AI detection (root cause: kodek H265)** — Kamera NVR mengirim stream **H265/HEVC**, sedangkan `cv2.VideoCapture` (OpenCV headless) **tidak bisa decode H265** → `cap.read()` hang → AI service tidak pernah mendapat frame → tidak ada deteksi orang sama sekali. Perbaikan:
+  - `ai/Dockerfile`: install **ffmpeg** (ffmpeg punya decoder H265).
+  - `ai/core/session_manager.py`: pipeline baca frame diganti dari `cv2.VideoCapture` → **ffmpeg subprocess** (output rawvideo BGR 1280×720 ke pipe, dibaca per-frame sebagai numpy); opsi `-fflags nobuffer+discardcorrupt`, `-err_detect ignore_err`, `-analyzeduration/-probesize` kecil agar toleran terhadap frame korup saat `sourceOnDemand` MediaMTX baru mulai pull; timeout baca 15s (menunggu IDR/keyframe H265 pertama) + reconnect otomatis; `os.set_blocking` non-blocking read.
+  - **Terbukti bekerja**: setelah rebuild, AI service mengirim `detection-event` tiap ±1.5s, DB mencatat `person_detected` (person_count=1, confidence 0.58–0.72), sesi harian terisi (`unique_person_count`).
+- **Fix startup API (backend `0.62.1`)** — `handlers.StartNotificationCleanup` dipanggil tanpa `go` di `main.go`; fungsi berisi loop `for range ticker.C` sehingga memblokir main thread → API tidak pernah `app.Listen` (port 3000 tidak terbuka, container api unhealthy, chain `mediamtx`/`nginx` ikut terblokir). Diperbaiki dengan `go handlers.StartNotificationCleanup(...)`.
+- **Fix backup container CRLF** — `backup/entrypoint.sh` tersimpan dengan line ending CRLF (Windows) sehingga di Linux container error `exec /entrypoint.sh: no such file or directory` (shebang `#!/bin/sh\r` tidak dikenali) → container restart loop. Ditulis ulang sebagai LF.
+- Verifikasi: `docker compose up -d` stack penuh (10 container Up, api healthy), login admin sukses, `GET /api/health` Healthy, AI detection berjalan real-time.
+
+Detail: `backend/changelog.md` [0.62.1].
+
+Timestamp: 2026-08-13 WITA | Kategori: Sedang, Perbaikan (AI Service + Backend + Infra)
+
 ## [1.28.44] — 2026-08-13 — Fitur: Frontend AI Overlay & Admin AI Analytics (Sprint 39) — Fase 14 3/3 ✅ Selesai
 
 ### Perubahan
