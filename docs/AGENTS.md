@@ -3,7 +3,7 @@
 Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codebase SIGAP. Bacalah dokumen ini secara saksama agar Anda dapat memahami arsitektur, konvensi, dan aturan proyek ini sebelum mulai berkontribusi.
 
 > [!NOTE]
-> Dokumen ini diperbarui menyusul Fase 2 (hardening keamanan: migrasi token ke cookie httpOnly + CSRF), Fase 3 (fitur: unifikasi model `assets` → `cctv`, dashboard, profil, laporan PDF, dll), dan Fase 9 (streaming CCTV real-time: MediaMTX service, API stream admin-only, komponen WHEPPlayer/StreamModal/StreamGridView). Status terbaru setiap item perbaikan & pengembangan ada di `docs/ROADMAP.md` dan `docs/SECURITY-AUDIT.md`.
+> Dokumen ini diperbarui menyusul Fase 2 (hardening keamanan: migrasi token ke cookie httpOnly + CSRF), Fase 3 (fitur: unifikasi model `assets` → `cctv`, dashboard, profil, laporan PDF, dll), Fase 9 (streaming CCTV real-time: MediaMTX service, API stream admin-only, komponen WHEPPlayer/StreamModal/StreamGridView), dan Sprint 40 (AI Feature Takedown: fitur AI detection dihapus — sistem kembali ke pure CCTV management). Status terbaru setiap item perbaikan & pengembangan ada di `docs/ROADMAP.md` dan `docs/SECURITY-AUDIT.md`.
 
 ## 1. Gambaran Umum Sistem
 - **Nama**: SIGAP (Sistem Informasi & Inventaris CCTV Terpadu)
@@ -23,6 +23,9 @@ Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codeb
 > Branch `main` dilindungi. JANGAN pernah melakukan commit atau push langsung ke branch `main`.
 
 Setiap pengembangan fitur atau perbaikan _bug_ HARUS menggunakan branch baru.
+
+> [!IMPORTANT]
+> **Aturan Deployment Sub-Agent:** Setiap sprint HANYA boleh men-deploy **maksimal 3 sub-agent** secara bersamaan. Rencanakan pembagian jobdesk agar tidak melebihi batas ini. Sub-agent ke-4 dan seterusnya TIDAK akan diizinkan.
 
 **Workflow yang harus Anda ikuti:**
 1. Pastikan selalu _up-to-date_ dengan main: `git checkout main && git pull origin main`
@@ -284,7 +287,6 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **API Key** (Task 12.1): `/api/api-keys` — admin-only (generate, list, revoke). Konsumen eksternal memanggil endpoint dengan header `X-API-Key: <key>`. Middleware `APIKeyAuth`/`APIKeyOrProtected` memvalidasi hash bcrypt, cek revoked/expired/scope, rate limit 100 req/menit per key. `GET /api/cctv` dapat diakses via API key scope `cctv:read`; `GET /api/health` publik (juga via scope `health:read`).
 - **Webhook** (Task 12.3): `/api/webhooks` — admin-only CRUD, `POST /api/webhooks/:id/test`, `GET /api/webhooks/:id/deliveries`. Event yang didukung: `cctv.status_changed`, `maintenance.completed`, `maintenance.overdue`, `health_score.changed`, `stream.down`. Pengiriman asinkron via antrean channel + worker `StartWebhookWorker` (dipanggil di `main.go`); header `X-Signature-256` (HMAC-SHA256 dari secret), retry 3× exponential backoff (1s/5s/25s).
 - **Streaming CCTV** (Fase 9, Task 9.3): seluruh endpoint streaming **admin-only** (`Protected()` + `RequireRole("admin")`) di bawah grup `/api/streams` — `POST /api/streams/:id/start` (decrypt `rtsp_password` → build URL RTSP → register path MediaMTX → return WHEP URL), `POST /api/streams/:id/stop`, `GET /api/streams/status` (gabung data DB + info path MediaMTX), `GET /api/streams/:id/url` (WHEP + HLS), `POST /api/streams/start-all`, `POST /api/streams/stop-all`. `rtsp_password` disimpan terenkripsi (AES-256) dan **tidak pernah** dikembalikan di respons.
-- **AI Detection** (Task 14B, Sprint 38): `POST /api/ai/detection-event` — **internal** (dipanggil service `sigap_ai`, diproteksi header `X-AI-Secret`, tanpa JWT); `GET /api/ai/counts` & `GET /api/ai/counts/:id` — **admin-only** (ringkasan & detail hitungan orang unik hari ini dari `ai_detection_sessions`); `POST /api/ai/sessions` & `DELETE /api/ai/sessions/:id` — protected semua role (proxy ke `AI_SERVICE_URL`/`http://sigap_ai:8010/sessions`); `GET /api/ai/sessions` — admin-only. AI service mengirim event → backend upsert sesi harian + insert `ai_detection_events` + broadcast WebSocket `AI_DETECTION_UPDATE` (payload `cctv_id`, `bboxes` ternormalisasi 0–1, `unique_today`, `current_in_frame`).
 - **Metrik Prometheus** (Task 7.4): `GET /api/metrics` **publik** mengembalikan metrik dalam format text exposition Prometheus (`text/plain; version=0.0.4`) — counter `sigap_http_requests_total`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Implementasi di `monitoring/` (tanpa library pihak ketiga); jangan menambah library prometheus kecuali disetujui.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
@@ -335,7 +337,7 @@ Perhatikan dengan sangat saksama _edge cases_ dan potensi _pitfall_ berikut:
 
 ## 7. Konfigurasi Docker
 Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *deployment*:
-- Terdiri dari **8 services**:
+- Terdiri dari **7 services**:
   - `db` (berbasis `postgres:15-alpine`) — port `5432` **tidak dipublish** ke host; hanya dapat diakses dari dalam network.
   - `redis` (berbasis `redis:7-alpine`, sejak Task 7.2) — port `6379` **tidak dipublish**; shared store untuk rate-limit counter & token blacklist (persisten lintas restart, multi-instance). Volume `redis_data` (AOF) untuk persistensi.
   - `api` (merupakan _executable binary_ aplikasi Go) — port `3000` **tidak dipublish**; hanya diakses via reverse proxy.
@@ -343,7 +345,6 @@ Proyek menggunakan pendekatan *Dockerized Environment* untuk *development* dan *
   - `nginx` (reverse proxy + TLS) — satu-satunya service yang mem-publish port `80` & `443`. Menangani terminasi TLS, HTTP→HTTPS redirect, security headers, routing `/api/*` (termasuk WebSocket) dan `/swagger/*` ke `api`, routing `/stream/*` & `/hls/*` ke `mediamtx`, serta routing sisanya ke `frontend`.
   - `backup` (Task 7.3) — image `postgres:15-alpine` + `dcron`; menjalankan `scripts/backup.sh` via cron (default tiap hari 06:00 WITA) untuk mem-backup database + uploads ke volume `backups_data`. Port **tidak dipublish**; hanya berkomunikasi dengan `db` di dalam network.
   - `mediamtx` (Task 9.2, Fase 9) — image `bluenviron/mediamtx:latest-ffmpeg`, IP statis `172.28.0.11`; proxy RTSP→WebRTC/WHEP streaming CCTV real-time. Port internal `8554` (RTSP), `8889` (HTTP/WebRTC), `8888` (HLS), `9997` (REST API) + UDP `8189`; resource limits 2 CPU / 1024M; health check; port **tidak dipublish** ke host — diakses hanya via Nginx (`/stream/*` → `:8889`, `/hls/*` → `:8888`) dan API (`http://mediamtx:9997/v3/`).
-  - `sigap_ai` (Task 14B, Sprint 38) — image Python FastAPI di folder `ai/`; deteksi orang YOLOv8n + tracking ByteTrack dari stream RTSP internal MediaMTX (`rtsp://mediamtx:8554/cam-{cctv_id}`). Port internal `8010` **tidak dipublish**; hanya diakses oleh backend `api` (`AI_SERVICE_URL`, default `http://sigap_ai:8010`). Env: `BACKEND_URL` (default `http://sigap_api:3000`), `MEDIAMTX_RTSP_URL` (default `rtsp://mediamtx:8554`), `AI_SECRET` (shared secret header `X-AI-Secret`, fallback `sigap-ai-secret-change-me`). Resource limits 2 CPU / 2048M; depends_on `mediamtx` + `api`.
 - *Network*: Layanan berkomunikasi di bawah *bridge network* `sigap_network` (subnet eksplisit `172.28.0.0/16`; Nginx memakai IP statis `172.28.0.10` dan MediaMTX memakai IP statis `172.28.0.11`; IP Nginx didaftarkan sebagai trusted proxy).
 - *Volume*: Direktori `postgres_data` untuk persistensi _storage_ PostgreSQL; `redis_data` untuk persistensi Redis; `backups_data` (Task 7.3) untuk hasil backup db/uploads; folder `./backend/uploads` di-*bind mount* untuk foto bukti (di-mount read-only ke service `backup`).
 - **Secret management (Task 7.5)**: Secret aplikasi (`DB_PASSWORD`, `JWT_SECRET`, `AES_SECRET_KEY`) dikirim sebagai **Docker secret** (file `./secrets/*` → `/run/secrets/<nama>`), dibaca di Go via `utils.secrets.GetSecret` dengan fallback env. `REDIS_PASSWORD` opsional — harus sama di root `.env` & `backend/.env.docker`. Jangan pernah men-commit file `.env*` atau folder `secrets/`.
@@ -367,7 +368,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 
 ## 9. Testing
 - **WAJIB — Manual Test per Sprint:** Setiap sprint/task yang dikerjakan **HARUS** menyertakan dokumen uji manual (blackbox) yang diletakkan di folder **`docs/`** dengan nama pola `manual-test-<nama-fitur>.md` (contoh: `docs/manual-test-pwa.md`, `docs/manual-test-health-score.md`). Format dokumen mengikuti file manual test lainnya: header (Task/Branch/Versi), **1. Prasyarat**, **2. Pengujian Otomatis**, **3. Skenario Uji** (tabel Langkah → Hasil yang diharapkan → Hasil nyata), **4. Kriteria Lulus**, dan **Catatan**. Buat dokumen ini untuk memudahkan user melakukan verifikasi blackbox.
-- Matriks cakupan test lengkap (38 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
+- Matriks cakupan test lengkap (37 file test: `utils`, `middleware`, `handlers`, `models`, `config`, `routes`) ada di **`docs/TESTING.md`**. Bacalah sebelum menambah/memodifikasi test (ada gotchas khusus sqlmock, `SkipDefaultTransaction`, dsb.).
 - Untuk mengeksekusi tes & quality check:
   ```bash
   cd backend && go build ./... && go test ./... -count=1 && go vet ./...
@@ -387,6 +388,156 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
   - Kategori Skala Perubahan (Kecil / Sedang / Besar).
   - Daftar file yang terpengaruh/diubah.
   - Alasan teknis atau objektif dari perubahan tersebut.
+
+---
+
+## 11. Keputusan Operasional & Kebijakan Sistem
+
+> [!IMPORTANT]
+> Bagian ini berisi keputusan operasional yang telah dikonfirmasi oleh user. Semua agent **WAJIB** mematuhi kebijakan ini — jangan override tanpa persetujuan eksplisit user.
+
+### 11.1 Streaming & NVR
+
+| Parameter | Nilai |
+|-----------|-------|
+| **Host NVR** | `36.91.27.35:554` (Hikvision) |
+| **Kredensial NVR** | `admin:hik12345` (tersimpan terenkripsi AES-256 di DB) |
+| **Protocol** | RTSP over TCP |
+| **Pembedaan kamera** | Channel port 1–35 → `channelID = channelPort × 100 + streamType` |
+| **Zero-Transcoding** | ✅ WAJIB — MediaMTX bertindak sebagai RTSP→WebRTC relay murni. **DILARANG** mengaktifkan FFmpeg transcoding. Kamera/NVR dikonfigurasi hardcoded H.264. |
+| **Default Stream** | Sub Stream (`02`) — untuk popup peta & grid view (hemat bandwidth ~0.5–1 Mbps/kamera) |
+| **Main Stream** | `01` — hanya via tombol toggle manual di dalam video player |
+| **Live View Access** | **Admin-only** (route `/streams/*` dilindungi `RequireRole("admin")`) |
+| **Recording** | ❌ Tidak ada recording/retention di VPS SIGAP. Playback tetap di NVR lokal. |
+
+### 11.2 Network Health Check — Kebijakan Metro-E vs GSM
+
+> [!CAUTION]
+> **JANGAN** melakukan ICMP ping atau background-stream pada kamera GSM. Ini dapat menguras kuota data seluler. Hanya 17 kamera Metro-E yang boleh di-ping secara berkala.
+
+#### Aturan Probe per Tipe Jaringan
+
+| Tipe | ICMP Ping Berkala | RTSP Options Probe | Keterangan |
+|------|-------------------|-------------------|------------|
+| **Metro-E** (`10.20.105.x`) | ✅ Ya — tiap 2 menit | ✅ Ya | Jaringan dedicated, aman di-probe |
+| **GSM** (IP publik/non-Metro-E) | ❌ TIDAK | ⚠️ Opsional — interval panjang (≥30 menit) | Hemat kuota data seluler |
+
+#### Cara Identifikasi Tipe Jaringan
+
+```go
+// Di backend Go — identifikasi Metro-E berdasarkan IP kamera
+func isMetroE(cctv models.CCTV) bool {
+    // Cara 1: cek prefix IP kamera
+    if strings.HasPrefix(cctv.IPCamera, "10.20.105.") {
+        return true
+    }
+    // Cara 2: cek field TipeKoneksi jika diisi di master data
+    if strings.EqualFold(cctv.TipeKoneksi, "metro-e") ||
+       strings.EqualFold(cctv.TipeKoneksi, "metro e") {
+        return true
+    }
+    return false
+}
+```
+
+#### 17 Kamera Metro-E — IP Resmi
+
+| Kode | IP Camera | Kode | IP Camera |
+|------|-----------|------|-----------|
+| D3   | `10.20.105.62` | D11  | `10.20.105.55` |
+| D5   | `10.20.105.66` | D12  | `10.20.105.58` |
+| D6   | `10.20.105.59` | D13  | `10.20.105.67` |
+| D7   | `10.20.105.53` | D15  | `10.20.105.61` |
+| D8   | `10.20.105.52` | D16  | `10.20.105.56` |
+| D9   | `10.20.105.54` | D17  | `10.20.105.63` |
+| D19  | `10.20.105.60` | D28  | `10.20.105.70` |
+| D23  | `10.20.105.65` | D30  | `10.20.105.68` |
+> [!IMPORTANT]
+> **Addendum Kebijakan Metro-E vs GSM — Probe Strategy Final (dikonfirmasi 2026-08-13):**
+> Implementasi `RunRTSPProber` yang sudah ada HARUS di-patch mengikuti strategi berikut:
+>
+> | Tipe | Cara Identifikasi | Probe Method | Interval | Konsumsi Data GSM |
+> |------|-------------------|-------------|----------|-------------------|
+> | **Metro-E** | `ip_camera` prefix `10.20.105.` | ICMP Ping → IP kamera langsung | 2 menit | ❌ Tidak ada (jaringan dedicated) |
+> | **GSM** | IP selain `10.20.105.x` | Cek MediaMTX path list (lokal VPS) + last-active tracking | Pasif (event-driven) | ✅ Nol — tidak menyentuh kamera |
+>
+> **Strategi GSM — Zero Data Consumption:**
+> ```
+> JANGAN probe ke NVR/kamera GSM sama sekali.
+> Gunakan data yang sudah ada di VPS:
+>
+> 1. Cek MediaMTX path list (GET http://mediamtx:9997/v3/paths/list)
+>    → Jika path "cam-{uuid}" Ready=true → kamera ONLINE (sedang ada viewer)
+>    → Jika path tidak ada/Ready=false → tidak bisa disimpulkan (mungkin tidak ada yang nonton)
+>
+> 2. Last-active tracking dari stream events:
+>    → Field baru: stream_last_active_at TIMESTAMPTZ (nullable)
+>    → Diupdate setiap stream berhasil dibuka (Ready=true di MediaMTX)
+>    → Jika stream_last_active_at < 24 jam lalu → status "Pernah Online Hari Ini"
+>    → Jika stream_last_active_at > 24 jam atau null → status "Tidak Diketahui"
+>    → Jika stream pernah aktif lalu tiba-tiba gagal → status "Offline"
+> ```
+>
+> **Badge UI untuk GSM:**
+> - 🟢 Online — MediaMTX path Ready=true (sedang ditonton)
+> - 🟡 Pernah aktif — `stream_last_active_at` < 24 jam, saat ini tidak ada viewer
+> - ⚪ Tidak diketahui — belum pernah dibuka atau > 24 jam
+> - 🔴 Offline — stream pernah aktif tapi sekarang error/disconnected
+>
+> **17 Metro-E IP Resmi:** D3:`10.20.105.62` D5:`10.20.105.66` D6:`10.20.105.59` D7:`10.20.105.53` D8:`10.20.105.52` D9:`10.20.105.54` D11:`10.20.105.55` D12:`10.20.105.58` D13:`10.20.105.67` D15:`10.20.105.61` D16:`10.20.105.56` D17:`10.20.105.63` D19:`10.20.105.60` D23:`10.20.105.65` D28:`10.20.105.70` D30:`10.20.105.68` D38:`10.20.105.57`
+>
+> **Latensi Metro-E:** `<50ms` 🟢 Good | `50–100ms` 🟡 Lagging | `>100ms` 🔴 Critical | Timeout ⚫ Offline
+> Lihat `docs/AGENTS.md` § 11.2 untuk detail lengkap.
+
+#### Sprint 37-PATCH — Update Probe Strategy Metro-E vs GSM
+
+> **Branch:** `bugfix/rtsp-probe-metro-gsm-strategy`
+> **Prasyarat:** Sprint 37 sudah selesai (stream_probe.go sudah ada)
+> **Estimasi:** 1 hari kerja
+> **Status:** 🔲 Belum dimulai
+
+| Task | Deliverable |
+|------|-------------|
+| **Patch `utils/rtsp_probe.go`** | Tambah `ProbeRTSPHostICMP(ip string) (latencyMs int, ok bool)` via `net.Dial("ip4:icmp", ...)`. Tambah `CheckMediaMTXPath(client, path string) bool` — cek `Ready=true` di path list. |
+| **Patch `handlers/stream_probe.go`** | Update `runRTSPProbeCycle()`: split Metro-E vs GSM. Metro-E: `ProbeRTSPHostICMP` + update `stream_live` + `ping_latency_ms`. GSM: cek MediaMTX path list → update `stream_live` (true hanya jika Ready) + update `stream_last_active_at` jika Ready. |
+| **Migration baru** | `000022_stream_ping_fields.up.sql`: tambah `ping_latency_ms INTEGER` (nullable) + `stream_last_active_at TIMESTAMPTZ` (nullable) ke tabel `cctvs`. |
+| **Update model** | `models/cctv.go`: tambah `PingLatencyMs *int`, `StreamLastActiveAt *time.Time`. |
+| **Update `GetLiveStatus`** | Sertakan `ping_latency_ms`, `stream_last_active_at`, dan `network_type` (`"metro-e"` atau `"gsm"`) di response. |
+| **Update `CCTVMap.tsx`** | Badge GSM: 4 state (🟢/🟡/⚪/🔴). Tooltip Metro-E: tampilkan latensi (`"Ping: 12ms"`). |
+| **Test** | `utils/rtsp_probe_test.go` + `handlers/stream_probe_test.go` update untuk Metro-E vs GSM path. |
+
+#### GSM Safety Rules
+
+```
+✅ Boleh: RTSP probe sesekali (≥30 menit) untuk deteksi offline berat
+✅ Boleh: Stream terbuka SAAT user aktif menonton (on-demand)
+❌ Dilarang: ICMP ping berkala (tiap menit/2 menit)
+❌ Dilarang: background-stream tanpa viewer
+✅ Wajib: Auto-close stream GSM saat popup/modal ditutup (existing: sourceOnDemandCloseAfter: 30s)
+```
+
+### 11.3 Infrastruktur Deployment
+
+| Environment | Detail |
+|-------------|--------|
+| **Staging** | Dell PC lokal — Windows 11 + Docker Desktop/WSL2. Akses remote via **Tailscale SSH**. |
+| **Production** | VPS Hostinger |
+| **Akses web** | `https://localhost` (staging) / domain publik (produksi), keduanya via Nginx TLS |
+| **Deploy method** | `docker compose up -d` — tidak ada CI/CD otomatis saat ini |
+
+### 11.4 Prioritas Fitur (Sudah Dikonfirmasi)
+
+Urutan prioritas yang telah disepakati dengan user:
+
+```
+1. Spare Parts Inventory Management (Task 11.1) ← lebih prioritas dari Multi-View Monitor
+2. Multi-View Monitor (Task 10.3) ← dikerjakan setelah Spare Parts
+3. Fase 13 (Perbaikan teknis) — parallel Sprint 31-36
+4. Fase 14 (CCTV Intelligence) — mulai setelah Sprint 31
+```
+
+> [!NOTE]
+> **Sprint 40 — AI Feature Takedown (2026-08-13):** Fitur AI detection (person counting, bounding box, YOLOv8) telah **dihapus** dari SIGAP — sistem kembali ke pure CCTV management. Fase 14 kini hanya berisi **Live Status** (Sprint 37 ✅) + **AI Takedown** (Sprint 40 🚧); Sprint 38 & 39 (AI Microservice & Frontend AI Overlay) **DIBATALKAN**. Lihat `docs/ROADMAP.md` Fase 14.
 
 ---
 _Dokumen ini adalah referensi sentral untuk AI. Patuhi segala aturan, instruksi arsitektural, dan gotchas teknis yang tercantum di atas._

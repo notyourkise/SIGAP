@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga streaming CCTV real-time.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-07
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-13 (Sprint 40 — AI Feature Takedown)
 
 ## Visi & Prinsip Prioritas
 
@@ -35,7 +35,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
 | **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
-| **14** | **CCTV Intelligence — Live Status & AI Detection** | **3/3** | **✅ Selesai** |
+| **14** | **CCTV Intelligence — Live Status & AI Takedown** | **Sprint 37 ✅ · Sprint 40 🚧** | **🚧 Berjalan** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -52,16 +52,17 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 >     ▼
 > Fase 14 (CCTV Intelligence) ← dapat dimulai setelah Sprint 31 selesai
 >     │
->     ├── Sprint 37: RTSP Live Status Detection (14A)
->     ├── Sprint 38: AI Microservice & Person Counting (14B)
->     └── Sprint 39: Frontend AI Overlay & E2E Integration (14C)
+>     ├── Sprint 37: RTSP Live Status Detection (14A) ✅
+>     ├── Sprint 38: AI Microservice & Person Counting (14B) ❌ DIBATALKAN
+>     ├── Sprint 39: Frontend AI Overlay & E2E Integration (14C) ❌ DIBATALKAN
+>     └── Sprint 40: AI Feature Takedown (rollback) 🚧 Berjalan
 > ```
 > - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
 > - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
 > - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
 > - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
 > - **Fase 13** (perbaikan): penguatan kualitas & keamanan fitur existing berdasarkan analisis teknis 2026-08-10.
-> - **Fase 14** (CCTV intelligence): deteksi online/offline real-time + AI deteksi orang berbasis YOLOv8.
+> - **Fase 14** (CCTV intelligence): deteksi online/offline real-time (Live Status, Sprint 37) + **Sprint 40 (AI Takedown)** — fitur AI detection dihapus; sistem kembali ke pure CCTV management.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
 
 ---
@@ -881,13 +882,13 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 
 ---
 
-## Fase 14 — CCTV Intelligence: Live Status & AI Detection
+## Fase 14 — CCTV Intelligence: Live Status & AI Takedown
 
-> Fase ini menambahkan **dua kemampuan baru** yang saling melengkapi:
-> - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati.
-> - **14B**: AI object detection berbasis YOLOv8 — mendeteksi dan menghitung **orang unik** yang terdeteksi oleh kamera yang sedang ditampilkan di `/monitor`.
+> Fase ini awalnya menambahkan **dua kemampuan baru** yang saling melengkapi, namun per 2026-08-13 fitur AI detection **dihapus** (Sprint 40):
+> - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati. ✅ Selesai (Sprint 37).
+> - **14B/14C**: AI object detection berbasis YOLOv8 (person counting + bounding box) — **DIBATALKAN**; seluruh artefak dihapus via **Sprint 40 (AI Feature Takedown)**. Sistem kembali ke pure CCTV management tanpa AI inference.
 >
-> **Status: ✅ Selesai** — 3 sprint (Sprint 37–39) selesai. Sprint 37 (14A) ✅ Selesai, Sprint 38 (14B) ✅ Selesai, Sprint 39 (14C) ✅ Selesai → progress **3/3 ✅ Selesai**.
+> **Status: 🚧 Berjalan** — Sprint 37 (14A Live Status) ✅ Selesai; Sprint 38 & 39 (AI) ❌ DIBATALKAN; **Sprint 40 (AI Takedown) 🚧 aktif (Sprint ini)**.
 
 ### Latar Belakang & Root Cause
 
@@ -1059,14 +1060,69 @@ cd frontend && npm run lint && npm run build
 > - Counter status bar peta akurat (X Online, Y Offline)
 > - Border merah di /monitor untuk kamera offline
 
+> [!IMPORTANT]
+> **Addendum Kebijakan Metro-E vs GSM — Probe Strategy Final (dikonfirmasi 2026-08-13):**
+> Implementasi `RunRTSPProber` HARUS di-patch agar tidak menyentuh kamera GSM sama sekali:
+>
+> | Tipe | Identifikasi | Probe Method | Data GSM |
+> |------|-------------|-------------|----------|
+> | **Metro-E** | `ip_camera` prefix `10.20.105.` | ICMP Ping langsung ke IP kamera, tiap 2 menit | ❌ Tidak ada |
+> | **GSM** | IP selain `10.20.105.x` | Cek MediaMTX path list (lokal VPS) + last-active tracking | ✅ Nol |
+>
+> **Strategi GSM — Zero Data Consumption:**
+> ```
+> JANGAN probe ke NVR/kamera GSM dari backend.
+> Gunakan data yang sudah tersedia di VPS:
+>
+> 1. MediaMTX path list (GET http://mediamtx:9997/v3/paths/list) — lokal, gratis
+>    → path Ready=true → kamera ONLINE (ada viewer aktif)
+>    → path tidak ada / Ready=false → tidak bisa disimpulkan
+>
+> 2. Last-active tracking (field baru: stream_last_active_at)
+>    → diupdate saat stream berhasil dibuka (event Ready=true dari MediaMTX)
+>    → < 24 jam: "Pernah Online Hari Ini" 🟡
+>    → null / > 24 jam: "Tidak Diketahui" ⚪
+>    → pernah aktif lalu gagal: "Offline" 🔴
+> ```
+>
+> **Badge UI untuk kamera GSM:**
+> 🟢 Online — path MediaMTX Ready=true saat ini
+> 🟡 Pernah aktif — `stream_last_active_at` < 24 jam, tidak ada viewer sekarang
+> ⚪ Tidak diketahui — belum pernah dibuka atau > 24 jam
+> 🔴 Offline — stream pernah aktif tapi sekarang error
+>
+> **Metro-E latensi:** `<50ms` 🟢 Good | `50–100ms` 🟡 Lagging | `>100ms` 🔴 Critical | Timeout ⚫ Offline
+>
+> **Butuh patch:** lihat **Sprint 37-PATCH** di bawah. Referensi lengkap: `docs/AGENTS.md` § 11.2.
+
+#### Sprint 37-PATCH — Update Probe Strategy Metro-E vs GSM
+
+> **Branch:** `bugfix/rtsp-probe-metro-gsm-strategy`
+> **Prasyarat:** Sprint 37 sudah selesai (file `stream_probe.go` sudah ada)
+> **Estimasi:** 1 hari kerja
+> **Status: 🔲 Belum dimulai**
+
+| Task | Deliverable |
+|------|-------------|
+| **Migration baru** | `000022_stream_ping_fields.up.sql`: `ALTER TABLE cctvs ADD COLUMN ping_latency_ms INTEGER, ADD COLUMN stream_last_active_at TIMESTAMPTZ`. Down: DROP kedua kolom. |
+| **Update model** | `models/cctv.go`: tambah `PingLatencyMs *int \`gorm:"column:ping_latency_ms" json:"ping_latency_ms,omitempty"\`` dan `StreamLastActiveAt *time.Time \`gorm:"column:stream_last_active_at" json:"stream_last_active_at,omitempty"\``. |
+| **Patch `utils/rtsp_probe.go`** | Tambah `ProbeICMP(ip string, timeout time.Duration) (latencyMs int64, ok bool)` via `net.DialTimeout("ip4:icmp", ...)` + ICMP echo request. Tambah `isMetroE(cctv models.CCTV) bool` — `strings.HasPrefix(cctv.IPCamera, "10.20.105.")`. |
+| **Patch `handlers/stream_probe.go`** | Update `runRTSPProbeCycle()`: pisahkan Metro-E vs GSM. **Metro-E:** `isMetroE=true` → `ProbeICMP(cctv.IPCamera)` → update `stream_live` + `ping_latency_ms` + `stream_checked_at`. **GSM:** `isMetroE=false` → cek `streamClient.ListPaths()` → jika path Ready=true: update `stream_live=true` + `stream_last_active_at=now`; jika tidak: update `stream_live=false` (tanpa sentuh kamera). |
+| **Update `GetLiveStatus`** | Response tambah field `ping_latency_ms`, `stream_last_active_at`, `network_type` (`"metro-e"` atau `"gsm"`). |
+| **Update `CCTVMap.tsx`** | Interface `CCTVMapItem`: tambah `ping_latency_ms?: number`, `stream_last_active_at?: string`, `network_type?: string`. Marker badge GSM: 4 state 🟢/🟡/⚪/🔴. Popup Metro-E: tampilkan latensi ping (`"Ping: 12ms"`). |
+| **Test** | Update `utils/rtsp_probe_test.go` + `handlers/stream_probe_test.go` dengan test case Metro-E vs GSM. |
+
+
 ---
 
 ### Sprint 38 — AI Microservice & Person Counting (Task 14B)
 
 > **Branch:** `feature/ai-detection-service`
-> **Prasyarat:** Sprint 37 selesai (stream_live tersedia)
-> **Estimasi:** 4–5 hari kerja
-> **Status: ✅ Selesai** (2026-08-13)
+> **Status: ❌ DIBATALKAN** — Digantikan oleh Sprint 40 (AI Takedown)
+
+> [!CAUTION]
+> **Sprint ini dibatalkan pada 2026-08-13.** Kode yang sudah diimplementasikan (handlers/ai.go, routes/ai.go, models/ai_detection.go, service `ai/`, migration 000020 & 000021) akan dihapus via **Sprint 40**. Sistem kembali ke pure CCTV management tanpa AI detection.
+
 
 | Jobdesk | Sub-Agent | Task | Deliverable | Status |
 |---------|-----------|------|-------------|--------|
@@ -1111,9 +1167,11 @@ curl http://localhost:8010/counts/test
 ### Sprint 39 — Frontend AI Overlay & E2E Integration (Task 14C)
 
 > **Branch:** `feature/ai-frontend-overlay`
-> **Prasyarat:** Sprint 38 selesai
-> **Estimasi:** 3–4 hari kerja
-> **Status: ✅ Selesai** (2026-08-13)
+> **Status: ❌ DIBATALKAN** — Digantikan oleh Sprint 40 (AI Takedown)
+
+> [!CAUTION]
+> **Sprint ini dibatalkan pada 2026-08-13.** Kode frontend yang sudah diimplementasikan (canvas overlay WHEPPlayer, tombol AI StreamGridView, halaman /ai-analytics) akan dihapus via **Sprint 40**.
+
 
 | Jobdesk | Sub-Agent | Task | Deliverable | Status |
 |---------|-----------|------|-------------|--------|
@@ -1150,23 +1208,91 @@ cd backend && go build ./... && go test ./... -count=1 -run "TestGetAICountTrend
 
 ```
 ═══════════════════════════════════════════════════════════════
-FASE 14 — CCTV Intelligence
+FASE 14 — CCTV Intelligence (REVISI 2026-08-13)
 ───────────────────────────────────────────────────────────────
-Sprint 37: RTSP Live Status Detection (14A)  ✅ .......  2–3 hari
-Sprint 38: AI Microservice & Person Counting (14B) ✅ ...  4–5 hari
-Sprint 39: Frontend AI Overlay & E2E (14C) ✅ ........  3–4 hari
+Sprint 37: RTSP Live Status Detection (14A)     ✅ Selesai
+Sprint 37-PATCH: Metro-E vs GSM Probe Strategy  🔲 Belum dimulai
+Sprint 38: AI Microservice & Person Counting    ❌ DIBATALKAN
+Sprint 39: Frontend AI Overlay & E2E            ❌ DIBATALKAN
+Sprint 40: AI Feature Takedown (rollback)       🚧 Berjalan
 ───────────────────────────────────────────────────────────────
-FASE 14 SELESAI — 3/3 ✅
+Keputusan: Fitur AI detection dihapus seluruhnya (2026-08-13)
+Sistem: Pure CCTV Management — tanpa AI inference
 ───────────────────────────────────────────────────────────────
-Requirement Server (minimum):
-  CPU   : 4 vCPU (2 untuk app, 2 untuk AI)
-  RAM   : 6 GB total (4 app + 2 AI service)
-  GPU   : Opsional — tanpa GPU tetap jalan di CPU
+Requirement Server (revised, tanpa AI):
+  CPU   : 2 vCPU (cukup untuk app + MediaMTX)
+  RAM   : 4 GB total
   Port  : 554 (RTSP NVR) harus bisa dicapai dari VPS
 ═══════════════════════════════════════════════════════════════
 ```
 
 ---
+
+### Sprint 40 — AI Feature Takedown
+
+> **Branch:** `bugfix/remove-ai-detection`
+> **Prasyarat:** Sprint 38 & 39 sudah ada di codebase (sudah diimplementasikan)
+> **Estimasi:** 1–2 hari kerja
+> **Status: 🚧 Berjalan (Sprint aktif — 2026-08-13)**
+
+Hapus **seluruh** artefak AI detection dari codebase. Sistem kembali ke 7 Docker service (tanpa `sigap_ai`).
+
+| Komponen | Aksi | Detail |
+|----------|------|--------|
+| **`ai/` folder** | 🗑️ Hapus seluruh folder | Dockerfile, main.py, requirements.txt, core/, routers/ |
+| **`backend/handlers/ai.go`** | 🗑️ Hapus | Handler ReceiveDetectionEvent, GetAICounts, ProxySession, dll. |
+| **`backend/routes/ai.go`** | 🗑️ Hapus | Registrasi route `/ai/*` |
+| **`backend/models/ai_detection.go`** | 🗑️ Hapus | Model AIDetectionSession & AIDetectionEvent |
+| **`backend/main.go`** | ✏️ Edit | Hapus `routes.SetupAIRoutes(api)` + log baris AI |
+| **Migration `000023`** | ➕ Buat | `000023_remove_ai_detection.up.sql`: DROP TABLE ai_detection_events, ai_detection_sessions |
+| **`docker-compose.yml`** | ✏️ Edit | Hapus blok service `sigap_ai` (baris 276–305) |
+| **`frontend/.../ai-analytics/page.tsx`** | 🗑️ Hapus | Halaman analytics AI (465 baris) |
+| **`frontend/.../WHEPPlayer.tsx`** | ✏️ Edit | Hapus: canvas overlay, drawBBoxes, aiEnabled prop, WS AI listener |
+| **`frontend/.../StreamGridView.tsx`** | ✏️ Edit | Hapus: tombol 🤖 AI, aiCounts, badge counter, WS AI subscription |
+| **`frontend/.../DashboardLayout.tsx`** | ✏️ Edit | Hapus menu item "AI Analytics" jika ada |
+| **`backend/.env.example`** | ✏️ Edit | Hapus `AI_SECRET`, `AI_SERVICE_URL` |
+| **`docs/AGENTS.md`** | ✏️ Edit | Hapus referensi AI Detection dari § 5 & § 7 |
+| **`docs/manual-test-ai.md`** | 🗑️ Hapus (jika ada) | Dokumen test AI tidak relevan |
+| **`docs/manual-test-ai-analytics.md`** | 🗑️ Hapus (jika ada) | Dokumen test AI analytics tidak relevan |
+
+#### Verifikasi Sprint 40
+
+```bash
+# Backend — tidak boleh ada referensi ke AI routes/handlers
+cd backend
+grep -r "SetupAIRoutes\|ai_detection\|AIDetection\|sigap_ai\|X-AI-Secret" . --include="*.go"
+# Expected: no output
+
+go build ./...        # wajib 0 error
+go test ./... -count=1
+go vet ./...
+
+# Frontend — tidak boleh ada referensi ke AI
+cd ../frontend
+grep -r "aiEnabled\|aiCounts\|AI_DETECTION_UPDATE\|ai-analytics\|drawBBoxes" src/ --include="*.tsx"
+# Expected: no output
+
+npm run lint
+npm run build
+npx tsc --noEmit
+
+# Docker
+docker compose config     # validasi YAML
+grep "sigap_ai" docker-compose.yml
+# Expected: no output
+```
+
+> **Acceptance Criteria Sprint 40:**
+> - [ ] `docker ps` setelah `docker compose up -d` hanya menampilkan 7 container (tanpa sigap_ai)
+> - [ ] `GET /api/ai/counts` → 404 Not Found
+> - [ ] `GET /api/ai/sessions` → 404 Not Found
+> - [ ] `/ai-analytics` → 404 atau redirect (halaman tidak ada)
+> - [ ] `/monitor` → tidak ada tombol 🤖 AI, tidak ada badge "👥 X orang"
+> - [ ] Video player di `/monitor` tidak punya canvas overlay
+> - [ ] `go build ./...` → 0 error, 0 warning
+> - [ ] `npm run build` → sukses
+> - [ ] Tabel `ai_detection_sessions` & `ai_detection_events` → DROP via migration 000023
+
 
 ## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
 
@@ -1246,14 +1372,15 @@ Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
 Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
 ───────────────────────────────────────────────────────────────
 
-CCTV INTELLIGENCE (Fase 14 — selesai)
-──────────────────────────────────────────────
+CCTV INTELLIGENCE (Fase 14 — Live Status ✅ + AI Takedown 🚧)
+──────────────────────────────────────────────────────────────
 Sprint 37: RTSP Live Status Detection (14A)  ✅ ....  2–3 hari
-Sprint 38: AI Microservice & Person Counting (14B) ✅  4–5 hari
-Sprint 39: Frontend AI Overlay & E2E (14C)  ✅ ......  3–4 hari
+Sprint 38: AI Microservice & Person Counting (14B) ❌ DIBATALKAN
+Sprint 39: Frontend AI Overlay & E2E (14C)  ❌ DIBATALKAN
+Sprint 40: AI Feature Takedown (rollback)  🚧 Berjalan ..  1–2 hari
 ──────────────────────────────────────────────────────────────
 Total Fase 13: 16–22 hari kerja
-Total Fase 14:  9–12 hari kerja (✅ selesai — 3/3)
+Total Fase 14: Live Status (Sprint 37) ✅ + AI Takedown (Sprint 40) 🚧 — AI detection dihapus (2026-08-13)
 ═══════════════════════════════════════════════════════════════
 ```
 

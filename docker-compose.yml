@@ -272,37 +272,6 @@ services:
       sigap_network:
         ipv4_address: 172.28.0.11
 
-  # ==========================================
-  # Service 8: AI Detection (Task 14B, Sprint 38)
-  # ==========================================
-  # Layanan deteksi orang (YOLOv8n) + tracking (ByteTrack) untuk SIGAP.
-  # Membaca stream RTSP internal MediaMTX (rtsp://mediamtx:8554/cam-{cctv_id}),
-  # menghitung orang unik per hari, lalu mengirim hasil deteksi ke sigap_api
-  # via endpoint /api/ai/detection-event (header X-AI-Secret).
-  # Port 8010 TIDAK dipublish — hanya diakses dari dalam network.
-  sigap_ai:
-    build:
-      context: ./ai
-      dockerfile: Dockerfile
-    container_name: sigap_ai
-    restart: unless-stopped
-    networks:
-      - sigap_network
-    depends_on:
-      - mediamtx
-      - api
-    environment:
-      - BACKEND_URL=http://sigap_api:3000
-      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
-      - AI_SECRET=${AI_SECRET:-sigap-ai-secret-change-me}
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 2048M
-    mem_limit: 2048M
-    cpus: "2.0"
-
 # ==========================================
 # Named Volumes
 # ==========================================

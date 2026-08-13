@@ -295,11 +295,6 @@ func main() {
 	routes.SetupAPIKeyRoutes(api)
 	routes.SetupWebhookRoutes(api)
 
-	// Rute AI Detection (Task 14B, Sprint 38): menerima event deteksi dari
-	// service sigap_ai (internal, X-AI-Secret) dan proxy session AI ke service.
-	routes.SetupAIRoutes(api)
-	utils.Log.Info("🤖 Rute AI detection diaktifkan (endpoint internal + proxy ke sigap_ai)")
-
 	// Rute Health Check (publik untuk monitoring, juga dapat diakses via API key
 	// scope health:read untuk integrasi eksternal — Task 12.1).
 	api.Get("/health", handlers.HealthCheck)
