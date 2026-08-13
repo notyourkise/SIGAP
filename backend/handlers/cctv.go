@@ -63,6 +63,10 @@ type CreateCCTVRequest struct {
 	RTSPPassword  string   `json:"rtsp_password"`
 	StreamEnabled bool     `json:"stream_enabled"`
 	RTSPURL       string   `json:"rtsp_url" validate:"omitempty,max=500"`
+	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
+	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
+	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
 }
 
 // Request body untuk update data CCTV
@@ -86,6 +90,10 @@ type UpdateCCTVRequest struct {
 	RTSPPassword  string   `json:"rtsp_password"`
 	StreamEnabled *bool    `json:"stream_enabled"`
 	RTSPURL       *string  `json:"rtsp_url" validate:"omitempty,max=500"`
+	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
+	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
+	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -265,6 +273,8 @@ func CreateCCTV(c *fiber.Ctx) error {
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
 	cctv.RTSPURL = req.RTSPURL
+	cctv.ZoneID = req.ZoneID
+	cctv.SiteID = req.SiteID
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -626,6 +636,13 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	}
 	if req.RTSPURL != nil {
 		cctv.RTSPURL = *req.RTSPURL
+	}
+	// Zona & kawasan operasional — diisi bila dikirim (nilai kosong tidak mengubah).
+	if req.ZoneID != nil {
+		cctv.ZoneID = req.ZoneID
+	}
+	if req.SiteID != nil {
+		cctv.SiteID = req.SiteID
 	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {

@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import SortableHeader from '@/components/SortableHeader';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
-import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages } from '@/lib/api';
+import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages, getAllSitesForSelect } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
@@ -62,6 +62,9 @@ interface CCTV {
   stream_enabled: boolean;
   rtsp_url?: string;
   snapshot_url?: string;
+  // Zona operasional & kawasan (site) — opsional (Task 11.4 & 12.2).
+  zone_id?: string | null;
+  site_id?: string | null;
 }
 
 interface QRPrintItem {
@@ -141,14 +144,14 @@ export default function CCTVPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [ioFilter, setIoFilter] = useState('');
 
-  // Sort State (disembunyikan — diatur lewat modal "Sortir")
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // Sort State — default urut A-Z berdasarkan nama (perubahan Sprint 40)
+  const [sortBy, setSortBy] = useState('nama');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modal Sortir & Filter
   const [isSortModalOpen, setIsSortModalOpen] = useState(false);
-  const [draftSortBy, setDraftSortBy] = useState('created_at');
-  const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [draftSortBy, setDraftSortBy] = useState('nama');
+  const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('asc');
   const [draftStatusFilter, setDraftStatusFilter] = useState('');
   const [draftIoFilter, setDraftIoFilter] = useState('');
 
@@ -156,7 +159,7 @@ export default function CCTVPage() {
   const activeFilterCount =
     (statusFilter ? 1 : 0) +
     (ioFilter ? 1 : 0) +
-    (sortBy !== 'created_at' || sortOrder !== 'desc' ? 1 : 0);
+    (sortBy !== 'nama' || sortOrder !== 'asc' ? 1 : 0);
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -213,14 +216,18 @@ export default function CCTVPage() {
     channel_port: 0,
     rtsp_password: '',
     stream_enabled: false,
-    rtsp_url: ''
+    rtsp_url: '',
+    zone_id: '',
+    site_id: ''
   });
+
+  // Daftar zona operasional & kawasan (site) untuk dropdown form CCTV.
+  const [zones, setZones] = useState<Array<{ id: string; nama: string }>>([]);
+  const [sites, setSites] = useState<Array<{ id: string; nama: string }>>([]);
 
   // Scanner State
   const scannerRef = React.useRef<any>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [scanPayload, setScanPayload] = useState('');
   const [scannedResult, setScannedResult] = useState<CCTV | null>(null);
   const [scanError, setScanError] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
@@ -356,6 +363,30 @@ export default function CCTVPage() {
   useEffect(() => {
     fetchCCTVs();
   }, [page, search, statusFilter, ioFilter, sortBy, sortOrder]);
+
+  // Muat daftar zona & kawasan (site) untuk dropdown form CCTV (Task 11.4/12.2).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [zoneRes, siteRes] = await Promise.all([
+          apiRequest<Array<{ id: string; nama: string }>>('/zones/all'),
+          getAllSitesForSelect(),
+        ]);
+        if (!cancelled) {
+          if (zoneRes.status === 'success' && zoneRes.data) setZones(zoneRes.data);
+          if (siteRes.status === 'success' && siteRes.data) {
+            setSites(siteRes.data.map((s) => ({ id: s.id, nama: s.nama })));
+          }
+        }
+      } catch {
+        // Gagal memuat dropdown tidak fatal — form tetap bisa diisi tanpa zona/kawasan.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const { subscribe } = useWebSocket();
 
@@ -536,7 +567,9 @@ export default function CCTVPage() {
         channel_port: typeof cctv.channel_port === 'number' ? cctv.channel_port : 0,
         rtsp_password: '',
         stream_enabled: !!cctv.stream_enabled,
-        rtsp_url: cctv.rtsp_url || ''
+        rtsp_url: cctv.rtsp_url || '',
+        zone_id: cctv.zone_id || '',
+        site_id: cctv.site_id || ''
       });
     } else {
       setCurrentCCTV(null);
@@ -559,7 +592,9 @@ export default function CCTVPage() {
         channel_port: 0,
         rtsp_password: '',
         stream_enabled: false,
-        rtsp_url: ''
+        rtsp_url: '',
+        zone_id: '',
+        site_id: ''
       });
     }
     setIsFormModalOpen(true);
@@ -780,7 +815,6 @@ export default function CCTVPage() {
     
     setScanLoading(true);
     setScanError('');
-    setScanPayload(decodedText);
     setScannedResult(null);
 
     try {
@@ -793,7 +827,7 @@ export default function CCTVPage() {
         setScannedResult(response.data);
       }
     } catch (err: any) {
-      setScanError(err.message || 'Payload QR tidak valid atau tidak dapat didekripsi. Pindai ulang atau gunakan input manual.');
+      setScanError(err.message || 'Payload QR tidak valid atau tidak dapat didekripsi. Pindai ulang QR.');
     } finally {
       setScanLoading(false);
     }
@@ -803,7 +837,6 @@ export default function CCTVPage() {
   const startCameraScanner = () => {
     setScanError('');
     setScannedResult(null);
-    setScanPayload('');
     
     setTimeout(() => {
       import('html5-qrcode').then((module) => {
@@ -865,7 +898,7 @@ export default function CCTVPage() {
 
   // Effect to handle modal open/close scanner trigger
   useEffect(() => {
-    if (isScanModalOpen && !scannedResult && !showManualInput) {
+    if (isScanModalOpen && !scannedResult) {
       startCameraScanner();
     } else {
       stopCameraScanner();
@@ -876,43 +909,13 @@ export default function CCTVPage() {
         scannerRef.current.stop().catch((err: any) => console.error("Cleanup error:", err));
       }
     };
-  }, [isScanModalOpen, scannedResult, showManualInput]);
+  }, [isScanModalOpen, scannedResult]);
 
   const handleCloseScanModal = async () => {
     await stopCameraScanner();
     setIsScanModalOpen(false);
     setScannedResult(null);
-    setScanPayload('');
     setScanError('');
-    setShowManualInput(false);
-  };
-
-  // Manual Scan Input Handler (Backup)
-  const handleScanCCTV = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scanPayload) {
-      setScanError('Payload QR wajib diisi.');
-      return;
-    }
-
-    setScanLoading(true);
-    setScanError('');
-    setScannedResult(null);
-
-    try {
-      const response = await apiRequest<CCTV>('/cctv/scan', {
-        method: 'POST',
-        body: JSON.stringify({ qr_payload: scanPayload.trim() })
-      });
-
-      if (response.status === 'success' && response.data) {
-        setScannedResult(response.data);
-      }
-    } catch (err: any) {
-      setScanError(err.message || 'Payload QR tidak valid atau tidak dapat didekripsi. Periksa payload lalu coba lagi.');
-    } finally {
-      setScanLoading(false);
-    }
   };
 
   // Print QR Code (single label)
@@ -1098,7 +1101,7 @@ export default function CCTVPage() {
           </div>
         </header>
 
-        <section aria-labelledby="cctv-list-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
+        <section aria-labelledby="cctv-list-heading" className="overflow-visible rounded-2xl border border-border bg-card">
           <div className="flex flex-col gap-1 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 id="cctv-list-heading" className="text-lg font-bold">Daftar CCTV</h2>
@@ -1196,7 +1199,10 @@ export default function CCTVPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Saat menu aksi terbuka, overflow-x-auto dihilangkan agar dropdown
+                tidak terpotong oleh wrapper tabel (z-index saja tidak cukup —
+                overflow menciptakan clipping context). */}
+            <div className={openActionMenu ? 'overflow-visible' : 'overflow-x-auto'}>
               <table className="w-full min-w-[740px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
@@ -1357,7 +1363,7 @@ export default function CCTVPage() {
                           {openActionMenu === cctv.id && (
                             <div
                               role="menu"
-                              className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-xl border border-border bg-card shadow-[0_12px_28px_rgba(32,63,37,0.14)]"
+                              className="absolute right-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-border bg-card shadow-[0_12px_28px_rgba(32,63,37,0.14)]"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
@@ -1613,6 +1619,38 @@ export default function CCTVPage() {
                       <textarea value={formData.keterangan} onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Tambahkan kondisi atau informasi teknis CCTV" rows={3} className="w-full resize-none rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                     </div>
 
+                    {/* Kawasan & Zona operasional (Task 11.4 & 12.2) */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted">
+                        Kawasan <span className="font-normal text-muted">(opsional)</span>
+                      </label>
+                      <select
+                        value={formData.site_id}
+                        onChange={(e) => setFormData({ ...formData, site_id: e.target.value })}
+                        className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">— Pilih kawasan —</option>
+                        {sites.map((s) => (
+                          <option key={s.id} value={s.id}>{s.nama}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted">
+                        Zona <span className="font-normal text-muted">(opsional)</span>
+                      </label>
+                      <select
+                        value={formData.zone_id}
+                        onChange={(e) => setFormData({ ...formData, zone_id: e.target.value })}
+                        className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">— Pilih zona —</option>
+                        {zones.map((z) => (
+                          <option key={z.id} value={z.id}>{z.nama}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Konfigurasi Streaming */}
                     <div className="space-y-3 rounded-xl border border-border bg-background/40 p-4 md:col-span-2">
                       <p className="text-sm font-bold text-foreground">Konfigurasi Streaming</p>
@@ -1753,75 +1791,25 @@ export default function CCTVPage() {
 
               {!scannedResult ? (
                 <div className="space-y-3">
-                  {/* Toggle Mode Button (admin only — teknisi cukup memakai kamera) */}
-                  {isAdmin && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowManualInput(!showManualInput);
-                          setScanError('');
-                        }}
-                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
-                      >
-                        {showManualInput ? 'Gunakan kamera' : 'Masukkan payload'}
-                      </button>
+                  {/* CAMERA SCANNER VIEW — toggle input manual dihapus (Sprint 40 cleanup) */}
+                  <div className="text-center">
+                    <div className="relative mx-auto flex min-h-[220px] w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border bg-black">
+                      {/* html5-qrcode video container */}
+                      <div id="reader" className="w-full"></div>
+                      
+                      {/* Custom overlay laser scan animation */}
+                      {cameraActive && (
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_2s_infinite] shadow-lg shadow-blue-500/50 pointer-events-none z-10"></div>
+                      )}
+                      
+                      {!cameraActive && !scanError && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-card/90 p-6 text-center">
+                          <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                          <span className="text-xs font-medium text-muted">Menghubungkan kamera</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {!isAdmin || !showManualInput ? (
-                    /* CAMERA SCANNER VIEW */
-                    <div className="text-center">
-                      <div className="relative mx-auto flex min-h-[220px] w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border bg-black">
-                        {/* html5-qrcode video container */}
-                        <div id="reader" className="w-full"></div>
-                        
-                        {/* Custom overlay laser scan animation */}
-                        {cameraActive && (
-                          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_2s_infinite] shadow-lg shadow-blue-500/50 pointer-events-none z-10"></div>
-                        )}
-                        
-                        {!cameraActive && !scanError && (
-                          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-card/90 p-6 text-center">
-                            <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                            <span className="text-xs font-medium text-muted">Menghubungkan kamera</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    /* MANUAL TEXT INPUT VIEW */
-                    <form onSubmit={handleScanCCTV} className="space-y-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted">Payload QR</label>
-                        <textarea
-                          required
-                          value={scanPayload}
-                          onChange={(e) => setScanPayload(e.target.value)}
-                          placeholder="Tempel payload QR"
-                          rows={3}
-                          className="w-full px-3 py-2 rounded-lg border border-input-border bg-input font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                        />
-                      </div>
-
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCloseScanModal}
-                          className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
-                        >
-                          Batal
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={scanLoading}
-                          className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
-                        >
-                          {scanLoading ? 'Mengidentifikasi CCTV…' : 'Identifikasi CCTV'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                  </div>
 
                   {scanError && (
                     <div className="p-3 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-xs flex items-center gap-2">
@@ -1830,17 +1818,15 @@ export default function CCTVPage() {
                     </div>
                   )}
 
-                  {!showManualInput && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleCloseScanModal}
-                        className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
-                      >
-                        Tutup
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleCloseScanModal}
+                      className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
+                    >
+                      Tutup
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1896,7 +1882,7 @@ export default function CCTVPage() {
                       type="button"
                       onClick={() => {
                         setScannedResult(null);
-                        if (!showManualInput) startCameraScanner();
+                        startCameraScanner();
                       }}
                       className="px-4 py-2 rounded-lg border bg-card text-foreground font-semibold text-sm hover:bg-background cursor-pointer"
                     >

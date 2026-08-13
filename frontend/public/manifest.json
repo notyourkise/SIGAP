@@ -1,7 +1,7 @@
 {
   "name": "SIGAP",
   "short_name": "SIGAP",
-  "description": "Sistem Informasi & Inventaris CCTV Terpadu (IKN) — Pos Komando Nusantara untuk pemantauan dan pemeliharaan CCTV.",
+  "description": "Sistem Informasi Gangguan & Aset Pusat (IKN) — Pos Komando Nusantara untuk pemantauan dan pemeliharaan CCTV.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",

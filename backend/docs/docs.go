@@ -8080,6 +8080,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 500
                 },
+                "site_id": {
+                    "description": "SiteID menunjuk kawasan operasional (Task 12.2) — opsional.",
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -8098,6 +8102,10 @@ const docTemplate = `{
                 "tipe_koneksi": {
                     "type": "string",
                     "maxLength": 50
+                },
+                "zone_id": {
+                    "description": "ZoneID menunjuk zona operasional (Task 11.4) — opsional.",
+                    "type": "string"
                 }
             }
         },
@@ -8118,6 +8126,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "site_id": {
+                    "description": "SiteID menunjuk kawasan (site) — nil/kosong berarti template global.",
+                    "type": "string"
                 },
                 "urutan": {
                     "type": "integer",
@@ -8698,6 +8710,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 500
                 },
+                "site_id": {
+                    "description": "SiteID menunjuk kawasan operasional (Task 12.2) — opsional.",
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -8716,6 +8732,10 @@ const docTemplate = `{
                 "tipe_koneksi": {
                     "type": "string",
                     "maxLength": 50
+                },
+                "zone_id": {
+                    "description": "ZoneID menunjuk zona operasional (Task 11.4) — opsional.",
+                    "type": "string"
                 }
             }
         },
@@ -8733,6 +8753,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "site_id": {
+                    "description": "SiteID menunjuk kawasan (site) — dikirim untuk mengubah kawasan template.",
+                    "type": "string"
                 },
                 "urutan": {
                     "type": "integer",

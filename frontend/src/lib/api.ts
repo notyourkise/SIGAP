@@ -287,6 +287,8 @@ export interface ChecklistTemplate {
   urutan: number;
   wajib: boolean;
   aktif: boolean;
+  // Kawasan (site) — null/undefined berarti template global (berlaku semua kawasan).
+  site_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -296,6 +298,8 @@ export interface ChecklistTemplateQuery {
   page?: number;
   limit?: number;
   search?: string;
+  // Filter kawasan (site) — mengembalikan template milik kawasan + global.
+  site_id?: string;
 }
 
 // Ambil daftar template checklist. Parameter `aktif` menyaring template aktif
@@ -310,6 +314,7 @@ export async function getChecklistTemplates(
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.search) query.set('search', params.search);
+  if (params?.site_id) query.set('site_id', params.site_id);
 
   const qs = query.toString();
   return apiRequest(`/checklist-templates${qs ? `?${qs}` : ''}`);

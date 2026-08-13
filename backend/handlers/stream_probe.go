@@ -87,8 +87,18 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			if ok {
 				msInt := int(ms)
 				latencyMs = &msInt
+			} else {
+				// Probe TCP gagal — tapi kamera bisa saja tetap ONLINE karena
+				// stream-nya aktif di MediaMTX (mis. sedang ditonton di /monitor
+				// atau AI pull). Cek path MediaMTX sebagai sumber kebenaran kedua
+				// agar status tidak salah "offline" saat stream benar-benar jalan.
+				path := utils.BuildStreamPath(cctv.ID.String())
+				if ready, exists := mediamtxPaths[path]; exists && ready {
+					live = true
+					utils.Log.Debugf("📡 Metro-E %s (%s) probe gagal tetapi path MediaMTX ready → live", cctv.Nama, cctv.KodeCCTV)
+				}
 			}
-			utils.Log.Debugf("📡 Metro-E %s (%s) probe=%v latency=%dms", cctv.Nama, cctv.KodeCCTV, ok, ms)
+			utils.Log.Debugf("📡 Metro-E %s (%s) probe=%v latency=%dms", cctv.Nama, cctv.KodeCCTV, live, ms)
 		} else {
 			// GSM: TIDAK pernah diprobe langsung (biaya kuota data seluler).
 			// Status hanya dari path MediaMTX lokal VPS.
