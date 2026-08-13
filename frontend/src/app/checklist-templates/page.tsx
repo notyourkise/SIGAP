@@ -3,7 +3,6 @@
 import React from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import ChecklistTemplateManager from '@/components/ChecklistTemplateManager';
-import { ListChecks } from 'lucide-react';
 
 // Halaman admin untuk mengelola template checklist pengecekan lapangan.
 // Dirender penuh (full-page) dan memakai kembali komponen yang sama dengan
@@ -19,10 +18,6 @@ export default function ChecklistTemplatesPage() {
               Kelola daftar item pengecekan lapangan yang wajib diperiksa teknisi.
             </p>
           </div>
-          <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-muted">
-            <ListChecks className="h-4 w-4 text-primary" />
-            Halaman Admin
-          </span>
         </header>
 
         <ChecklistTemplateManager mode="page" />

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Bell, Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, Lock, Moon, ShieldAlert, Sun, User } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
@@ -77,15 +77,8 @@ export default function LoginPage() {
 
       {/* Panel kanan — krem lembut / hijau tua saat mode gelap */}
       <div className="relative flex w-full flex-1 items-center justify-center px-6 py-14 sm:px-10 lg:w-1/2 lg:py-16">
-        {/* Status icons pojok kanan atas */}
+        {/* Status icons pojok kanan atas — hanya toggle tema (lonceng notifikasi dihapus, tidak relevan di halaman login) */}
         <div className="absolute right-5 top-5 z-10 flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            title="Notifikasi"
-            className="rounded-xl border border-border bg-card/70 p-2.5 text-foreground shadow-sm"
-          >
-            <Bell className="h-4 w-4" />
-          </span>
           <button
             type="button"
             onClick={toggleTheme}

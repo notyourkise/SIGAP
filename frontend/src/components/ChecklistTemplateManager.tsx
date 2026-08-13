@@ -19,6 +19,7 @@ import {
   updateChecklistTemplate,
   deleteChecklistTemplate,
   reorderChecklistTemplates,
+  getAllSitesForSelect,
   type ChecklistTemplate,
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
@@ -41,6 +42,7 @@ interface TemplateFormState {
   deskripsi: string;
   urutan: number;
   wajib: boolean;
+  site_id: string;
 }
 
 export default function ChecklistTemplateManager({
@@ -55,6 +57,10 @@ export default function ChecklistTemplateManager({
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Filter & daftar kawasan (site) — checklist dapat berbeda per kawasan.
+  const [sites, setSites] = useState<Array<{ id: string; nama: string }>>([]);
+  const [siteFilter, setSiteFilter] = useState('');
+
   // Form tambah/edit inline.
   const [form, setForm] = useState<TemplateFormState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,7 +70,10 @@ export default function ChecklistTemplateManager({
     setLoading(true);
     setError('');
     try {
-      const response = await getChecklistTemplates(undefined, { limit: 200 });
+      const response = await getChecklistTemplates(undefined, {
+        limit: 200,
+        site_id: siteFilter || undefined,
+      });
       if (response.status === 'success' && response.data) {
         // Urutkan berdasarkan `urutan` agar stabil meski backend mengembalikan
         // urutan berbeda.
@@ -76,6 +85,24 @@ export default function ChecklistTemplateManager({
     } finally {
       setLoading(false);
     }
+  }, [siteFilter]);
+
+  // Muat daftar kawasan (site) untuk dropdown filter & form.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getAllSitesForSelect();
+        if (!cancelled && res.status === 'success' && res.data) {
+          setSites(res.data.map((s) => ({ id: s.id, nama: s.nama })));
+        }
+      } catch {
+        // Gagal memuat kawasan tidak fatal.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -90,6 +117,7 @@ export default function ChecklistTemplateManager({
       deskripsi: '',
       urutan: templates.length > 0 ? templates[templates.length - 1].urutan + 1 : 1,
       wajib: true,
+      site_id: siteFilter,
     });
   };
 
@@ -101,6 +129,7 @@ export default function ChecklistTemplateManager({
       deskripsi: item.deskripsi,
       urutan: item.urutan,
       wajib: item.wajib,
+      site_id: item.site_id || '',
     });
   };
 
@@ -125,6 +154,7 @@ export default function ChecklistTemplateManager({
         urutan: form.urutan,
         wajib: form.wajib,
         aktif: true,
+        site_id: form.site_id || null,
       };
 
       const response = form.id
@@ -232,15 +262,32 @@ export default function ChecklistTemplateManager({
             {templates.length} item · diurutkan berdasarkan nomor urut pengecekan
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAddForm}
-          disabled={isBusy}
-          className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.18)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Plus className="h-4 w-4" />
-          Tambah Item
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Filter kawasan — daftar checklist dapat berbeda per kawasan */}
+          <select
+            aria-label="Filter kawasan"
+            value={siteFilter}
+            onChange={(e) => {
+              setSiteFilter(e.target.value);
+              setForm(null);
+            }}
+            className="h-11 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Semua kawasan</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>{s.nama}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={openAddForm}
+            disabled={isBusy}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.18)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" />
+            Tambah Item
+          </button>
+        </div>
       </div>
 
       {/* Form tambah/edit inline */}
@@ -317,6 +364,24 @@ export default function ChecklistTemplateManager({
                 />
                 Wajib diisi teknisi
               </label>
+            </div>
+
+            {/* Kawasan (site) — kosong berarti global (berlaku semua kawasan) */}
+            <div className="sm:col-span-2">
+              <label htmlFor="tmpl-site" className="mb-1.5 block text-xs font-semibold text-muted">
+                Kawasan <span className="font-normal">(opsional — kosong = global)</span>
+              </label>
+              <select
+                id="tmpl-site"
+                value={form.site_id}
+                onChange={(e) => setForm({ ...form, site_id: e.target.value })}
+                className="w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">Semua kawasan (global)</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nama}</option>
+                ))}
+              </select>
             </div>
           </div>
 

@@ -133,7 +133,12 @@ export default function FieldMaintenanceModal({
     const loadTemplates = async () => {
       setLoadingTemplates(true);
       try {
-        const response = await getChecklistTemplates(true, { limit: 100 });
+        // Muat template sesuai kawasan CCTV (bila cctv.site_id tersedia) —
+        // backend mengembalikan template milik kawasan + template global.
+        const response = await getChecklistTemplates(true, {
+          limit: 100,
+          site_id: (cctv as { site_id?: string | null })?.site_id || undefined,
+        });
         if (cancelled) return;
         if (response.status === 'success' && response.data) {
           // Backend sudah menyaring aktif; urutkan tetap berdasarkan `urutan`.
@@ -154,7 +159,7 @@ export default function FieldMaintenanceModal({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, cctv]);
 
   // Sinkronkan jumlah jawaban dengan daftar aktif. Karena template dimuat
   // secara asinkron, jumlah langkah bisa berubah setelah modal dibuka — pastikan

@@ -1,5 +1,49 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.0] - 2026-08-13
+
+### Perbaikan UI & fitur kecil (Sprint 40 cleanup)
+
+perubahan yang dilakukan: **Membersihkan UI (hapus lonceng login, badge payload, tombol muat ulang, info streaming aktif, filter zona, badge Halaman Admin, panel toggle koordinat di peta), memperbaiki dropdown aksi yang tertutup, sort default A-Z, menambah input kawasan/zona di form CCTV, checklist per kawasan, dan memperbaiki kepanjangan SIGAP.**
+
+before:
+- Halaman login menampilkan lonceng notifikasi yang tidak berfungsi.
+- Scan QR punya toggle "Masukkan payload" (input manual) yang tidak diperlukan.
+- Dropdown aksi per baris di tabel CCTV tertutup elemen lain saat baris terbawah.
+- Daftar CCTV default urut created_at (terbaru dulu), bukan A-Z.
+- Halaman sebaran punya tombol "Muat ulang", info "X kamera streaming aktif", dropdown "Semua zona", dan panel toggle CCTV tanpa koordinat di dalam peta.
+- Form CCTV tidak bisa memilih kawasan/zona (padahal master data ada).
+- Template checklist sama untuk semua kawasan.
+- Halaman checklist-templates menampilkan badge "Halaman Admin".
+- Kepanjangan SIGAP di manifest PWA & mobile masih "Sistem Informasi & Inventaris CCTV Terpadu".
+
+after:
+- **`login/page.tsx`**: hapus ikon lonceng notifikasi (hanya toggle tema).
+- **`cctv/page.tsx`**: hapus toggle "Masukkan payload" + input manual (kamera saja); dropdown aksi per baris z-50 + wrapper tabel overflow-visible saat menu terbuka; default sort `nama` asc (A-Z).
+- **`sebaran-cctv/page.tsx`**: hapus tombol "Muat ulang", info "X kamera streaming aktif", dan dropdown filter zona (pemilihan kawasan tetap via SiteSwitcher header).
+- **`CCTVMap.tsx`**: hapus panel toggle "N CCTV belum memiliki koordinat" di dalam peta; daftar + tombol Edit dipindah ke bawah status bar.
+- **`cctv/page.tsx`**: form CCTV + dropdown "Kawasan" & "Zona" (data dari `/zones/all` & `/sites/all`); payload create/update mengirim `zone_id`/`site_id`.
+- **`checklist-templates/page.tsx`**: hapus badge "Halaman Admin".
+- **`ChecklistTemplateManager.tsx`**: dropdown filter kawasan + field kawasan di form (kosong = global); fetch template per `site_id`.
+- **`FieldMaintenanceModal.tsx`**: wizard memuat template sesuai kawasan CCTV yang dipilih.
+- **`lib/api.ts`**: `ChecklistTemplate.site_id` + query `site_id` pada `getChecklistTemplates`.
+- **`manifest.json` & `mobile/LoginScreen.tsx`**: kepanjangan SIGAP → "Sistem Informasi Gangguan & Aset Pusat".
+
+timestamp: 2026-08-13 19:45 WITA
+kategori: Sedang, Frontend (Perbaikan + Fitur kecil)
+file yang diubah:
+- frontend/src/app/login/page.tsx
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/ChecklistTemplateManager.tsx
+- frontend/src/components/FieldMaintenanceModal.tsx
+- frontend/src/app/checklist-templates/page.tsx
+- frontend/src/lib/api.ts
+- frontend/public/manifest.json
+- mobile/src/screens/LoginScreen.tsx
+alasan perubahan: Perbaikan UX & kelengkapan data operasional (kawasan/zona & checklist per kawasan) sesuai masukan user.
+
 ## [1.54.0] - 2026-08-13
 
 ### Sprint 40 — AI Feature Takedown (hapus fitur AI detection)

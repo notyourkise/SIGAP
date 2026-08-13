@@ -134,6 +134,9 @@ definitions:
       rtsp_url:
         maxLength: 500
         type: string
+      site_id:
+        description: SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
+        type: string
       status:
         enum:
         - aktif
@@ -147,6 +150,9 @@ definitions:
         type: string
       tipe_koneksi:
         maxLength: 50
+        type: string
+      zone_id:
+        description: ZoneID menunjuk zona operasional (Task 11.4) — opsional.
         type: string
     required:
     - kode_cctv
@@ -163,6 +169,10 @@ definitions:
       nama_item:
         maxLength: 255
         minLength: 1
+        type: string
+      site_id:
+        description: SiteID menunjuk kawasan (site) — nil/kosong berarti template
+          global.
         type: string
       urutan:
         minimum: 0
@@ -582,6 +592,9 @@ definitions:
       rtsp_url:
         maxLength: 500
         type: string
+      site_id:
+        description: SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
+        type: string
       status:
         enum:
         - aktif
@@ -596,6 +609,9 @@ definitions:
       tipe_koneksi:
         maxLength: 50
         type: string
+      zone_id:
+        description: ZoneID menunjuk zona operasional (Task 11.4) — opsional.
+        type: string
     type: object
   handlers.UpdateChecklistTemplateRequest:
     properties:
@@ -607,6 +623,10 @@ definitions:
       nama_item:
         maxLength: 255
         minLength: 1
+        type: string
+      site_id:
+        description: SiteID menunjuk kawasan (site) — dikirim untuk mengubah kawasan
+          template.
         type: string
       urutan:
         minimum: 0

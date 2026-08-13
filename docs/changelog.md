@@ -3,6 +3,22 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.47] — 2026-08-13 — Perbaikan UI & data operasional (kawasan/zona, checklist per kawasan, SLA 404, probe live)
+
+### Perubahan
+
+- **Input kawasan/zona di CCTV**: `Create/UpdateCCTVRequest` + `zone_id`/`site_id`; form CCTV frontend punya dropdown "Kawasan" & "Zona" (data dari `/zones/all` & `/sites/all`).
+- **Checklist per kawasan**: migrasi `000024_checklist_site` (kolom `site_id` di `checklist_templates`, NULL = global); `GET /checklist-templates?site_id=<uuid>` mengembalikan template kawasan + global; manager punya filter kawasan + field kawasan di form; wizard pengecekan memuat template sesuai kawasan CCTV.
+- **Fix SLA 404**: route `GET /api/dashboard/sla` (admin) didaftarkan — handler `GetDashboardSLA` sudah ada sejak Sprint 28 tapi rutenya hilang.
+- **Fix probe live Metro-E**: saat TCP probe ke IP kamera gagal tapi path MediaMTX Ready (stream aktif), kamera tetap dianggap live.
+- **UI cleanup**: hapus lonceng login, badge "Masukkan payload", tombol "Muat ulang", info "X kamera streaming aktif", dropdown "Semua zona", badge "Halaman Admin", panel toggle koordinat di peta (pindah ke status bar + tombol Edit); dropdown aksi CCTV z-50 (tidak tertutup); sort default A-Z.
+- **Kepanjangan SIGAP**: manifest PWA & mobile → "Sistem Informasi Gangguan & Aset Pusat".
+- Verifikasi: `go build`/`go test`/`go vet` PASS, `tsc --noEmit` 0 error, `npm run lint` 0 error, `npm run build` sukses.
+
+Detail: `backend/changelog.md` [0.64.0] · `frontend/changelog.md` [1.55.0].
+
+Timestamp: 2026-08-13 WITA | Kategori: Sedang, Perbaikan (Backend + Frontend + Mobile)
+
 ## [1.28.46] — 2026-08-13 — Sprint 40: AI Feature Takedown
 
 ### Perubahan

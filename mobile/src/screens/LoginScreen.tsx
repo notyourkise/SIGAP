@@ -37,7 +37,7 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <Text style={styles.logo}>SIGAP</Text>
-            <Text style={styles.tagline}>Sistem Informasi &amp; Inventaris CCTV Terpadu</Text>
+            <Text style={styles.tagline}>Sistem Informasi Gangguan &amp; Aset Pusat</Text>
             <Text style={styles.sub}>Aplikasi Lapangan Teknisi</Text>
           </View>
 

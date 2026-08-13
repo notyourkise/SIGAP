@@ -21,6 +21,8 @@ type CreateChecklistTemplateRequest struct {
 	Urutan    int    `json:"urutan" validate:"gte=0"`
 	Wajib     bool   `json:"wajib"`
 	Aktif     bool   `json:"aktif"`
+	// SiteID menunjuk kawasan (site) — nil/kosong berarti template global.
+	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
 }
 
 // UpdateChecklistTemplateRequest adalah body pembaruan item template checklist
@@ -31,6 +33,8 @@ type UpdateChecklistTemplateRequest struct {
 	Urutan    *int   `json:"urutan" validate:"omitempty,gte=0"`
 	Wajib     *bool  `json:"wajib"`
 	Aktif     *bool  `json:"aktif"`
+	// SiteID menunjuk kawasan (site) — dikirim untuk mengubah kawasan template.
+	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
 }
 
 // ReorderChecklistTemplateItem merepresentasikan satu entri urutan dalam
@@ -69,6 +73,15 @@ func GetAllChecklistTemplates(c *fiber.Ctx) error {
 	// Filter status aktif (opsional): ?aktif=true → hanya item aktif.
 	if aktif := c.Query("aktif"); aktif != "" {
 		query = query.Where("aktif = ?", aktif == "true")
+	}
+
+	// Filter kawasan (site) — opsional. ?site_id=<uuid> mengembalikan template
+	// milik kawasan tersebut ATAU template global (site_id NULL). Tanpa filter,
+	// seluruh template (global + semua kawasan) dikembalikan.
+	if siteID := c.Query("site_id"); siteID != "" {
+		if sid, err := uuid.Parse(siteID); err == nil {
+			query = query.Where("site_id = ? OR site_id IS NULL", sid)
+		}
 	}
 
 	limit, page, _ := utils.GetPaginationParams(c, []string{"id", "urutan", "nama_item", "created_at"})
@@ -147,6 +160,7 @@ func CreateChecklistTemplate(c *fiber.Ctx) error {
 		Urutan:    req.Urutan,
 		Wajib:     wajib,
 		Aktif:     aktif,
+		SiteID:    req.SiteID,
 	}
 
 	if err := config.DB.Create(&item).Error; err != nil {
@@ -229,6 +243,10 @@ func UpdateChecklistTemplate(c *fiber.Ctx) error {
 	}
 	if req.Aktif != nil {
 		item.Aktif = *req.Aktif
+	}
+	// Kawasan (site): dikirim untuk mengubah kawasan template (nil → global).
+	if bodyHasField(c, "site_id") {
+		item.SiteID = req.SiteID
 	}
 
 	if err := config.DB.Save(&item).Error; err != nil {

@@ -1,5 +1,39 @@
 # Changelog - Backend SIGAP
 
+## [0.64.0] - 2026-08-13
+
+### Perbaikan: input kawasan/zona CCTV, checklist per kawasan, fix SLA 404 & probe offline (Sprint 40 cleanup)
+
+perubahan yang dilakukan: **Menambahkan field kawasan (site) & zona pada create/update CCTV, mendukung template checklist berbeda per kawasan, mendaftarkan route `/api/dashboard/sla` yang selama ini hilang (404), serta memperbaiki deteksi live kamera Metro-E yang salah offline saat stream aktif di MediaMTX.**
+
+before:
+- `CreateCCTVRequest`/`UpdateCCTVRequest` tidak menerima `zone_id`/`site_id` — admin tidak bisa mengelompokkan CCTV ke kawasan/zona dari form.
+- `checklist_templates` tidak memiliki relasi kawasan — daftar checklist sama untuk semua kawasan.
+- Handler `GetDashboardSLA` sudah ada sejak Sprint 28 namun rutenya TIDAK terdaftar → halaman `/sla` selalu 404.
+- Probe Metro-E hanya mengandalkan TCP dial ke IP kamera; bila IP tidak reachable dari server (mis. stream aktif via MediaMTX tapi probe gagal) kamera dianggap offline padahal stream berjalan.
+
+after:
+- **`handlers/cctv.go`**: `CreateCCTVRequest` & `UpdateCCTVRequest` + field `ZoneID`/`SiteID` (uuid opsional); `CreateCCTV` & `UpdateCCTV` menyimpan nilai tersebut ke model CCTV.
+- **Migrasi `000024_checklist_site`**: kolom `site_id` (FK → sites, ON DELETE SET NULL, NULL = global) + index di `checklist_templates`.
+- **`models/checklist_template.go`**: field `SiteID *uuid.UUID` (nil = template global).
+- **`handlers/checklist_template.go`**: request create/update + `SiteID`; `GetAllChecklistTemplates` mendukung filter `?site_id=<uuid>` (mengembalikan template milik kawasan + global).
+- **`routes/dashboard.go`**: daftarkan `GET /dashboard/sla` (admin) → `handlers.GetDashboardSLA` (fix 404).
+- **`handlers/stream_probe.go`**: saat probe TCP Metro-E gagal, cek path MediaMTX — bila Ready=true, kamera tetap dianggap live (stream aktif = online).
+- **Swagger regenerated** (`swag init`).
+
+timestamp: 2026-08-13 19:45 WITA
+kategori: Sedang, Backend (Perbaikan + Fitur kecil)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/migrations/000024_checklist_site.up.sql (baru)
+- backend/migrations/000024_checklist_site.down.sql (baru)
+- backend/models/checklist_template.go
+- backend/handlers/checklist_template.go
+- backend/routes/dashboard.go
+- backend/handlers/stream_probe.go
+- backend/docs/* (swag init)
+alasan perubahan: Melengkapi pengelompokan CCTV per kawasan/zona, checklist spesifik per kawasan, memperbaiki halaman SLA yang 404, dan akurasi status live kamera Metro-E.
+
 ## [0.63.0] - 2026-08-13
 
 ### Fitur: Sprint 37-PATCH — Probe Strategy Metro-E vs GSM
