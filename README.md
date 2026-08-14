@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Logo_IKN.png/240px-Logo_IKN.png" alt="Logo OIKN Nusantara" width="110" />
+<img src="frontend/public/nusantara-logo.png" alt="Logo OIKN Nusantara" width="110" />
 
 # SISTEM INFORMASI GANGGUAN & ASET PUSAT
 
