@@ -1396,3 +1396,64 @@ Total Fase 14: Live Status (Sprint 37) ✅ + AI Takedown (Sprint 40) 🚧 — AI
    timestamp WITA, kategori, file, alasan)
 6. Perbarui dokumen terdampak: `docs/AGENTS.md`, `docs/ROADMAP.md`, `docs/TESTING.md`, `docs/plan.md`
 
+---
+
+## Fase 15 — Branding & Dokumentasi
+
+### Sprint 41 — README & Branding Overhaul
+
+> **Branch:** `fix/readme-branding-update`
+> **Estimasi:** 0.5–1 hari kerja
+> **Status: 🔲 Belum dimulai**
+
+Perbaiki nama sistem yang salah dan update README agar mencerminkan kondisi sistem terkini.
+
+#### Temuan yang Harus Diperbaiki
+
+| Lokasi | Isi Salah | Yang Benar |
+|--------|-----------|------------|
+| `README.md` baris 1 | `Sistem Informasi & Inventaris CCTV Terpadu` | `Sistem Informasi Gangguan & Aset Pusat` |
+| `README.md` baris 8 | Deskripsi lama, fitur tidak up-to-date | Update sesuai kondisi existing |
+| `frontend/src/app/layout.tsx` baris 22 | `Sistem Identifikasi Gangguan Aset Pusat` | `Sistem Informasi Gangguan & Aset Pusat` |
+| `frontend/src/app/login/page.tsx` baris 114 | Sub-judul `Sistem internal pengelolaan CCTV kawasan IKN.` | `Sistem Informasi Gangguan & Aset Pusat — Kawasan IKN Nusantara` |
+
+#### Scope Perubahan
+
+| Komponen | File | Aksi |
+|----------|------|------|
+| **README.md** | `README.md` | ✏️ Rewrite menyeluruh — judul center + logo OIKN, kepanjangan SIGAP benar, fitur up-to-date, struktur project aktual, arsitektur 7 service (tanpa sigap_ai) |
+| **App title** | `frontend/src/app/layout.tsx` | ✏️ Fix `title` metadata: `"SIGAP - Sistem Informasi Gangguan & Aset Pusat"` |
+| **Login subtitle** | `frontend/src/app/login/page.tsx` | ✏️ Fix subtitle baris 114 |
+| **Manifest** | `frontend/public/manifest.json` | ✏️ Tambah `description` yang benar |
+
+#### Spesifikasi README Baru
+
+**Header:**
+```markdown
+<div align="center">
+  <img src="docs/assets/logo-oikn.png" alt="Logo OIKN" width="120" />
+  
+  # SISTEM INFORMASI GANGGUAN & ASET PUSAT
+  ## **SIGAP**
+  
+  *Platform manajemen CCTV terpadu Kawasan Ibu Kota Nusantara*
+  
+  [badges...]
+</div>
+```
+
+**Konten yang harus diperbarui:**
+- Fitur: tambah Live Streaming RTSP→WebRTC, Live Status Detection Metro-E, Peta Sebaran CCTV, Inventaris Suku Cadang, SLA, Zona, API Key & Webhook, Multi-Site, Jadwal Pemeliharaan, PWA/Push Notification
+- Tech Stack: tambah MediaMTX, Redis, Streaming WebRTC
+- Arsitektur: 7 service (db, redis, api, frontend, nginx, backup, mediamtx) — tanpa sigap_ai
+- Struktur proyek: sesuaikan dengan folder yang benar-benar ada saat ini
+- API Endpoints: update ke kondisi terkini (tambah endpoint streaming, live-status, suku-cadang, zona, SLA, dll)
+- ERD: update model (tambah field streaming, zone_id, sla_policy, dll)
+
+**Logo OIKN:**
+Gunakan URL publik logo OIKN Nusantara dari internet (jangan hardcode file lokal):
+`https://upload.wikimedia.org/wikipedia/commons/thumb/...` atau CDN resmi OIKN.
+Atau simpan sebagai `docs/assets/logo-oikn.png` jika ingin bundled.
+
+
+

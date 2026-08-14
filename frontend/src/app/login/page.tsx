@@ -111,7 +111,7 @@ export default function LoginPage() {
             <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-primary sm:text-[3.25rem]">
               SIGAP
             </h1>
-            <p className="mt-2 text-sm text-muted">Sistem internal pengelolaan CCTV kawasan IKN.</p>
+            <p className="mt-2 text-sm text-muted">Sistem Informasi Gangguan &amp; Aset Pusat — Kawasan IKN Nusantara</p>
           </header>
 
           {error && (
