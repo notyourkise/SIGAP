@@ -19,8 +19,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SIGAP - Sistem Identifikasi Gangguan Aset Pusat",
-  description: "Sistem Pemantauan Aset CCTV dan Log Pemeliharaan IKN",
+  title: "SIGAP - Sistem Informasi Gangguan & Aset Pusat",
+  description: "Platform manajemen dan monitoring CCTV terpadu Kawasan Ibu Kota Nusantara — OIKN",
   // --- PWA (Task 8.1): web manifest & meta tags ---
   // manifest di-export Next.js -> <link rel="manifest" href="/manifest.json">.
   manifest: "/manifest.json",

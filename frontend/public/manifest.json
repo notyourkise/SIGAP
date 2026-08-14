@@ -1,7 +1,7 @@
 {
-  "name": "SIGAP",
+  "name": "SIGAP — Sistem Informasi Gangguan & Aset Pusat",
   "short_name": "SIGAP",
-  "description": "Sistem Informasi Gangguan & Aset Pusat (IKN) — Pos Komando Nusantara untuk pemantauan dan pemeliharaan CCTV.",
+  "description": "Platform manajemen dan monitoring CCTV terpadu Kawasan Ibu Kota Nusantara — OIKN",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
