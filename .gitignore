@@ -1,6 +1,9 @@
 # AI Agent working artifacts (jangan pernah di-commit)
 /.opencode/
 
+# Dokumen presentasi (bukan aset repo)
+SIGAP_Introduksi.pptx
+
 # Python (AI service Task 14B)
 __pycache__/
 *.pyc

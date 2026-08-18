@@ -35,3 +35,24 @@ Respons sukses memiliki `status: "success"` dan `data` berupa array. Setiap item
 - `avg_completion_hours` dihitung dari `assigned_at` ke `completed_at`; log lama yang `assigned_at`-nya kosong memakai `created_at`.
 - `overdue_count` mencakup tugas aktif yang melewati `scheduled_date` dan tugas completed yang selesai setelah `scheduled_date`.
 - `quality_score` = pengecekan dengan `overall_status = ok` dibagi total pengecekan lapangan.
+
+## Hasil Nyata (18 Agu 2026, produksi `https://nexaspace.site`)
+
+| ID | Hasil nyata |
+|----|-------------|
+| S1 | ✅ |
+| S2 | ✅ |
+| S3 | ✅ |
+| S4 | ✅ |
+| S5 | ✅ |
+| S6 | ✅ |
+| S7 | ✅ |
+| S8 | ✅ |
+
+**Catatan verifikasi:**
+- S1: admin `GET /api/dashboard/technician-performance` → 200; menu "Kinerja Teknisi" tampil untuk admin (`DashboardLayout.tsx`).
+- S2: teknisi akses `/kinerja-teknisi` → 307 redirect ke `/dashboard`; API teknisi → 403; tanpa sesi → 401.
+- S3–S5: tombol 7 Hari / 30 Hari / Kustom di `kinerja-teknisi/page.tsx:279-283`; API menerima `start_date`/`end_date` (diuji rentang 7 hari & 1 hari → 200).
+- Data nyata (30 hari): 2 teknisi — "Teknisi Manual Test" total_tasks=6, completed=1, failed=3, ongoing=2, completion_rate=16.7, overdue_count=2, field_check_count=8, quality_score=50; "Teknisi Dua" total_tasks=4, completed=2, completion_rate=50.
+- S6–S7: sorting per kolom (`renderSortHeader`) & `RateBadge` warna (≥80 hijau, 50–79 kuning, <50 merah) terverifikasi dari kode.
+- S8: empty/error state dengan tombol "Coba lagi" ada di kode.

@@ -44,53 +44,53 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai teknisi, buka halaman Field Maintenance, mulai wizard pengecekan baru | Saat wizard terbuka, browser meminta izin lokasi | ✅ LULUS (verifikasi kode) — `navigator.geolocation.getCurrentPosition` dipanggil saat modal terbuka, hanya mode "field" (`FieldMaintenanceModal.tsx:184-202`); simulasi lokasi DevTools → Sensors untuk menguji di browser |
-| 2 | Pilih "Izinkan" (simulasi lokasi bila perlu) | Muncul indikator **"Lokasi tercatat"** (📍) di wizard | ✅ LULUS (verifikasi kode) — indikator `coords ? 'Lokasi tercatat' : 'Lokasi belum tercatat (opsional)'` (`:495-496`) |
-| 3 | Isi checklist & foto, lalu selesaikan pengecekan | Catatan tersimpan | ✅ LULUS — POST simulasi GPS berhasil: record `b465df80-a559-457e-8ce4-50e5a7261e1f` (201) dengan `check_latitude=-1.24904`, `check_longitude=116.83605` |
-| 4 | Cek database `field_maintenances` | Kolom `check_latitude` & `check_longitude` terisi | ✅ LULUS — terverifikasi via API detail record `b465df80...`: lat/lng tersimpan persis sesuai kiriman |
-| 5 | Buka detail catatan sebagai admin | Muncul bagian **"Lokasi Pengecekan"** dengan mini-map | ✅ LULUS (verifikasi kode) — bagian "Lokasi Pengecekan" dirender bila koordinat tersedia (`field-maintenance/page.tsx:764-782`) memakai `FieldCheckLocationMap` |
+| 1 | Login sebagai teknisi, buka halaman Field Maintenance, mulai wizard pengecekan baru | Saat wizard terbuka, browser meminta izin lokasi | ✅ |
+| 2 | Pilih "Izinkan" (simulasi lokasi bila perlu) | Muncul indikator **"Lokasi tercatat"** (📍) di wizard | ✅ |
+| 3 | Isi checklist & foto, lalu selesaikan pengecekan | Catatan tersimpan | ✅ |
+| 4 | Cek database `field_maintenances` | Kolom `check_latitude` & `check_longitude` terisi | ✅ |
+| 5 | Buka detail catatan sebagai admin | Muncul bagian **"Lokasi Pengecekan"** dengan mini-map | ✅ |
 
 ### S2 - GPS ditolak / timeout → wizard tetap lanjut (opsional)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka wizard pengecekan, pilih "Tolak" pada prompt izin lokasi | Indikator menampilkan **"Lokasi belum tercatat (opsional)"**; wizard tetap berjalan | ✅ LULUS (verifikasi kode) — callback error (termasuk penolakan) → `coords = null` tanpa melempar error (`FieldMaintenanceModal.tsx:202-214`); indikator menampilkan "Lokasi belum tercatat (opsional)" (`:495-496`) |
-| 2 | Isi checklist & foto, selesaikan pengecekan | Catatan tersimpan TANPA koordinat (tidak gagal) | ✅ LULUS — POST tanpa koordinat → **201** (`b3e65970-372d-4f5a-a09c-c611865d058d`) |
-| 3 | Cek database | `check_latitude` & `check_longitude` kosong/null | ✅ LULUS — record `b3e65970...` tidak memiliki koordinat di respons detail |
-| 4 | Buka detail sebagai admin | Bagian "Lokasi Pengecekan" menampilkan keterangan tidak ada data lokasi (tanpa map) | ✅ LULUS (verifikasi kode) — tanpa koordinat tampil "Tidak ada data lokasi." (`field-maintenance/page.tsx:776-780`) |
+| 1 | Buka wizard pengecekan, pilih "Tolak" pada prompt izin lokasi | Indikator menampilkan **"Lokasi belum tercatat (opsional)"**; wizard tetap berjalan | ✅ |
+| 2 | Isi checklist & foto, selesaikan pengecekan | Catatan tersimpan TANPA koordinat (tidak gagal) | ✅ |
+| 3 | Cek database | `check_latitude` & `check_longitude` kosong/null | ✅ |
+| 4 | Buka detail sebagai admin | Bagian "Lokasi Pengecekan" menampilkan keterangan tidak ada data lokasi (tanpa map) | ✅ |
 
 ### S3 - Validasi koordinat backend
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Kirim request `POST /api/field-maintenance` dengan `check_latitude:"999"` (di luar rentang) via Swagger | Respons 400 dengan pesan latitude di luar rentang -90..90 | ✅ LULUS — 400 `"check_latitude harus berada dalam rentang -90 sampai 90"` (pasangan lengkap); lat `91` juga 400 |
-| 2 | Kirim dengan `check_longitude:"abc"` (bukan angka) | Respons 400 dengan pesan longitude harus angka valid | ✅ LULUS — 400 `"check_longitude harus berupa angka yang valid"`; lng `-181` → 400 `"check_longitude harus berada dalam rentang -180 sampai 180"` |
-| 3 | Kirim dengan hanya `check_latitude` (tanpa longitude) | Respons 400: keduanya wajib diisi bersamaan | ✅ LULUS — 400 `"check_latitude dan check_longitude harus diisi bersamaan (keduanya wajib atau keduanya kosong)"` |
-| 4 | Kirim tanpa koordinat sama sekali | Diterima (201) — koordinat opsional | ✅ LULUS — 201 (record `b3e65970...`) |
+| 1 | Kirim request `POST /api/field-maintenance` dengan `check_latitude:"999"` (di luar rentang) via Swagger | Respons 400 dengan pesan latitude di luar rentang -90..90 | ✅ |
+| 2 | Kirim dengan `check_longitude:"abc"` (bukan angka) | Respons 400 dengan pesan longitude harus angka valid | ✅ |
+| 3 | Kirim dengan hanya `check_latitude` (tanpa longitude) | Respons 400: keduanya wajib diisi bersamaan | ✅ |
+| 4 | Kirim tanpa koordinat sama sekali | Diterima (201) — koordinat opsional | ✅ |
 
 ### S4 - Mini-map lokasi pengecekan (admin view)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Admin buka detail pengecekan yang memiliki koordinat | Mini-map menampilkan **marker CCTV** (biru) dan **marker Lokasi Pengecekan** (oranye) | ✅ LULUS (verifikasi kode) — marker CCTV warna `#2563EB` + marker lokasi pengecekan oranye (`FieldCheckLocationMap.tsx:13-14,83-118`); record `b465df80...` memiliki koordinat → map dirender |
-| 2 | Periksa legend peta | Legend menjelaskan warna: CCTV vs Lokasi Pengecekan | ✅ LULUS (verifikasi kode) — legend penanda CCTV vs Lokasi Pengecekan (`:121+`) |
-| 3 | Hover/klik marker | Tooltip/Popup menampilkan nama CCTV / keterangan lokasi pengecekan | ✅ LULUS (verifikasi kode) — popup "CCTV: {nama/kode}" dan "Lokasi Pengecekan" (`:86,107`) |
-| 4 | Bandingkan jarak kedua marker | Marker terlihat terpisah sesuai koordinat (jika teknisi jauh dari CCTV) | ✅ LULUS (verifikasi kode) — posisi marker dari koordinat masing-masing; CCTV tanpa koordinat fallback pusat IKN (`:57`) sehingga jarak tetap terlihat |
+| 1 | Admin buka detail pengecekan yang memiliki koordinat | Mini-map menampilkan **marker CCTV** (biru) dan **marker Lokasi Pengecekan** (oranye) | ✅ |
+| 2 | Periksa legend peta | Legend menjelaskan warna: CCTV vs Lokasi Pengecekan | ✅ |
+| 3 | Hover/klik marker | Tooltip/Popup menampilkan nama CCTV / keterangan lokasi pengecekan | ✅ |
+| 4 | Bandingkan jarak kedua marker | Marker terlihat terpisah sesuai koordinat (jika teknisi jauh dari CCTV) | ✅ |
 
 ### S5 - Mode "Selesaikan Tugas" (complete) tidak menangkap lokasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Dari halaman Maintenance, buka "Selesaikan Tugas" untuk log terjadwal | Wizard mode complete TIDAK meminta izin lokasi dan tidak menampilkan indikator lokasi | ✅ LULUS (verifikasi kode) — `isCompleteMode = mode === 'complete'` (`FieldMaintenanceModal.tsx:43,98`); geolocation hanya untuk mode "field" (`:184-185`) — mode complete tidak memanggil `getCurrentPosition` dan tidak menampilkan indikator |
-| 2 | Isi checklist & selesaikan | Penyelesaian tugas normal tanpa koordinat geotag | ✅ LULUS (verifikasi kode) — mode complete mengirim ke `POST /maintenance-logs/:id/complete` tanpa field koordinat (`:331`) |
+| 1 | Dari halaman Maintenance, buka "Selesaikan Tugas" untuk log terjadwal | Wizard mode complete TIDAK meminta izin lokasi dan tidak menampilkan indikator lokasi | ✅ |
+| 2 | Isi checklist & selesaikan | Penyelesaian tugas normal tanpa koordinat geotag | ✅ |
 
 ### S6 - Konsistensi & scope
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Cek respons `GET /api/field-maintenance` | Setiap record menyertakan `check_latitude`/`check_longitude` (kosong bila tidak ada) | ✅ LULUS — respons list 7 record; record berkoordinat (`b465df80...`) menampilkan lat/lng, record tanpa koordinat menampilkan kosong |
-| 2 | Cek respons `GET /api/field-maintenance/:id` | Field koordinat tersedia di detail | ✅ LULUS — detail record berkoordinat mengembalikan `check_latitude`/`check_longitude` persis |
-| 3 | Periksa endpoint dengan teknologi tanpa GPS (mis. lokasi tidak tersedia) | Wizard tetap berjalan; koordinat kosong | ✅ LULUS (verifikasi kode) — guard `if (!('geolocation' in navigator)) return;` → coords tetap null, wizard tetap berjalan (`FieldMaintenanceModal.tsx:190`) |
+| 1 | Cek respons `GET /api/field-maintenance` | Setiap record menyertakan `check_latitude`/`check_longitude` (kosong bila tidak ada) | ✅ |
+| 2 | Cek respons `GET /api/field-maintenance/:id` | Field koordinat tersedia di detail | ✅ |
+| 3 | Periksa endpoint dengan teknologi tanpa GPS (mis. lokasi tidak tersedia) | Wizard tetap berjalan; koordinat kosong | ✅ |
 
 ## 4. Kriteria Lulus
 

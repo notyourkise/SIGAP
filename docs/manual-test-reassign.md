@@ -50,6 +50,14 @@ npm run build  # harus sukses
 
 Hasil yang diharapkan: seluruh package/test hijau dan build frontend sukses.
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk `TestAssignMaintenanceLog_*`) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ |
+
 ---
 
 ## 3. Skenario Uji Manual
@@ -63,10 +71,10 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab A = Pemeliharaan CCTV, admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------------------------|------------------------|-------------|
-| 1 | **"Catat Pemeliharaan"** → pilih `UJI-01` → isi Tindakan (mis. "Pembersihan lensa berkala") → **"Simpan Catatan"** | Baris baru muncul dengan status **"Terjadwal"**, teknisi "Belum ditugaskan" | |
-| 2 | Klik ikon **tambah-user** (title "Tugaskan ke teknisi") pada baris → modal **"Tugaskan ke Teknisi"** → pilih `teknisi_a` → **"Tugaskan"** | Toast sukses "Tugas berhasil ditugaskan ke teknisi."; status baris → **"Dalam proses"**; kolom Teknisi = nama `teknisi_a` | |
-| 3 | Cek Tab B (login `teknisi_a`) | Baris tugas tampil; ikon **centang** (selesaikan tugas) muncul | |
-| 4 | Cek lonceng **Pemberitahuan** `teknisi_a` | Ada notifikasi **"Tugas baru ditugaskan"** dengan isi "Anda mendapat tugas pemeliharaan baru untuk CCTV ..." | |
+| 1 | **"Catat Pemeliharaan"** → pilih `UJI-01` → isi Tindakan (mis. "Pembersihan lensa berkala") → **"Simpan Catatan"** | Baris baru muncul dengan status **"Terjadwal"**, teknisi "Belum ditugaskan" | ✅ |
+| 2 | Klik ikon **tambah-user** (title "Tugaskan ke teknisi") pada baris → modal **"Tugaskan ke Teknisi"** → pilih `teknisi_a` → **"Tugaskan"** | Toast sukses "Tugas berhasil ditugaskan ke teknisi."; status baris → **"Dalam proses"**; kolom Teknisi = nama `teknisi_a` | ✅ |
+| 3 | Cek Tab B (login `teknisi_a`) | Baris tugas tampil; ikon **centang** (selesaikan tugas) muncul | ✅ |
+| 4 | Cek lonceng **Pemberitahuan** `teknisi_a` | Ada notifikasi **"Tugas baru ditugaskan"** dengan isi "Anda mendapat tugas pemeliharaan baru untuk CCTV ..." | ✅ |
 
 ### S2 — Re-assign: alihkan tugas `ongoing` dari Teknisi A ke Teknisi B
 
@@ -74,11 +82,11 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab A = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | Cari baris tugas dari S1 (status **"Dalam proses"**) | Ikon **panah kiri-kanan** (title "Alihkan ke teknisi lain") muncul di kolom Tindakan — berbeda dengan ikon tambah-user untuk log terjadwal | |
-| 2 | Klik ikon **panah kiri-kanan** | Modal terbuka dengan judul **"Alihkan ke Teknisi Lain"** | |
-| 3 | Perhatikan kotak peringatan di modal | Peringatan kuning bertuliskan: "Tugas ini sedang dikerjakan oleh **[nama `teknisi_a`]**. Yakin ingin mengalihkan ke teknisi lain?" | |
-| 4 | Pilih `teknisi_b` di dropdown → **"Alihkan"** | Toast sukses "Tugas berhasil dialihkan ke teknisi lain."; modal tertutup; kolom Teknisi = nama `teknisi_b`; status tetap **"Dalam proses"** (bukan kembali ke "Terjadwal") | |
-| 5 | Cek Tab C (login `teknisi_b`) | Baris tugas tampil dengan ikon **centang** (selesaikan tugas) | |
+| 1 | Cari baris tugas dari S1 (status **"Dalam proses"**) | Ikon **panah kiri-kanan** (title "Alihkan ke teknisi lain") muncul di kolom Tindakan — berbeda dengan ikon tambah-user untuk log terjadwal | ✅ |
+| 2 | Klik ikon **panah kiri-kanan** | Modal terbuka dengan judul **"Alihkan ke Teknisi Lain"** | ✅ |
+| 3 | Perhatikan kotak peringatan di modal | Peringatan kuning bertuliskan: "Tugas ini sedang dikerjakan oleh **[nama `teknisi_a`]**. Yakin ingin mengalihkan ke teknisi lain?" | ✅ |
+| 4 | Pilih `teknisi_b` di dropdown → **"Alihkan"** | Toast sukses "Tugas berhasil dialihkan ke teknisi lain."; modal tertutup; kolom Teknisi = nama `teknisi_b`; status tetap **"Dalam proses"** (bukan kembali ke "Terjadwal") | ✅ |
+| 5 | Cek Tab C (login `teknisi_b`) | Baris tugas tampil dengan ikon **centang** (selesaikan tugas) | ✅ |
 
 ### S3 — Notifikasi dua pihak (WebSocket real-time + daftar notifikasi)
 
@@ -86,12 +94,12 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Sebelum langkah S2-4, biarkan Tab B (`teknisi_a`) dan Tab C (`teknisi_b`) terbuka di halaman mana pun (mis. Dashboard) | Lonceng pemberitahuan tampil normal | |
-| 2 | Lakukan S2 langkah 4 (alihkan ke `teknisi_b`) | **Tanpa refresh**: Tab C (`teknisi_b`) memunculkan toast real-time notifikasi baru; badge lonceng bertambah | |
-| 3 | Klik lonceng `teknisi_b` → daftar notifikasi | Item **"Tugas baru ditugaskan"** — isi: "Anda mendapat tugas pemeliharaan baru untuk CCTV **[nama CCTV]**." | |
-| 4 | Klik item notifikasi `teknisi_b` | Notifikasi terbaca (badge berkurang) dan navigasi ke halaman Pemeliharaan | |
-| 5 | Klik lonceng `teknisi_a` | Item **"Tugas dialihkan"** — isi: "Tugas pemeliharaan untuk CCTV **[nama CCTV]** telah dialihkan ke teknisi lain." | |
-| 6 | Buka **Pemberitahuan** (`/pemberitahuan`) sebagai `teknisi_a` | Daftar riwayat memuat notifikasi "Tugas dialihkan" (tipe `MAINTENANCE_UNASSIGNED`) | |
+| 1 | Sebelum langkah S2-4, biarkan Tab B (`teknisi_a`) dan Tab C (`teknisi_b`) terbuka di halaman mana pun (mis. Dashboard) | Lonceng pemberitahuan tampil normal | ✅ |
+| 2 | Lakukan S2 langkah 4 (alihkan ke `teknisi_b`) | **Tanpa refresh**: Tab C (`teknisi_b`) memunculkan toast real-time notifikasi baru; badge lonceng bertambah | ✅ |
+| 3 | Klik lonceng `teknisi_b` → daftar notifikasi | Item **"Tugas baru ditugaskan"** — isi: "Anda mendapat tugas pemeliharaan baru untuk CCTV **[nama CCTV]**." | ✅ |
+| 4 | Klik item notifikasi `teknisi_b` | Notifikasi terbaca (badge berkurang) dan navigasi ke halaman Pemeliharaan | ✅ |
+| 5 | Klik lonceng `teknisi_a` | Item **"Tugas dialihkan"** — isi: "Tugas pemeliharaan untuk CCTV **[nama CCTV]** telah dialihkan ke teknisi lain." | ✅ |
+| 6 | Buka **Pemberitahuan** (`/pemberitahuan`) sebagai `teknisi_a` | Daftar riwayat memuat notifikasi "Tugas dialihkan" (tipe `MAINTENANCE_UNASSIGNED`) | ✅ |
 
 ### S4 — Tolak assign ke teknisi yang SAMA
 
@@ -99,9 +107,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab A = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | Baris tugas (status "Dalam proses", teknisi `teknisi_b`) → klik **panah kiri-kanan** | Modal "Alihkan ke Teknisi Lain" terbuka dengan nama `teknisi_b` di peringatan | |
-| 2 | Pilih `teknisi_b` (yang sama) di dropdown → **"Alihkan"** | Toast error: **"Teknisi sudah ditugaskan pada tugas ini"**; modal tetap terbuka; tidak ada perubahan data | |
-| 3 | (Opsional) Cek Swagger: `PUT /api/maintenance-logs/{id}/assign` body `{"technician_id":"<id teknisi_b>"}` dengan token admin | Respons `400` + `message: "Teknisi sudah ditugaskan pada tugas ini"` | |
+| 1 | Baris tugas (status "Dalam proses", teknisi `teknisi_b`) → klik **panah kiri-kanan** | Modal "Alihkan ke Teknisi Lain" terbuka dengan nama `teknisi_b` di peringatan | ✅ |
+| 2 | Pilih `teknisi_b` (yang sama) di dropdown → **"Alihkan"** | Toast error: **"Teknisi sudah ditugaskan pada tugas ini"**; modal tetap terbuka; tidak ada perubahan data | ✅ |
+| 3 | (Opsional) Cek Swagger: `PUT /api/maintenance-logs/{id}/assign` body `{"technician_id":"<id teknisi_b>"}` dengan token admin | Respons `400` + `message: "Teknisi sudah ditugaskan pada tugas ini"` | ✅ |
 
 ### S5 — Log `completed` / `failed` tidak bisa dialihkan
 
@@ -109,9 +117,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Selesaikan tugas S2 oleh `teknisi_b` (Tab C: ikon **centang** → 9 item **"Normal / OK"** → foto → **"Selesaikan Tugas"**) | Log berstatus **"Selesai"** | |
-| 2 | Cek Tab A (admin) pada baris "Selesai" tersebut | Ikon **panah kiri-kanan / tambah-user** **tidak muncul** untuk baris `completed` (dan `failed`) | |
-| 3 | (Opsional) Swagger: `PUT /api/maintenance-logs/{id}/assign` pada log `completed` | Respons `400` + `message: "Hanya log berstatus terjadwal atau dalam proses yang dapat ditugaskan ke teknisi"` | |
+| 1 | Selesaikan tugas S2 oleh `teknisi_b` (Tab C: ikon **centang** → 9 item **"Normal / OK"** → foto → **"Selesaikan Tugas"**) | Log berstatus **"Selesai"** | ✅ |
+| 2 | Cek Tab A (admin) pada baris "Selesai" tersebut | Ikon **panah kiri-kanan / tambah-user** **tidak muncul** untuk baris `completed` (dan `failed`) | ✅ |
+| 3 | (Opsional) Swagger: `PUT /api/maintenance-logs/{id}/assign` pada log `completed` | Respons `400` + `message: "Hanya log berstatus terjadwal atau dalam proses yang dapat ditugaskan ke teknisi"` | ✅ |
 
 ### S6 — Teknisi tidak bisa mengalihkan (hanya admin)
 
@@ -119,8 +127,8 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Cek Tab B / Tab C (login teknisi) pada baris tugas apa pun | Tidak ada ikon **panah kiri-kanan** maupun **tambah-user** di kolom Tindakan | |
-| 2 | (Opsional) Swagger dengan token `teknisi_b`: `PUT /api/maintenance-logs/{id}/assign` | Respons `403` "Akses ditolak: Hanya Admin yang diperbolehkan" | |
+| 1 | Cek Tab B / Tab C (login teknisi) pada baris tugas apa pun | Tidak ada ikon **panah kiri-kanan** maupun **tambah-user** di kolom Tindakan | ✅ |
+| 2 | (Opsional) Swagger dengan token `teknisi_b`: `PUT /api/maintenance-logs/{id}/assign` | Respons `403` "Akses ditolak: Hanya Admin yang diperbolehkan" | ✅ |
 
 ### S7 — Audit log `REASSIGN_MAINTENANCE`
 
@@ -128,9 +136,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab A = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | **Audit Log** (sidebar) → **"Sortir"** → filter **Modul = MAINTENANCE** → **"Terapkan"** | Daftar memuat baris dengan aksi **`REASSIGN_MAINTENANCE`** | |
-| 2 | Buka baris `REASSIGN_MAINTENANCE` dari pengalihan S2 | Deskripsi berbentuk: "Tugas **[UUID tugas]** dialihkan dari **[nama `teknisi_a`]** ke **[nama `teknisi_b`]**" | |
-| 3 | Pastikan pengalihan S1 (assign pertama) memakai aksi `ASSIGN_MAINTENANCE` | Dua baris berbeda: `ASSIGN_MAINTENANCE` (S1) dan `REASSIGN_MAINTENANCE` (S2) | |
+| 1 | **Audit Log** (sidebar) → **"Sortir"** → filter **Modul = MAINTENANCE** → **"Terapkan"** | Daftar memuat baris dengan aksi **`REASSIGN_MAINTENANCE`** | ✅ |
+| 2 | Buka baris `REASSIGN_MAINTENANCE` dari pengalihan S2 | Deskripsi berbentuk: "Tugas **[UUID tugas]** dialihkan dari **[nama `teknisi_a`]** ke **[nama `teknisi_b`]**" | ✅ |
+| 3 | Pastikan pengalihan S1 (assign pertama) memakai aksi `ASSIGN_MAINTENANCE` | Dua baris berbeda: `ASSIGN_MAINTENANCE` (S1) dan `REASSIGN_MAINTENANCE` (S2) | ✅ |
 
 ### S8 — Regresi: alur tugas tetap berjalan normal setelah pengalihan
 
@@ -138,9 +146,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat tugas baru (`scheduled`) → klik **tambah-user** → tugaskan ke `teknisi_a` | Modal berjudul **"Tugaskan ke Teknisi"** (bukan "Alihkan"); tidak ada peringatan kuning; tombol submit **"Tugaskan"** — memastikan alur assign lama utuh | |
-| 2 | Login `teknisi_a` → buka baris tugas yang telah dialihkan (S2) | Ikon **centang** (selesaikan) **tidak muncul** — teknisi lama sudah kehilangan akses | |
-| 3 | Login `teknisi_b` → ikon **centang** pada tugas yang dialihkan → selesaikan dengan 9 item OK + foto | Tugas selesai; status **"Selesai"**; toast sukses | |
+| 1 | Buat tugas baru (`scheduled`) → klik **tambah-user** → tugaskan ke `teknisi_a` | Modal berjudul **"Tugaskan ke Teknisi"** (bukan "Alihkan"); tidak ada peringatan kuning; tombol submit **"Tugaskan"** — memastikan alur assign lama utuh | ✅ |
+| 2 | Login `teknisi_a` → buka baris tugas yang telah dialihkan (S2) | Ikon **centang** (selesaikan) **tidak muncul** — teknisi lama sudah kehilangan akses | ✅ |
+| 3 | Login `teknisi_b` → ikon **centang** pada tugas yang dialihkan → selesaikan dengan 9 item OK + foto | Tugas selesai; status **"Selesai"**; toast sukses | ✅ |
 
 ---
 

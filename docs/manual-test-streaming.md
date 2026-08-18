@@ -22,15 +22,15 @@ docker compose config --quiet
 
 | ID | Deskripsi | Langkah-Langkah | Hasil Diharapkan | Hasil Aktual | Status |
 |----|-----------|-----------------|------------------|--------------|--------|
-| S1 | Konfigurasi streaming CCTV | Buka **Aset CCTV** (`/cctv`), klik edit pada CCTV, isi **Channel Port** 1–35, isi **Password RTSP**, centang **"Aktifkan Streaming"**, lalu simpan | Simpan sukses; kolom **Stream** di tabel menampilkan **ikon hijau** (MonitorPlay) untuk CCTV `stream_enabled=true`; `rtsp_password` **tidak bocor** di response (field tidak tampil / kosong pada re-open form) | | |
-| S2 | Start streaming individual | Buka **Peta Sebaran** (`/sebaran-cctv`), klik marker CCTV dengan `stream_enabled=true`, klik **"Mulai Stream"** di `StreamModal` | Video **live** tampil via `WHEPPlayer` dalam **5–10 detik** dengan indikator **🔴 LIVE** | | |
-| S3 | Stop streaming | Di `StreamModal`, klik **"Hentikan"** | Video berhenti; status menjadi **"Stream tidak aktif"** | | |
-| S4 | Toggle kualitas SD/HD | Saat streaming aktif, klik badge **SD → HD** | Stream di-restart dengan resolusi lebih tinggi (**main stream**) | | |
-| S5 | Grid View | Klik toggle **"Grid"** di header | Semua CCTV streaming tampil dalam grid (`StreamGridView`); video masing-masing **playing** | | |
-| S6 | Role enforcement | Login sebagai **teknisi**, akses `/api/streams/status` via browser | **403 Forbidden** (hanya admin yang dapat mengakses `/api/streams/*`) | | |
-| S7 | Reconnect saat NVR down | Mulai stream, simulasi NVR unreachable, tunggu | Player menampilkan **"Reconnecting..."** dengan backoff; pulih otomatis saat NVR kembali | | |
-| S8 | Start All Streams | Panggil `POST /api/streams/start-all` | Semua CCTV `stream_enabled=true` terdaftar di MediaMTX; response berisi jumlah berhasil | | |
-| S9 | CCTV tanpa streaming diklik | Klik marker CCTV dengan `stream_enabled=false` | Popup **info statis** muncul (bukan `StreamModal`) | | |
+| S1 | Konfigurasi streaming CCTV | Buka **Aset CCTV** (`/cctv`), klik edit pada CCTV, isi **Channel Port** 1–35, isi **Password RTSP**, centang **"Aktifkan Streaming"**, lalu simpan | Simpan sukses; kolom **Stream** di tabel menampilkan **ikon hijau** (MonitorPlay) untuk CCTV `stream_enabled=true`; `rtsp_password` **tidak bocor** di response (field tidak tampil / kosong pada re-open form) | ✅ — `PUT /api/cctv/:id {"stream_enabled":true,"channel_port":3,"rtsp_password":"..."}` → 200; respons CCTV tidak menyertakan `rtsp_password` | ✅ |
+| S2 | Start streaming individual | Buka **Peta Sebaran** (`/sebaran-cctv`), klik marker CCTV dengan `stream_enabled=true`, klik **"Mulai Stream"** di `StreamModal` | Video **live** tampil via `WHEPPlayer` dalam **5–10 detik** dengan indikator **🔴 LIVE** | ✅ start → 200: WHEP URL `/stream/cam-.../whep`, source `rtsp://admin:...@36.91.27.35:554/Streaming/channels/302` (sub-stream); ⚠️ video tidak tampil karena NVR tidak reachable dari VPS | ⚠️ |
+| S3 | Stop streaming | Di `StreamModal`, klik **"Hentikan"** | Video berhenti; status menjadi **"Stream tidak aktif"** | ❌ — `POST /api/streams/:id/stop` → 502 "Gagal menghubungi server streaming" (konsisten 2×); `stop-all` → `failed:1` | ❌ |
+| S4 | Toggle kualitas SD/HD | Saat streaming aktif, klik badge **SD → HD** | Stream di-restart dengan resolusi lebih tinggi (**main stream**) | ⚠️ — endpoint `GET /api/streams/:id/url` → 200 (`stream_active:true`, `stream_ready:false`); toggle SD/HD tidak dapat dibuktikan karena stream tidak pernah ready (NVR unreachable) | ⚠️ |
+| S5 | Grid View | Klik toggle **"Grid"** di header | Semua CCTV streaming tampil dalam grid (`StreamGridView`); video masing-masing **playing** | ⚠️ Tidak dapat diuji (butuh browser + NVR reachable); struktur grid & ring status terverifikasi dari kode `StreamGridView.tsx` | ⚠️ |
+| S6 | Role enforcement | Login sebagai **teknisi**, akses `/api/streams/status` via browser | **403 Forbidden** (hanya admin yang dapat mengakses `/api/streams/*`) | ✅ — teknisi 403, tanpa sesi 401 | ✅ |
+| S7 | Reconnect saat NVR down | Mulai stream, simulasi NVR unreachable, tunggu | Player menampilkan **"Reconnecting..."** dengan backoff; pulih otomatis saat NVR kembali | ⚠️ Tidak dapat diuji (NVR `36.91.27.35` unreachable sejak awal → player tidak pernah live; logika reconnect terverifikasi di `WHEPPlayer.tsx`) | ⚠️ |
+| S8 | Start All Streams | Panggil `POST /api/streams/start-all` | Semua CCTV `stream_enabled=true` terdaftar di MediaMTX; response berisi jumlah berhasil | ✅ — `{"success":1,"failed":0,"total":1}` | ✅ |
+| S9 | CCTV tanpa streaming diklik | Klik marker CCTV dengan `stream_enabled=false` | Popup **info statis** muncul (bukan `StreamModal`) | ⚠️ Tidak dapat diuji (butuh browser); logika pemilihan popup/StreamModal terverifikasi dari kode | ⚠️ |
 
 ## Kriteria Lulus
 

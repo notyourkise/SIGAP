@@ -23,19 +23,27 @@ cd backend && swag init
 cd frontend && npm run lint && npm run build
 ```
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk `snapshot_test.go`) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ |
+
 ## 3. Skenario Uji
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|-----------------------|-------------|
-| S1 | Snapshot otomatis — setelah scheduler berjalan 15 menit, periksa folder `uploads/snapshots/{cctv_id}/` pada backend, lalu panggil `GET /api/cctv/:id/snapshot` | Folder `uploads/snapshots/{cctv_id}/` berisi file JPEG; `GET /api/cctv/:id/snapshot` mengembalikan gambar **terbaru** (Content-Type `image/jpeg`) | |
-| S2 | Snapshot on-demand/endpoint — panggil `GET /api/cctv/:id/snapshot` untuk CCTV yang **belum** memiliki snapshot (folder kosong / snapshot belum diambil) | **404 Not Found** (tidak ada snapshot tersimpan) | |
-| S3 | Rotasi snapshot — biarkan beberapa siklus 15 menit berjalan atau buat banyak snapshot pada satu CCTV | Direktori `uploads/snapshots/{cctv_id}/` hanya menyimpan **10 snapshot terbaru** (snapshot lama dihapus) | |
-| S4 | Field `snapshot_url` — panggil `GET /api/cctv` dan `GET /api/cctv/:id` | Respons memuat field `snapshot_url` yang menunjuk ke endpoint `GET /api/cctv/:id/snapshot` (nilai null/omitempty bila belum ada snapshot) | |
-| S5 | Timeline display — panggil `GET /api/cctv/:id/timeline?page=1&limit=20` | Respons mengembalikan daftar event **kronologis** (urutan waktu, terbaru dahulu) dengan paginasi (`page`, `limit`, `total_rows`, `total_pages`) | |
-| S6 | Thumbnail di tabel Master CCTV — buka halaman `/cctv` | Kolom snapshot menampilkan **gambar kecil** (via `AuthenticatedImage` menggunakan `snapshot_url`); menampilkan **placeholder** (ikon `ImageOff`) bila belum ada snapshot | |
-| S7 | Thumbnail di tooltip marker peta — buka `/sebaran-cctv`, arahkan kursor ke marker CCTV | Tooltip marker menampilkan **gambar snapshot kecil** (64×48); placeholder ikon `Camera` bila belum ada snapshot | |
-| S8 | Hook event — ubah status CCTV / field-check `attention` / maintenance selesai, lalu cek timeline | Event **baru muncul** di `GET /api/cctv/:id/timeline` dengan `event_type` sesuai: `status_changed`, `maintenance_completed`, `field_check_attention`, atau `periodic_snapshot`; tampil juga di timeline detail CCTV | |
-| S9 | Role enforcement — akses `GET /api/cctv/:id/snapshot` dan `GET /api/cctv/:id/timeline` tanpa login / dengan role teknisi di luar izin | **401 Unauthorized** tanpa login; **403 Forbidden** bila role tidak diizinkan | |
+| S1 | Snapshot otomatis — setelah scheduler berjalan 15 menit, periksa folder `uploads/snapshots/{cctv_id}/` pada backend, lalu panggil `GET /api/cctv/:id/snapshot` | Folder `uploads/snapshots/{cctv_id}/` berisi file JPEG; `GET /api/cctv/:id/snapshot` mengembalikan gambar **terbaru** (Content-Type `image/jpeg`) | ⚠️ Tidak dapat diuji (NVR `36.91.27.35` unreachable → scheduler 15 menit tidak berhasil menangkap frame; mekanisme terverifikasi dari kode `RunSnapshotScheduler` + `CaptureSnapshot`) |
+| S2 | Snapshot on-demand/endpoint — panggil `GET /api/cctv/:id/snapshot` untuk CCTV yang **belum** memiliki snapshot (folder kosong / snapshot belum diambil) | **404 Not Found** (tidak ada snapshot tersimpan) | ✅ |
+| S3 | Rotasi snapshot — biarkan beberapa siklus 15 menit berjalan atau buat banyak snapshot pada satu CCTV | Direktori `uploads/snapshots/{cctv_id}/` hanya menyimpan **10 snapshot terbaru** (snapshot lama dihapus) | ✅ (verifikasi kode + unit test rotasi) |
+| S4 | Field `snapshot_url` — panggil `GET /api/cctv` dan `GET /api/cctv/:id` | Respons memuat field `snapshot_url` yang menunjuk ke endpoint `GET /api/cctv/:id/snapshot` (nilai null/omitempty bila belum ada snapshot) | ✅ (verifikasi kode — `models/cctv.go:44` `snapshot_url,omitempty`) |
+| S5 | Timeline display — panggil `GET /api/cctv/:id/timeline?page=1&limit=20` | Respons mengembalikan daftar event **kronologis** (urutan waktu, terbaru dahulu) dengan paginasi (`page`, `limit`, `total_rows`, `total_pages`) | ✅ |
+| S6 | Thumbnail di tabel Master CCTV — buka halaman `/cctv` | Kolom snapshot menampilkan **gambar kecil** (via `AuthenticatedImage` menggunakan `snapshot_url`); menampilkan **placeholder** (ikon `ImageOff`) bila belum ada snapshot | ✅ (verifikasi kode — `snapshot_url` di `cctv/page.tsx:64`) |
+| S7 | Thumbnail di tooltip marker peta — buka `/sebaran-cctv`, arahkan kursor ke marker CCTV | Tooltip marker menampilkan **gambar snapshot kecil** (64×48); placeholder ikon `Camera` bila belum ada snapshot | ✅ (verifikasi kode — `snapshot_url` di `CCTVMap.tsx:23`) |
+| S8 | Hook event — ubah status CCTV / field-check `attention` / maintenance selesai, lalu cek timeline | Event **baru muncul** di `GET /api/cctv/:id/timeline` dengan `event_type` sesuai: `status_changed`, `maintenance_completed`, `field_check_attention`, atau `periodic_snapshot`; tampil juga di timeline detail CCTV | ⚠️ Sebagian — 3 dari 4 event terimplementasi (`status_changed` di `cctv.go:663`, `field_check_attention` di `field_maintenance.go:260`, `periodic_snapshot` di `snapshot.go:269`); **`maintenance_completed` tidak terimplementasi** (tidak ada pemanggilan `CaptureSnapshot` saat maintenance selesai) |
+| S9 | Role enforcement — akses `GET /api/cctv/:id/snapshot` dan `GET /api/cctv/:id/timeline` tanpa login / dengan role teknisi di luar izin | **401 Unauthorized** tanpa login; **403 Forbidden** bila role tidak diizinkan | ✅ (endpoint `Protected()`) |
 
 ## 4. Kriteria Lulus
 
@@ -80,17 +88,25 @@ cd backend && swag init
 cd frontend && npm run lint && npm run build
 ```
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk `stream_health_test.go`) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ |
+
 ## 3. Skenario Uji
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|-----------------------|-------------|
-| S10 | Halaman `/monitor` admin-only — login sebagai **teknisi**, buka `/monitor` | Akses **ditolak/di-redirect** (guard proxy + middleware `RequireRole("admin")`); halaman tidak dirender untuk teknisi | |
-| S11 | Grid multi-view — login sebagai admin, buka `/monitor`, pilih CCTV pada beberapa sel via dropdown, pilih preset layout 2×2/3×3/4×4 | Grid menampilkan preset yang dipilih; tiap sel menampilkan **video live** CCTV yang dipilih via `WHEPPlayer` | |
-| S12 | Fullscreen per sel & seluruh grid — klik tombol fullscreen pada satu sel, lalu tombol fullscreen seluruh grid | Sel yang dipilih menjadi **fullscreen** (Fullscreen API); seluruh grid juga bisa masuk **fullscreen** dan kembali normal (Esc/tombol) | |
-| S13 | Pop-out — klik tombol pop pada sebuah sel | Window baru terbuka via `window.open('/monitor/pop?path=...')` menampilkan stream CCTV tersebut dalam **fullscreen** | |
-| S14 | Stream health — panggil `GET /api/streams/health` sebagai admin | Respons menampilkan daftar stream CCTV dengan status **ready/down** beserta **down_duration** per stream | |
-| S15 | Deteksi down — simulasi NVR/stream mati > 15 menit, lalu pulihkan | Saat stream down > 15 menit: notifikasi **`STREAM_DOWN`** ter-broadcast ke admin & **health_score turun 10**; saat stream pulih: notifikasi **`STREAM_RESTORED`** | |
-| S16 | Menu sidebar "Monitor CCTV" — buka dashboard sebagai admin, periksa sidebar | Menu sidebar **"Monitor CCTV"** (ikon `MonitorPlay`) tampil untuk admin, diposisikan **setelah "Peta Sebaran CCTV"** | |
+| S10 | Halaman `/monitor` admin-only — login sebagai **teknisi**, buka `/monitor` | Akses **ditolak/di-redirect** (guard proxy + middleware `RequireRole("admin")`); halaman tidak dirender untuk teknisi | ✅ |
+| S11 | Grid multi-view — login sebagai admin, buka `/monitor`, pilih CCTV pada beberapa sel via dropdown, pilih preset layout 2×2/3×3/4×4 | Grid menampilkan preset yang dipilih; tiap sel menampilkan **video live** CCTV yang dipilih via `WHEPPlayer` | ⚠️ Tidak dapat diuji (butuh browser + NVR reachable); struktur grid/`WHEPPlayer` terverifikasi dari kode |
+| S12 | Fullscreen per sel & seluruh grid — klik tombol fullscreen pada satu sel, lalu tombol fullscreen seluruh grid | Sel yang dipilih menjadi **fullscreen** (Fullscreen API); seluruh grid juga bisa masuk **fullscreen** dan kembali normal (Esc/tombol) | ⚠️ Tidak dapat diuji (butuh browser) |
+| S13 | Pop-out — klik tombol pop pada sebuah sel | Window baru terbuka via `window.open('/monitor/pop?path=...')` menampilkan stream CCTV tersebut dalam **fullscreen** | ⚠️ Tidak dapat diuji (butuh browser) |
+| S14 | Stream health — panggil `GET /api/streams/health` sebagai admin | Respons menampilkan daftar stream CCTV dengan status **ready/down** beserta **down_duration** per stream | ✅ |
+| S15 | Deteksi down — simulasi NVR/stream mati > 15 menit, lalu pulihkan | Saat stream down > 15 menit: notifikasi **`STREAM_DOWN`** ter-broadcast ke admin & **health_score turun 10**; saat stream pulih: notifikasi **`STREAM_RESTORED`** | ⚠️ Tidak dapat diuji (butuh NVR reachable + down >15 menit); unit test `stream_health_test.go` lulus |
+| S16 | Menu sidebar "Monitor CCTV" — buka dashboard sebagai admin, periksa sidebar | Menu sidebar **"Monitor CCTV"** (ikon `MonitorPlay`) tampil untuk admin, diposisikan **setelah "Peta Sebaran CCTV"** | ✅ (verifikasi kode — `DashboardLayout.tsx:120`) |
 
 ## 4. Kriteria Lulus
 

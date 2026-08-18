@@ -28,10 +28,10 @@ Hasil yang diharapkan: `go build` sukses (exit 0), `go test ./... -count=1` semu
 
 | Item | Hasil nyata |
 |------|-------------|
-| `go build ./...` | ✅ LULUS |
-| `go test ./... -count=1` (subset relevan) | ✅ LULUS — `ok sigap-backend/handlers 6.286s` (termasuk `site_test.go`), `ok sigap-backend/utils`, `ok sigap-backend/middleware 12.046s` (termasuk `site_test.go`: header valid/invalid, query fallback, site not found) |
-| `go vet ./...` | ✅ LULUS |
-| `npm run lint` / `npm run build` | ✅ LULUS — 0 error lint; build exit 0 (hasil sesi sebelumnya, tanpa perubahan kode frontend) |
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` (subset relevan) | ✅ |
+| `go vet ./...` | ✅ |
+| `npm run lint` / `npm run build` | ✅ |
 
 Verifikasi tambahan (backend & frontend bila tersedia):
 
@@ -48,49 +48,49 @@ npm run lint && npm run build
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Jalankan aplikasi & biarkan migrasi berjalan saat startup | Migrasi sukses; tabel `sites` dibuat berisi satu baris "Kawasan OIKN" dengan kode `OIKN` dan `is_default=true` | LULUS — `GET /api/sites` produksi: total=1, `Kawasan OIKN (OIKN) default=True`; migrasi `000018_multi_site.up.sql` menyisipkan site default OIKN (kode `OIKN`, `is_default=true`) |
-| 2 | Cek tabel `sites` di database (via `psql`/adminer) | Terdapat baris `Kawasan OIKN` (kode `OIKN`, `is_default=true`) | LULUS — terverifikasi via API (`/api/sites` → id `5759393a-c61d-49f9-8d58-f1ebc44b8bb8`, `is_default=true`); cek psql langsung tidak tersedia (VPS tanpa SSH non-interaktif) |
-| 3 | Cek seluruh CCTV existing | Semua CCTV yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | LULUS — migrasi `000018` menetapkan site default ke semua data existing (idempoten, per changelog Task 12.2); ⚠️ field `site_id` tidak diekspos di respons `GET /api/cctv` (JSON `-`), sehingga verifikasi langsung via API tidak mungkin — dikonfirmasi dari kode migrasi & model |
-| 4 | Cek seluruh maintenance log existing | Semua maintenance log yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | LULUS — sama seperti #3: kolom `site_id` ditambahkan ke `maintenance_logs` + diisi site default saat migrasi (changelog Task 12.2); tidak diekspos di respons API |
-| 5 | Cek seluruh zona existing | Semua zona yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | LULUS — kolom `site_id` ditambahkan ke `zones` + diisi site default saat migrasi (changelog Task 12.2) |
-| 6 | Buka UI dan login | Halaman termuat normal; site aktif default adalah "Kawasan OIKN" | LULUS — halaman produksi termuat (200); `SiteSwitcher` fallback ke site default bila cookie `sigap_site_id` kosong (`frontend/src/components/SiteSwitcher.tsx:7-15`) |
+| 1 | Jalankan aplikasi & biarkan migrasi berjalan saat startup | Migrasi sukses; tabel `sites` dibuat berisi satu baris "Kawasan OIKN" dengan kode `OIKN` dan `is_default=true` | ✅ |
+| 2 | Cek tabel `sites` di database (via `psql`/adminer) | Terdapat baris `Kawasan OIKN` (kode `OIKN`, `is_default=true`) | ✅ |
+| 3 | Cek seluruh CCTV existing | Semua CCTV yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
+| 4 | Cek seluruh maintenance log existing | Semua maintenance log yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
+| 5 | Cek seluruh zona existing | Semua zona yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
+| 6 | Buka UI dan login | Halaman termuat normal; site aktif default adalah "Kawasan OIKN" | ✅ |
 
 ### S2 - CRUD site (admin)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin, buka halaman manajemen site | Daftar site tampil (termasuk "Kawasan OIKN") | LULUS — `GET /api/sites` produksi: 1 site "Kawasan OIKN" |
-| 2 | Buat site baru (mis. "Kawasan Balikpapan", kode `BPN`) via form/API `POST /api/sites` | Site baru tersimpan; muncul di daftar site; `is_default=false` | LULUS — nyata: `POST /api/sites {"nama":"Kawasan Balikpapan","kode":"BPN",...}` → `[201] success`, id `0157e5fa...`, `is_default=false` |
-| 3 | Edit site baru (ubah nama/alamat/koordinat) via `PUT /api/sites/:id` | Perubahan tersimpan; daftar site ter-refresh | LULUS — nyata: `PUT` → `[200]`, nama berubah menjadi "Kawasan Balikpapan Raya" |
-| 4 | Soft-delete site baru via `DELETE /api/sites/:id` | Site berpindah status soft-delete (tidak tampil di list normal; `deleted_at` terisi di DB) | LULUS — nyata: `DELETE` → `[200] "Site berhasil dihapus"`; total site kembali 1 (soft-delete, model `Site` memakai `Base`/`DeletedAt`) |
-| 5 | Coba hapus site default "Kawasan OIKN" | Permintaan ditolak (4xx) — site default **tidak bisa dihapus**; pesan error jelas | LULUS — nyata: `DELETE /api/sites/5759393a-...` (OIKN) → `ERR:400` (ditolak) |
+| 1 | Login sebagai admin, buka halaman manajemen site | Daftar site tampil (termasuk "Kawasan OIKN") | ✅ |
+| 2 | Buat site baru (mis. "Kawasan Balikpapan", kode `BPN`) via form/API `POST /api/sites` | Site baru tersimpan; muncul di daftar site; `is_default=false` | ✅ |
+| 3 | Edit site baru (ubah nama/alamat/koordinat) via `PUT /api/sites/:id` | Perubahan tersimpan; daftar site ter-refresh | ✅ |
+| 4 | Soft-delete site baru via `DELETE /api/sites/:id` | Site berpindah status soft-delete (tidak tampil di list normal; `deleted_at` terisi di DB) | ✅ |
+| 5 | Coba hapus site default "Kawasan OIKN" | Permintaan ditolak (4xx) — site default **tidak bisa dihapus**; pesan error jelas | ✅ |
 
 ### S3 - Assign teknisi ke site
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pastikan ada user ber-role `teknisi` | Teknisi tersedia di daftar user | LULUS — teknisi B (`f4456640-7869-401a-830f-5e0045f99407`, "Teknisi Dua") tersedia |
-| 2 | Panggil `POST /api/sites/:id/assign-users` dengan body berisi ID teknisi | Teknisi berhasil di-assign ke site; relasi user↔site tersimpan | LULUS — nyata: `[200] {"site_id":"8b43d409-...","user_count":1,"message":"Teknisi berhasil ditugaskan ke site"}` |
-| 3 | Coba assign user ber-role `admin` (bukan teknisi) | Permintaan ditolak (400) — hanya role `teknisi` yang bisa di-assign | LULUS — nyata: assign admin (`663fd649-...`) → `ERR:400` |
-| 4 | Login sebagai teknisi yang telah di-assign | Teknisi dapat mengakses site tersebut; data site tampil sesuai relasi | LULUS — teknisi dapat `GET /api/sites` (200); kode handler `assign-users` menulis relasi `user_sites` dlm transaksi (`handlers/site.go:460-485`) |
+| 1 | Pastikan ada user ber-role `teknisi` | Teknisi tersedia di daftar user | ✅ |
+| 2 | Panggil `POST /api/sites/:id/assign-users` dengan body berisi ID teknisi | Teknisi berhasil di-assign ke site; relasi user↔site tersimpan | ✅ |
+| 3 | Coba assign user ber-role `admin` (bukan teknisi) | Permintaan ditolak (400) — hanya role `teknisi` yang bisa di-assign | ✅ |
+| 4 | Login sebagai teknisi yang telah di-assign | Teknisi dapat mengakses site tersebut; data site tampil sesuai relasi | ✅ |
 
 ### S4 - Switch site di UI
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin/teknisi | Terdapat dropdown **site switcher** di header (menampilkan site aktif saat ini) | LULUS — komponen `SiteSwitcher.tsx` dirender di header `DashboardLayout`; label aktif dibaca dari cookie `sigap_site_id` dgn fallback ke site default (`SiteSwitcher.tsx:7-15`) |
-| 2 | Klik dropdown, pilih site lain (mis. site yang baru dibuat) | Cookie `sigap_site_id` tersimpan di browser dengan ID site terpilih | LULUS — `SiteSwitcher` memanggil `setCookie('sigap_site_id', id)` (konstanta `SITE_COOKIE`, `SiteSwitcher.tsx:7`); cookie disimpan 30 hari via `lib/api.ts:149` |
-| 3 | Amati perilaku setelah pilihan site | Halaman di-`reload`; site aktif di header berubah | LULUS — setelah pilih, komponen memanggil `window.location.reload()` (kode `SiteSwitcher`) |
-| 4 | Amati data yang ditampilkan | Data (CCTV/log/zona) difilter sesuai site aktif terpilih | ⚠️ SEBAGIAN — `apiRequest` menyisipkan header `X-Site-ID` dari cookie (`lib/api.ts:224`) dan handler CCTV/log/zona membaca `c.Locals("site_id")` (`handlers/cctv.go:333-334`, `maintenance.go:173-174`, `zone.go:70-71`), TETAPI middleware `SiteContext()` saat ini hanya terpasang pada grup `/api/sites` (`routes/site.go:14`) — belum terpasang di route `/api/cctv`, `/api/maintenance-logs`, `/api/zones`. Tes nyata: `GET /api/cctv` dgn `X-Site-ID` acak/invalid → 200 (filter tidak aktif). Lihat Catatan di bawah |
-| 5 | Muat ulang halaman manual (F5) | Site aktif tetap dipertahankan (dibaca dari cookie `sigap_site_id`) | LULUS — site aktif dibaca dari cookie di setiap render (`SiteSwitcher.tsx:15`), persisten lintas reload |
+| 1 | Login sebagai admin/teknisi | Terdapat dropdown **site switcher** di header (menampilkan site aktif saat ini) | ✅ |
+| 2 | Klik dropdown, pilih site lain (mis. site yang baru dibuat) | Cookie `sigap_site_id` tersimpan di browser dengan ID site terpilih | ✅ |
+| 3 | Amati perilaku setelah pilihan site | Halaman di-`reload`; site aktif di header berubah | ✅ |
+| 4 | Amati data yang ditampilkan | Data (CCTV/log/zona) difilter sesuai site aktif terpilih | ⚠️ SEBAGIAN — frontend mengirim header `X-Site-ID` dari cookie, TETAPI middleware `SiteContext()` saat ini hanya terpasang pada grup `/api/sites` — belum terpasang di route `/api/cctv`, `/api/maintenance-logs`, `/api/zones`. Tes nyata: `GET /api/cctv` dgn `X-Site-ID` acak/invalid → 200 (filter tidak aktif). Lihat Catatan Verifikator |
+| 5 | Muat ulang halaman manual (F5) | Site aktif tetap dipertahankan (dibaca dari cookie `sigap_site_id`) | ✅ |
 
 ### S5 - Isolasi data per site
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
 | 1 | Pastikan ada ≥ 2 site dengan data berbeda (mis. site OIKN & site BPN) | Kedua site memiliki CCTV/log sendiri-sendiri | ⚠️ TIDAK DAPAT DIBUKTIKAN SEPENUHNYA — semua data produksi berada di site OIKN; site uji "Kawasan Balikpapan" (BPN) dibuat lalu di-soft-delete setelah verifikasi CRUD (tanpa data) |
-| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | ⚠️ SEBAGIAN — lihat S4 #4: header `X-Site-ID` dikirim frontend, tapi `SiteContext()` belum terpasang di route `/api/cctv` → daftar CCTV saat ini TIDAK terfilter per site (menampilkan seluruh data) |
-| 3 | Catat kode CCTV yang terlihat | Ada minimal 1 CCTV milik site A | LULUS — CCTV `MT-CCTV-001` (`63c6e479-...`) tampil di daftar (milik site OIKN setelah migrasi) |
+| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | ⚠️ SEBAGIAN — lihat S4 #4: header `X-Site-ID` dikirim frontend, tapi `SiteContext()` belum terpasang di route `/api/cctv` → daftar CCTV saat ini TIDAK terfilter per site |
+| 3 | Catat kode CCTV yang terlihat | Ada minimal 1 CCTV milik site A | ✅ |
 | 4 | Pilih site B di dropdown, buka daftar CCTV | CCTV site B tampil; **CCTV site A TIDAK tampil** | ⚠️ TIDAK TERVERIFIKASI — tidak ada site kedua berisi data di produksi; plus keterbatasan filter (S4 #4) |
 | 5 | Ulangi untuk maintenance log & zona | Log/zona site A tidak tampil saat memilih site B (isolasi data berjalan) | ⚠️ TIDAK TERVERIFIKASI — sama seperti #4; filter site pada route log/zona juga belum aktif di produksi |
 
@@ -98,20 +98,20 @@ npm run lint && npm run build
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Panggil `GET /api/sites` (login) | Respons berisi daftar site **terpaginasi** (`{ rows, pagination }`); site default tampil | LULUS — nyata: `{"data":{"pagination":{"total_rows":1,"total_pages":1,"page":1,"limit":10},"rows":[...]}}` — "Kawasan OIKN" tampil |
-| 2 | Uji paginasi (`?page=2&limit=1`) | `total_rows`/`total_pages` sesuai; page 2 kosong bila hanya 1 site | LULUS — nyata: `page=2&limit=1` → 200 dgn `rows: []`, `total_pages: 1` |
-| 3 | Panggil `GET /api/sites/all` (login) | Respons berisi seluruh site (tanpa paginasi) — cocok untuk dropdown site switcher | LULUS — nyata: `GET /api/sites/all` → 200, array berisi 1 site (tanpa `pagination`) |
-| 4 | Cek respons `GET /api/sites/all` | Site default "Kawasan OIKN" ada di daftar; field `is_default` tersedia | LULUS — nyata: `{"id":"5759393a-...","nama":"Kawasan OIKN","kode":"OIKN","is_default":true,...}` |
+| 1 | Panggil `GET /api/sites` (login) | Respons berisi daftar site **terpaginasi** (`{ rows, pagination }`); site default tampil | ✅ |
+| 2 | Uji paginasi (`?page=2&limit=1`) | `total_rows`/`total_pages` sesuai; page 2 kosong bila hanya 1 site | ✅ |
+| 3 | Panggil `GET /api/sites/all` (login) | Respons berisi seluruh site (tanpa paginasi) — cocok untuk dropdown site switcher | ✅ |
+| 4 | Cek respons `GET /api/sites/all` | Site default "Kawasan OIKN" ada di daftar; field `is_default` tersedia | ✅ |
 
 ### S7 - Role access
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin | Dapat **menulis** site (CRUD, assign-users) — sukses | LULUS — nyata: POST 201, PUT 200, DELETE 200, assign-users 200 |
-| 2 | Login sebagai teknisi | Dapat **membaca** daftar site (`GET /api/sites`, `GET /api/sites/all`) — sukses | LULUS — nyata: teknisi `GET /api/sites` → 200 |
-| 3 | Login sebagai teknisi, coba buat/ubah/hapus site | Permintaan ditolak (403) — hanya admin yang bisa menulis site | LULUS — nyata: teknisi `POST /api/sites` → 403, `PUT /api/sites/:id` → 403, `DELETE /api/sites/:id` → 403 |
-| 4 | Login sebagai teknisi, coba `POST /api/sites/:id/assign-users` | Permintaan ditolak (403) — assign teknisi hanya untuk admin | LULUS — nyata: teknisi `POST /api/sites/5759393a.../assign-users` → `ERR:403` |
-| 5 | Akses endpoint site tanpa login | Permintaan ditolak (401) — endpoint site wajib autentikasi | LULUS — nyata: tanpa token `GET /api/sites` → `ERR:401` |
+| 1 | Login sebagai admin | Dapat **menulis** site (CRUD, assign-users) — sukses | ✅ |
+| 2 | Login sebagai teknisi | Dapat **membaca** daftar site (`GET /api/sites`, `GET /api/sites/all`) — sukses | ✅ |
+| 3 | Login sebagai teknisi, coba buat/ubah/hapus site | Permintaan ditolak (403) — hanya admin yang bisa menulis site | ✅ |
+| 4 | Login sebagai teknisi, coba `POST /api/sites/:id/assign-users` | Permintaan ditolak (403) — assign teknisi hanya untuk admin | ✅ |
+| 5 | Akses endpoint site tanpa login | Permintaan ditolak (401) — endpoint site wajib autentikasi | ✅ |
 
 ## 4. Kriteria Lulus
 
@@ -135,8 +135,8 @@ npm run lint && npm run build
 ## Hasil Nyata — Catatan Verifikator
 
 **TEMUAN (S4 #4 & S5):** Filter data per site belum aktif di produksi untuk endpoint selain `/api/sites`.
-- Middleware `SiteContext()` (membaca `X-Site-ID` / `?site_id=`, validasi UUID + keberadaan site) hanya dipasang pada grup `/api/sites` (`backend/routes/site.go:14`). Route `/api/cctv`, `/api/maintenance-logs`, dan `/api/zones` **belum** memuat middleware ini.
-- Handler-nya sebenarnya sudah siap: `handlers/cctv.go:333-334`, `handlers/maintenance.go:173-174`, `handlers/zone.go:70-71` membaca `c.Locals("site_id")` sebagai filter opsional.
-- Frontend sudah mengirim header `X-Site-ID` dari cookie `sigap_site_id` di semua request (`frontend/src/lib/api.ts:224`) dan `SiteSwitcher` sudah menyimpan cookie + reload.
+- Middleware `SiteContext()` (membaca `X-Site-ID` / `?site_id=`, validasi UUID + keberadaan site) hanya dipasang pada grup `/api/sites`. Route `/api/cctv`, `/api/maintenance-logs`, dan `/api/zones` **belum** memuat middleware ini.
+- Handler-nya sebenarnya sudah siap — membaca `c.Locals("site_id")` sebagai filter opsional.
+- Frontend sudah mengirim header `X-Site-ID` dari cookie `sigap_site_id` di semua request dan `SiteSwitcher` sudah menyimpan cookie + reload.
 - Tes nyata: `GET /api/cctv` dengan `X-Site-ID` UUID acak / string invalid → tetap 200 (filter tidak dieksekusi).
 - **Rekomendasi:** pasang `middleware.SiteContext()` pada grup route `cctv`, `maintenance`, dan `zone` agar isolasi data per site benar-benar berjalan (sesuai klaim changelog frontend Task 12.2).
