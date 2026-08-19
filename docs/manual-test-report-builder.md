@@ -33,6 +33,14 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk `report_builder_test.go`: generate CSV/XLSX/PDF, simpan/muat/hapus template) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ |
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -41,71 +49,71 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/laporan-kustom` sebagai admin | Halaman report builder tampil dengan 4 langkah (entitas, kolom, filter, format) | |
-| 2 | Cek sidebar | Menu "Laporan" (`FileSpreadsheet`) tampil di section admin | |
-| 3 | Login sebagai teknisi, akses `/laporan-kustom` langsung | Diarahkan kembali ke `/dashboard` (proxy middleware) | |
+| 1 | Buka `/laporan-kustom` sebagai admin | Halaman report builder tampil dengan 4 langkah (entitas, kolom, filter, format) | ✅ |
+| 2 | Cek sidebar | Menu "Laporan" (`FileSpreadsheet`) tampil di section admin | ✅ |
+| 3 | Login sebagai teknisi, akses `/laporan-kustom` langsung | Diarahkan kembali ke `/dashboard` (proxy middleware) | ❌ Masih bisa terbuka |
 
 ### S2 - Pilih Entitas & Kolom
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Klik entitas "CCTV" | Kolom CCTV (Kode, Nama, Lokasi, dll.) tercentang semua | |
-| 2 | Ganti ke entitas "Suku Cadang" | Kolom ter-reset ke semua kolom suku cadang (Nama, SKU, Stok, dll.) | |
-| 3 | Hapus beberapa centang kolom | Kolom yang dipilih berkurang | |
-| 4 | Klik "Kosongkan" / "Pilih semua" | Seleksi kolom berubah sesuai | |
-| 5 | Hapus semua centang lalu klik "Unduh" | Muncul error "Pilih minimal satu kolom" | |
+| 1 | Klik entitas "CCTV" | Kolom CCTV (Kode, Nama, Lokasi, dll.) tercentang semua | ✅ |
+| 2 | Ganti ke entitas "Suku Cadang" | Kolom ter-reset ke semua kolom suku cadang (Nama, SKU, Stok, dll.) | ✅ |
+| 3 | Hapus beberapa centang kolom | Kolom yang dipilih berkurang | ✅ |
+| 4 | Klik "Kosongkan" / "Pilih semua" | Seleksi kolom berubah sesuai | ✅ |
+| 5 | Hapus semua centang lalu klik "Unduh" | Muncul error "Pilih minimal satu kolom" | ✅ |
 
 ### S3 - Filter
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pilih entitas "Pemeliharaan" | Filter status & rentang tanggal tampil | |
-| 2 | Pilih status "Selesai" | Laporan hanya berisi log selesai | |
-| 3 | Pilih rentang tanggal | Laporan terfilter sesuai rentang | |
-| 4 | Pilih entitas "Suku Cadang" | Filter kategori & "Stok rendah saja" tampil | |
-| 5 | Pilih "Stok rendah saja" | Laporan hanya berisi suku cadang `stok < minimum_order` | |
+| 1 | Pilih entitas "Pemeliharaan" | Filter status & rentang tanggal tampil | ✅ |
+| 2 | Pilih status "Selesai" | Laporan hanya berisi log selesai | ✅ |
+| 3 | Pilih rentang tanggal | Laporan terfilter sesuai rentang | ✅ |
+| 4 | Pilih entitas "Suku Cadang" | Filter kategori & "Stok rendah saja" tampil | ✅ |
+| 5 | Pilih "Stok rendah saja" | Laporan hanya berisi suku cadang `stok < minimum_order` | ✅ |
 
 ### S4 - Unduh Format CSV / Excel / PDF
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pilih format CSV, klik "Unduh Laporan" | File `.csv` terunduh; dapat dibuka di spreadsheet; header = label kolom | |
-| 2 | Pilih format Excel, unduh | File `.xlsx` terunduh dan valid | |
-| 3 | Pilih format PDF, unduh | File `.pdf` terunduh dan valid (mulai `%PDF`) | |
-| 4 | Periksa isi file | Data sesuai kolom & filter yang dipilih | |
+| 1 | Pilih format CSV, klik "Unduh Laporan" | File `.csv` terunduh; dapat dibuka di spreadsheet; header = label kolom | ✅ |
+| 2 | Pilih format Excel, unduh | File `.xlsx` terunduh dan valid | ✅ |
+| 3 | Pilih format PDF, unduh | File `.pdf` terunduh dan valid (mulai `%PDF`) | ✅ |
+| 4 | Periksa isi file | Data sesuai kolom & filter yang dipilih | ✅ |
 
 ### S5 - Simpan Template
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Atur entitas/kolom/filter/format, isi nama template, klik "Simpan Template" | Template tersimpan; muncul di daftar "Template Tersimpan" | |
-| 2 | Simpan template tanpa nama | Muncul error "Tuliskan nama template" | |
-| 3 | Cek database `report_templates` | Baris baru dengan `config` JSON valid dan `created_by` = admin | |
+| 1 | Atur entitas/kolom/filter/format, isi nama template, klik "Simpan Template" | Template tersimpan; muncul di daftar "Template Tersimpan" | ✅ |
+| 2 | Simpan template tanpa nama | Muncul error "Tuliskan nama template" | ✅ |
+| 3 | Cek database `report_templates` | Baris baru dengan `config` JSON valid dan `created_by` = admin | ✅ |
 
 ### S6 - Muat & Hapus Template
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Klik nama template di daftar | Konfigurasi template dimuat ke form (entitas, kolom, filter, format) | |
-| 2 | Ubah pengaturan lalu unduh | Laporan sesuai konfigurasi termuat (yang diubah) | |
-| 3 | Klik ikon hapus template → konfirmasi | Template terhapus (soft-delete) dan hilang dari daftar | |
+| 1 | Klik nama template di daftar | Konfigurasi template dimuat ke form (entitas, kolom, filter, format) | ✅ |
+| 2 | Ubah pengaturan lalu unduh | Laporan sesuai konfigurasi termuat (yang diubah) | ✅ |
+| 3 | Klik ikon hapus template → konfirmasi | Template terhapus (soft-delete) dan hilang dari daftar | ✅ |
 
 ### S7 - Role Enforcement & Validasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Teknisi memanggil `POST /api/reports/generate` | Respons 403 (Hanya Admin) | |
-| 2 | Teknisi memanggil `POST /api/reports/templates` | Respons 403 | |
-| 3 | Admin kirim `entity` tidak dikenal (mis. "assets") | Respons 400 | |
-| 4 | Admin kirim `format` tidak valid | Respons 400 | |
-| 5 | Admin simpan template dengan `config` bukan JSON | Respons 400 | |
+| 1 | Teknisi memanggil `POST /api/reports/generate` | Respons 403 (Hanya Admin) | ✅ |
+| 2 | Teknisi memanggil `POST /api/reports/templates` | Respons 403 | ✅ |
+| 3 | Admin kirim `entity` tidak dikenal (mis. "assets") | Respons 400 | ✅ |
+| 4 | Admin kirim `format` tidak valid | Respons 400 | ✅ |
+| 5 | Admin simpan template dengan `config` bukan JSON | Respons 400 | ✅ |
 
 ### S8 - API Konsistensi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | `GET /api/reports/templates` | Daftar template terpaginasi-sederhana (semua template) | |
-| 2 | `DELETE /api/reports/templates/:id` untuk id tak ada | Respons 404 | |
+| 1 | `GET /api/reports/templates` | Daftar template terpaginasi-sederhana (semua template) | ✅ |
+| 2 | `DELETE /api/reports/templates/:id` untuk id tak ada | Respons 404 | ✅ |
 
 ## 4. Kriteria Lulus
 

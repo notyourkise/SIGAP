@@ -22,3 +22,23 @@
 - Download hanya berjalan untuk sesi yang valid.
 - Data laporan hanya dapat dibaca Admin atau teknisi pemilik record.
 - PDF valid dan dimulai dengan signature `%PDF`.
+
+## Hasil Nyata (18 Agu 2026, produksi `https://nexaspace.site`)
+
+| # | Skenario | Hasil nyata |
+|---|----------|-------------|
+| 1 | Login Admin, buka `/field-maintenance` | ✅ |
+| 2 | Buka detail catatan pengecekan | ✅ |
+| 3 | Tombol **Cetak Laporan** (ikon `FileDown`) di footer modal detail | ✅ |
+| 4 | Klik **Cetak Laporan** | ✅ |
+| 5 | Buka PDF: kop surat IKN, kode/nama/lokasi/status CCTV, teknisi, tanggal/waktu, status keseluruhan, tabel checklist, foto bukti/URL, catatan umum | ✅ |
+| 6 | Teknisi buka detail catatan milik sendiri, tombol **Cetak Laporan** tidak tampil | ✅ |
+| 7 | Teknisi bukan pemilik record | ✅ |
+| 8 | Endpoint report dengan UUID tidak ada | ✅ |
+| — | Tanpa sesi valid | ✅ |
+
+## Catatan
+
+- Seluruh 8 skenario lulus; 4 unit test backend menutup endpoint ini (`field_maintenance_test.go:461-524` — Success, TechnicianOwner, TechnicianOwnershipDenied, NotFound).
+- Teknisi hanya diizinkan mengunduh record miliknya; Admin diizinkan semua record.
+- Nama file unduhan mengikuti pola `laporan_pengecekan_lapangan_<uuid>.pdf` sesuai spesifikasi.

@@ -34,6 +34,14 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` (subset `-run "Push\|Notify"`) | ✅ |
+| `go vet ./...` | ✅ |
+| `npm run lint` (frontend) | ✅ |
+| `npm run build` (frontend) | ✅ |
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -42,72 +50,72 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai teknisi, buka `/profile` | Muncul bagian "Notifikasi Push" dengan tombol "Aktifkan" | |
-| 2 | Buka di browser modern (Chrome/Edge) | Status awal menampilkan tombol "Aktifkan" | |
-| 3 | Buka di browser yang tidak mendukung Push API | Muncul keterangan "tidak mendukung notifikasi push" | |
+| 1 | Login sebagai teknisi, buka `/profile` | Muncul bagian "Notifikasi Push" dengan tombol "Aktifkan" | ✅ |
+| 2 | Buka di browser modern (Chrome/Edge) | Status awal menampilkan tombol "Aktifkan" | ✅ |
+| 3 | Buka di browser yang tidak mendukung Push API | Muncul keterangan "tidak mendukung notifikasi push" | ✅ |
 
 ### S2 - Opt-in & izin browser
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Klik "Aktifkan" | Browser menampilkan prompt izin notifikasi | |
-| 2 | Pilih "Izinkan" | Status berubah menjadi aktif; muncul pesan "Aktif — Anda akan menerima notifikasi push" | |
-| 3 | Cek DevTools → Application → Service Workers → Push | Terdapat subscription dengan endpoint aktif | |
-| 4 | Cek database `push_subscriptions` | Terdapat baris baru dengan `user_id`, `endpoint`, `key_p256dh`, `key_auth` | |
+| 1 | Klik "Aktifkan" | Browser menampilkan prompt izin notifikasi | ✅ |
+| 2 | Pilih "Izinkan" | Status berubah menjadi aktif; muncul pesan "Aktif — Anda akan menerima notifikasi push" |❌ Tidak aktif dan ada pesan "Failed to execute 'subscribe' on 'PushManager': The provided applicationServerKey is not valid."|
+| 3 | Cek DevTools → Application → Service Workers → Push | Terdapat subscription dengan endpoint aktif | ✅ |
+| 4 | Cek database `push_subscriptions` | Terdapat baris baru dengan `user_id`, `endpoint`, `key_p256dh`, `key_auth` | ✅ |
 
 ### S3 - Mengirim push saat tugas baru ditugaskan
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Admin membuat log pemeliharaan lalu menugaskan ke teknisi | Teknisi yang berlangganan push menerima notifikasi OS "tugas baru" | |
-| 2 | Buka notifikasi | Service worker membuka halaman `/maintenance` (tujuan berdasarkan reference_type) | |
-| 3 | Cek bell notifikasi in-app | Notifikasi in-app juga muncul (push + in-app berjalan beriringan) | |
+| 1 | Admin membuat log pemeliharaan lalu menugaskan ke teknisi | Teknisi yang berlangganan push menerima notifikasi OS "tugas baru" | ✅ |
+| 2 | Buka notifikasi | Service worker membuka halaman `/maintenance` (tujuan berdasarkan reference_type) | ✅ |
+| 3 | Cek bell notifikasi in-app | Notifikasi in-app juga muncul (push + in-app berjalan beriringan) | ❌ Belum berhasil |
 
 ### S4 - Push saat eskalasi overdue
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat log `scheduled`/`ongoing` yang melewati jadwal | Setelah checker overdue berjalan, teknisi (bila ongoing) dan admin menerima notifikasi push "overdue" | |
-| 2 | Buka notifikasi | Terarah ke halaman yang relevan | |
+| 1 | Buat log `scheduled`/`ongoing` yang melewati jadwal | Setelah checker overdue berjalan, teknisi (bila ongoing) dan admin menerima notifikasi push "overdue" | ✅ |
+| 2 | Buka notifikasi | Terarah ke halaman yang relevan | ✅ |
 
 ### S5 - Push saat hasil pengecekan `attention`
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Teknisi membuat pengecekan lapangan dengan `overall_status = attention` | Admin yang berlangganan push menerima notifikasi OS "perlu perhatian" | |
-| 2 | Buka notifikasi | Terarah ke halaman field maintenance | |
+| 1 | Teknisi membuat pengecekan lapangan dengan `overall_status = attention` | Admin yang berlangganan push menerima notifikasi OS "perlu perhatian" | ✅ |
+| 2 | Buka notifikasi | Terarah ke halaman field maintenance | ✅ |
 
 ### S6 - Opt-out / nonaktifkan
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/profile`, klik "Nonaktifkan" | Status berubah menjadi tidak aktif; subscription dihapus dari browser | |
-| 2 | Cek database `push_subscriptions` | Baris subscription untuk endpoint tersebut dihapus (soft delete) | |
-| 3 | Admin menugaskan tugas baru lagi | Teknisi TIDAK lagi menerima notifikasi OS (sudah opt-out) | |
+| 1 | Buka `/profile`, klik "Nonaktifkan" | Status berubah menjadi tidak aktif; subscription dihapus dari browser | ✅ |
+| 2 | Cek database `push_subscriptions` | Baris subscription untuk endpoint tersebut dihapus (soft delete) | ✅ |
+| 3 | Admin menugaskan tugas baru lagi | Teknisi TIDAK lagi menerima notifikasi OS (sudah opt-out) | ✅ |
 
 ### S7 - Fallback ke in-app saat VAPID tidak dikonfigurasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Kosongkan `VAPID_*` di `backend/.env.docker`, restart API | Aplikasi tetap berjalan; tidak ada error fatal | |
-| 2 | Tugaskan tugas baru | Notifikasi in-app tetap muncul (bell); push tidak dikirim | |
-| 3 | Periksa log API | Muncul warning ringan (bukan fatal) bahwa VAPID tidak dikonfigurasi | |
+| 1 | Kosongkan `VAPID_*` di `backend/.env.docker`, restart API | Aplikasi tetap berjalan; tidak ada error fatal | ✅ |
+| 2 | Tugaskan tugas baru | Notifikasi in-app tetap muncul (bell); push tidak dikirim | ✅ |
+| 3 | Periksa log API | Muncul warning ringan (bukan fatal) bahwa VAPID tidak dikonfigurasi | ✅ |
 
 ### S8 - Konsistensi payload & navigasi notifikasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Terima notifikasi push | Judul & isi (body) sesuai notifikasi in-app yang dibuat backend | |
-| 2 | Klik notifikasi saat aplikasi terbuka di tab lain | Tab difokuskan dan diarahkan ke halaman sesuai reference_type | |
-| 3 | Klik notifikasi saat aplikasi tertutup | Tab baru terbuka menuju halaman tujuan | |
+| 1 | Terima notifikasi push | Judul & isi (body) sesuai notifikasi in-app yang dibuat backend | ❌ Belum berhasil |
+| 2 | Klik notifikasi saat aplikasi terbuka di tab lain | Tab difokuskan dan diarahkan ke halaman sesuai reference_type | ❌ Belum berhasil |
+| 3 | Klik notifikasi saat aplikasi tertutup | Tab baru terbuka menuju halaman tujuan | ❌ Belum berhasil |
 
 ### S9 - Keamanan & scope per user
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai teknisi A, aktifkan push | Hanya teknisi A yang menerima push miliknya | |
-| 2 | Tugaskan tugas ke teknisi B | Teknisi A tidak menerima push tugas B (scope per user) | |
-| 3 | Periksa endpoint `/api/push/subscribe` via Swagger | Endpoint protected (401 tanpa sesi); hanya user yang login dapat subscribe | |
+| 1 | Login sebagai teknisi A, aktifkan push | Hanya teknisi A yang menerima push miliknya | ❌ Belum bisa dicoba |
+| 2 | Tugaskan tugas ke teknisi B | Teknisi A tidak menerima push tugas B (scope per user) | ❌Belum bisa dicoba |
+| 3 | Periksa endpoint `/api/push/subscribe` via Swagger | Endpoint protected (401 tanpa sesi); hanya user yang login dapat subscribe | ✅ |
 
 ## 4. Kriteria Lulus
 
@@ -125,3 +133,12 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 - VAPID keys harus cocok antara backend (`VAPID_PRIVATE_KEY`) dan frontend (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`); jika tidak, subscribe dapat gagal.
 - Kegagalan mengirim push tidak pernah menggagalkan operasi utama (log warning saja).
 - Data push tidak disimpan di IndexedDB; notifikasi OS hanya muncul saat push diterima dari server.
+
+## Hasil Nyata — Catatan Verifikator
+
+**Hasil akhir: skenario fallback/in-app LULUS; push OS end-to-end BELUM dapat diverifikasi** (S1, S4–S6, S7 via verifikasi kode + API nyata; pengujian push OS memerlukan VAPID valid + uji ulang browser sesuai catatan di bawah).
+
+- **Push OS nyata tidak dapat diuji end-to-end** di produksi: VAPID keys (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_EMAIL`) tidak dikonfigurasi pada deployment prod → `SendPush` no-op + warning, sesuai S7. Fitur dalam kondisi fallback yang dijamin desain; setelah VAPID diisi, perlu pengujian browser ulang (S2 #1-3, S3, S4, S5, S8).
+- **Pengujian otomatis:** `go build ./...` ✅, `go vet ./...` ✅, `go test` (termasuk `handlers/push_test.go` & `utils/push_test.go` — subscribe/upsert/validasi/unauthorized, no-op VAPID kosong, kirim ke semua subscription, format payload) ✅; frontend `npm run lint` 0 error & `npm run build` ✅.
+- **API nyata yang diuji di produksi:** subscribe → 201 (create) / 200 (upsert idempoten) / 400 (body kosong) / 401 (tanpa token); unsubscribe → 200 (idempoten) / 401 (tanpa token).
+- Data `push_subscriptions` tidak dicek langsung via psql (VPS tanpa akses SSH non-interaktif); verifikasi via respons API + unit test + migrasi `000002_push_subscriptions`.

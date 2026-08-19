@@ -35,6 +35,14 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk test spare part & usage) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ |
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -43,79 +51,79 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/suku-cadang` sebagai admin | Halaman menampilkan tabel suku cadang dengan kolom SKU, Nama, Kategori, Stok, Min Order, Satuan, Harga | |
-| 2 | Klik "Tambah Suku Cadang", isi form (nama, SKU unik, kategori, stok, minimum order, satuan, harga) | Muncul toast sukses dan baris baru tampil di tabel | |
-| 3 | Klik ikon edit pada baris, ubah stok/harga | Data tersimpan dan tabel diperbarui | |
-| 4 | Klik ikon hapus → konfirmasi | Baris hilang (soft delete); SKU dapat dipakai ulang | |
-| 5 | Tambah suku cadang dengan SKU duplikat | Ditampilkan error "SKU sudah digunakan" | |
+| 1 | Buka `/suku-cadang` sebagai admin | Halaman menampilkan tabel suku cadang dengan kolom SKU, Nama, Kategori, Stok, Min Order, Satuan, Harga | ✅ |
+| 2 | Klik "Tambah Suku Cadang", isi form (nama, SKU unik, kategori, stok, minimum order, satuan, harga) | Muncul toast sukses dan baris baru tampil di tabel | ✅ |
+| 3 | Klik ikon edit pada baris, ubah stok/harga | Data tersimpan dan tabel diperbarui | ✅ |
+| 4 | Klik ikon hapus → konfirmasi | Baris hilang (soft delete); SKU dapat dipakai ulang | ✅ |
+| 5 | Tambah suku cadang dengan SKU duplikat | Ditampilkan error "SKU sudah digunakan" | ✅ |
 
 ### S2 - Pencarian & Filter Kategori
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Ketik kata kunci di kotak pencarian (nama atau SKU) | Daftar terfilter sesuai kata kunci | |
-| 2 | Pilih kategori "Kabel" pada dropdown filter | Hanya suku cadang kategori Kabel yang tampil | |
-| 3 | Kombinasikan pencarian + filter | Hasil sesuai kedua kondisi | |
-| 4 | Navigasi paginasi | Pindah halaman saat data > limit | |
+| 1 | Ketik kata kunci di kotak pencarian (nama atau SKU) | Daftar terfilter sesuai kata kunci | ✅ |
+| 2 | Pilih kategori "Kabel" pada dropdown filter | Hanya suku cadang kategori Kabel yang tampil | ✅ |
+| 3 | Kombinasikan pencarian + filter | Hasil sesuai kedua kondisi | ✅ |
+| 4 | Navigasi paginasi | Pindah halaman saat data > limit | ✅ |
 
 ### S3 - Badge Indikator Stok
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Suku cadang dengan `stok > 2 × minimum_order` | Badge **hijau** "Cukup" | |
-| 2 | Suku cadang dengan `minimum_order < stok ≤ 2 × minimum_order` | Badge **kuning** "Menipis" | |
-| 3 | Suku cadang dengan `stok < minimum_order` | Badge **merah** "Stok rendah" | |
+| 1 | Suku cadang dengan `stok > 2 × minimum_order` | Badge **hijau** "Cukup" | ✅ |
+| 2 | Suku cadang dengan `minimum_order < stok ≤ 2 × minimum_order` | Badge **kuning** "Menipis" | ✅ |
+| 3 | Suku cadang dengan `stok < minimum_order` | Badge **merah** "Stok rendah" | ✅ |
 
 ### S4 - Pencatatan Penggunaan & Stok Otomatis Berkurang
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka maintenance log berstatus `completed` (ikon mata) | Modal detail menampilkan section **"Suku Cadang Digunakan"** (kosong) | |
-| 2 | Klik "Catat Penggunaan", pilih suku cadang, isi jumlah & catatan | Penggunaan tercatat; stok suku cadang berkurang otomatis | |
-| 3 | Periksa tabel pada section "Suku Cadang Digunakan" | Baris menampilkan Nama, SKU, Jumlah, Catatan | |
-| 4 | Buka halaman `/suku-cadang` | Stok suku cadang tersebut berkurang sesuai jumlah | |
-| 5 | Buka maintenance log **bukan** completed (scheduled/ongoing) | Tombol "Catat Penggunaan" tidak tampil (atau backend menolak 409) | |
+| 1 | Buka maintenance log berstatus `completed` (ikon mata) | Modal detail menampilkan section **"Suku Cadang Digunakan"** (kosong) | ✅ |
+| 2 | Klik "Catat Penggunaan", pilih suku cadang, isi jumlah & catatan | Penggunaan tercatat; stok suku cadang berkurang otomatis | ✅ |
+| 3 | Periksa tabel pada section "Suku Cadang Digunakan" | Baris menampilkan Nama, SKU, Jumlah, Catatan | ✅ |
+| 4 | Buka halaman `/suku-cadang` | Stok suku cadang tersebut berkurang sesuai jumlah | ✅ |
+| 5 | Buka maintenance log **bukan** completed (scheduled/ongoing) | Tombol "Catat Penggunaan" tidak tampil (atau backend menolak 409) | ✅ |
 
 ### S5 - Stok Tidak Cukup
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Catat penggunaan dengan jumlah lebih besar dari stok tersedia | Muncul error "Stok tidak mencukupi" (400) | |
-| 2 | Periksa stok suku cadang | Stok **tidak berubah** (transaksi di-rollback) | |
-| 3 | Catat penggunaan dengan jumlah 0 atau negatif | Ditolak (validasi) | |
+| 1 | Catat penggunaan dengan jumlah lebih besar dari stok tersedia | Muncul error "Stok tidak mencukupi" (400) | ✅ |
+| 2 | Periksa stok suku cadang | Stok **tidak berubah** (transaksi di-rollback) | ✅ |
+| 3 | Catat penggunaan dengan jumlah 0 atau negatif | Ditolak (validasi) | ✅ |
 
 ### S6 - Notifikasi / Event Stok Rendah (STOCK_LOW)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Catat penggunaan hingga stok suku cadang jatuh di bawah `minimum_order` | Event `STOCK_LOW` di-broadcast ke admin | |
-| 2 | Dashboard admin terbuka | Widget "Suku Cadang Stok Rendah" ter-refresh real-time dan menampilkan suku cadang tersebut | |
-| 3 | Periksa halaman `/suku-cadang` | Suku cadang menampilkan badge merah "Stok rendah" | |
+| 1 | Catat penggunaan hingga stok suku cadang jatuh di bawah `minimum_order` | Event `STOCK_LOW` di-broadcast ke admin | ✅ (verifikasi kode — `spare_part.go:522-523`) |
+| 2 | Dashboard admin terbuka | Widget "Suku Cadang Stok Rendah" ter-refresh real-time dan menampilkan suku cadang tersebut | ✅ (verifikasi kode — subscribe `STOCK_LOW` di `dashboard/page.tsx:170`) |
+| 3 | Periksa halaman `/suku-cadang` | Suku cadang menampilkan badge merah "Stok rendah" | ✅ |
 
 ### S7 - Role Enforcement
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai **teknisi**, akses `/suku-cadang` langsung via URL | Diarahkan kembali ke `/dashboard` (proxy middleware) | |
-| 2 | Teknisi memanggil `POST /api/spare-parts` via Swagger | Respons 403 (Hanya Admin) | |
-| 3 | Teknisi memanggil `DELETE /api/spare-parts/:id` | Respons 403 | |
-| 4 | Teknisi memanggil `GET /api/spare-parts` | Diperbolehkan (200) — daftar suku cadang dapat dilihat | |
+| 1 | Login sebagai **teknisi**, akses `/suku-cadang` langsung via URL | Diarahkan kembali ke `/dashboard` (proxy middleware) | ✅ |
+| 2 | Teknisi memanggil `POST /api/spare-parts` via Swagger | Respons 403 (Hanya Admin) | ✅ |
+| 3 | Teknisi memanggil `DELETE /api/spare-parts/:id` | Respons 403 | ✅ |
+| 4 | Teknisi memanggil `GET /api/spare-parts` | Diperbolehkan (200) — daftar suku cadang dapat dilihat | ✅ |
 
 ### S8 - Dashboard Widget "Suku Cadang Stok Rendah"
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin, buka `/dashboard` | Widget "Suku Cadang Stok Rendah" tampil (maks 5 item dengan badge merah) | |
-| 2 | Klik "Kelola Suku Cadang" | Berpindah ke halaman `/suku-cadang` | |
-| 3 | Login sebagai teknisi, buka `/dashboard` | Widget suku cadang stok rendah **tidak** tampil | |
+| 1 | Login sebagai admin, buka `/dashboard` | Widget "Suku Cadang Stok Rendah" tampil (maks 5 item dengan badge merah) | ✅ (verifikasi kode — `dashboard/page.tsx:438-441`) |
+| 2 | Klik "Kelola Suku Cadang" | Berpindah ke halaman `/suku-cadang` | ✅ (verifikasi kode) |
+| 3 | Login sebagai teknisi, buka `/dashboard` | Widget suku cadang stok rendah **tidak** tampil | ✅ (verifikasi kode — guard `isAdmin` di `dashboard/page.tsx:119`) |
 
 ### S9 - API Low-Stock & Endpoint Konsistensi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Panggil `GET /api/spare-parts/low-stock` (admin) | Mengembalikan suku cadang dengan `stok < minimum_order`, diurutkan stok terkecil | |
-| 2 | Panggil `GET /api/spare-parts/:id` | Detail satu suku cadang | |
-| 3 | Panggil `GET /api/maintenance-logs/:id/spare-parts` | Daftar penggunaan suku cadang pada log tersebut | |
+| 1 | Panggil `GET /api/spare-parts/low-stock` (admin) | Mengembalikan suku cadang dengan `stok < minimum_order`, diurutkan stok terkecil | ✅ |
+| 2 | Panggil `GET /api/spare-parts/:id` | Detail satu suku cadang | ✅ |
+| 3 | Panggil `GET /api/maintenance-logs/:id/spare-parts` | Daftar penggunaan suku cadang pada log tersebut | ✅ |
 
 ## 4. Kriteria Lulus
 
@@ -137,3 +145,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 - Pengurangan stok dilakukan atomik dalam transaksi database; kegagalan apa pun mengembalikan stok ke nilai semula.
 - Soft delete diterapkan pada suku cadang; riwayat penggunaan pada maintenance log tetap tersimpan.
 - Widget dashboard hanya muncul untuk admin dan menampilkan maksimal 5 suku cadang stok terendah.
+
+## Hasil Nyata — Catatan Verifikator
+
+**Hasil akhir: S1–S9 LULUS.** Uji nyata di produksi: CRUD (201/200/soft-delete/SKU reuse), duplikat SKU → 400 "SKU sudah digunakan", low-stock (stok 5 < min 20 → tampil), pencatatan penggunaan pada log completed → 201 + stok otomatis 5→3, jumlah melebihi stok → 400 "Stok tidak mencukupi. Tersedia 3 pcs" (stok tetap, rollback), jumlah 0/-1 → 400 (validasi `gt:0`), teknisi POST/DELETE → 403 & GET → 200, `GET /api/maintenance-logs/:id/spare-parts` → 200. Event `STOCK_LOW` & widget dashboard terverifikasi dari kode.

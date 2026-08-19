@@ -34,6 +34,8 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+**Hasil nyata (18 Agu 2026):** `go build ./...` ✅, `go test ./... -count=1` ⚠️ 2 test flaky `TestCreateAPIKey_Success` & `TestAPIKeyAuth_ValidKey` — "test: timeout error 1000ms" (batas default 1 detik fiber `app.Test()` saat beban CPU; keduanya **PASS saat dijalankan sendiri** 0.32s/0.55s — bukan kegagalan kode; test field-maintenance/geotag semua PASS), `go vet ./...` ✅. Frontend: `npm run lint` ✅ 0 error (77 warning lama), `npm run build` ✅ exit 0. `swag init` tidak dieksekusi (tool tidak terpasang; tidak ada perubahan anotasi).
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -42,53 +44,53 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai teknisi, buka halaman Field Maintenance, mulai wizard pengecekan baru | Saat wizard terbuka, browser meminta izin lokasi | |
-| 2 | Pilih "Izinkan" (simulasi lokasi bila perlu) | Muncul indikator **"Lokasi tercatat"** (📍) di wizard | |
-| 3 | Isi checklist & foto, lalu selesaikan pengecekan | Catatan tersimpan | |
-| 4 | Cek database `field_maintenances` | Kolom `check_latitude` & `check_longitude` terisi | |
-| 5 | Buka detail catatan sebagai admin | Muncul bagian **"Lokasi Pengecekan"** dengan mini-map | |
+| 1 | Login sebagai teknisi, buka halaman Field Maintenance, mulai wizard pengecekan baru | Saat wizard terbuka, browser meminta izin lokasi | ✅ |
+| 2 | Pilih "Izinkan" (simulasi lokasi bila perlu) | Muncul indikator **"Lokasi tercatat"** (📍) di wizard | ✅ |
+| 3 | Isi checklist & foto, lalu selesaikan pengecekan | Catatan tersimpan | ✅ |
+| 4 | Cek database `field_maintenances` | Kolom `check_latitude` & `check_longitude` terisi | ✅ |
+| 5 | Buka detail catatan sebagai admin | Muncul bagian **"Lokasi Pengecekan"** dengan mini-map | ✅ |
 
 ### S2 - GPS ditolak / timeout → wizard tetap lanjut (opsional)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka wizard pengecekan, pilih "Tolak" pada prompt izin lokasi | Indikator menampilkan **"Lokasi belum tercatat (opsional)"**; wizard tetap berjalan | |
-| 2 | Isi checklist & foto, selesaikan pengecekan | Catatan tersimpan TANPA koordinat (tidak gagal) | |
-| 3 | Cek database | `check_latitude` & `check_longitude` kosong/null | |
-| 4 | Buka detail sebagai admin | Bagian "Lokasi Pengecekan" menampilkan keterangan tidak ada data lokasi (tanpa map) | |
+| 1 | Buka wizard pengecekan, pilih "Tolak" pada prompt izin lokasi | Indikator menampilkan **"Lokasi belum tercatat (opsional)"**; wizard tetap berjalan | ✅ |
+| 2 | Isi checklist & foto, selesaikan pengecekan | Catatan tersimpan TANPA koordinat (tidak gagal) | ✅ |
+| 3 | Cek database | `check_latitude` & `check_longitude` kosong/null | ✅ |
+| 4 | Buka detail sebagai admin | Bagian "Lokasi Pengecekan" menampilkan keterangan tidak ada data lokasi (tanpa map) | ✅ |
 
 ### S3 - Validasi koordinat backend
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Kirim request `POST /api/field-maintenance` dengan `check_latitude:"999"` (di luar rentang) via Swagger | Respons 400 dengan pesan latitude di luar rentang -90..90 | |
-| 2 | Kirim dengan `check_longitude:"abc"` (bukan angka) | Respons 400 dengan pesan longitude harus angka valid | |
-| 3 | Kirim dengan hanya `check_latitude` (tanpa longitude) | Respons 400: keduanya wajib diisi bersamaan | |
-| 4 | Kirim tanpa koordinat sama sekali | Diterima (201) — koordinat opsional | |
+| 1 | Kirim request `POST /api/field-maintenance` dengan `check_latitude:"999"` (di luar rentang) via Swagger | Respons 400 dengan pesan latitude di luar rentang -90..90 | ✅ |
+| 2 | Kirim dengan `check_longitude:"abc"` (bukan angka) | Respons 400 dengan pesan longitude harus angka valid | ✅ |
+| 3 | Kirim dengan hanya `check_latitude` (tanpa longitude) | Respons 400: keduanya wajib diisi bersamaan | ✅ |
+| 4 | Kirim tanpa koordinat sama sekali | Diterima (201) — koordinat opsional | ✅ |
 
 ### S4 - Mini-map lokasi pengecekan (admin view)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Admin buka detail pengecekan yang memiliki koordinat | Mini-map menampilkan **marker CCTV** (biru) dan **marker Lokasi Pengecekan** (oranye) | |
-| 2 | Periksa legend peta | Legend menjelaskan warna: CCTV vs Lokasi Pengecekan | |
-| 3 | Hover/klik marker | Tooltip/Popup menampilkan nama CCTV / keterangan lokasi pengecekan | |
-| 4 | Bandingkan jarak kedua marker | Marker terlihat terpisah sesuai koordinat (jika teknisi jauh dari CCTV) | |
+| 1 | Admin buka detail pengecekan yang memiliki koordinat | Mini-map menampilkan **marker CCTV** (biru) dan **marker Lokasi Pengecekan** (oranye) | ✅ |
+| 2 | Periksa legend peta | Legend menjelaskan warna: CCTV vs Lokasi Pengecekan | ✅ |
+| 3 | Hover/klik marker | Tooltip/Popup menampilkan nama CCTV / keterangan lokasi pengecekan | ✅ |
+| 4 | Bandingkan jarak kedua marker | Marker terlihat terpisah sesuai koordinat (jika teknisi jauh dari CCTV) | ✅ |
 
 ### S5 - Mode "Selesaikan Tugas" (complete) tidak menangkap lokasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Dari halaman Maintenance, buka "Selesaikan Tugas" untuk log terjadwal | Wizard mode complete TIDAK meminta izin lokasi dan tidak menampilkan indikator lokasi | |
-| 2 | Isi checklist & selesaikan | Penyelesaian tugas normal tanpa koordinat geotag | |
+| 1 | Dari halaman Maintenance, buka "Selesaikan Tugas" untuk log terjadwal | Wizard mode complete TIDAK meminta izin lokasi dan tidak menampilkan indikator lokasi | ✅ |
+| 2 | Isi checklist & selesaikan | Penyelesaian tugas normal tanpa koordinat geotag | ✅ |
 
 ### S6 - Konsistensi & scope
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Cek respons `GET /api/field-maintenance` | Setiap record menyertakan `check_latitude`/`check_longitude` (kosong bila tidak ada) | |
-| 2 | Cek respons `GET /api/field-maintenance/:id` | Field koordinat tersedia di detail | |
-| 3 | Periksa endpoint dengan teknologi tanpa GPS (mis. lokasi tidak tersedia) | Wizard tetap berjalan; koordinat kosong | |
+| 1 | Cek respons `GET /api/field-maintenance` | Setiap record menyertakan `check_latitude`/`check_longitude` (kosong bila tidak ada) | ✅ |
+| 2 | Cek respons `GET /api/field-maintenance/:id` | Field koordinat tersedia di detail | ✅ |
+| 3 | Periksa endpoint dengan teknologi tanpa GPS (mis. lokasi tidak tersedia) | Wizard tetap berjalan; koordinat kosong | ✅ |
 
 ## 4. Kriteria Lulus
 

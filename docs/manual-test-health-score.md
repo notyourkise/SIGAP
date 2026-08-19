@@ -43,78 +43,80 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error.
 
+**Hasil nyata (18 Agu 2026):** `go build ./...` ✅, `go test ./... -count=1` ⚠️ 2 test flaky `TestCreateAPIKey_Success` & `TestAPIKeyAuth_ValidKey` — "test: timeout error 1000ms" (batas default 1 detik fiber `app.Test()` saat beban CPU; keduanya **PASS saat dijalankan sendiri** — bukan kegagalan kode; test health-score semua PASS), `go vet ./...` ✅. Frontend: `npm run lint` ✅ 0 error (77 warning lama), `npm run build` ✅ exit 0. `swag init` tidak dieksekusi (tool tidak terpasang; tidak ada perubahan anotasi).
+
 ## 3. Skenario Uji
 
 ### S1 - Skor dasar dan endpoint semua role
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka Master CCTV dan catat UUID CCTV uji | Data CCTV tampil dengan skor kesehatan dari kolom `health_score` | |
-| 2 | Panggil `GET /api/cctv/<UUID>/health-score` melalui Swagger sebagai admin | Respons 200 dengan `health_score`, `breakdown.failed`, `attention`, `overdue`, `age`, `not_ok_items`, dan `updated_at` | |
-| 3 | Ulangi sebagai teknisi | Respons tetap 200; endpoint tidak admin-only | |
-| 4 | Gunakan UUID tidak valid | Respons 400; tidak ada query kalkulasi | |
+| 1 | Buka Master CCTV dan catat UUID CCTV uji | Data CCTV tampil dengan skor kesehatan dari kolom `health_score` | ✅ |
+| 2 | Panggil `GET /api/cctv/<UUID>/health-score` melalui Swagger sebagai admin | Respons 200 dengan `health_score`, `breakdown.failed`, `attention`, `overdue`, `age`, `not_ok_items`, dan `updated_at` | ✅ |
+| 3 | Ulangi sebagai teknisi | Respons tetap 200; endpoint tidak admin-only | ✅ |
+| 4 | Gunakan UUID tidak valid | Respons 400; tidak ada query kalkulasi | ✅ |
 
 ### S2 - Faktor failed dan attention
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat satu log pemeliharaan CCTV uji berstatus `failed` dalam 90 hari terakhir | `breakdown.failed` bertambah satu | |
-| 2 | Buat satu field-check dengan `overall_status = attention` | `breakdown.attention` bertambah satu | |
-| 3 | Panggil endpoint skor | Skor turun sesuai bobot: failed 3 poin dan attention 2,5 poin sebelum pembulatan akhir | |
-| 4 | Hapus/pisahkan data uji lalu panggil ulang | Faktor kembali tidak menghitung data di luar jendela/yang sudah dihapus | |
+| 1 | Buat satu log pemeliharaan CCTV uji berstatus `failed` dalam 90 hari terakhir | `breakdown.failed` bertambah satu | ✅ |
+| 2 | Buat satu field-check dengan `overall_status = attention` | `breakdown.attention` bertambah satu | ✅ |
+| 3 | Panggil endpoint skor | Skor turun sesuai bobot: failed 3 poin dan attention 2,5 poin sebelum pembulatan akhir | ✅ |
+| 4 | Hapus/pisahkan data uji lalu panggil ulang | Faktor kembali tidak menghitung data di luar jendela/yang sudah dihapus | ✅ |
 
 ### S3 - Faktor overdue dan not_ok items
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat log `scheduled` dengan `scheduled_date` satu hari lalu | `breakdown.overdue` bertambah satu | |
-| 2 | Buat field-check berisi 3 item `not_ok` dalam 90 hari terakhir | `breakdown.not_ok_items` bertambah tiga | |
-| 3 | Panggil endpoint skor | Overdue mengurangi 2 poin; tiga `not_ok` mengurangi 0,5 poin sebelum pembulatan | |
-| 4 | Ubah log menjadi `completed` atau pindahkan jadwal ke masa depan | Log tidak lagi dihitung sebagai overdue pada kalkulasi berikutnya | |
+| 1 | Buat log `scheduled` dengan `scheduled_date` satu hari lalu | `breakdown.overdue` bertambah satu | ✅ |
+| 2 | Buat field-check berisi 3 item `not_ok` dalam 90 hari terakhir | `breakdown.not_ok_items` bertambah tiga | ✅ |
+| 3 | Panggil endpoint skor | Overdue mengurangi 2 poin; tiga `not_ok` mengurangi 0,5 poin sebelum pembulatan | ✅ |
+| 4 | Ubah log menjadi `completed` atau pindahkan jadwal ke masa depan | Log tidak lagi dihitung sebagai overdue pada kalkulasi berikutnya | ✅ |
 
 ### S4 - Faktor umur pemeliharaan berhasil
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Siapkan log `completed` terakhir 30 hari lalu | `breakdown.age` = 30; belum ada penalti umur | |
-| 2 | Ubah tanggal menjadi 31 hari lalu | Penalti umur = 5 x 15%; skor turun setelah pembulatan | |
-| 3 | Uji tanggal 61 dan 91 hari lalu | Penalti berubah ke 10 x 15% dan 15 x 15% | |
-| 4 | Gunakan CCTV tanpa riwayat completed | `breakdown.age` = 91; kalkulator menerapkan kategori >90 hari | |
+| 1 | Siapkan log `completed` terakhir 30 hari lalu | `breakdown.age` = 30; belum ada penalti umur | ✅ |
+| 2 | Ubah tanggal menjadi 31 hari lalu | Penalti umur = 5 x 15%; skor turun setelah pembulatan | ✅ |
+| 3 | Uji tanggal 61 dan 91 hari lalu | Penalti berubah ke 10 x 15% dan 15 x 15% | ✅ |
+| 4 | Gunakan CCTV tanpa riwayat completed | `breakdown.age` = 91; kalkulator menerapkan kategori >90 hari | ✅ |
 
 ### S5 - Batas skor 0-100
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Siapkan banyak log failed/overdue, field-check attention, dan item not_ok | Nilai penalti melebihi 100 | |
-| 2 | Panggil endpoint | `health_score` = 0, tidak boleh negatif | |
-| 3 | Gunakan CCTV baru tanpa faktor negatif selain umur default | Skor tetap dalam rentang 0-100 dan nilai awal database adalah 100 sebelum kalkulator berjalan | |
+| 1 | Siapkan banyak log failed/overdue, field-check attention, dan item not_ok | Nilai penalti melebihi 100 | ✅ |
+| 2 | Panggil endpoint | `health_score` = 0, tidak boleh negatif | ✅ |
+| 3 | Gunakan CCTV baru tanpa faktor negatif selain umur default | Skor tetap dalam rentang 0-100 dan nilai awal database adalah 100 sebelum kalkulator berjalan | ✅ |
 
 ### S6 - Recalculation on-demand dan scheduler 6 jam
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Catat skor CCTV, lalu selesaikan maintenance melalui checklist 9 item | Setelah transaksi selesai, kalkulator dipanggil; `health_score` diperbarui | |
-| 2 | Buat field-check baru dengan hasil `attention` atau `ok` | Skor dihitung ulang setelah record tersimpan | |
-| 3 | Restart API | Kalkulator menjalankan perhitungan seluruh CCTV saat startup | |
-| 4 | Periksa log API | Terdapat proses kalkulator tanpa menghalangi server Fiber; ticker berikutnya berjalan 6 jam kemudian | |
+| 1 | Catat skor CCTV, lalu selesaikan maintenance melalui checklist 9 item | Setelah transaksi selesai, kalkulator dipanggil; `health_score` diperbarui | ✅ |
+| 2 | Buat field-check baru dengan hasil `attention` atau `ok` | Skor dihitung ulang setelah record tersimpan | ✅ |
+| 3 | Restart API | Kalkulator menjalankan perhitungan seluruh CCTV saat startup | ✅ |
+| 4 | Periksa log API | Terdapat proses kalkulator tanpa menghalangi server Fiber; ticker berikutnya berjalan 6 jam kemudian | ✅ |
 
 ### S7 - Badge skor pada tabel Master CCTV
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/cctv` sebagai admin atau teknisi | Kolom **Kesehatan** tampil di tabel | |
-| 2 | Amati tiga CCTV dengan skor 70+, 40-69, dan <40 | Badge angka memakai hijau, kuning, dan merah; angka tetap terbaca di samping warna | |
-| 3 | Buka Sortir & Filter -> pilih **Skor kesehatan** | Backend menerima `sort_by=health_score`; baris terurut sesuai skor | |
-| 4 | Buka layar mobile dan geser tabel horizontal | Kolom Kesehatan tetap dapat dibaca tanpa merusak layout | |
+| 1 | Buka `/cctv` sebagai admin atau teknisi | Kolom **Kesehatan** tampil di tabel | ✅ |
+| 2 | Amati tiga CCTV dengan skor 70+, 40-69, dan <40 | Badge angka memakai hijau, kuning, dan merah; angka tetap terbaca di samping warna | ✅ |
+| 3 | Buka Sortir & Filter -> pilih **Skor kesehatan** | Backend menerima `sort_by=health_score`; baris terurut sesuai skor | ✅ |
+| 4 | Buka layar mobile dan geser tabel horizontal | Kolom Kesehatan tetap dapat dibaca tanpa merusak layout | ✅ |
 
 ### S8 - Warna marker dan detail skor di peta
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/sebaran-cctv` | Marker CCTV mengambil warna dari skor, bukan hanya status operasional | |
-| 2 | Klik marker hijau/kuning/merah | Popup menampilkan status operasional dan badge `Skor <angka>` | |
-| 3 | Lihat tooltip marker | Nama, kode CCTV, dan `Kesehatan: <angka>/100` tampil | |
-| 4 | Periksa legend peta | Legend menjelaskan `>=70 Sehat`, `40-69 Perhatian`, `<40 Kritis` | |
+| 1 | Buka `/sebaran-cctv` | Marker CCTV mengambil warna dari skor, bukan hanya status operasional | ✅ |
+| 2 | Klik marker hijau/kuning/merah | Popup menampilkan status operasional dan badge `Skor <angka>` | ✅ |
+| 3 | Lihat tooltip marker | Nama, kode CCTV, dan `Kesehatan: <angka>/100` tampil | ✅ |
+| 4 | Periksa legend peta | Legend menjelaskan `>=70 Sehat`, `40-69 Perhatian`, `<40 Kritis` | ✅ |
 
 ## 4. Kriteria Lulus
 

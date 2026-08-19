@@ -29,6 +29,8 @@ npm run build
 
 Hasil yang diharapkan: seluruh build & test backend lulus (termasuk `TestUploadCompress`), lint (0 error) & build frontend sukses (exit 0). Pastikan setelah test tidak ada folder artifact `backend/handlers/uploads/` yang tersisa.
 
+**Hasil nyata (18 Agu 2026):** `go build ./...` ✅. `go test -run "TestUpload"` ⚠️ **TestUploadCompress GAGAL di mesin lokal** — "test: timeout error 1000ms" (batas default 1 detik fiber `app.Test()` di `upload_test.go:186`; kompresi gambar noise sintetis 2200×2200 + resize Lanczos + encode JPEG di mesin lokal melewati 1 detik → `resp` nil → panic di assertion. **Bukan kegagalan fungsional**: kompresi teruji nyata di produksi (S1). `TestUploadFile_NoFile`/`InvalidType`/`ValidJPEG` PASS; `defer RemoveAll(uploadsDir)` tetap membersihkan artifact. `go vet ./...` ✅. Frontend: `npm run lint` ✅ 0 error (77 warning lama), `npm run build` ✅ exit 0.
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -37,41 +39,41 @@ Hasil yang diharapkan: seluruh build & test backend lulus (termasuk `TestUploadC
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka halaman Maintenance / Field Maintenance, unggah foto besar (>300KB) sebagai bukti | Upload sukses |
-| 2 | Amati respons / ukuran file tersimpan | File fullsize terkompresi: dimensi diturunkan ke ≤1920 (jika sumber lebih besar), ukuran < ukuran asli |
-| 3 | Cek header respons `X-Original-Size` & `X-Compressed-Size` | Kedua header ada; `X-Compressed-Size` ≤ `X-Original-Size` |
+| 1 | Buka halaman Maintenance / Field Maintenance, unggah foto besar (>300KB) sebagai bukti | Upload sukses | ✅ |
+| 2 | Amati respons / ukuran file tersimpan | File fullsize terkompresi: dimensi diturunkan ke ≤1920 (jika sumber lebih besar), ukuran < ukuran asli | ⚠️ **LULUS sebagian + TEMUAN BUG** — ukuran turun 490.141 → **67.111 byte (87% lebih kecil)** ✅; dimensi tersimpan **1920×1920** dari sumber 4000×3000 ❌ — **aspect ratio TIDAK dipertahankan** (foto menjadi kotak/distorsi). Perbaikan disarankan memakai fit-resize agar rasio terjaga |
+| 3 | Cek header respons `X-Original-Size` & `X-Compressed-Size` | Kedua header ada; `X-Compressed-Size` ≤ `X-Original-Size` | ✅ |
 
 ### S2 - Thumbnail dibuat
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Setelah upload, cek respons `data.thumb_url` | `thumb_url` berisi path `/api/uploads/thumbnails/<uuid>.jpg` |
-| 2 | Buka `GET /api/uploads/thumbnails/<uuid>.jpg` (login) | Respons 200, berupa gambar JPEG kecil (thumbnail ~400×300) |
-| 3 | Buka tanpa login | Ditolak (401) — thumbnail juga dilindungi JWT |
+| 1 | Setelah upload, cek respons `data.thumb_url` | `thumb_url` berisi path `/api/uploads/thumbnails/<uuid>.jpg` | ✅ |
+| 2 | Buka `GET /api/uploads/thumbnails/<uuid>.jpg` (login) | Respons 200, berupa gambar JPEG kecil (thumbnail ~400×300) | ✅ |
+| 3 | Buka tanpa login | Ditolak (401) — thumbnail juga dilindungi JWT | ✅ |
 
 ### S3 - Upload foto kecil (tanpa resize)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Unggah foto < 300KB | Upload sukses; file disimpan tanpa penurunan resolusi (tidak perlu resize) |
-| 2 | Cek `thumb_url` | Thumbnail tetap dibuat dari gambar asli |
-| 3 | Cek ukuran tersimpan | Ukuran tetap kecil (≤ ukuran asli) |
+| 1 | Unggah foto < 300KB | Upload sukses; file disimpan tanpa penurunan resolusi (tidak perlu resize) | ✅ |
+| 2 | Cek `thumb_url` | Thumbnail tetap dibuat dari gambar asli | ✅ |
+| 3 | Cek ukuran tersimpan | Ukuran tetap kecil (≤ ukuran asli) | ✅ |
 
 ### S4 - Thumbnail tampil di tabel pemeliharaan
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka halaman `/maintenance` yang memiliki log dengan `image_url` | Thumbnail kecil (≈40×40) tampil di kolom CCTV (samping nama) |
-| 2 | Cek bahwa thumbnail memuat gambar | Gambar kecil tampil (diambil dari `/api/uploads/thumbnails/...`) |
-| 3 | Klik thumbnail | Modal detail log terbuka menampilkan foto fullsize |
-| 4 | Log tanpa `image_url` | Menampilkan ikon kamera abu-abu (placeholder) |
+| 1 | Buka halaman `/maintenance` yang memiliki log dengan `image_url` | Thumbnail kecil (≈40×40) tampil di kolom CCTV (samping nama) | ✅ |
+| 2 | Cek bahwa thumbnail memuat gambar | Gambar kecil tampil (diambil dari `/api/uploads/thumbnails/...`) | ✅ |
+| 3 | Klik thumbnail | Modal detail log terbuka menampilkan foto fullsize | ✅ |
+| 4 | Log tanpa `image_url` | Menampilkan ikon kamera abu-abu (placeholder) | ✅ |
 
 ### S5 - Fallback foto lama (tanpa thumbnail)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Siapkan log pemeliharaan lama yang diunggah sebelum fitur ini (hanya punya `/api/uploads/<file>.jpg`, tidak ada thumbnail) | Thumbnail di tabel menampilkan placeholder/ikon kamera (gambar gagal dimuat di `AuthenticatedImage`) |
-| 2 | Buka detail log | Foto fullsize masih bisa dibuka dari `/api/uploads/<file>.jpg` |
+| 1 | Siapkan log pemeliharaan lama yang diunggah sebelum fitur ini (hanya punya `/api/uploads/<file>.jpg`, tidak ada thumbnail) | Thumbnail di tabel menampilkan placeholder/ikon kamera (gambar gagal dimuat di `AuthenticatedImage`) | ✅ |
+| 2 | Buka detail log | Foto fullsize masih bisa dibuka dari `/api/uploads/<file>.jpg` | ✅ |
 
 ## 4. Kriteria Lulus
 

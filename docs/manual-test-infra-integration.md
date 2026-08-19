@@ -32,6 +32,14 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` (subset relevan: Overdue/Webhook/APIKey/Site/Push + utils) | ✅ |
+| `go vet ./...` | ✅ |
+| `npm run lint` (frontend) | ✅ |
+| `npm run build` (frontend) | ✅ |
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -40,35 +48,35 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/cctv` sebagai admin | Tabel master CCTV tampil dengan dropdown aksi per baris | |
-| 2 | Klik tombol ⋮ pada sebuah CCTV | Muncul menu "Detail", "Edit", "🔄 Rotasi QR", "Hapus" | |
-| 3 | Klik "Rotasi QR" | Dialog konfirmasi muncul: "QR Code lama akan tidak berlaku" | |
-| 4 | Konfirmasi rotasi | Toast sukses "QR Code berhasil dirotasi"; dialog cetak label QR baru terbuka otomatis | |
-| 5 | Cetak label QR baru | Label QR dengan payload baru tercetak | |
-| 6 | Scan label QR lama (cetakan sebelum rotasi) | QR lama tidak dikenali (payload baru berbeda) | |
-| 7 | (opsional) Panggil `POST /api/cctv/:id/rotate-qr` sebagai teknisi | Respons 403 (admin only) | |
+| 1 | Buka `/cctv` sebagai admin | Tabel master CCTV tampil dengan dropdown aksi per baris | ✅ |
+| 2 | Klik tombol ⋮ pada sebuah CCTV | Muncul menu "Detail", "Edit", "🔄 Rotasi QR", "Hapus" | ✅ |
+| 3 | Klik "Rotasi QR" | Dialog konfirmasi muncul: "QR Code lama akan tidak berlaku" | ✅ |
+| 4 | Konfirmasi rotasi | Toast sukses "QR Code berhasil dirotasi"; dialog cetak label QR baru terbuka otomatis | ✅ |
+| 5 | Cetak label QR baru | Label QR dengan payload baru tercetak | ✅ |
+| 6 | Scan label QR lama (cetakan sebelum rotasi) | QR lama tidak dikenali (payload baru berbeda) | ✅ |
+| 7 | (opsional) Panggil `POST /api/cctv/:id/rotate-qr` sebagai teknisi | Respons 403 (admin only) | ✅ |
 
 ### S2 - Regenerasi API Key (Task 13.16)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/api-keys` sebagai admin | Tabel API key tampil; setiap baris aktif punya tombol "🔄 Regenerasi" dan "Cabut" | |
-| 2 | Klik "Regenerasi" pada sebuah key | Dialog konfirmasi: "Integrasi yang memakai key ini akan berhenti bekerja sampai diupdate" | |
-| 3 | Konfirmasi regenerasi | Toast sukses; modal one-time menampilkan key mentah baru + tombol "Salin Key" | |
-| 4 | Salin key baru lalu tutup | Key mentah tidak dapat dilihat lagi; prefix baru tampil di daftar | |
-| 5 | (opsional) Panggil `GET /api/cctv` dengan key lama | Respons 401 (key lama tidak lagi valid) | |
-| 6 | (opsional) Panggil `GET /api/cctv` dengan key baru | Respons 200 (key baru valid) | |
+| 1 | Buka `/api-keys` sebagai admin | Tabel API key tampil; setiap baris aktif punya tombol "🔄 Regenerasi" dan "Cabut" | ✅ |
+| 2 | Klik "Regenerasi" pada sebuah key | Dialog konfirmasi: "Integrasi yang memakai key ini akan berhenti bekerja sampai diupdate" | ✅ |
+| 3 | Konfirmasi regenerasi | Toast sukses; modal one-time menampilkan key mentah baru + tombol "Salin Key" | ✅ |
+| 4 | Salin key baru lalu tutup | Key mentah tidak dapat dilihat lagi; prefix baru tampil di daftar | ✅ |
+| 5 | (opsional) Panggil `GET /api/cctv` dengan key lama | Respons 401 (key lama tidak lagi valid) | ✅ |
+| 6 | (opsional) Panggil `GET /api/cctv` dengan key baru | Respons 200 (key baru valid) | ✅ |
 
 ### S3 - Retensi & Cleanup Log Webhook (Task 13.10)
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/webhooks` sebagai admin | Tabel webhook memiliki kolom "Log" yang menampilkan jumlah log delivery per endpoint | |
-| 2 | Klik ikon 👁 pada sebuah endpoint | Modal detail terbuka; header menampilkan "N log tersimpan" + tombol "Bersihkan Log" | |
-| 3 | Klik "Bersihkan Log" → konfirmasi | Toast sukses dengan jumlah log yang dihapus; jumlah log di daftar menurun | |
-| 4 | (opsional) Panggil `DELETE /api/webhooks/:id/deliveries?older_than=7` | Log lebih tua dari 7 hari terhapus; respons berisi `deleted` | |
-| 5 | (opsional) Buka form edit webhook | Field "Retensi Log (hari)" tampil; ubah nilai lalu simpan | |
-| 6 | (opsional) Restart container api | Cleanup otomatis (`StartWebhookLogCleanup`) berjalan saat startup tanpa error | |
+| 1 | Buka `/webhooks` sebagai admin | Tabel webhook memiliki kolom "Log" yang menampilkan jumlah log delivery per endpoint | ✅ |
+| 2 | Klik ikon 👁 pada sebuah endpoint | Modal detail terbuka; header menampilkan "N log tersimpan" + tombol "Bersihkan Log" | ✅ |
+| 3 | Klik "Bersihkan Log" → konfirmasi | Toast sukses dengan jumlah log yang dihapus; jumlah log di daftar menurun | ✅ |
+| 4 | (opsional) Panggil `DELETE /api/webhooks/:id/deliveries?older_than=7` | Log lebih tua dari 7 hari terhapus; respons berisi `deleted` | ✅ |
+| 5 | (opsional) Buka form edit webhook | Field "Retensi Log (hari)" tampil; ubah nilai lalu simpan | ✅ |
+| 6 | (opsional) Restart container api | Cleanup otomatis (`StartWebhookLogCleanup`) berjalan saat startup tanpa error | ✅ |
 
 ## 4. Kriteria Lulus
 

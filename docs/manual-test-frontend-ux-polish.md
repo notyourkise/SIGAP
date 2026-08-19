@@ -30,6 +30,8 @@ npx tsc --noEmit
 
 Hasil yang diharapkan: seluruh build & test backend lulus, lint (0 error) & build frontend sukses (exit 0), `tsc --noEmit` tanpa error.
 
+**Hasil nyata (18 Agu 2026):** `go build ./...` ✅, `go test ./... -count=1` ⚠️ 2 test flaky `TestCreateAPIKey_Success` & `TestAPIKeyAuth_ValidKey` — "test: timeout error 1000ms" (batas default 1 detik fiber `app.Test()` saat beban CPU; keduanya **PASS saat dijalankan sendiri** 0.32s/0.55s — bukan kegagalan kode), `go vet ./...` ✅. Frontend: `npm run lint` ✅ 0 error (77 warning lama), `npm run build` ✅ exit 0, `npx tsc --noEmit` ✅ tanpa error.
+
 ## 3. Skenario Uji (Blackbox)
 
 > **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
@@ -38,64 +40,64 @@ Hasil yang diharapkan: seluruh build & test backend lulus, lint (0 error) & buil
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/monitor` dengan 35 CCTV streaming aktif | Counter header menampilkan "Menampilkan 1–12 dari 35 kamera aktif" (default pageSize 12) |
-| 2 | Cek DevTools Network / performa | Hanya ±12 `WHEPPlayer` yang dimuat pada halaman pertama; sisanya placeholder/lazy |
-| 3 | Klik "berikutnya" (next) halaman | Halaman 2 menampilkan kamera 13–24, dst. |
-| 4 | Pilih dropdown pageSize = 4 | Tampil 4 kamera per halaman; counter berubah "Menampilkan 1–4 dari N" |
+| 1 | Buka `/monitor` dengan 35 CCTV streaming aktif | Counter header menampilkan "Menampilkan 1–12 dari 35 kamera aktif" (default pageSize 12) | ✅ |
+| 2 | Cek DevTools Network / performa | Hanya ±12 `WHEPPlayer` yang dimuat pada halaman pertama; sisanya placeholder/lazy | ✅ |
+| 3 | Klik "berikutnya" (next) halaman | Halaman 2 menampilkan kamera 13–24, dst. | ✅ |
+| 4 | Pilih dropdown pageSize = 4 | Tampil 4 kamera per halaman; counter berubah "Menampilkan 1–4 dari N" | ✅ |
 
 ### S2 - Lazy loading saat scroll
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/monitor` (pageSize = Semua bila tersedia) | Hanya WHEPPlayer yang dekat viewport yang di-mount (placeholder/skeleton untuk yang jauh) |
-| 2 | Scroll ke bawah | WHEPPlayer di-mount saat sel mendekati/masuk viewport (loading skeleton dulu, lalu stream tampil) |
+| 1 | Buka `/monitor` (pageSize = Semua bila tersedia) | Hanya WHEPPlayer yang dekat viewport yang di-mount (placeholder/skeleton untuk yang jauh) | ✅ |
+| 2 | Scroll ke bawah | WHEPPlayer di-mount saat sel mendekati/masuk viewport (loading skeleton dulu, lalu stream tampil) | ✅ |
 
 ### S3 - Pause / Resume stream per sel
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Klik ikon "⏸ Pause" pada sebuah sel stream | Area video berhenti (placeholder "Dijeda"), koneksi stream ditutup, tombol berubah menjadi "▶ Resume" |
-| 2 | Klik "▶ Resume" | Stream dimuat ulang (koneksi WHEP baru dibuat) dan video tampil kembali |
-| 3 | Klik tombol Pause/Resume tidak memicu membuka detail CCTV | Perilaku terpisah (stopPropagation) |
+| 1 | Klik ikon "⏸ Pause" pada sebuah sel stream | Area video berhenti (placeholder "Dijeda"), koneksi stream ditutup, tombol berubah menjadi "▶ Resume" | ✅ |
+| 2 | Klik "▶ Resume" | Stream dimuat ulang (koneksi WHEP baru dibuat) dan video tampil kembali | ✅ |
+| 3 | Klik tombol Pause/Resume tidak memicu membuka detail CCTV | Perilaku terpisah (stopPropagation) | ✅ |
 
 ### S4 - Tombol "+" tambah tugas di kalender
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/kalender` | Setiap sel hari menampilkan tombol "+" kecil saat di-hover |
-| 2 | Klik tombol "+" pada tanggal tertentu | Modal "Buat Tugas Pemeliharaan" terbuka dengan `scheduled_date` terisi tanggal yang diklik |
-| 3 | Pilih CCTV, isi action_taken (min 5 karakter), simpan | Toast sukses; kalender di-refresh; tugas baru muncul (dot) pada tanggal tersebut |
-| 4 | Klik tanggal yang sama | Detail hari menampilkan tugas baru |
+| 1 | Buka `/kalender` | Setiap sel hari menampilkan tombol "+" kecil saat di-hover | ✅ |
+| 2 | Klik tombol "+" pada tanggal tertentu | Modal "Buat Tugas Pemeliharaan" terbuka dengan `scheduled_date` terisi tanggal yang diklik | ✅ |
+| 3 | Pilih CCTV, isi action_taken (min 5 karakter), simpan | Toast sukses; kalender di-refresh; tugas baru muncul (dot) pada tanggal tersebut | ✅ |
+| 4 | Klik tanggal yang sama | Detail hari menampilkan tugas baru | ✅ |
 
 ### S5 - Validasi & aksesibilitas modal kalender
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka modal, kosongkan action_taken | Error validasi muncul (tidak bisa submit) |
-| 2 | Tanpa memilih CCTV | Error validasi muncul |
-| 3 | Tekan tombol Escape | Modal tertutup |
-| 4 | Klik overlay (latar gelap) | Modal tertutup |
+| 1 | Buka modal, kosongkan action_taken | Error validasi muncul (tidak bisa submit) | ✅ |
+| 2 | Tanpa memilih CCTV | Error validasi muncul | ✅ |
+| 3 | Tekan tombol Escape | Modal tertutup | ✅ |
+| 4 | Klik overlay (latar gelap) | Modal tertutup | ✅ |
 
 ### S6 - Filter periode kinerja teknisi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buka `/kinerja-teknisi` | Tombol filter: "7 Hari", "30 Hari", "3 Bulan", "1 Tahun", "Kustom"; default "30 Hari" |
-| 2 | Klik "7 Hari" | Data di-fetch dengan `?period=7d`; subtitle "Data kinerja dalam 7 hari terakhir" |
-| 3 | Klik "3 Bulan" | Data di-fetch dengan `?period=90d`; subtitle "Data kinerja dalam 90 hari terakhir" |
-| 4 | Klik "1 Tahun" | Data di-fetch dengan `?period=365d`; subtitle "Data kinerja dalam 365 hari terakhir" |
-| 5 | Klik "Kustom" | Muncul input tanggal mulai/sampai; fetch dengan `start_date`/`end_date` |
-| 6 | Amati loading saat ganti periode | Loading skeleton muncul saat re-fetch |
+| 1 | Buka `/kinerja-teknisi` | Tombol filter: "7 Hari", "30 Hari", "3 Bulan", "1 Tahun", "Kustom"; default "30 Hari" | ✅ |
+| 2 | Klik "7 Hari" | Data di-fetch dengan `?period=7d`; subtitle "Data kinerja dalam 7 hari terakhir" | ✅ |
+| 3 | Klik "3 Bulan" | Data di-fetch dengan `?period=90d`; subtitle "Data kinerja dalam 90 hari terakhir" | ✅ |
+| 4 | Klik "1 Tahun" | Data di-fetch dengan `?period=365d`; subtitle "Data kinerja dalam 365 hari terakhir" | ✅ |
+| 5 | Klik "Kustom" | Muncul input tanggal mulai/sampai; fetch dengan `start_date`/`end_date` | ✅ |
+| 6 | Amati loading saat ganti periode | Loading skeleton muncul saat re-fetch | ✅ |
 
 ### S7 - Backend filter periode
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | `GET /api/dashboard/technician-performance?period=7d` (admin) | Data hanya untuk 7 hari terakhir |
-| 2 | `GET /api/dashboard/technician-performance?period=365d` | Data untuk 1 tahun terakhir |
-| 3 | Tanpa `period` | Default 30 hari terakhir (atau start_date/end_date jika diberikan) |
-| 4 | Tanpa login | 401 |
-| 5 | Login sebagai teknisi | 403 (hanya admin) |
+| 1 | `GET /api/dashboard/technician-performance?period=7d` (admin) | Data hanya untuk 7 hari terakhir | ✅ |
+| 2 | `GET /api/dashboard/technician-performance?period=365d` | Data untuk 1 tahun terakhir | ✅ |
+| 3 | Tanpa `period` | Default 30 hari terakhir (atau start_date/end_date jika diberikan) | ✅ |
+| 4 | Tanpa login | 401 | ✅ |
+| 5 | Login sebagai teknisi | 403 (hanya admin) | ✅ |
 
 ## 4. Kriteria Lulus
 

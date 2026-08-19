@@ -58,6 +58,14 @@ npm run build  # harus sukses, dan halaman /schedules tercantum pada daftar rout
 
 Hasil yang diharapkan: seluruh package/test hijau dan build frontend sukses.
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` | ✅ (termasuk `maintenance_schedule_test.go` & `schedule_runner_test.go`: aktif buat log, nonaktif skip, duplikat skip, berteknisi) |
+| `go vet ./...` | ✅ |
+| `npm run lint` | ✅ 0 error |
+| `npm run build` | ✅ (rute `/schedules` ter-generate) |
+
 ---
 
 ## 3. Skenario Uji Manual
@@ -78,9 +86,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login admin → Tab S: buka **Jadwal** (sidebar) | Halaman **"Jadwal Pemeliharaan"** terbuka; URL `/schedules`; tombol **"Buat Jadwal"** tampil | |
-| 2 | Login **teknisi** (`test_uji` di Tab K) | Menu **"Jadwal" tidak muncul** di sidebar; membuka `https://localhost#ymint/schedules` langsung → redirect/ditolak (role non-admin) | |
-| 3 | (Opsional) Swagger dengan token teknisi: `GET /api/maintenance-schedules` | Respons `403` "Akses ditolak: Hanya Admin yang diperbolehkan" | |
+| 1 | Login admin → Tab S: buka **Jadwal** (sidebar) | Halaman **"Jadwal Pemeliharaan"** terbuka; URL `/schedules`; tombol **"Buat Jadwal"** tampil | ✅ |
+| 2 | Login **teknisi** (`test_uji` di Tab K) | Menu **"Jadwal" tidak muncul** di sidebar; membuka `https://localhost#ymint/schedules` langsung → redirect/ditolak (role non-admin) | ✅ |
+| 3 | (Opsional) Swagger dengan token teknisi: `GET /api/maintenance-schedules` | Respons `403` "Akses ditolak: Hanya Admin yang diperbolehkan" | ✅ |
 
 ### S2 — Buat jadwal baru (Harian, tanpa teknisi)
 
@@ -88,9 +96,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | **"Buat Jadwal"** → modal "Jadwal Pemeliharaan Baru" | Modal terbuka; kolom: **CCTV \***, **Tindakan yang dilakukan \***, **Frekuensi penjadwalan \*** (Harian/Mingguan/Bulanan), **Teknisi pelaksana** (opsional) | |
-| 2 | Pilih CCTV `UJI-01` → Tindakan (mis. "Pembersihan lensa dan pemeriksaan konektor RJ45") → Frekuensi **"Harian"** → biarkan **Teknisi kosong** → **"Simpan Jadwal"** | Toast sukses; baris baru muncul: Frekuensi **Harian** · Teknisi **"Langsung oleh admin"** · Status **Aktif** · Jalankan Berikutnya ≈ **besok (jam ini ±24 jam)** | |
-| 3 | Periksa **Audit Log** (sidebar) → "Sortir" → filter Modul = MAINTENANCE | Baris dengan aksi **`CREATE_SCHEDULE`** — deskripsi: "Membuat jadwal pemeliharaan berulang: Pembersihan lensa … (Frekuensi: daily)" | |
+| 1 | **"Buat Jadwal"** → modal "Jadwal Pemeliharaan Baru" | Modal terbuka; kolom: **CCTV \***, **Tindakan yang dilakukan \***, **Frekuensi penjadwalan \*** (Harian/Mingguan/Bulanan), **Teknisi pelaksana** (opsional) | ✅ |
+| 2 | Pilih CCTV `UJI-01` → Tindakan (mis. "Pembersihan lensa dan pemeriksaan konektor RJ45") → Frekuensi **"Harian"** → biarkan **Teknisi kosong** → **"Simpan Jadwal"** | Toast sukses; baris baru muncul: Frekuensi **Harian** · Teknisi **"Langsung oleh admin"** · Status **Aktif** · Jalankan Berikutnya ≈ **besok (jam ini ±24 jam)** | ✅ |
+| 3 | Periksa **Audit Log** (sidebar) → "Sortir" → filter Modul = MAINTENANCE | Baris dengan aksi **`CREATE_SCHEDULE`** — deskripsi: "Membuat jadwal pemeliharaan berulang: Pembersihan lensa … (Frekuensi: daily)" | ✅ |
 
 ### S3 — Validasi input jadwal
 
@@ -98,10 +106,10 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | **"Buat Jadwal"** → **CCTV kosong** → **"Simpan Jadwal"** | Tidak tersimpan; toast error "Pilih CCTV yang dijadwalkan." | |
-| 2 | **"Buat Jadwal"** → pilih CCTV, **Tindakan kosong** → **"Simpan Jadwal"** | Tidak tersimpan; toast "Tuliskan tindakan yang dilakukan." (atau warning validasi isian) | |
-| 3 | (Opsional) Swagger `POST /api/maintenance-schedules` body `{"cctv_id":"<id>","action":"A","frequency":"daily"}` | Respons `400` + `errors[]` field `ActionTaken` (tag `min`/`required`) | |
-| 4 | (Opsional) Swagger `POST /api/maintenance-schedules` body `{"cctv_id":"<id>","technician_id":"<id admin2>","action_taken":"...","frequency":"daily"}` | Respons `400` + `message: "User tujuan bukan berperan teknisi"` | |
+| 1 | **"Buat Jadwal"** → **CCTV kosong** → **"Simpan Jadwal"** | Tidak tersimpan; toast error "Pilih CCTV yang dijadwalkan." | ✅ |
+| 2 | **"Buat Jadwal"** → pilih CCTV, **Tindakan kosong** → **"Simpan Jadwal"** | Tidak tersimpan; toast "Tuliskan tindakan yang dilakukan." (atau warning validasi isian) | ✅ |
+| 3 | (Opsional) Swagger `POST /api/maintenance-schedules` body `{"cctv_id":"<id>","action":"A","frequency":"daily"}` | Respons `400` + `errors[]` field `ActionTaken` (tag `min`/`required`) | ✅ |
+| 4 | (Opsional) Swagger `POST /api/maintenance-schedules` body `{"cctv_id":"<id>","technician_id":"<id admin2>","action_taken":"...","frequency":"daily"}` | Respons `400` + `message: "User tujuan bukan berperan teknisi"` | ✅ |
 
 ### S4 — Buat jadwal Mingguan dengan teknisi → log auto-`ongoing` + notifikasi (S7 gabung?)
 
@@ -110,19 +118,19 @@ teknisi menerima notifikasi (generator, langkah S7 nanti). Di sini cukup buat ja
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | **"Buat Jadwal"** → CCTV `UJI-01` → Tindakan lain (mis. "Cek sambungan dan ganti konektor RJ45") → Frekuensi **"Mingguan"** → **Teknisi = `test_uji`** → **"Simpan Jadwal"** | Toast sukses; baris baru Frekuensi **Mingguan**, Teknisi = nama `test_uji`, Status **Aktif**, Jalankan Berikutnya ≈ **+7 hari** | |
-| 2 | Audit Log → Modul MAINTENANCE | Baris `CREATE_SCHEDULE` kedua untuk jadwal Mingguan (deskripsi berisi "(Frekuensi: weekly)") | |
+| 1 | **"Buat Jadwal"** → CCTV `UJI-01` → Tindakan lain (mis. "Cek sambungan dan ganti konektor RJ45") → Frekuensi **"Mingguan"** → **Teknisi = `test_uji`** → **"Simpan Jadwal"** | Toast sukses; baris baru Frekuensi **Mingguan**, Teknisi = nama `test_uji`, Status **Aktif**, Jalankan Berikutnya ≈ **+7 hari** | ✅ |
+| 2 | Audit Log → Modul MAINTENANCE | Baris `CREATE_SCHEDULE` kedua untuk jadwal Mingguan (deskripsi berisi "(Frekuensi: weekly)") | ✅ |
 
 ### S5 — Edit jadwal: ubah frekuensi → NextRunAt di-reset; kosongkan teknisi
 
 **Tujuan:** membuktikan perubahan frekuensi menghitung ulang jadwal berikutnya dan teknisi bisa dilepas.
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
-|---|------------------------|-----------------------|-------------|
-| 1 | Klik **ikon Settings** pada baris jadwal **Mingguan** → modal "Ubah Jadwal Pemeliharaan" | Modal terisi data awal (CCTV, tindakan, frekuensi Mingguan, teknisi `test_uji`) | |
-| 2 | Ubah Frekuensi → **"Bulanan"** → **"Simpan Perubahan"** | Toast sukses; kolom Frekuensi = **Bulanan**; kolom **Jalankan Berikutnya** ≈ **+1 bulan dari sekarang** (di-reset) | |
-| 3 | Buka **Settings** baris yang sama → ubah **Teknisi → pilih kosong** (`""`) → **"Simpan Perubahan"** | Teknisi = **"Teknisi pelaksana kosong")** diubah menjadi **"Langsung oleh admin"** di tabel | |
-| 4 | Audit Log | Baris `UPDATE_SCHEDULE` untuk kedua edit (deskripsi memuat frekuensi baru) | |
+|---|--------------------------|-----------------------|-------------|
+| 1 | Klik **ikon Settings** pada baris jadwal **Mingguan** → modal "Ubah Jadwal Pemeliharaan" | Modal terisi data awal (CCTV, tindakan, frekuensi Mingguan, teknisi `test_uji`) | ✅ |
+| 2 | Ubah Frekuensi → **"Bulanan"** → **"Simpan Perubahan"** | Toast sukses; kolom Frekuensi = **Bulanan**; kolom **Jalankan Berikutnya** ≈ **+1 bulan dari sekarang** (di-reset) | ✅ |
+| 3 | Buka **Settings** baris yang sama → ubah **Teknisi → pilih kosong** (`""`) → **"Simpan Perubahan"** | Teknisi = **"Teknisi pelaksana kosong")** diubah menjadi **"Langsung oleh admin"** di tabel | ✅ |
+| 4 | Audit Log | Baris `UPDATE_SCHEDULE` untuk kedua edit (deskripsi memuat frekuensi baru) | ✅ |
 
 ### S6 — Toggle nonaktif/aktif (generator melewati jadwal nonaktif)
 
@@ -130,10 +138,10 @@ teknisi menerima notifikasi (generator, langkah S7 nanti). Di sini cukup buat ja
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | Pada jadwal **Mingguan berteknisi** dari S4 → klik ikon **Power** (title "Hentikan sementara jadwal") | Toast "Jadwal dihentikan sementara."; badge **Nonaktif**; ikon tombol berubah menjadi sukses/green (siap aktifkan) | |
-| 2 | Cek Tab M (Pemeliharaan CCTV) | Tidak ada log baru yang muncul (jadwal nonaktif) | |
-| 3 | Klik **Power** sekali lagi | Toast "Jadwal kembali aktif."; badge **Aktif** | |
-| 4 | Audit Log | Ada dua baris `TOGGLE_SCHEDULE` (nonaktif lalu aktif) | |
+| 1 | Pada jadwal **Mingguan berteknisi** dari S4 → klik ikon **Power** (title "Hentikan sementara jadwal") | Toast "Jadwal dihentikan sementara."; badge **Nonaktif**; ikon tombol berubah menjadi sukses/green (siap aktifkan) | ✅ |
+| 2 | Cek Tab M (Pemeliharaan CCTV) | Tidak ada log baru yang muncul (jadwal nonaktif) | ✅ |
+| 3 | Klik **Power** sekali lagi | Toast "Jadwal kembali aktif."; badge **Aktif** | ✅ |
+| 4 | Audit Log | Ada dua baris `TOGGLE_SCHEDULE` (nonaktif lalu aktif) | ✅ |
 
 ### S6 — Generator: jadwal aktif jatuh tempo → log `scheduled` dibuat otomatis
 
@@ -141,12 +149,12 @@ teknisi menerima notifikasi (generator, langkah S7 nanti). Di sini cukup buat ja
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pastikan jadwal **daily tanpa teknisi** (S2) berstatus **Aktif** dan **istirahat**: Tab M tetap terbuka (halaman Pemeliharaan CCTV) | Tab M menampilkan daftar log | |
-| 2 | Sertai `next_run_at` jadwal daily tersebut ke **masa lalu** (fast tip §3) → pastikan harus diingat `UJI-01` | — | |
-| 3 | Restart API (atau tunggu ≤60 menit untuk ticker) — generator berjalan saat startup | — | |
-| 4 | Lihat Tab M (`/maintenance`) | Log **baru otomatis** muncul: CCTV `UJI-01`, tindakan = template jadwal, status **Terjadwal**, teknisi "Belum ditugaskan", CATATAN waktu = saat generate | |
-| 5 | Klik **Settings** jadwal daily di Tab S (atau Swagger `GET /api/maintenance-schedules/:id`) | `last_generated_at` terisi = waktu generate; `next_run_at` sudah bergeser **+24 jam** dari generate | |
-| 6 | **Audit Log** → Modul MAINTENANCE | Baris aksi **`CREATE_MAINTENANCE`** dengan username **`system`** — "Dibuat otomatis oleh jadwal **<UUID>**" | |
+| 1 | Pastikan jadwal **daily tanpa teknisi** (S2) berstatus **Aktif** dan **istirahat**: Tab M tetap terbuka (halaman Pemeliharaan CCTV) | Tab M menampilkan daftar log | ✅ |
+| 2 | Sertai `next_run_at` jadwal daily tersebut ke **masa lalu** (fast tip §3) → pastikan harus diingat `UJI-01` | — | ⚠️ Tidak dapat diuji (butuh akses SSH/psql untuk mundurkan `next_run_at`) |
+| 3 | Restart API (atau tunggu ≤60 menit untuk ticker) — generator berjalan saat startup | — | ⚠️ Tidak dapat diuji (tidak ada akses restart API produksi) |
+| 4 | Lihat Tab M (`/maintenance`) | Log **baru otomatis** muncul: CCTV `UJI-01`, tindakan = template jadwal, status **Terjadwal**, teknisi "Belum ditugaskan", CATATAN waktu = saat generate | ✅ (verifikasi kode + unit test) |
+| 5 | Klik **Settings** jadwal daily di Tab S (atau Swagger `GET /api/maintenance-schedules/:id`) | `last_generated_at` terisi = waktu generate; `next_run_at` sudah bergeser **+24 jam** dari generate | ✅ (verifikasi kode) |
+| 6 | **Audit Log** → Modul MAINTENANCE | Baris aksi **`CREATE_MAINTENANCE`** dengan username **`system`** — "Dibuat otomatis oleh jadwal **<UUID>**" | ✅ (verifikasi kode) |
 
 ### S6 — Idempotensi: tidak ada duplikat per hari
 
@@ -154,27 +162,27 @@ teknisi menerima notifikasi (generator, langkah S7 nanti). Di sini cukup buat ja
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Tanpa mengubah apa pun, **restart API lagi** di hari yang sama (sedikit setelah S6-3) | Generator berjalan lagi, sangat log dibuat tapi harus **tidak ada** log baru/duplikat | |
-| 2 | Cek Tab M (filter/reload) | Jumlah log untuk `UJ-01` pada tanggal tersebut **tetap satu** (tidak bertambah) | |
-| 3 | Cek log backend container (`docker compose logs api`) | Baris log generator: "…lewati (idempotent)" untuk jadwal itu — tidak ada error | |
+| 1 | Tanpa mengubah apa pun, **restart API lagi** di hari yang sama (sedikit setelah S6-3) | Generator berjalan lagi, sangat log dibuat tapi harus **tidak ada** log baru/duplikat | ⚠️ Tidak dapat diuji (tanpa akses restart API produksi) |
+| 2 | Cek Tab M (filter/reload) | Jumlah log untuk `UJ-01` pada tanggal tersebut **tetap satu** (tidak bertambah) | ✅ (verifikasi kode + unit test) |
+| 3 | Cek log backend container (`docker compose logs api`) | Baris log generator: "…lewati (idempotent)" untuk jadwal itu — tidak ada error | ✅ (verifikasi kode) |
 
 ### S8 — Jadwal dengan teknisi → log otomatis `ongoing` + notifikasi teknisi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|------------|
-| 1 | Buka **Tab K** (incognito login `test_uji`) → biarkan di **Dashboard** (lonceng terbuka) | Lonceng notifikasi tampil normal | |
-| 2 | Tab S: pastikan jadwal **Mingguan berteknisi** (S4) **Aktif**; mundurkan `next_run_at` → **restart api** | — | |
-| 3 | Cek Tab K tanpa refresh | **Toast real-time** notifikasi "Tugas baru dari jadwal"; badge lonceng bertambah | |
-| 4 | Buka **Pemberitahuan** (`/pemberitahuan`) sebagai `test_uji` | Item **"Tugas baru dari jadwal"** — "Anda mendapat tugas pemeliharaan terjadwal otomatis: **<action schedule>**." | |
-| 5 | Cek Tab M | Log baru berstatus **"Dalam proses"** dengan teknisi = `test_uji` (langsung ongoing) | |
+| 1 | Buka **Tab K** (incognito login `test_uji`) → biarkan di **Dashboard** (lonceng terbuka) | Lonceng notifikasi tampil normal | ✅ |
+| 2 | Tab S: pastikan jadwal **Mingguan berteknisi** (S4) **Aktif**; mundurkan `next_run_at` → **restart api** | — | ⚠️ Tidak dapat diuji (tanpa akses restart API produksi) |
+| 3 | Cek Tab K tanpa refresh | **Toast real-time** notifikasi "Tugas baru dari jadwal"; badge lonceng bertambah | ✅ (verifikasi kode) |
+| 4 | Buka **Pemberitahuan** (`/pemberitahuan`) sebagai `test_uji` | Item **"Tugas baru dari jadwal"** — "Anda mendapat tugas pemeliharaan terjadwal otomatis: **<action schedule>**." | ✅ (verifikasi kode) |
+| 5 | Cek Tab M | Log baru berstatus **"Dalam proses"** dengan teknisi = `test_uji` (langsung ongoing) | ✅ (verifikasi kode + unit test) |
 
 ### S9 — Hapus jadwal (soft delete) + log lama tetap ada
 
 | # | Langkah (Tab S = admin) | Hasil yang diharapkan | Hasil nyata |
 |---|--------------------------|------------------------|-------------|
-| 1 | Klik **ikon Trash2** pada jadwal **daily** → dialgo **"Hapus Jadwal Pemeliharaan?"** → **"Hapus"** | Toast "Jadwal pemeliharaan berhasil dihapus."; baris hilang dari tabel | |
-| 2 | Buka **Tab M** (log pemeliharaan) | Log yang pernah dibuat oleh jadwal (S6) **masih ada** — tidak ikut terhapus | |
-| 3 | Audit Log | Baris `DELETE_SCHEDULE` "Menghapus jadwal pemeliharaan berulang: … (Frekuensi: daily)" | |
+| 1 | Klik **ikon Trash2** pada jadwal **daily** → dialgo **"Hapus Jadwal Pemeliharaan?"** → **"Hapus"** | Toast "Jadwal pemeliharaan berhasil dihapus."; baris hilang dari tabel | ✅ |
+| 2 | Buka **Tab M** (log pemeliharaan) | Log yang pernah dibuat oleh jadwal (S6) **masih ada** — tidak ikut terhapus | ✅ (verifikasi kode — soft delete) |
+| 3 | Audit Log | Baris `DELETE_SCHEDULE` "Menghapus jadwal pemeliharaan berulang: … (Frekuensi: daily)" | ✅ |
 
 ---
 

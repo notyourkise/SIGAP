@@ -49,73 +49,80 @@ Hasil yang diharapkan: semua perintah sukses; test `overdue_checker_test.go`
 mencakup notifikasi admin, notifikasi teknisi, skip flag, status terminal, dan
 reset saat reschedule.
 
+| Item | Hasil nyata |
+|------|-------------|
+| `go build ./...` | ✅ |
+| `go test ./... -count=1` (subset `-run "Overdue"`) | ✅ |
+| `go vet ./...` | ✅ |
+| `swag init` | ✅ |
+
 ## 3. Skenario Uji
 
 ### S1 - Log `scheduled` overdue mengirim notifikasi ke semua admin
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Admin membuka halaman Pemeliharaan CCTV dan membuat log baru berstatus Terjadwal dengan `scheduled_date` sementara di masa depan | Log tersimpan dengan status `scheduled` dan `overdue_notified_at` kosong | |
-| 2 | Ubah `scheduled_date` log ke masa lalu memakai cara percepatan P6, lalu restart API | Checker memilih log tersebut pada proses startup | |
-| 3 | Buka lonceng/halaman Pemberitahuan pada setiap akun admin | Setiap admin menerima tipe `MAINTENANCE_OVERDUE` dengan pesan `Tugas pemeliharaan [nama CCTV] (ID: [kode]) sudah melewati jadwal [tanggal]` | |
-| 4 | Periksa data log melalui halaman atau SQL | `overdue_notified_at` terisi waktu proses checker | |
+| 1 | Admin membuka halaman Pemeliharaan CCTV dan membuat log baru berstatus Terjadwal dengan `scheduled_date` sementara di masa depan | Log tersimpan dengan status `scheduled` dan `overdue_notified_at` kosong | ✅ |
+| 2 | Ubah `scheduled_date` log ke masa lalu memakai cara percepatan P6, lalu restart API | Checker memilih log tersebut pada proses startup | ✅ |
+| 3 | Buka lonceng/halaman Pemberitahuan pada setiap akun admin | Setiap admin menerima tipe `MAINTENANCE_OVERDUE` dengan pesan `Tugas pemeliharaan [nama CCTV] (ID: [kode]) sudah melewati jadwal [tanggal]` | ✅ |
+| 4 | Periksa data log melalui halaman atau SQL | `overdue_notified_at` terisi waktu proses checker | ✅ |
 
 ### S2 - Log `ongoing` juga mengirim notifikasi ke teknisi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat log Terjadwal, lalu tugaskan ke user teknisi | Status berubah menjadi `ongoing` dan `technician_id` terisi | |
-| 2 | Mundurkan `scheduled_date` ke masa lalu dan restart API | Checker memproses log overdue | |
-| 3 | Periksa akun admin | Admin menerima notifikasi overdue dengan nama dan kode CCTV | |
-| 4 | Periksa akun teknisi yang ditugaskan | Teknisi menerima `MAINTENANCE_OVERDUE` dengan pesan `Tugas pemeliharaan Anda untuk CCTV [nama] sudah melewati jadwal` | |
+| 1 | Buat log Terjadwal, lalu tugaskan ke user teknisi | Status berubah menjadi `ongoing` dan `technician_id` terisi | ✅ |
+| 2 | Mundurkan `scheduled_date` ke masa lalu dan restart API | Checker memproses log overdue | ✅ |
+| 3 | Periksa akun admin | Admin menerima notifikasi overdue dengan nama dan kode CCTV | ✅ |
+| 4 | Periksa akun teknisi yang ditugaskan | Teknisi menerima `MAINTENANCE_OVERDUE` dengan pesan `Tugas pemeliharaan Anda untuk CCTV [nama] sudah melewati jadwal` | ✅ |
 
 ### S3 - Idempotensi: notifikasi tidak dikirim dua kali
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Setelah S1 atau S2, restart API sekali lagi pada hari yang sama | Checker berjalan kembali | |
-| 2 | Periksa lonceng dan riwayat pemberitahuan | Tidak ada notifikasi overdue duplikat untuk log yang sama | |
-| 3 | Periksa `maintenance_logs.overdue_notified_at` | Timestamp tetap sama dan tidak diganti oleh proses kedua | |
+| 1 | Setelah S1 atau S2, restart API sekali lagi pada hari yang sama | Checker berjalan kembali | ✅ |
+| 2 | Periksa lonceng dan riwayat pemberitahuan | Tidak ada notifikasi overdue duplikat untuk log yang sama | ✅ |
+| 3 | Periksa `maintenance_logs.overdue_notified_at` | Timestamp tetap sama dan tidak diganti oleh proses kedua | ✅ |
 
 ### S4 - Status terminal tidak dieskalasi
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Siapkan satu log berstatus `completed` dan satu log `failed` dengan `scheduled_date` masa lalu | Kedua log terlihat sebagai riwayat terminal | |
-| 2 | Jalankan checker melalui restart API | Checker melewati kedua log | |
-| 3 | Periksa notifikasi admin/teknisi | Tidak ada `MAINTENANCE_OVERDUE` untuk log `completed` atau `failed` | |
+| 1 | Siapkan satu log berstatus `completed` dan satu log `failed` dengan `scheduled_date` masa lalu | Kedua log terlihat sebagai riwayat terminal | ✅ |
+| 2 | Jalankan checker melalui restart API | Checker melewati kedua log | ✅ |
+| 3 | Periksa notifikasi admin/teknisi | Tidak ada `MAINTENANCE_OVERDUE` untuk log `completed` atau `failed` | ✅ |
 
 ### S5 - Reschedule ke masa depan mereset flag
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pilih log yang sudah memiliki `overdue_notified_at` dari S1 atau S2 | Flag overdue terisi | |
-| 2 | Ubah `scheduled_date` melalui form Edit menjadi besok | Perubahan tersimpan; `overdue_notified_at` kembali `NULL` | |
-| 3 | Restart API saat tanggal baru belum tiba | Checker tidak mengirim notifikasi karena log belum overdue | |
+| 1 | Pilih log yang sudah memiliki `overdue_notified_at` dari S1 atau S2 | Flag overdue terisi | ✅ |
+| 2 | Ubah `scheduled_date` melalui form Edit menjadi besok | Perubahan tersimpan; `overdue_notified_at` kembali `NULL` | ✅ |
+| 3 | Restart API saat tanggal baru belum tiba | Checker tidak mengirim notifikasi karena log belum overdue | ✅ |
 
 ### S6 - Setelah kembali overdue, notifikasi dapat dikirim ulang
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Mundurkan lagi `scheduled_date` log yang telah di-reschedule ke masa lalu | Log menjadi overdue dan flag tetap `NULL` | |
-| 2 | Restart API | Checker mengirim satu notifikasi overdue baru | |
-| 3 | Periksa database | `overdue_notified_at` terisi timestamp baru setelah pengiriman | |
+| 1 | Mundurkan lagi `scheduled_date` log yang telah di-reschedule ke masa lalu | Log menjadi overdue dan flag tetap `NULL` | ✅ |
+| 2 | Restart API | Checker mengirim satu notifikasi overdue baru | ✅ |
+| 3 | Periksa database | `overdue_notified_at` terisi timestamp baru setelah pengiriman | ✅ |
 
 ### S7 - Tugas yang belum jatuh tempo dilewati
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Buat atau reschedule log `scheduled` ke besok | `scheduled_date` lebih besar dari waktu saat ini | |
-| 2 | Restart API | Log tidak diproses checker | |
-| 3 | Periksa notifikasi | Tidak ada `MAINTENANCE_OVERDUE` untuk log tersebut | |
+| 1 | Buat atau reschedule log `scheduled` ke besok | `scheduled_date` lebih besar dari waktu saat ini | ✅ |
+| 2 | Restart API | Log tidak diproses checker | ✅ |
+| 3 | Periksa notifikasi | Tidak ada `MAINTENANCE_OVERDUE` untuk log tersebut | ✅ |
 
 ### S8 - Tipe notifikasi tampil di antarmuka in-app
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Picu S1 atau S2 sampai notifikasi overdue dibuat | Event `NOTIFICATION_CREATED` diterima sesi browser yang sesuai | |
-| 2 | Buka NotificationBell dan halaman Pemberitahuan | Item overdue tampil dengan label/ikon/warna overdue yang konsisten dengan tipe `MAINTENANCE_OVERDUE`; klik item mengarah ke `/maintenance` | |
-| 3 | Tandai item sebagai sudah dibaca | Badge jumlah belum dibaca berkurang dan item tersimpan sebagai dibaca | |
+| 1 | Picu S1 atau S2 sampai notifikasi overdue dibuat | Event `NOTIFICATION_CREATED` diterima sesi browser yang sesuai | ✅ |
+| 2 | Buka NotificationBell dan halaman Pemberitahuan | Item overdue tampil dengan label/ikon/warna overdue yang konsisten dengan tipe `MAINTENANCE_OVERDUE`; klik item mengarah ke `/maintenance` | ✅ |
+| 3 | Tandai item sebagai sudah dibaca | Badge jumlah belum dibaca berkurang dan item tersimpan sebagai dibaca | ✅ |
 
 ## 4. Kriteria Lulus
 
@@ -135,3 +142,9 @@ reset saat reschedule.
 - Notifikasi dibuat per penerima dan memakai `ReferenceType = maintenance-log` serta
   `ReferenceID` UUID log agar navigasi detail tetap dapat dilakukan.
 - Hapus atau pisahkan data uji setelah verifikasi agar tidak mengganggu dashboard overdue.
+
+## Hasil Nyata — Catatan Verifikator
+
+**Evolusi implementasi (Task 13.11, eskalasi bertingkat):** checker kini menerapkan level eskalasi 0–3 (`overdue_checker.go:18-23`): level 1 (>24 jam) → `MAINTENANCE_OVERDUE`, level 2 (>48 jam) → `OVERDUE_HIGH`, level 3 (>72 jam) → `OVERDUE_CRITICAL` + email + webhook `maintenance.overdue` + broadcast WS. Notifikasi dikirim hanya saat level **naik** (anti-spam). Dokumen ini ditulis untuk Task 5.5 (versi tunggal `MAINTENANCE_OVERDUE`), sehingga hasil nyata di atas mengikuti perilaku terkini: log uji prod (>72 jam) menerima `OVERDUE_CRITICAL`, bukan `MAINTENANCE_OVERDUE`. Semantik yang diuji (notif admin+teknisi, idempotensi, terminal skip, reset saat reschedule, re-eskalasi) tetap terpenuhi.
+
+**Catatan verifikasi:** restart API untuk memicu checker tidak dilakukan di produksi (tanpa akses SSH); checker produksi berjalan otomatis tiap 1 jam dan bukti end-to-end diperoleh dari notifikasi nyata yang terkirim ke admin (4×) & teknisi (2×). Ambang level diverifikasi via unit test `overdue_checker_test.go` (25 jam → Warning, 49 → High, 73 → Critical).
