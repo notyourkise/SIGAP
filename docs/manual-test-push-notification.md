@@ -136,7 +136,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 ## Hasil Nyata — Catatan Verifikator
 
-**Hasil akhir: 9/9 skenario LULUS** (S1–S2, S4–S6, S8–S9 via verifikasi kode + API nyata; S3, S5 via fallback in-app + kode; S7 LULUS penuh — kondisi prod saat ini).
+**Hasil akhir: skenario fallback/in-app LULUS; push OS end-to-end BELUM dapat diverifikasi** (S1, S4–S6, S7 via verifikasi kode + API nyata; pengujian push OS memerlukan VAPID valid + uji ulang browser sesuai catatan di bawah).
 
 - **Push OS nyata tidak dapat diuji end-to-end** di produksi: VAPID keys (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_EMAIL`) tidak dikonfigurasi pada deployment prod → `SendPush` no-op + warning, sesuai S7. Fitur dalam kondisi fallback yang dijamin desain; setelah VAPID diisi, perlu pengujian browser ulang (S2 #1-3, S3, S4, S5, S8).
 - **Pengujian otomatis:** `go build ./...` ✅, `go vet ./...` ✅, `go test` (termasuk `handlers/push_test.go` & `utils/push_test.go` — subscribe/upsert/validasi/unauthorized, no-op VAPID kosong, kirim ke semua subscription, format payload) ✅; frontend `npm run lint` 0 error & `npm run build` ✅.
