@@ -25,7 +25,7 @@ const (
 
 	// Kop surat
 	kopNamaInstansi = "OTORITA IBU KOTA NUSANTARA"
-	kopSubInstansi  = "Sistem Identifikasi Gangguan Aset Pusat (SIGAP)"
+	kopSubInstansi  = "Sistem Informasi Gangguan & Aset Pusat (SIGAP)"
 	kopAlamat1      = "Kompleks Perkantoran Pemerintah IKN, Kabupaten Penajam Paser Utara,"
 	kopAlamat2      = "Provinsi Kalimantan Timur"
 	kopTelepon      = ""          // isi jika diperlukan

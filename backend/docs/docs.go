@@ -9003,7 +9003,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api",
 	Schemes:          []string{"https"},
 	Title:            "SIGAP API",
-	Description:      "Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.",
+	Description:      "Dokumentasi API Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

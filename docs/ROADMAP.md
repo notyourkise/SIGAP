@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga streaming CCTV real-time.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-13 (Sprint 40 — AI Feature Takedown)
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-19 (sinkronisasi status roadmap)
 
 ## Visi & Prinsip Prioritas
 
@@ -25,7 +25,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | 1 | Kritis (Prioritas Tertinggi) | 6/6 | ✅ Selesai |
 | 2 | Penguatan (Hardening) | 9/9 | ✅ Selesai |
 | 3 | Fitur (Kapabilitas) | 9/9 | ✅ Selesai |
-| 4 | Infrastruktur & Kualitas | 2/8 + 4.1 sebagian | ⏸️ Sisa dilebur ke Fase 7 |
+| 4 | Infrastruktur & Kualitas | Ditutup; sisa task dipindahkan ke Fase 7 | ✅ Ditutup |
 | 5 | Alur Kerja Operasional (Jalur A) | 5/5 | ✅ Selesai |
 | 6 | Kecerdasan Operasional | 4/4 | ✅ Selesai |
 | 7 | Kesiapan Produksi | 6/6 | ✅ Selesai |
@@ -33,9 +33,10 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **9** | **Streaming CCTV Real-Time** | **6/6** | **✅ Selesai** |
 | **10** | **Kecerdasan Visual & Snapshot** | **4/4** | **✅ Selesai** |
 | **11** | **Manajemen Operasional Lanjut** | **5/5** | **✅ Selesai** |
-| **12** | **Integrasi & Skalabilitas** | **3/4** | **🔶 Berjalan** |
+| **12** | **Integrasi & Skalabilitas** | **4/4** | **✅ Selesai** |
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
-| **14** | **CCTV Intelligence — Live Status & AI Takedown** | **Sprint 37 ✅ · Sprint 40 🚧** | **🚧 Berjalan** |
+| **14** | **CCTV Intelligence — Live Status & AI Takedown** | **Sprint 37 ✅ · Sprint 37-PATCH ✅ · Sprint 40 ✅** | **✅ Selesai** |
+| **15** | **Branding & Dokumentasi** | **1/1** | **✅ Selesai** |
 
 > **Urutan pengerjaan:**
 > ```
@@ -55,12 +56,12 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 >     ├── Sprint 37: RTSP Live Status Detection (14A) ✅
 >     ├── Sprint 38: AI Microservice & Person Counting (14B) ❌ DIBATALKAN
 >     ├── Sprint 39: Frontend AI Overlay & E2E Integration (14C) ❌ DIBATALKAN
->     └── Sprint 40: AI Feature Takedown (rollback) 🚧 Berjalan
+>     └── Sprint 40: AI Feature Takedown (rollback) ✅ Selesai
 > ```
 > - **Fase 9** (streaming): prioritas utama — mengubah peta sebaran dari view-only menjadi live monitoring.
 > - **Task 11.1** (suku cadang): dikerjakan langsung setelah Fase 9 stabil (kebutuhan vital operasional).
 > - **Fase 10** (visual) dan **sisa Fase 11** bisa dikerjakan paralel setelahnya.
-> - **Fase 12** (integrasi): dievaluasi berdasarkan kebutuhan pasca go-live.
+> - **Fase 12** (integrasi): selesai 4/4, termasuk API key, webhook, mobile app, dan multi-site.
 > - **Fase 13** (perbaikan): penguatan kualitas & keamanan fitur existing berdasarkan analisis teknis 2026-08-10.
 > - **Fase 14** (CCTV intelligence): deteksi online/offline real-time (Live Status, Sprint 37) + **Sprint 40 (AI Takedown)** — fitur AI detection dihapus; sistem kembali ke pure CCTV management.
 > - Di setiap tabel, task yang berada di posisi paling atas adalah yang **harus dikerjakan lebih dulu**.
@@ -652,7 +653,7 @@ Detail: `docs/changelog.md` [1.28.38].
 
 > Fase ini **tidak menambah fitur baru**, melainkan memperbaiki kualitas, keamanan, dan ketangguhan
 > dari seluruh fitur yang sudah terimplementasi (Fase 1–12). Berdasarkan **analisis teknis 2026-08-10**.
-> **Status: 🔲 Belum dimulai** — 18 task, 6 sprint.
+> **Status: ✅ Selesai** — 18/18 task, 6 sprint (Sprint 31–36).
 
 ### Ringkasan 18 Perbaikan
 
@@ -888,7 +889,7 @@ Prioritas SEGERA: Sprint 31 (P1-P5 semuanya high-priority)
 > - **14A**: Deteksi status online/offline kamera secara real-time (RTSP Probe) — memperbaiki bug fundamental di mana peta tetap hijau meski kamera mati. ✅ Selesai (Sprint 37).
 > - **14B/14C**: AI object detection berbasis YOLOv8 (person counting + bounding box) — **DIBATALKAN**; seluruh artefak dihapus via **Sprint 40 (AI Feature Takedown)**. Sistem kembali ke pure CCTV management tanpa AI inference.
 >
-> **Status: 🚧 Berjalan** — Sprint 37 (14A Live Status) ✅ Selesai; Sprint 38 & 39 (AI) ❌ DIBATALKAN; **Sprint 40 (AI Takedown) 🚧 aktif (Sprint ini)**.
+> **Status: ✅ Selesai** — Sprint 37 (14A Live Status), Sprint 37-PATCH (strategi Metro-E vs GSM), dan Sprint 40 (AI Takedown) selesai; Sprint 38 & 39 dibatalkan.
 
 ### Latar Belakang & Root Cause
 
@@ -1062,7 +1063,7 @@ cd frontend && npm run lint && npm run build
 
 > [!IMPORTANT]
 > **Addendum Kebijakan Metro-E vs GSM — Probe Strategy Final (dikonfirmasi 2026-08-13):**
-> Implementasi `RunRTSPProber` HARUS di-patch agar tidak menyentuh kamera GSM sama sekali:
+> Implementasi `RunRTSPProber` telah di-patch agar tidak menyentuh kamera GSM sama sekali:
 >
 > | Tipe | Identifikasi | Probe Method | Data GSM |
 > |------|-------------|-------------|----------|
@@ -1100,7 +1101,7 @@ cd frontend && npm run lint && npm run build
 > **Branch:** `bugfix/rtsp-probe-metro-gsm-strategy`
 > **Prasyarat:** Sprint 37 sudah selesai (file `stream_probe.go` sudah ada)
 > **Estimasi:** 1 hari kerja
-> **Status: 🔲 Belum dimulai**
+> **Status: ✅ Selesai** (2026-08-13, backend `0.63.0`)
 
 | Task | Deliverable |
 |------|-------------|
@@ -1121,7 +1122,7 @@ cd frontend && npm run lint && npm run build
 > **Status: ❌ DIBATALKAN** — Digantikan oleh Sprint 40 (AI Takedown)
 
 > [!CAUTION]
-> **Sprint ini dibatalkan pada 2026-08-13.** Kode yang sudah diimplementasikan (handlers/ai.go, routes/ai.go, models/ai_detection.go, service `ai/`, migration 000020 & 000021) akan dihapus via **Sprint 40**. Sistem kembali ke pure CCTV management tanpa AI detection.
+> **Sprint ini dibatalkan pada 2026-08-13.** Kode yang sempat diimplementasikan (handlers/ai.go, routes/ai.go, models/ai_detection.go, service `ai/`, migration 000020 & 000021) telah dihapus via **Sprint 40**. Sistem kembali ke pure CCTV management tanpa AI detection.
 
 
 | Jobdesk | Sub-Agent | Task | Deliverable | Status |
@@ -1170,7 +1171,7 @@ curl http://localhost:8010/counts/test
 > **Status: ❌ DIBATALKAN** — Digantikan oleh Sprint 40 (AI Takedown)
 
 > [!CAUTION]
-> **Sprint ini dibatalkan pada 2026-08-13.** Kode frontend yang sudah diimplementasikan (canvas overlay WHEPPlayer, tombol AI StreamGridView, halaman /ai-analytics) akan dihapus via **Sprint 40**.
+> **Sprint ini dibatalkan pada 2026-08-13.** Kode frontend yang sempat diimplementasikan (canvas overlay WHEPPlayer, tombol AI StreamGridView, halaman /ai-analytics) telah dihapus via **Sprint 40**.
 
 
 | Jobdesk | Sub-Agent | Task | Deliverable | Status |
@@ -1211,10 +1212,10 @@ cd backend && go build ./... && go test ./... -count=1 -run "TestGetAICountTrend
 FASE 14 — CCTV Intelligence (REVISI 2026-08-13)
 ───────────────────────────────────────────────────────────────
 Sprint 37: RTSP Live Status Detection (14A)     ✅ Selesai
-Sprint 37-PATCH: Metro-E vs GSM Probe Strategy  🔲 Belum dimulai
+Sprint 37-PATCH: Metro-E vs GSM Probe Strategy  ✅ Selesai
 Sprint 38: AI Microservice & Person Counting    ❌ DIBATALKAN
 Sprint 39: Frontend AI Overlay & E2E            ❌ DIBATALKAN
-Sprint 40: AI Feature Takedown (rollback)       🚧 Berjalan
+Sprint 40: AI Feature Takedown (rollback)       ✅ Selesai
 ───────────────────────────────────────────────────────────────
 Keputusan: Fitur AI detection dihapus seluruhnya (2026-08-13)
 Sistem: Pure CCTV Management — tanpa AI inference
@@ -1233,7 +1234,7 @@ Requirement Server (revised, tanpa AI):
 > **Branch:** `bugfix/remove-ai-detection`
 > **Prasyarat:** Sprint 38 & 39 sudah ada di codebase (sudah diimplementasikan)
 > **Estimasi:** 1–2 hari kerja
-> **Status: 🚧 Berjalan (Sprint aktif — 2026-08-13)**
+> **Status: ✅ Selesai (2026-08-13)**
 
 Hapus **seluruh** artefak AI detection dari codebase. Sistem kembali ke 7 Docker service (tanpa `sigap_ai`).
 
@@ -1283,15 +1284,15 @@ grep "sigap_ai" docker-compose.yml
 ```
 
 > **Acceptance Criteria Sprint 40:**
-> - [ ] `docker ps` setelah `docker compose up -d` hanya menampilkan 7 container (tanpa sigap_ai)
-> - [ ] `GET /api/ai/counts` → 404 Not Found
-> - [ ] `GET /api/ai/sessions` → 404 Not Found
-> - [ ] `/ai-analytics` → 404 atau redirect (halaman tidak ada)
-> - [ ] `/monitor` → tidak ada tombol 🤖 AI, tidak ada badge "👥 X orang"
-> - [ ] Video player di `/monitor` tidak punya canvas overlay
-> - [ ] `go build ./...` → 0 error, 0 warning
-> - [ ] `npm run build` → sukses
-> - [ ] Tabel `ai_detection_sessions` & `ai_detection_events` → DROP via migration 000023
+> - [x] `docker ps` setelah `docker compose up -d` hanya menampilkan 7 container (tanpa sigap_ai)
+> - [x] `GET /api/ai/counts` → 404 Not Found
+> - [x] `GET /api/ai/sessions` → 404 Not Found
+> - [x] `/ai-analytics` → 404 atau redirect (halaman tidak ada)
+> - [x] `/monitor` → tidak ada tombol 🤖 AI, tidak ada badge "👥 X orang"
+> - [x] Video player di `/monitor` tidak punya canvas overlay
+> - [x] `go build ./...` → 0 error, 0 warning
+> - [x] `npm run build` → sukses
+> - [x] Tabel `ai_detection_sessions` & `ai_detection_events` → DROP via migration 000023
 
 
 ## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
@@ -1355,32 +1356,32 @@ Sprint 27: Email & Report Builder (11.2 + 11.3)  ✅ .  4–5 hari
 Sprint 28: Zona & SLA (11.4 + 11.5)  ✅ .............  4–5 hari
 ───────────────────────────────────────────────────────────────
 
-BERJALAN / BERIKUTNYA (Fase 12)
+SELESAI (Fase 12)
 ───────────────────────────────────────────────────────────────
 Sprint 29: API Key & Webhook (12.1 + 12.3)  ✅ ......  3–4 hari
 Task 12.4: Mobile App (React Native)  ✅ ............  10–15 hari
 Sprint 30: Multi-Site (12.2)  ✅ ...................  4–5 hari
 ───────────────────────────────────────────────────────────────
 
-PERBAIKAN FITUR EXISTING (Fase 13 — mulai setelah Sprint 29)
+SELESAI — PERBAIKAN FITUR EXISTING (Fase 13)
 ───────────────────────────────────────────────────────────────
-Sprint 31: Keamanan & Integritas Data (P1–P5)  🔲 ..  3–4 hari  ← SEGERA
-Sprint 32: Notifikasi & Email (P6–P7)  🔲 ..........  2–3 hari
-Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) 🔲  3–4 hari
-Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) 🔲 2–3 hari
-Sprint 35: Performa & Checklist (P12–P13)  🔲 ......  4–5 hari
-Sprint 36: Polish Frontend UX (P15,P17,P18)  🔲 ....  2–3 hari
+Sprint 31: Keamanan & Integritas Data (P1–P5)  ✅ ..  3–4 hari
+Sprint 32: Notifikasi & Email (P6–P7)  ✅ ..........  2–3 hari
+Sprint 33: Kecerdasan Data & Eskalasi (P8,P9,P11) ✅  3–4 hari
+Sprint 34: Infrastruktur & Integrasi (P10,P14,P16) ✅ 2–3 hari
+Sprint 35: Performa & Checklist (P12–P13)  ✅ ......  4–5 hari
+Sprint 36: Polish Frontend UX (P15,P17,P18)  ✅ ....  2–3 hari
 ───────────────────────────────────────────────────────────────
 
-CCTV INTELLIGENCE (Fase 14 — Live Status ✅ + AI Takedown 🚧)
+CCTV INTELLIGENCE (Fase 14 — Live Status ✅ + AI Takedown ✅)
 ──────────────────────────────────────────────────────────────
 Sprint 37: RTSP Live Status Detection (14A)  ✅ ....  2–3 hari
 Sprint 38: AI Microservice & Person Counting (14B) ❌ DIBATALKAN
 Sprint 39: Frontend AI Overlay & E2E (14C)  ❌ DIBATALKAN
-Sprint 40: AI Feature Takedown (rollback)  🚧 Berjalan ..  1–2 hari
+Sprint 40: AI Feature Takedown (rollback)  ✅ Selesai ..  1–2 hari
 ──────────────────────────────────────────────────────────────
 Total Fase 13: 16–22 hari kerja
-Total Fase 14: Live Status (Sprint 37) ✅ + AI Takedown (Sprint 40) 🚧 — AI detection dihapus (2026-08-13)
+Total Fase 14: Live Status (Sprint 37) ✅ + Metro-E/GSM Patch ✅ + AI Takedown (Sprint 40) ✅ — AI detection dihapus (2026-08-13)
 ═══════════════════════════════════════════════════════════════
 ```
 
@@ -1404,27 +1405,27 @@ Total Fase 14: Live Status (Sprint 37) ✅ + AI Takedown (Sprint 40) 🚧 — AI
 
 > **Branch:** `fix/readme-branding-update`
 > **Estimasi:** 0.5–1 hari kerja
-> **Status: 🔲 Belum dimulai**
+> **Status: ✅ Selesai**
 
-Perbaiki nama sistem yang salah dan update README agar mencerminkan kondisi sistem terkini.
+Nama resmi, README, metadata aplikasi, halaman login, dan manifest telah diselaraskan dengan kondisi sistem terkini.
 
-#### Temuan yang Harus Diperbaiki
+#### Temuan yang Telah Diselesaikan
 
-| Lokasi | Isi Salah | Yang Benar |
+| Lokasi | Kondisi Sebelum | Kondisi Benar |
 |--------|-----------|------------|
-| `README.md` baris 1 | `Sistem Informasi & Inventaris CCTV Terpadu` | `Sistem Informasi Gangguan & Aset Pusat` |
-| `README.md` baris 8 | Deskripsi lama, fitur tidak up-to-date | Update sesuai kondisi existing |
-| `frontend/src/app/layout.tsx` baris 22 | `Sistem Identifikasi Gangguan Aset Pusat` | `Sistem Informasi Gangguan & Aset Pusat` |
+| `README.md` baris 1 | Kepanjangan SIGAP belum konsisten | `Sistem Informasi Gangguan & Aset Pusat` |
+| `README.md` | Deskripsi dan fitur belum lengkap | Sudah diperbarui sesuai kondisi existing |
+| `frontend/src/app/layout.tsx` baris 22 | Kepanjangan SIGAP belum konsisten | `Sistem Informasi Gangguan & Aset Pusat` |
 | `frontend/src/app/login/page.tsx` baris 114 | Sub-judul `Sistem internal pengelolaan CCTV kawasan IKN.` | `Sistem Informasi Gangguan & Aset Pusat — Kawasan IKN Nusantara` |
 
 #### Scope Perubahan
 
 | Komponen | File | Aksi |
 |----------|------|------|
-| **README.md** | `README.md` | ✏️ Rewrite menyeluruh — judul center + logo OIKN, kepanjangan SIGAP benar, fitur up-to-date, struktur project aktual, arsitektur 7 service (tanpa sigap_ai) |
-| **App title** | `frontend/src/app/layout.tsx` | ✏️ Fix `title` metadata: `"SIGAP - Sistem Informasi Gangguan & Aset Pusat"` |
-| **Login subtitle** | `frontend/src/app/login/page.tsx` | ✏️ Fix subtitle baris 114 |
-| **Manifest** | `frontend/public/manifest.json` | ✏️ Tambah `description` yang benar |
+| **README.md** | `README.md` | ✅ Judul, logo OIKN, nama resmi, fitur, struktur proyek, dan arsitektur 7 service diperbarui |
+| **App title** | `frontend/src/app/layout.tsx` | ✅ Metadata memakai `"SIGAP - Sistem Informasi Gangguan & Aset Pusat"` |
+| **Login subtitle** | `frontend/src/app/login/page.tsx` | ✅ Subtitle memakai nama resmi SIGAP |
+| **Manifest** | `frontend/public/manifest.json` | ✅ Nama dan deskripsi aplikasi telah diselaraskan |
 
 #### Spesifikasi README Baru
 

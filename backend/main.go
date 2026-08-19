@@ -23,7 +23,7 @@ import (
 
 // @title                      SIGAP API
 // @version                    1.0
-// @description                Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
+// @description                Dokumentasi API Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN.
 // @host                       localhost
 // @schemes                    https
 // @BasePath                   /api

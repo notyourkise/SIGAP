@@ -17,7 +17,7 @@ Keduanya menggunakan SIGAP ketika perlu memantau aset CCTV dan menjalankan atau 
 
 ## Product Purpose
 
-SIGAP (Sistem Identifikasi Gangguan Aset Pusat) adalah sistem internal untuk mengelola CCTV di kawasan IKN. Sistem ini memusatkan pemantauan, inventarisasi, identifikasi perangkat, dan riwayat pemeliharaan agar admin dan teknisi memiliki acuan operasional yang sama.
+SIGAP (Sistem Informasi Gangguan & Aset Pusat) adalah sistem internal untuk mengelola CCTV di kawasan IKN. Sistem ini memusatkan pemantauan, inventarisasi, identifikasi perangkat, dan riwayat pemeliharaan agar admin dan teknisi memiliki acuan operasional yang sama.
 
 Keberhasilan produk berarti kondisi aset dapat dipantau, perangkat dapat diidentifikasi dengan tepat, dan pekerjaan pemeliharaan dapat dicatat serta ditelusuri secara konsisten.
 
@@ -44,7 +44,7 @@ SIGAP menghubungkan inventaris CCTV kawasan IKN dengan alur pemeliharaan dan ide
 
 ## Brand Commitments
 
-- Nama resmi: SIGAP — Sistem Identifikasi Gangguan Aset Pusat.
+- Nama resmi: SIGAP — Sistem Informasi Gangguan & Aset Pusat.
 - Cakupan khusus: pengelolaan CCTV di kawasan IKN.
 - Bahasa antarmuka: bahasa Indonesia.
 - Logo Nusantara harus dipertahankan; aset tersedia di `frontend/public/nusantara-logo.png`.

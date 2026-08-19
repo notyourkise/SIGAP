@@ -4,7 +4,7 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.",
+        "description": "Dokumentasi API Sistem Informasi Gangguan \u0026 Aset Pusat (SIGAP) IKN.",
         "title": "SIGAP API",
         "contact": {},
         "version": "1.0"

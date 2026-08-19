@@ -15,7 +15,7 @@ before:
 - Form CCTV tidak bisa memilih kawasan/zona (padahal master data ada).
 - Template checklist sama untuk semua kawasan.
 - Halaman checklist-templates menampilkan badge "Halaman Admin".
-- Kepanjangan SIGAP di manifest PWA & mobile masih "Sistem Informasi & Inventaris CCTV Terpadu".
+- Kepanjangan SIGAP di manifest PWA & mobile masih belum konsisten dengan nama resmi proyek.
 
 after:
 - **`login/page.tsx`**: hapus ikon lonceng notifikasi (hanya toggle tema).
