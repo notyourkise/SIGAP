@@ -98,14 +98,14 @@ Hasil yang diharapkan: `go build` sukses (exit 0), `go test` untuk `TestRTSP`/`T
 |---|---------|------------------------|-------------|
 | 1 | Buka `/monitor` (grid view) dengan CCTV streaming | Setiap sel memiliki ring/border sesuai status: **hijau tipis** = online, **merah** = offline, **abu-abu** = belum dicek | ✅ (verifikasi kode — `liveRingClass` di `StreamGridView.tsx:86-91`) |
 | 2 | Cek tooltip per sel | Tooltip menampilkan `"Terakhir dicek: HH:mm WIB"` | ✅ (verifikasi kode — tooltip "Dicek HH:mm" di `StreamGridView.tsx:102-110`) |
-| 3 | Ubah status kamera (hidup↔mati) | Border sel berubah warnanya otomatis (via WebSocket, tanpa reload) dalam ≤2 menit | ✅ (verifikasi kode — data `stream_live` dari state + WS) |
+| 3 | Ubah status kamera (hidup↔mati) | Border sel berubah warnanya otomatis (via WebSocket, tanpa reload) dalam ≤2 menit | ❌ Belum bisa di cek |
 
 ### S8 - WebSocket `CCTV_LIVE_STATUS_UPDATED`
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
 | 1 | Buka DevTools → Application → Service Workers / Network → WS `/api/ws` | Koneksi WebSocket terautentikasi aktif | ✅ (verifikasi kode — WS auth di `utils/websocket.go`) |
-| 2 | Ubah status salah satu CCTV (hidup↔mati) | Event `CCTV_LIVE_STATUS_UPDATED` diterima dengan payload `{ cctv_id, stream_live, stream_checked_at, nama, kode_cctv }` | ✅ (verifikasi kode — broadcast di `stream_probe.go:144`) |
+| 2 | Ubah status salah satu CCTV (hidup↔mati) | Event `CCTV_LIVE_STATUS_UPDATED` diterima dengan payload `{ cctv_id, stream_live, stream_checked_at, nama, kode_cctv }` | ❌ Belum bisa di cek |
 | 3 | Periksa badge di peta saat event diterima | Badge marker berubah **tanpa reload halaman** sesuai `stream_live` pada event | ✅ (verifikasi kode — subscribe di `sebaran-cctv/page.tsx:192`) |
 
 ### S9 - Role enforcement

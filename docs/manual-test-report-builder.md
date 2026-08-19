@@ -51,7 +51,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 |---|---------|------------------------|-------------|
 | 1 | Buka `/laporan-kustom` sebagai admin | Halaman report builder tampil dengan 4 langkah (entitas, kolom, filter, format) | ✅ |
 | 2 | Cek sidebar | Menu "Laporan" (`FileSpreadsheet`) tampil di section admin | ✅ |
-| 3 | Login sebagai teknisi, akses `/laporan-kustom` langsung | Diarahkan kembali ke `/dashboard` (proxy middleware) | ✅ |
+| 3 | Login sebagai teknisi, akses `/laporan-kustom` langsung | Diarahkan kembali ke `/dashboard` (proxy middleware) | ❌ Masih bisa terbuka |
 
 ### S2 - Pilih Entitas & Kolom
 

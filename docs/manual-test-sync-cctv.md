@@ -73,11 +73,11 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Tab A: edit `UJI-01` → Status **"Aktif"** → **"Simpan Perubahan"** | Badge `UJI-01` = **Aktif** |x (catatan: ketika status badge pemeliharan ingin diubah ke aktif melalui halaman cctv assets gagal, karna ada yang dibuat gagal dari 9 task, tetapi jika diubah ke nonaktif bisa, hanya ke aktif yang tidak bisa, toast menampilkan informasi data berhasil dirubah, tetapi hasilnya masih pemeliharan)|
-| 2 | Tab B: buat tugas `UJI-01` ("Catat Pemeliharaan") → tugaskan ke teknisi | Status **"Dalam proses"** | ✓|
-| 3 | Teknisi: buka baris → ikon **centang** → pada item ke-5 ("Pengecekan kualitas gambar") klik **"Bermasalah"** → isi Catatan (wajib) → **"Lanjut"**; item lain **"Normal / OK"** | Tombol Lanjut aktif setelah memilih hasil + catatan | ✓ |
-| 4 | Tahap foto → 1 gambar → **"Selesaikan Tugas"** | Log tersimpan | ✓ |
-| 5 | Cek Tab B | Status log = **"Perlu Tindak Lanjut"** | ✓ |
+| 1 | Tab A: edit `UJI-01` → Status **"Aktif"** → **"Simpan Perubahan"** | Badge `UJI-01` = **Aktif** |❌ (catatan: ketika status badge pemeliharan ingin diubah ke aktif melalui halaman cctv assets gagal, karna ada yang dibuat gagal dari 9 task, tetapi jika diubah ke nonaktif bisa, hanya ke aktif yang tidak bisa, toast menampilkan informasi data berhasil dirubah, tetapi hasilnya masih pemeliharan)|
+| 2 | Tab B: buat tugas `UJI-01` ("Catat Pemeliharaan") → tugaskan ke teknisi | Status **"Dalam proses"** | ✅|
+| 3 | Teknisi: buka baris → ikon **centang** → pada item ke-5 ("Pengecekan kualitas gambar") klik **"Bermasalah"** → isi Catatan (wajib) → **"Lanjut"**; item lain **"Normal / OK"** | Tombol Lanjut aktif setelah memilih hasil + catatan | ✅ |
+| 4 | Tahap foto → 1 gambar → **"Selesaikan Tugas"** | Log tersimpan | ✅ |
+| 5 | Cek Tab B | Status log = **"Perlu Tindak Lanjut"** | ✅ |
 | 6 | Cek Tab A | Badge `UJI-01` berubah otomatis **Aktif → Pemeliharaan** | ✅ (verifikasi kode + audit nyata: "Status CCTV diubah otomatis dari 'aktif' ke 'pemeliharaan' karena tugas pemeliharaan gagal — ada item checklist tidak OK") |
 
 ### S3 — Pengecekan lapangan (scan QR): ada item "Bermasalah" → CCTV menjadi `pemeliharaan`
@@ -86,9 +86,9 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 
 | # | Langkah (Tab A = Aset CCTV) | Hasil yang diharapkan | Hasil nyata |
 |---|------------------------------|------------------------|-------------|
-| 1 | Tab A: edit `UJI-01` → Status **"Aktif"** → **"Simpan Perubahan"** | Badge = **Aktif** | x|
-| 2 | Tab A → **"Pindai QR"** → pindai QR `UJI-01` (atau input manual) | CCTV teridentifikasi; muncul tombol **"Maintenance"** |✓ |
-| 3 | Klik **"Maintenance"** → wizard **"Pengecekan Lapangan"** terbuka → item ke-2 ("Pengecekan pasokan listrik") klik **"Bermasalah"** + catatan → sisanya **"Normal / OK"** → foto → **"Selesaikan Pengecekan"** | Pengecekan tersimpan; toast sukses |✓ |
+| 1 | Tab A: edit `UJI-01` → Status **"Aktif"** → **"Simpan Perubahan"** | Badge = **Aktif** | ❌|
+| 2 | Tab A → **"Pindai QR"** → pindai QR `UJI-01` (atau input manual) | CCTV teridentifikasi; muncul tombol **"Maintenance"** |✅ |
+| 3 | Klik **"Maintenance"** → wizard **"Pengecekan Lapangan"** terbuka → item ke-2 ("Pengecekan pasokan listrik") klik **"Bermasalah"** + catatan → sisanya **"Normal / OK"** → foto → **"Selesaikan Pengecekan"** | Pengecekan tersimpan; toast sukses |✅ |
 | 4 | Cek Tab A | Badge `UJI-01` berubah otomatis **Aktif → Pemeliharaan** | ✅ (verifikasi kode + audit nyata: "Status CCTV diubah otomatis dari 'aktif' ke 'pemeliharaan' karena hasil pengecekan lapangan memerlukan perhatian") |
 | 5 | Cek halaman **Pengecekan Lapangan** (`/field-maintenance`, admin) | Baris pengecekan baru muncul | ✅ |
 | 6 | Cek lonceng **Pemberitahuan** (sidebar, admin) | Ada notifikasi hasil pengecekan "butuh perhatian" | ✅ (nyata — notifikasi `FIELD_CHECK_ATTENTION` diterima admin) |
@@ -110,8 +110,8 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
 | 1 | Tab A: pastikan `UJI-02` (dari P5) tetap berbadge **Nonaktif**; biarkan tab terbuka | Badge = Nonaktif | ✅ |
-| 2 | Tab B: buat tugas `UJI-02` → tugaskan → teknisi complete dengan **SEMUA** "Normal / OK" → foto → **"Selesaikan Tugas"** | Log = **"Selesai"** | ⚠️ Tidak dapat diuji (butuh browser interaktif) |
-| 3 | Tab B: buat tugas kedua untuk `UJI-02` → tugaskan → complete dengan item "Bermasalah" → foto → **"Selesaikan Tugas"** | Log = **"Perlu Tindak Lanjut"** | ⚠️ Tidak dapat diuji (butuh browser interaktif) |
+| 2 | Tab B: buat tugas `UJI-02` → tugaskan → teknisi complete dengan **SEMUA** "Normal / OK" → foto → **"Selesaikan Tugas"** | Log = **"Selesai"** | ✅
+| 3 | Tab B: buat tugas kedua untuk `UJI-02` → tugaskan → complete dengan item "Bermasalah" → foto → **"Selesaikan Tugas"** | Log = **"Perlu Tindak Lanjut"** | ✅
 | 4 | Cek Tab A setelah kedua penyelesaian | Badge `UJI-02` **tetap Nonaktif** — tidak berubah sama sekali | ✅ (verifikasi kode — guard `current == "nonaktif" → return nil` di `cctv_sync.go:38-40`; tidak ada audit `UPDATE_CCTV` ke nonaktif) |
 
 ### S6 — Uji konservatif: transisi ulang `nonaktif → aktif` tetap dijaga
@@ -121,7 +121,7 @@ Beri tanda centang pada kolom **Hasil nyata** sesuai pengamatan (`✓` lulus / `
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
 | 1 | Tab A: (opsional) edit `UJI-02` ke **"Aktif"** lalu kembali ke **"Nonaktif"** → **"Simpan Perubahan"** | Badge `UJI-02` = **Nonaktif** | ✅ |
-| 2 | Ulangi S5 langkah 2–3 (complete semua OK + complete dengan item bermasalah) | Log = "Selesai" lalu "Perlu Tindak Lanjut" | ⚠️ Tidak dapat diuji (butuh browser interaktif) |
+| 2 | Ulangi S5 langkah 2–3 (complete semua OK + complete dengan item bermasalah) | Log = "Selesai" lalu "Perlu Tindak Lanjut" | ✅
 | 3 | Cek Tab A | Badge `UJI-02` **tetap Nonaktif** | ✅ (verifikasi kode — konservatif) |
 
 ### S7 — Verifikasi Audit Log & data tersimpan

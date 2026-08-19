@@ -88,11 +88,11 @@ npm run lint && npm run build
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Pastikan ada ≥ 2 site dengan data berbeda (mis. site OIKN & site BPN) | Kedua site memiliki CCTV/log sendiri-sendiri | ⚠️ TIDAK DAPAT DIBUKTIKAN SEPENUHNYA — semua data produksi berada di site OIKN; site uji "Kawasan Balikpapan" (BPN) dibuat lalu di-soft-delete setelah verifikasi CRUD (tanpa data) |
-| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | ⚠️ SEBAGIAN — lihat S4 #4: header `X-Site-ID` dikirim frontend, tapi `SiteContext()` belum terpasang di route `/api/cctv` → daftar CCTV saat ini TIDAK terfilter per site |
+| 1 | Pastikan ada ≥ 2 site dengan data berbeda (mis. site OIKN & site BPN) | Kedua site memiliki CCTV/log sendiri-sendiri |✅|
+| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | ⚠️ Aset CCTV tidak di bisa di sortir dan terlihat dari kawasan|
 | 3 | Catat kode CCTV yang terlihat | Ada minimal 1 CCTV milik site A | ✅ |
-| 4 | Pilih site B di dropdown, buka daftar CCTV | CCTV site B tampil; **CCTV site A TIDAK tampil** | ⚠️ TIDAK TERVERIFIKASI — tidak ada site kedua berisi data di produksi; plus keterbatasan filter (S4 #4) |
-| 5 | Ulangi untuk maintenance log & zona | Log/zona site A tidak tampil saat memilih site B (isolasi data berjalan) | ⚠️ TIDAK TERVERIFIKASI — sama seperti #4; filter site pada route log/zona juga belum aktif di produksi |
+| 4 | Pilih site B di dropdown, buka daftar CCTV | CCTV site B tampil; **CCTV site A TIDAK tampil** | ⚠️ Saat di filter per kawasan, tetap saja semua kawasan yang tertampil
+| 5 | Ulangi untuk maintenance log & zona | Log/zona site A tidak tampil saat memilih site B (isolasi data berjalan) | ⚠️ Filtering belum berfungsi untuk dropdown kawasan
 
 ### S6 - Endpoint daftar site
 

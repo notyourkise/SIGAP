@@ -101,8 +101,8 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 |---|---------|------------------------|-------------|
 | 1 | Buka `/sla` sebagai admin | Kartu ringkasan (rata-rata kepatuhan, pelanggaran, teknisi dinilai) tampil | ✅ |
 | 2 | Cek chart bar kepatuhan bulanan | Bar chart menampilkan compliance rate per bulan (6 bulan terakhir) | ✅ (verifikasi kode — recharts `BarChart` di `sla/page.tsx`) |
-| 3 | Cek tabel pelanggaran SLA | Tugas yang melewati deadline tampil dengan detail CCTV, jenis, teknisi, status, deadline, jam overdue | ✅ |
-| 4 | Cek ranking teknisi | Ranking diurutkan dari kepatuhan tertinggi dengan progress bar | ✅ (verifikasi kode — `technician_ranking` + `useSortableRows`) |
+| 3 | Cek tabel pelanggaran SLA | Tugas yang melewati deadline tampil dengan detail CCTV, jenis, teknisi, status, deadline, jam overdue | ⚠️ Belum ada data yang terlihat |
+| 4 | Cek ranking teknisi | Ranking diurutkan dari kepatuhan tertinggi dengan progress bar | ⚠️ Belum ada data yang terlihat (verifikasi kode — `technician_ranking` + `useSortableRows`) |
 | 5 | Buka `/sla` sebagai teknisi langsung via URL | Diarahkan kembali ke `/dashboard` (proxy middleware) | ✅ |
 
 ### S7 - Peringatan SLA 75% (SLA_WARNING)

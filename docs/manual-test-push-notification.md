@@ -59,7 +59,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
 | 1 | Klik "Aktifkan" | Browser menampilkan prompt izin notifikasi | ✅ |
-| 2 | Pilih "Izinkan" | Status berubah menjadi aktif; muncul pesan "Aktif — Anda akan menerima notifikasi push" | ✅ |
+| 2 | Pilih "Izinkan" | Status berubah menjadi aktif; muncul pesan "Aktif — Anda akan menerima notifikasi push" |❌ Tidak aktif dan ada pesan "Failed to execute 'subscribe' on 'PushManager': The provided applicationServerKey is not valid."|
 | 3 | Cek DevTools → Application → Service Workers → Push | Terdapat subscription dengan endpoint aktif | ✅ |
 | 4 | Cek database `push_subscriptions` | Terdapat baris baru dengan `user_id`, `endpoint`, `key_p256dh`, `key_auth` | ✅ |
 
@@ -69,7 +69,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 |---|---------|------------------------|-------------|
 | 1 | Admin membuat log pemeliharaan lalu menugaskan ke teknisi | Teknisi yang berlangganan push menerima notifikasi OS "tugas baru" | ✅ |
 | 2 | Buka notifikasi | Service worker membuka halaman `/maintenance` (tujuan berdasarkan reference_type) | ✅ |
-| 3 | Cek bell notifikasi in-app | Notifikasi in-app juga muncul (push + in-app berjalan beriringan) | ✅ |
+| 3 | Cek bell notifikasi in-app | Notifikasi in-app juga muncul (push + in-app berjalan beriringan) | ❌ Belum berhasil |
 
 ### S4 - Push saat eskalasi overdue
 
@@ -105,16 +105,16 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Terima notifikasi push | Judul & isi (body) sesuai notifikasi in-app yang dibuat backend | ✅ |
-| 2 | Klik notifikasi saat aplikasi terbuka di tab lain | Tab difokuskan dan diarahkan ke halaman sesuai reference_type | ✅ |
-| 3 | Klik notifikasi saat aplikasi tertutup | Tab baru terbuka menuju halaman tujuan | ✅ |
+| 1 | Terima notifikasi push | Judul & isi (body) sesuai notifikasi in-app yang dibuat backend | ❌ Belum berhasil |
+| 2 | Klik notifikasi saat aplikasi terbuka di tab lain | Tab difokuskan dan diarahkan ke halaman sesuai reference_type | ❌ Belum berhasil |
+| 3 | Klik notifikasi saat aplikasi tertutup | Tab baru terbuka menuju halaman tujuan | ❌ Belum berhasil |
 
 ### S9 - Keamanan & scope per user
 
 | # | Langkah | Hasil yang diharapkan | Hasil nyata |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai teknisi A, aktifkan push | Hanya teknisi A yang menerima push miliknya | ✅ |
-| 2 | Tugaskan tugas ke teknisi B | Teknisi A tidak menerima push tugas B (scope per user) | ✅ |
+| 1 | Login sebagai teknisi A, aktifkan push | Hanya teknisi A yang menerima push miliknya | ❌ Belum bisa dicoba |
+| 2 | Tugaskan tugas ke teknisi B | Teknisi A tidak menerima push tugas B (scope per user) | ❌Belum bisa dicoba |
 | 3 | Periksa endpoint `/api/push/subscribe` via Swagger | Endpoint protected (401 tanpa sesi); hanya user yang login dapat subscribe | ✅ |
 
 ## 4. Kriteria Lulus
