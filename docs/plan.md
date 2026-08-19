@@ -2,7 +2,7 @@
 
 ## 1. Identitas Sistem
 - **Nama Proyek:** SIGAP
-- **Kepanjangan:** Sistem Identifikasi Gangguan Aset Pusat
+- **Kepanjangan:** Sistem Informasi Gangguan & Aset Pusat
 - **Tujuan Utama:** Mengelola, memantau, dan mencatat riwayat pemeliharaan aset CCTV kawasan IKN secara terpusat.
 - **Arsitektur Repositori:** Monorepo (menggabungkan Frontend dan Backend dalam satu wadah).
 

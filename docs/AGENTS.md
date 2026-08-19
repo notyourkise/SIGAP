@@ -1,4 +1,4 @@
-# Panduan Agent AI untuk Proyek SIGAP (Sistem Informasi & Inventaris CCTV Terpadu)
+# Panduan Agent AI untuk Proyek SIGAP (Sistem Informasi Gangguan & Aset Pusat)
 
 Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codebase SIGAP. Bacalah dokumen ini secara saksama agar Anda dapat memahami arsitektur, konvensi, dan aturan proyek ini sebelum mulai berkontribusi.
 
@@ -6,7 +6,7 @@ Selamat datang, Agent AI. Dokumen ini adalah panduan komprehensif mengenai codeb
 > Dokumen ini diperbarui menyusul Fase 2 (hardening keamanan: migrasi token ke cookie httpOnly + CSRF), Fase 3 (fitur: unifikasi model `assets` → `cctv`, dashboard, profil, laporan PDF, dll), Fase 9 (streaming CCTV real-time: MediaMTX service, API stream admin-only, komponen WHEPPlayer/StreamModal/StreamGridView), dan Sprint 40 (AI Feature Takedown: fitur AI detection dihapus — sistem kembali ke pure CCTV management). Status terbaru setiap item perbaikan & pengembangan ada di `docs/ROADMAP.md` dan `docs/SECURITY-AUDIT.md`.
 
 ## 1. Gambaran Umum Sistem
-- **Nama**: SIGAP (Sistem Informasi & Inventaris CCTV Terpadu)
+- **Nama**: SIGAP (Sistem Informasi Gangguan & Aset Pusat)
 - **Tujuan**: Platform web untuk manajemen, inventarisasi, dan pemeliharaan perangkat CCTV secara terpusat.
 - **Arsitektur**: Monorepo dengan 3 komponen utama:
   - **Backend**: REST API yang dibangun menggunakan Go Fiber, berlokasi di direktori `backend/`.
@@ -401,7 +401,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 | Parameter | Nilai |
 |-----------|-------|
 | **Host NVR** | `36.91.27.35:554` (Hikvision) |
-| **Kredensial NVR** | `admin:hik12345` (tersimpan terenkripsi AES-256 di DB) |
+| **Kredensial NVR** | `<NVR_USERNAME>:<NVR_PASSWORD>` (nilai nyata wajib disimpan sebagai secret; password per-CCTV terenkripsi AES-256 di DB) |
 | **Protocol** | RTSP over TCP |
 | **Pembedaan kamera** | Channel port 1–35 → `channelID = channelPort × 100 + streamType` |
 | **Zero-Transcoding** | ✅ WAJIB — MediaMTX bertindak sebagai RTSP→WebRTC relay murni. **DILARANG** mengaktifkan FFmpeg transcoding. Kamera/NVR dikonfigurasi hardcoded H.264. |
@@ -420,7 +420,7 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 | Tipe | ICMP Ping Berkala | RTSP Options Probe | Keterangan |
 |------|-------------------|-------------------|------------|
 | **Metro-E** (`10.20.105.x`) | ✅ Ya — tiap 2 menit | ✅ Ya | Jaringan dedicated, aman di-probe |
-| **GSM** (IP publik/non-Metro-E) | ❌ TIDAK | ⚠️ Opsional — interval panjang (≥30 menit) | Hemat kuota data seluler |
+| **GSM** (IP publik/non-Metro-E) | ❌ TIDAK | ❌ TIDAK | Wajib pasif melalui state MediaMTX lokal; jangan menyentuh kamera/NVR GSM |
 
 #### Cara Identifikasi Tipe Jaringan
 
@@ -452,9 +452,10 @@ func isMetroE(cctv models.CCTV) bool {
 | D9   | `10.20.105.54` | D17  | `10.20.105.63` |
 | D19  | `10.20.105.60` | D28  | `10.20.105.70` |
 | D23  | `10.20.105.65` | D30  | `10.20.105.68` |
+| D38  | `10.20.105.57` | — | — |
 > [!IMPORTANT]
 > **Addendum Kebijakan Metro-E vs GSM — Probe Strategy Final (dikonfirmasi 2026-08-13):**
-> Implementasi `RunRTSPProber` yang sudah ada HARUS di-patch mengikuti strategi berikut:
+> Implementasi `RunRTSPProber` telah di-patch dan wajib mempertahankan strategi berikut:
 >
 > | Tipe | Cara Identifikasi | Probe Method | Interval | Konsumsi Data GSM |
 > |------|-------------------|-------------|----------|-------------------|
@@ -494,7 +495,7 @@ func isMetroE(cctv models.CCTV) bool {
 > **Branch:** `bugfix/rtsp-probe-metro-gsm-strategy`
 > **Prasyarat:** Sprint 37 sudah selesai (stream_probe.go sudah ada)
 > **Estimasi:** 1 hari kerja
-> **Status:** 🔲 Belum dimulai
+> **Status:** ✅ Selesai (2026-08-13, backend `0.63.0`)
 
 | Task | Deliverable |
 |------|-------------|
@@ -509,10 +510,11 @@ func isMetroE(cctv models.CCTV) bool {
 #### GSM Safety Rules
 
 ```
-✅ Boleh: RTSP probe sesekali (≥30 menit) untuk deteksi offline berat
 ✅ Boleh: Stream terbuka SAAT user aktif menonton (on-demand)
 ❌ Dilarang: ICMP ping berkala (tiap menit/2 menit)
+❌ Dilarang: RTSP OPTIONS/probe langsung ke kamera atau NVR GSM
 ❌ Dilarang: background-stream tanpa viewer
+✅ Wajib: Status GSM berasal dari MediaMTX path list + last-active tracking di VPS
 ✅ Wajib: Auto-close stream GSM saat popup/modal ditutup (existing: sourceOnDemandCloseAfter: 30s)
 ```
 
@@ -537,7 +539,7 @@ Urutan prioritas yang telah disepakati dengan user:
 ```
 
 > [!NOTE]
-> **Sprint 40 — AI Feature Takedown (2026-08-13):** Fitur AI detection (person counting, bounding box, YOLOv8) telah **dihapus** dari SIGAP — sistem kembali ke pure CCTV management. Fase 14 kini hanya berisi **Live Status** (Sprint 37 ✅) + **AI Takedown** (Sprint 40 🚧); Sprint 38 & 39 (AI Microservice & Frontend AI Overlay) **DIBATALKAN**. Lihat `docs/ROADMAP.md` Fase 14.
+> **Sprint 40 — AI Feature Takedown (2026-08-13):** Fitur AI detection (person counting, bounding box, YOLOv8) telah **dihapus** dari SIGAP — sistem kembali ke pure CCTV management. Fase 14 selesai dengan **Live Status** (Sprint 37 ✅), **Metro-E/GSM Probe Patch** (Sprint 37-PATCH ✅), dan **AI Takedown** (Sprint 40 ✅); Sprint 38 & 39 (AI Microservice & Frontend AI Overlay) **DIBATALKAN**. Lihat `docs/ROADMAP.md` Fase 14.
 
 ---
 _Dokumen ini adalah referensi sentral untuk AI. Patuhi segala aturan, instruksi arsitektural, dan gotchas teknis yang tercantum di atas._

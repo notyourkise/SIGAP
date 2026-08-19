@@ -3,6 +3,33 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.49] — 2026-08-19 — Register temuan black-box, audit manual test, dan rencana remediasi
+
+### Perubahan
+
+- **Temuan black-box**: 25 laporan production dirangkum pada `docs/audits/BLACKBOX-FINDINGS-2026-08-19.md` beserta prioritas, tingkat kepastian akar sebab, solusi yang disarankan, dan acceptance criteria.
+- **Audit manual test**: hasil review 25 berkas `docs/manual-test-*.md` dirangkum pada `docs/audits/MANUAL-TEST-AUDIT-SUMMARY.md`; file manual test asli belum diubah.
+- **Indeks konsolidasi**: irisan dan dependensi kedua sumber temuan dipetakan pada `docs/audits/CONSOLIDATED-FINDINGS-INDEX.md` tanpa menggabungkan atau menghilangkan ID asli.
+- **Execution plan**: `docs/plans/FINDINGS-REMEDIATION-PLAN.md` membagi pekerjaan menjadi baseline, P0, isolasi/RBAC, integritas workflow, notifikasi, laporan/UI, dan reformasi release acceptance.
+- **Batasan**: perubahan ini hanya dokumentasi audit dan perencanaan; tidak mengklaim bug production telah diperbaiki.
+
+Timestamp: 2026-08-19 WITA | Kategori: Besar, Dokumentasi + Quality Audit + Remediation Planning
+
+## [1.28.48] — 2026-08-19 — Sinkronisasi roadmap, identitas SIGAP, dan audit keamanan
+
+### Perubahan
+
+- **ROADMAP**: Fase 12, 13, 14, dan 15 diselaraskan dengan changelog serta implementasi; Sprint 37-PATCH, Sprint 40, dan Sprint 41 ditandai selesai.
+- **Identitas resmi**: seluruh penyebutan aktif diseragamkan menjadi "Sistem Informasi Gangguan & Aset Pusat" pada dokumentasi, laporan, template email, anotasi Swagger, dan artefak Swagger generated.
+- **Kebijakan jaringan**: aturan GSM ditegaskan menjadi zero direct probe; status hanya berasal dari MediaMTX/last-active, sementara probe aktif dua-menit khusus Metro-E.
+- **Kredensial dokumentasi**: nilai NVR nyata di `docs/AGENTS.md` diganti placeholder `<NVR_USERNAME>:<NVR_PASSWORD>`.
+- **SECURITY-AUDIT**: arsitektur diperbarui dari 4 menjadi 7 service, alur web/mobile/integrasi ditambahkan, dan risiko terbuka terbaru dicatat tanpa memuat nilai rahasia.
+- **Manual-test**: seluruh 25 dokumen `docs/manual-test-*.md` diaudit secara read-only; dokumen belum diubah karena temuan akan direncanakan pada tahap berikutnya.
+
+Detail backend: `backend/changelog.md` [0.64.1].
+
+Timestamp: 2026-08-19 WITA | Kategori: Sedang, Dokumentasi + Security Review
+
 ## [1.28.47] — 2026-08-13 — Perbaikan UI & data operasional (kawasan/zona, checklist per kawasan, SLA 404, probe live)
 
 ### Perubahan

@@ -1,5 +1,31 @@
 # Changelog - Backend SIGAP
 
+## [0.64.1] - 2026-08-19
+
+### Koreksi identitas resmi SIGAP pada keluaran backend
+
+perubahan yang dilakukan: **Menyeragamkan kepanjangan SIGAP menjadi "Sistem Informasi Gangguan & Aset Pusat" pada laporan PDF, template email, anotasi API, dan dokumentasi Swagger generated.**
+
+before:
+- Sebagian keluaran backend masih memakai kepanjangan SIGAP lama yang tidak sesuai keputusan produk.
+
+after:
+- Kop laporan PDF, footer/header email, anotasi Swagger, serta `docs.go`/`swagger.json`/`swagger.yaml` memakai nama resmi yang sama.
+
+timestamp: 2026-08-19 WITA
+kategori: Kecil, Backend (Copy/Branding)
+file yang diubah:
+- backend/handlers/report.go
+- backend/main.go
+- backend/templates/daily_summary.html
+- backend/templates/maintenance_assigned.html
+- backend/templates/overdue_escalation.html
+- backend/templates/stock_low.html
+- backend/templates/stream_down.html
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+
 ## [0.64.0] - 2026-08-13
 
 ### Perbaikan: input kawasan/zona CCTV, checklist per kawasan, fix SLA 404 & probe offline (Sprint 40 cleanup)
@@ -1737,8 +1763,8 @@ before:
 - Kop laporan hanya berupa 2 baris teks (judul + nama sistem) tanpa logo maupun alamat instansi.
 - Baris tabel memakai perkiraan jumlah baris lipat teks "Tindakan" berbasis hitungan karakter (44 karakter/baris) yang bisa meleset, sehingga teks menimpa garis/baris berikutnya; hanya ada garis bawah (tanpa border sel) sehingga tabel tampak tidak simetris; pindah halaman hanya dicek dengan ambang kasar `GetY() > 260` sehingga sel bisa terpotong di tengah saat pindah halaman.
 after:
-- Kop surat resmi: logo IKN (`assets/nusantara-logo.png`, 691×996 px) di kiri, nama instansi "OTORITA IBU KOTA NUSANTARA" + sub "Sistem Identifikasi Gangguan Aset Pusat (SIGAP)", alamat lengkap (Kompleks Perkantoran Pemerintah IKN, Kab. Penajam Paser Utara, Provinsi Kalimantan Timur), website www.ikn.go.id (telp/email sebagai konstanta kosong yang siap diisi), ditutup garis ganda (tebal + tipis).
-- Judul laporan diubah "LAPORAN PEMELIHARAAN CCTV"; baris "Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN" yang lama dihapus karena sudah ada di kop.
+- Kop surat resmi: logo IKN (`assets/nusantara-logo.png`, 691×996 px) di kiri, nama instansi "OTORITA IBU KOTA NUSANTARA" + sub "Sistem Informasi Gangguan & Aset Pusat (SIGAP)", alamat lengkap (Kompleks Perkantoran Pemerintah IKN, Kab. Penajam Paser Utara, Provinsi Kalimantan Timur), website www.ikn.go.id (telp/email sebagai konstanta kosong yang siap diisi), ditutup garis ganda (tebal + tipis).
+- Judul laporan diubah "LAPORAN PEMELIHARAAN CCTV"; baris "Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN" yang lama dihapus karena sudah ada di kop.
 - Perhitungan tinggi baris tabel kini akurat memakai `pdf.SplitLines` (pembungkus teks engine yang sama dengan MultiCell), sehingga teks multi-baris tidak lagi menimpa baris berikutnya.
 - Setiap sel digambar border grid penuh (`Rect`) sehingga tabel simetris dan mudah dibaca.
 - Pindah halaman dilakukan per-baris dengan cek `yStart+cellHeight > pdfBreakY` sebelum menggambar, mencegah sel terpotong di tengah (aksi pindah halaman lama di loop dihapus).
