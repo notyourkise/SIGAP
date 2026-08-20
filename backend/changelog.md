@@ -1,5 +1,41 @@
 # Changelog - Backend SIGAP
 
+## [0.64.4] - 2026-08-20
+
+### Multi-Site Isolation & Security Fixes (BB-01 to BB-03 equivalent)
+
+**Multi-Site Isolation**: Model `Site` (nama, kode unik, alamat, koordinat, `is_default`) + join table `UserSite`; migrasi `000018_multi_site.idempoten` menciptakan site default "Kawasan OIKN" dan mengaitkan semua data existing; middleware `SiteContext()` membaca `X-Site-ID` header, validasi UUID & keberadaan site, set `c.Locals("site_id")`, filter opsional ke `GetAllCCTV`, `GetAllMaintenanceLogs`, `GetAllZones` (hanya aktif bila site_id valid); handler/rute CRUD `/api/sites` (admin-only untuk tulis, dropdown untuk semua role); endpoint `POST /api/sites/:id/assign-users` (assign teknisi ke kawasan); seeder `EnsureDefaultSite(idempoten)`.
+
+**Security Bug #1 (NVR Credential Removal)**: Removed hardcoded NVR IP `36.91.27.35` from code comments & documentation; credential now via environment variable `RTSP_NVR_USER` fallback to `<NVR_USERNAME>` placeholder; AES-256 encrypted `rtsp_password` di-exclude from all JSON responses (`json:"-"`); consistent secret management via Docker secrets (`./secrets/*`) or `.env`.
+
+**Security Bug #2 (Metrics Protection)**: Middleware `IsTrustedMetricsAccess()` added to exclude non-trusted IPs from `/api/metrics` access (trusted: `127.0.0.1`, `::1`, `172.28.0.0/16`, `10.0.0.0/8`); protection prevents internal metrics exposure (DB pool, WS connections, storage bytes) to unauthorized external parties.
+
+**Security Bug #3 (Backup Encryption)**: Updated `scripts/backup.sh` & `scripts/restore.sh` to support AES-256-GCM encryption via GPG (environment variable `BACKUP_ENCRYPTION_KEY`); database dump → gzip → encrypt → `backups/db/sigap_<TS>.sql.gz.gpg`; uploads tar+gzip→encrypt → `backups/uploads/uploads_<TS>.tar.gz.gpg`; restore reverses decryption; documentation `docs/BACKUP.md` expanded with encryption guide.
+
+**Documentation**: Manual test V2 docs created in `Testing-Manual-V2/` directory for Multi-Site Isolation & Backup Encryption formal blackbox testing.
+
+timestamp: 2026-08-20 19:45 UTC+8
+kategori: Besar, Backend (Security Hardening + Multi-Site Feature)
+file yang diubah:
+- backend/models/site.go (baru)
+- backend/migrations/000018_multi_site.up.sql (baru)
+- backend/migrations/000018_multi_site.down.sql (baru)
+- backend/middleware/site.go (baru)
+- backend/middleware/site_test.go (baru)
+- backend/handlers/site.go (baru)
+- backend/handlers/site_test.go (baru)
+- backend/routes/site.go (baru)
+- backend/main.go (registrasi site routes + seeder)
+- backend/utils/rtsp.go (credential updated)
+- backend/models/cctv.go (site_id FK)
+- backend/middleware/metrics.go (IsTrustedMetricsAccess added)
+- scripts/backup.sh (GPG encryption support)
+- scripts/restore.sh (GPG decryption support)
+- docs/BACKUP.md (encryption section expanded)
+- docs/changelog.md
+- backend/changelog.md
+alasan perubahan: Task 12.2 Multi-Site Isolation operational requirement per user prioritization; Security hardening compliance (remove hardcoded credentials, protect metrics, encrypt backups).
+
 ## [0.64.3] - 2026-08-20
 
 ### Perbaikan kontrak MediaMTX v1.20 dan status streaming

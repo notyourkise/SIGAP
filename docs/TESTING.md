@@ -1,7 +1,8 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-20 (Task 1A: regression lifecycle QR memastikan rotasi tetap menunjuk ID CCTV yang sama, scanner menolak payload lama, dan service worker tidak menyimpan/menyajikan QR atau respons `no-store`). Sebelumnya diperbarui 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64).
+> Diperbarui: 2026-08-20 (Task 1A: regression lifecycle QR memastikan rotasi tetap menunjuk ID CCTV yang sama, scanner menolak payload lama, dan service worker tidak menyimpan/menyajikan QR atau respons `no-store`). Sebelumnya diperbarui 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). 
+> **Update Terbaru 2026-08-20**: Security Hardening patches (metrics IP allowlist protection, backup encryption via GPG, NVR credential removal); Multi-Site Isolation tests added (site context middleware + handlers). Total file test meningkat menjadi 67 (+3 files baru). Manual Test V2 organization di `docs/Testing-Manual-V2/`.
 
 ## Tata Kelola Manual/Black-box
 
@@ -157,7 +158,23 @@ npm run test:sw
 | `middleware` | `apikey_test.go` (Task 12.1, Sprint 29) | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals terisi, scope kurang → 403) |
 | `routes` | `routes_test.go` (Sprint 29, diperluas) | `TestAPIKeyRoutesRequireAuthentication`, `TestWebhookRoutesRequireAuthentication`, registrasi `SetupAPIKeyRoutes`/`SetupWebhookRoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
 | `handlers` | `site_test.go` (Task 12.2, Sprint 30) | `CreateSite` (sukses → 201, validasi kode/nama kosong → 400), `GetAllSites` (paginasi + `is_default`), `GetAllSitesForSelect` (dropdown `GET /api/sites/all`), `UpdateSite` (sukses), `DeleteSite` (soft delete), `DeleteSite` site default → ditolak, `AssignUsersToSite` (sukses → relasi dalam transaksi, user bukan teknisi → 400) |
-| `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
+| `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi); validasi `X-Site-ID` header → UUID format check + site existence check → success/set locals; header missing/query param fallback |
+| `middleware` | `metrics_test.go` (Security Fix #2) | `IsTrustedMetricsAccess`: IP localhost (`127.0.0.1`, `::1`) → allow; Docker network (`172.28.0.x`, `10.0.0.x`) → allow; external IP → deny with 403; edge case IPv6; protection prevents metrics exposure to unauthorized networks |
+| `handlers` | `infra_integration_test.go` (Security Task P5+P10+P14+P16) | Webhook log cleanup retention, QR rotation endpoint, API key regeneration - all operational hardening features |
+
+**Total: 67 file test** (14 utils, 9 middleware, 34 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+
+### Matriks Multi-Site Isolation (Fase 12, Task 12.2 / Sprint 30)
+
+Ringkasan cakupan test multi-site isolation:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `middleware/site_test.go` | 12.2 | `SiteContext` middleware: `X-Site-ID` valid header → set locals `site_id`; invalid UUID header → reject 401; missing header + query param `?site_id=` fallback → valid/invalid; site not found → 401 |
+| `handlers/site_test.go` | 12.2 | CRUD sites admin-only (CRUD: sukses, validation empty name/code → 400, code duplicate incl soft-delete → 400, delete default site →拒绝, rollback on error), `GetAllSites` paginasi dengan `user_count`, `GetAllSitesForSelect` dropdown data, `AssignUsersToSite` transactional relation update (user bukan teknisi → 400) |
+| `handlers/cctv_test.go` (diperluas) | 12.2 | Filter CCTV by `site_id` dari `X-Site-ID` local (valid site_id → scoped results; no site_id → global results); payload create/update accepts `site_id` field |
+| `handlers/maintenance_test.go` (diperluas) | 12.2 | Maintenance logs filtered by site context (same logic as CCTV) |
+| `handlers/zone_test.go` (diper-expanded) | 12.2 | Zones filtered by site context; zone assignment to site (bulk assign zones to site) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 | `handlers` | `stream_probe_test.go` (Task 14A, Sprint 37) | `ProbeRTSPHost` (host reachable via listener TCP → true, port tak terpakai → false), `ProbeRTSPChannel` (response RTSP/1.0 200 → true, koneksi gagal → false) — via `startTestRTSPListener` mock; (catatan: `utils/rtsp_probe_test.go` untuk `RunRTSPProber`/`GetLiveStatus` dijadwalkan pada Task 14A) |
 
@@ -350,5 +367,29 @@ Prioritas lanjutan:
 2. **WebSocket revocation:** test token version mismatch saat handshake.
 3. **Migration data penuh:** test `MigrateMaintenanceToCCTV` sampai update `maintenance_logs.cctv_id`.
 
+### Manual Test Organization (V1 & V2)
+
+**Testing-Manual-V2** (Formal Blackbox Testing):
+- `manual-test-multi-site-isolation-v2.md`: 344 lines — Multi-Site Isolation operational testing
+- `manual-test-backup-encryption-v2.md`: 329 lines — Backup encryption/decryption workflow validation
+- Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
+
+**Testing-Manual-V1** (Legacy Documentation):
+- API & Integration tests (API keys, webhooks, calendar, email, report builder, etc.)
+- Core Features tests (CCTV, maintenance, health score, geotag, etc.)
+- Infrastructure tests (backup, streaming, snapshot, etc.)
+
+### Security Fixes Coverage (2026-08-20 Patch)
+
+Tiga critical vulnerabilities telah ditangani:
+
+| Fix | Vulnerability | Status | Test Coverage |
+|-----|---------------|--------|--------------|
+| **#1** | Hardcoded NVR Credential Exposure | ✅ Patched | Unit tests verify `rtsp_password` excluded; code review confirms no plain-text in source/docs |
+| **#2** | Metrics Endpoint Public Access | ✅ Patched | New middleware test `IsTrustedMetricsAccess` (localhost/Docker network allowlist) |
+| **#3** | Unencrypted Backup Storage | ✅ Patched | Manual test V2 blackbox scenarios for encryption/decryption workflow (6+ scenarios) |
+
+---
+
 Referensi perencanaan: `docs/ROADMAP.md` Fase 4 (task 4.1–4.8). Catat setiap penambahan di
-`backend/changelog.md` dengan format before/after + timestamp WITA.
+`backend/changelog.md` dengan format before/after + timestamp UTC+8.
