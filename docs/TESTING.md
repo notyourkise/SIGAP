@@ -3,6 +3,65 @@
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
 > Diperbarui: 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). Sebelumnya diperbarui 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
 
+## Tata Kelola Manual/Black-box
+
+Bagian ini adalah kontrak formal untuk seluruh hasil pada `docs/manual-test-*.md`. Hasil sebelum **2026-08-20** adalah catatan historis/non-authoritative: pertahankan observasi yang berguna, tetapi jangan menganggapnya sebagai active run sampai direkam ulang dengan metadata dan evidence lengkap.
+
+### Vocabulary dan aturan status
+
+Hanya nilai status yang case-sensitive berikut yang boleh dipakai sebagai status test atau suite:
+
+- `PASS`: scenario executed against the recorded artifact/environment, actual equals expected, and an evidence path/link is recorded.
+- `FAIL`: scenario executed and actual differs from expected.
+- `BLOCKED`: execution was attempted but an external prerequisite prevented reaching the assertion; blocker evidence is recorded.
+- `NOT RUN`: no conforming runtime execution exists. Code inspection, unit-test review, or an old checkmark without complete metadata maps here, not to `PASS`.
+
+Sebelum eksekusi, suite berstatus `NOT RUN`. Setelah run dimulai, satu mandatory scenario yang bukan `PASS` membuat kesimpulan suite `FAIL`, termasuk bila scenario tersebut `BLOCKED` atau `NOT RUN`. Inspeksi kode dan unit test hanya boleh dicatat sebagai supporting evidence; keduanya bukan bukti black-box untuk `PASS`.
+
+Untuk catatan historis yang dipertahankan: failure runtime yang eksplisit dipetakan menjadi `FAIL` saat direkam ulang dengan kontrak formal; kegagalan prerequisite eksternal dipetakan menjadi `BLOCKED` bila blocker evidence tersedia; code inspection, unit-test review, checkmark lama, atau metadata/evidence yang hilang dipetakan menjadi `NOT RUN`.
+
+### Metadata eksekusi wajib
+
+Setiap execution record wajib memuat seluruh field berikut: test ID, owner, build SHA, artifact digest/ID, tester, timestamp WITA, environment, fixture prefix/data, cleanup result, expected, actual, evidence path/link, mandatory flag, scenario status, dan suite status. Nilai yang belum tersedia ditulis `NOT RECORDED`; status yang belum dijalankan ditulis `NOT RUN`.
+
+### Release gate dan production safety gate
+
+Release hanya boleh menyimpulkan suite berhasil bila setiap mandatory scenario berstatus `PASS` dengan expected, actual, dan evidence yang dapat ditelusuri.
+
+Destructive SQL, key regeneration/rotation, QR rotation, deletion, dan credential mutation **dilarang pada production**. Prosedur hanya boleh dijalankan bila environment bukan production dan target bukan `nexaspace.site`, fixture prefix `E2E-MTNN-` serta exact targets sudah dicatat, backup/recovery terverifikasi untuk perubahan data/key state, dan cleanup/rollback sudah didefinisikan serta akan dicatat. Bila salah satu prasyarat itu tidak tersedia, hentikan prosedur dan catat scenario sebagai `BLOCKED` beserta blocker evidence. Jangan menyalin credential, token, private key, RTSP password, atau payload production yang belum disanitasi.
+
+### Reusable Markdown execution-record template
+
+```markdown
+### Formal execution metadata
+
+| Field | Value |
+|---|---|
+| Test ID / Audit ID | MT-NN |
+| Capability owner | NOT RECORDED |
+| Build SHA | NOT RECORDED |
+| Artifact digest/ID | NOT RECORDED |
+| Tester | NOT RECORDED |
+| Timestamp WITA | NOT RECORDED |
+| Environment | NOT RECORDED |
+| Fixture prefix/data | E2E-MTNN- / NOT RECORDED |
+| Cleanup result | NOT RUN |
+| Expected | NOT RECORDED |
+| Actual | NOT RECORDED |
+| Evidence path/link | NOT RECORDED |
+| Mandatory flag | YES |
+| Scenario status | NOT RUN |
+| Status suite | NOT RUN |
+
+### Formal scenario record
+
+| ID | Mandatory | Expected | Actual | Evidence | Status |
+|---|---|---|---|---|---|
+| MT-NN-S1 | YES | NOT RECORDED | NOT RECORDED | NOT RECORDED | NOT RUN |
+
+Suite conclusion: sebelum eksekusi `NOT RUN`; setelah run dimulai, setiap mandatory scenario harus `PASS`, atau suite `FAIL`.
+```
+
 ---
 
 ## 1. Cara Menjalankan

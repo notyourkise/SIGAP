@@ -9,7 +9,7 @@
 
 - [x] Baseline lokal pada `5394ea0c543766aa9979115f899307076152fd12`: backend build/test/vet lulus; frontend lint 0 error (77 warning baseline) dan build lulus.
 - [x] Task 0.1 — artifact production, topologi edge, checkout SHA, image digest/ID, waktu runtime, port, dan konfigurasi non-secret telah dicatat.
-- [ ] Task 0.2 — belum dimulai; menunggu Task 0.1 selesai agar setiap hasil test dapat menunjuk artifact yang benar.
+- [x] Task 0.2 — governance manual/black-box formal, metadata contract, historical-status handling, dan safety guard selesai; tidak ada runtime PASS yang diciptakan.
 - [ ] Gelombang 1–7 — belum dimulai.
 
 ## Tujuan
@@ -66,6 +66,8 @@ Output:
 
 ### Task 0.2 — Tetapkan status test formal
 
+Status: **SELESAI — 2026-08-20**.
+
 Files:
 
 - Modify: `docs/TESTING.md`
@@ -80,8 +82,8 @@ Perubahan:
 
 Checkpoint:
 
-- Seluruh temuan MT-01–MT-25 memiliki owner dan skenario reproduksi.
-- Semua prosedur SQL/rotasi/key memiliki guard non-production.
+- [x] Seluruh temuan MT-01–MT-25 memiliki owner dan skenario reproduksi.
+- [x] Semua prosedur SQL/rotasi/key memiliki guard non-production.
 
 ## Gelombang 1 — P0 Dikerjakan Paralel
 

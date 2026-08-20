@@ -3,6 +3,17 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.51] — 2026-08-20 — Governance manual test formal (Task 0.2)
+
+### Perubahan
+
+- **Kontrak status manual/black-box**: `PASS`, `FAIL`, `BLOCKED`, dan `NOT RUN` kini memiliki definisi formal, metadata wajib, release gate, serta template execution record di `docs/TESTING.md`.
+- **25 manual-test**: setiap temuan MT-01–MT-25 memiliki owner, skenario reproduksi, metadata aktif dengan suite `NOT RUN`, formal scenario record, aturan historical/non-authoritative untuk hasil sebelum 2026-08-20, dan fixture prefix `E2E-MTNN-` yang sesuai.
+- **Safety gate**: prosedur SQL mutasi, rotasi/regenerasi key atau QR, deletion, dan credential mutation mensyaratkan environment non-production, target non-`nexaspace.site`, fixture exact target, backup/recovery, serta cleanup/rollback; jika tidak terpenuhi, statusnya `BLOCKED`.
+- **Batasan evidence**: inspeksi kode, review unit test, dan hasil legacy tidak dipromosikan menjadi runtime `PASS`; literal host/email/credential production pada manual-test yang diedit disanitasi.
+
+Timestamp: 2026-08-20 WITA | Kategori: Dokumentasi + Manual-Test Governance + Release Acceptance
+
 ## [1.28.50] — 2026-08-20 — Mulai remediasi: baseline dan provenance production
 
 ### Perubahan
