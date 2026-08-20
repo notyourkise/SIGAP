@@ -13,8 +13,9 @@ SIGAP (Sistem Informasi Gangguan & Aset Pusat) adalah sistem internal berbasis w
 mengelola, memantau, menginventarisasi, dan mencatat pemeliharaan CCTV kawasan IKN.
 
 **Arsitektur saat ini:** Monorepo dengan 7 service Docker: PostgreSQL 15, Redis 7, Go Fiber API,
-Next.js 16, Nginx TLS, backup cron, dan MediaMTX. Hanya Nginx yang memublikasikan port host
-(`80`/`443`); database, Redis, API, frontend, backup, dan MediaMTX berada di network internal.
+Next.js 16, Nginx TLS, backup cron, dan MediaMTX. Nginx memublikasikan HTTP/TLS (`80`/`443`)
+dan MediaMTX memublikasikan UDP `8189` untuk media ICE; database, Redis, API, frontend, backup,
+serta endpoint HTTP/API MediaMTX tetap berada di network internal.
 Akses browser resmi staging adalah `https://localhost`. Fitur AI detection dan service `sigap_ai`
 telah dihapus pada Sprint 40.
 
@@ -67,6 +68,17 @@ Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.
 - [ ] Acceptance agregat MT-11 masih menunggu skenario API key dan webhook; pengujian rotasi pada production tetap dilarang.
 
 Bukti runtime: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
+
+### 1.3 Hardening streaming MediaMTX — 2026-08-20
+
+- [x] Image MediaMTX dipin ke `1.20.0-ffmpeg`; konfigurasi memakai field v1.20 `rtspTransports`, `rtspTransport`, `available`, dan `online`.
+- [x] Kandidat ICE `webrtcAdditionalHosts` dikonfigurasi melalui environment deployment; nilainya tidak di-hardcode pada source.
+- [x] Respons start tidak lagi mengembalikan URL sumber RTSP/decrypted credential ke browser.
+- [x] Stop path memakai endpoint v1.20 dan bersifat idempotent ketika path sudah tidak ada.
+- [x] Simulator non-production bind loopback membuktikan WHEP, ICE/TCP, decoded frame, reconnect, dan cleanup tanpa membuka service staging ke internet.
+- [ ] Firewall UDP 8189, kandidat public, dan kebutuhan TURN/TLS pada production masih harus diverifikasi setelah deployment; jaringan seluler eksternal tetap `NOT RUN`.
+
+Bukti runtime: `docs/audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ---
 

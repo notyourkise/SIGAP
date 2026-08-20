@@ -240,7 +240,7 @@ services:
   # Service 7: MediaMTX — RTSP to WebRTC Proxy (Task 9.2)
   # ==========================================
   mediamtx:
-    image: bluenviron/mediamtx:latest-ffmpeg
+    image: bluenviron/mediamtx:1.20.0-ffmpeg
     container_name: sigap_mediamtx
     restart: unless-stopped
     volumes:
@@ -248,7 +248,9 @@ services:
     ports:
       - "8189:8189/udp"
     environment:
-      - MTX_PROTOCOLS=tcp
+      # Kandidat ICE harus berupa host/IP yang benar-benar dapat dijangkau
+      # browser. Isi IP publik atau DNS deployment pada root .env.
+      - MTX_WEBRTCADDITIONALHOSTS=${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:-}
     depends_on:
       api:
         condition: service_healthy

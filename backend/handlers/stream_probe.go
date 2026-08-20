@@ -69,7 +69,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		utils.Log.Warnf("⚠️ Gagal mengambil daftar path MediaMTX: %v — kamera GSM dianggap offline", err)
 	} else {
 		for _, p := range paths {
-			mediamtxPaths[p.Name] = p.Ready
+			mediamtxPaths[p.Name] = p.SourceReady()
 		}
 	}
 

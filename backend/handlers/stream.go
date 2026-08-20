@@ -166,12 +166,14 @@ func StartStream(c *fiber.Ctx) error {
 		Source:                   rtspURL,
 		SourceOnDemand:           true,
 		SourceOnDemandCloseAfter: "30s",
-		SourceProtocol:           "tcp",
+		RTSPTransport:            "tcp",
 	}
+	pathAlreadyRegistered := false
 	if err := streamClient.AddPath(path, pathCfg); err != nil {
 		// Path mungkin sudah terdaftar dari pemanggilan sebelumnya (restart modal
 		// atau auto-register). Bila sudah ada, anggap berhasil agar tidak 502.
 		if strings.Contains(err.Error(), "already exists") {
+			pathAlreadyRegistered = true
 			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
 		} else {
 			utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
@@ -179,6 +181,12 @@ func StartStream(c *fiber.Ctx) error {
 				"status":  "error",
 				"message": "Gagal menghubungi server streaming",
 			})
+		}
+	}
+	sourceReady := false
+	if pathAlreadyRegistered {
+		if info, err := streamClient.GetPath(path); err == nil {
+			sourceReady = info.SourceReady()
 		}
 	}
 
@@ -193,10 +201,12 @@ func StartStream(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"whep_url": "/stream/" + path + "/whep",
-			"path":     path,
-			"quality":  c.Query("quality", "sub"),
-			"source":   rtspURL,
+			"whep_url":           "/stream/" + path + "/whep",
+			"path":               path,
+			"quality":            c.Query("quality", "sub"),
+			"mediamtx_reachable": true,
+			"path_registered":    true,
+			"source_ready":       sourceReady,
 		},
 	})
 }
@@ -295,7 +305,7 @@ func StartAllStreams(c *fiber.Ctx) error {
 			Source:                   rtspURL,
 			SourceOnDemand:           true,
 			SourceOnDemandCloseAfter: "30s",
-			SourceProtocol:           "tcp",
+			RTSPTransport:            "tcp",
 		}
 		if err := streamClient.AddPath(path, pathCfg); err != nil {
 			// Path mungkin sudah terdaftar dari auto-register atau panggilan
@@ -400,35 +410,51 @@ func GetStreamStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Ambil daftar path dari MediaMTX untuk membangun peta path → PathInfo.
-	// Bila MediaMTX tidak dapat dihubungi, log peringatan & anggap semua tidak siap.
+	// Registrasi path dan kesiapan sumber adalah dua status berbeda. Path dapat
+	// terdaftar dengan benar sementara sumber on-demand belum mengirim frame.
+	registered := map[string]bool{}
+	configs, configErr := streamClient.ListPathConfigs()
+	if configErr != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil konfigurasi path dari MediaMTX: %v", configErr)
+	} else {
+		for _, cfg := range configs {
+			registered[cfg.Name] = true
+		}
+	}
+
 	pathMap := map[string]utils.PathInfo{}
-	if paths, err := streamClient.ListPaths(); err != nil {
-		utils.Log.Warnf("⚠️ Gagal mengambil daftar path dari MediaMTX: %v", err)
+	paths, pathErr := streamClient.ListPaths()
+	if pathErr != nil {
+		utils.Log.Warnf("⚠️ Gagal mengambil status path dari MediaMTX: %v", pathErr)
 	} else {
 		for _, p := range paths {
 			pathMap[p.Name] = p
 		}
 	}
+	mediamtxReachable := configErr == nil || pathErr == nil
 
 	result := make([]fiber.Map, 0, len(cctvs))
 	for _, cctv := range cctvs {
 		path := utils.BuildStreamPath(cctv.ID.String())
 		info, exists := pathMap[path]
-		ready := exists && info.Ready
+		ready := exists && info.SourceReady()
+		pathRegistered := registered[path] || exists
 		viewers := 0
 		if exists {
 			viewers = len(info.Readers)
 		}
 		result = append(result, fiber.Map{
-			"cctv_id":        cctv.ID.String(),
-			"nama":           cctv.Nama,
-			"kode_cctv":      cctv.KodeCCTV,
-			"stream_enabled": cctv.StreamEnabled,
-			"stream_active":  cctv.StreamEnabled && exists,
-			"stream_ready":   ready,
-			"viewers":        viewers,
-			"whep_url":       "/stream/" + path + "/whep",
+			"cctv_id":            cctv.ID.String(),
+			"nama":               cctv.Nama,
+			"kode_cctv":          cctv.KodeCCTV,
+			"stream_enabled":     cctv.StreamEnabled,
+			"stream_active":      cctv.StreamEnabled && ready,
+			"stream_ready":       ready,
+			"mediamtx_reachable": mediamtxReachable,
+			"path_registered":    pathRegistered,
+			"source_ready":       ready,
+			"viewers":            viewers,
+			"whep_url":           "/stream/" + path + "/whep",
 		})
 	}
 
@@ -461,21 +487,42 @@ func GetStreamURL(c *fiber.Ctx) error {
 	path := utils.BuildStreamPath(cctv.ID.String())
 	ready := false
 	viewers := 0
+	mediamtxReachable := false
 	if info, err := streamClient.GetPath(path); err == nil {
-		ready = info.Ready
+		mediamtxReachable = true
+		ready = info.SourceReady()
 		viewers = len(info.Readers)
 	} else {
 		utils.Log.Warnf("⚠️ Gagal mengambil info path %s dari MediaMTX: %v", path, err)
 	}
 
+	pathRegistered := false
+	if configs, err := streamClient.ListPathConfigs(); err == nil {
+		mediamtxReachable = true
+		for _, cfg := range configs {
+			if cfg.Name == path {
+				pathRegistered = true
+				break
+			}
+		}
+	} else if ready {
+		mediamtxReachable = true
+	}
+	if ready {
+		pathRegistered = true
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"whep_url":      "/stream/" + path + "/whep",
-			"hls_url":       "/hls/" + path + "/index.m3u8",
-			"stream_active": cctv.StreamEnabled,
-			"stream_ready":  ready,
-			"viewers":       viewers,
+			"whep_url":           "/stream/" + path + "/whep",
+			"hls_url":            "/hls/" + path + "/index.m3u8",
+			"stream_active":      cctv.StreamEnabled && ready,
+			"stream_ready":       ready,
+			"mediamtx_reachable": mediamtxReachable,
+			"path_registered":    pathRegistered,
+			"source_ready":       ready,
+			"viewers":            viewers,
 		},
 	})
 }
@@ -545,7 +592,7 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 		Source:                   rtspURL,
 		SourceOnDemand:           true,
 		SourceOnDemandCloseAfter: "30s",
-		SourceProtocol:           "tcp",
+		RTSPTransport:            "tcp",
 	}
 
 	backoff := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
@@ -642,7 +689,7 @@ func runStreamHealthCycle(db *gorm.DB) {
 		utils.Log.Warnf("⚠️ Gagal mengambil daftar path dari MediaMTX pada monitor status stream: %v", err)
 	} else {
 		for _, p := range paths {
-			ready[p.Name] = p.Ready
+			ready[p.Name] = p.SourceReady()
 		}
 	}
 	runStreamHealthOnce(db, ready)
@@ -809,7 +856,7 @@ func GetStreamHealth(c *fiber.Ctx) error {
 func streamHealthSnapshot(cctv models.CCTV, pathMap map[string]utils.PathInfo, now time.Time) fiber.Map {
 	path := utils.BuildStreamPath(cctv.ID.String())
 	info, exists := pathMap[path]
-	ready := exists && info.Ready
+	ready := exists && info.SourceReady()
 	viewers := 0
 	if exists {
 		viewers = len(info.Readers)

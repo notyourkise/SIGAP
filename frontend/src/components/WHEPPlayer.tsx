@@ -28,14 +28,12 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import {
+  nextWhepStatus,
+  type ConnectionStatus,
+} from '@/lib/whep-status';
 
-// Status koneksi WHEP — dipakai oleh komponen lain (StreamModal) untuk menampilkan UI.
-export type ConnectionStatus =
-  | 'idle'
-  | 'connecting'
-  | 'live'
-  | 'error'
-  | 'reconnecting';
+export type { ConnectionStatus } from '@/lib/whep-status';
 
 export interface WHEPPlayerProps {
   streamPath: string; // contoh: "cam-uuid-here"
@@ -51,6 +49,7 @@ export interface WHEPPlayerProps {
 // Batas atas jeda reconnect (exponential backoff).
 const MAX_RETRY_DELAY = 30_000;
 const BASE_RETRY_DELAY = 2_000;
+const FRAME_WAIT_TIMEOUT = 12_000;
 
 export default function WHEPPlayer({
   streamPath,
@@ -73,6 +72,8 @@ export default function WHEPPlayer({
   // Penanda apakah komponen sudah di-unmount (cegah setState setelah unmount).
   const unmountedRef = useRef(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frameCleanupRef = useRef<(() => void) | null>(null);
   const retryCountRef = useRef(0);
   // Referensi fungsi connect agar scheduleReconnect (yang dideklarasikan lebih
   // dulu) bisa memanggilnya tanpa referensi maju yang memicu peringatan lint.
@@ -101,8 +102,18 @@ export default function WHEPPlayer({
     [onError]
   );
 
+  const clearFrameWait = useCallback(() => {
+    if (frameTimerRef.current) {
+      clearTimeout(frameTimerRef.current);
+      frameTimerRef.current = null;
+    }
+    frameCleanupRef.current?.();
+    frameCleanupRef.current = null;
+  }, []);
+
   // Bersihkan PeerConnection beserta track-nya. Idempoten & aman dipanggil berulang.
   const cleanupPc = useCallback(() => {
+    clearFrameWait();
     const pc = pcRef.current;
     if (pc) {
       pc.ontrack = null;
@@ -120,7 +131,7 @@ export default function WHEPPlayer({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, []);
+  }, [clearFrameWait]);
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
@@ -137,13 +148,14 @@ export default function WHEPPlayer({
     const delay = Math.min(BASE_RETRY_DELAY * Math.pow(2, attempt), MAX_RETRY_DELAY);
     retryCountRef.current += 1;
 
-    setStatus('reconnecting');
+    cleanupPc();
+    setStatus((current) => nextWhepStatus(current, 'disconnect'));
     clearRetryTimer();
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
       connectRef.current();
     }, delay);
-  }, [clearRetryTimer]);
+  }, [cleanupPc, clearRetryTimer]);
 
   // Logika inti: bangun koneksi WHEP ke MediaMTX.
   const connect = useCallback(async () => {
@@ -153,7 +165,7 @@ export default function WHEPPlayer({
     if (!path) return;
 
     cleanupPc();
-    setStatus('connecting');
+    setStatus((current) => nextWhepStatus(current, 'start'));
 
     const pc = new RTCPeerConnection();
     pcRef.current = pc;
@@ -162,22 +174,62 @@ export default function WHEPPlayer({
     try {
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.addTransceiver('audio', { direction: 'recvonly' });
-    } catch (e) {
+    } catch {
       emitError('Tidak dapat menyiapkan transceiver media.');
       scheduleReconnect();
       return;
     }
 
-    // Saat media tiba, tempelkan ke elemen video & tandai status 'live'.
+    // Track hanya membuktikan negosiasi media. Status Live baru diberikan
+    // setelah elemen video benar-benar mendekode sebuah frame.
     pc.ontrack = (e) => {
       if (unmountedRef.current) return;
-      if (videoRef.current && e.streams[0]) {
-        videoRef.current.srcObject = e.streams[0];
+      const video = videoRef.current;
+      if (!video) return;
+
+      clearFrameWait();
+      video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+      setStatus((current) => nextWhepStatus(current, 'track'));
+
+      let cancelled = false;
+      let frameCallbackId: number | null = null;
+      const markFrameReceived = () => {
+        if (
+          cancelled ||
+          unmountedRef.current ||
+          stoppedRef.current ||
+          pcRef.current !== pc ||
+          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          return;
+        }
+        clearFrameWait();
+        retryCountRef.current = 0;
+        setStatus((current) => nextWhepStatus(current, 'frame'));
+      };
+
+      video.addEventListener('loadeddata', markFrameReceived);
+      video.addEventListener('playing', markFrameReceived);
+      if ('requestVideoFrameCallback' in video) {
+        frameCallbackId = video.requestVideoFrameCallback(() => markFrameReceived());
       }
-      retryCountRef.current = 0;
-      setStatus('live');
+      frameCleanupRef.current = () => {
+        cancelled = true;
+        video.removeEventListener('loadeddata', markFrameReceived);
+        video.removeEventListener('playing', markFrameReceived);
+        if (frameCallbackId !== null && 'cancelVideoFrameCallback' in video) {
+          video.cancelVideoFrameCallback(frameCallbackId);
+        }
+      };
+      frameTimerRef.current = setTimeout(() => {
+        if (pcRef.current !== pc || stoppedRef.current || unmountedRef.current) return;
+        emitError('Koneksi terbentuk, tetapi frame video belum diterima. Mencoba ulang…');
+        scheduleReconnect();
+      }, FRAME_WAIT_TIMEOUT);
+      markFrameReceived();
+
       if (autoPlay) {
-        videoRef.current?.play().catch(() => {
+        video.play().catch(() => {
           // Autoplay bisa diblokir browser; video tetap muted sehingga umumnya berhasil.
         });
       }
@@ -212,6 +264,7 @@ export default function WHEPPlayer({
 
       const answer = await res.text();
       await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+      setStatus((current) => nextWhepStatus(current, 'answer'));
     } catch (e) {
       if (unmountedRef.current || stoppedRef.current) return;
       emitError(
@@ -219,8 +272,7 @@ export default function WHEPPlayer({
       );
       scheduleReconnect();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cleanupPc, scheduleReconnect, emitError]);
+  }, [cleanupPc, clearFrameWait, scheduleReconnect, emitError, autoPlay]);
 
   // Simpan referensi connect terkini untuk dipakai scheduleReconnect.
   useEffect(() => {
@@ -247,13 +299,15 @@ export default function WHEPPlayer({
 
   // Cleanup penuh saat komponen di-unmount.
   useEffect(() => {
+    unmountedRef.current = false;
+    const video = videoRef.current;
     return () => {
       unmountedRef.current = true;
       stoppedRef.current = true;
       clearRetryTimer();
       cleanupPc();
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+      if (video) {
+        video.srcObject = null;
       }
     };
   }, [clearRetryTimer, cleanupPc]);
@@ -311,7 +365,11 @@ export default function WHEPPlayer({
     onQualityChange?.(next);
   };
 
-  const isBusy = status === 'connecting' || status === 'reconnecting';
+  const isBusy =
+    status === 'signaling' ||
+    status === 'connecting' ||
+    status === 'waiting-frame' ||
+    status === 'reconnecting';
   const isLive = status === 'live';
   const isError = status === 'error';
   const isSub = quality === 'sub';
@@ -332,12 +390,22 @@ export default function WHEPPlayer({
 
       {/* Overlay status */}
       {!isLive && (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm">
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
           {isBusy && (
             <>
               <LoaderCircle className="h-10 w-10 animate-spin text-accent" />
               <span className="text-sm font-semibold text-white">
-                {status === 'reconnecting' ? 'Menyambung kembali…' : 'Menghubungkan kamera…'}
+                {status === 'reconnecting'
+                  ? 'Menyambung kembali…'
+                  : status === 'signaling'
+                    ? 'Menghubungi server streaming…'
+                    : status === 'waiting-frame'
+                      ? 'Koneksi tersambung, menunggu frame…'
+                      : 'Membangun koneksi media…'}
               </span>
             </>
           )}

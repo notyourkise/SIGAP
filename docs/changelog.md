@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.54] — 2026-08-20 — Hardening MediaMTX dan runtime gate staging (Task 1B)
+
+### Perubahan
+
+- **MediaMTX v1.20**: image dipin ke `1.20.0-ffmpeg`; field konfigurasi/API deprecated diganti dan ICE additional host dapat diatur melalui environment.
+- **Lifecycle path**: stop memakai `DELETE /v3/config/paths/delete/{name}` dan 404 diperlakukan idempotent; registrasi path dipisahkan dari kesiapan source serta API reachability.
+- **Kerahasiaan RTSP**: response start tidak lagi mengirim URL sumber yang dapat memuat decrypted credential.
+- **Playback truth**: frontend membedakan signaling, koneksi media, menunggu frame, dan live; badge `Live` hanya muncul setelah decoded frame.
+- **Simulator**: Compose non-production menyediakan test-pattern H.264 Baseline deterministik dengan WebRTC ICE/TCP loopback.
+- **Runtime staging**: WHEP, peer connection TCP, frame 640×360, recovery restart, kontrak add/list/delete, serta cleanup lulus pada VPS terisolasi; container production tidak dimutasi.
+- **Batas status**: source/staging Task 1B `PASS`; production UDP/firewall/TURN/TLS, aplikasi lengkap, dan jaringan seluler eksternal tetap `NOT RUN`.
+
+Timestamp: 2026-08-20 WITA | Kategori: Kritis, Streaming + Security + Runtime Verification
+
 ## [1.28.53] — 2026-08-20 — Runtime gate lifecycle QR (Task 1A)
 
 ### Perubahan

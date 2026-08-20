@@ -1,0 +1,17 @@
+services:
+  mediamtx-streaming-test:
+    image: bluenviron/mediamtx:1.20.0-ffmpeg
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx.streaming-test.yml:/mediamtx.yml:ro
+    ports:
+      - "127.0.0.1:18554:8554"
+      - "127.0.0.1:18889:8889"
+      - "127.0.0.1:19997:9997"
+      - "127.0.0.1:8189:8189/tcp"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9997/v3/config/global/get"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

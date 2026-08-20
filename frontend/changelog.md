@@ -1,5 +1,18 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.2] - 2026-08-20
+
+### Status playback WHEP berbasis decoded frame
+
+- Player membedakan signaling, koneksi media, menunggu frame, live, dan reconnecting.
+- Event track tidak lagi langsung menampilkan badge `Live`; status live menunggu frame video yang benar-benar didekode.
+- Timeout frame memberi pesan pemulihan yang spesifik dan memicu reconnect.
+- Toast start menjelaskan bahwa jalur baru terdaftar dan video masih ditunggu.
+- Node regression test menjaga urutan state dan race antara track dengan penyelesaian SDP.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Frontend (Streaming UX + Reliability)
+
 ## [1.55.1] - 2026-08-20
 
 ### Perbaikan cache label setelah rotasi QR CCTV

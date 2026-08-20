@@ -8,6 +8,8 @@
 >
 > **Status suite:** `NOT RUN`
 
+> **Supporting evidence Task 1B — 2026-08-20:** simulator H.264 deterministik dan status MediaMTX `available/online` sudah terbukti pada staging terisolasi. Suite agregat MT-19 tetap `NOT RUN` sampai matriks Metro-E/GSM, timestamp, WebSocket, dan counter UI dijalankan. Evidence: `audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
+
 ### Formal execution metadata
 
 | Field | Value |

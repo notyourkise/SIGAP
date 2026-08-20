@@ -8,6 +8,8 @@
 >
 > **Status suite:** `NOT RUN`
 
+> **Supporting evidence Task 1B — 2026-08-20:** sub-gate simulator/staging lulus untuk registrasi path, source `available/online`, WHEP, ICE/TCP, decoded frame 640×360, stop idempotent, dan recovery restart. Suite agregat MT-21 tetap `NOT RUN` karena SD/HD, grid aplikasi, bulk action, RBAC lengkap, production UDP, dan mobile eksternal belum dijalankan. Evidence: `audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
+
 ### Formal execution metadata
 
 | Field | Value |
@@ -82,7 +84,7 @@ docker compose config --quiet
 ## Catatan & Gotchas
 
 - WebRTC memerlukan **HTTPS** atau **localhost** (HTTP biasa tidak bisa — insecure context)
-- UDP port **8189** harus accessible untuk media WebRTC
+- UDP port **8189** harus accessible untuk media WebRTC production; staging terisolasi dapat memakai listener ICE/TCP loopback melalui tunnel.
 - Jika stream tidak muncul, cek: 1) NVR reachable, 2) encoding **H.264**, 3) MediaMTX logs
 - `rtsp_password` disimpan **terenkripsi (AES-256)** di database dan **tidak pernah dikembalikan** oleh API; pada `StartStream` password didekripsi internal lalu hanya dipakai untuk membangun URL RTSP (`utils/rtsp.go` — BuildRTSPURL/BuildStreamPath/GetRTSPPort, StreamType Main/Sub)
 - `/stream/*` dan `/hls/*` di-proxy oleh Nginx ke `mediamtx` (`/stream/*` → `mediamtx:8889`, `/hls/*` → `mediamtx:8888`); pastikan MediaMTX reachable baik dari backend (`MEDIAMTX_API_URL=http://mediamtx:9997`) maupun dari browser agar video live tampil

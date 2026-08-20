@@ -21,18 +21,27 @@ type MediaMTXClient struct {
 
 // PathConfig — konfigurasi yang dikirim ke MediaMTX saat mendaftarkan path
 type PathConfig struct {
+	Name                     string `json:"name,omitempty"`
 	Source                   string `json:"source"`
 	SourceOnDemand           bool   `json:"sourceOnDemand"`
 	SourceOnDemandCloseAfter string `json:"sourceOnDemandCloseAfter,omitempty"`
-	SourceProtocol           string `json:"sourceProtocol,omitempty"`
+	RTSPTransport            string `json:"rtspTransport,omitempty"`
 }
 
 // PathInfo — informasi path dari MediaMTX
 type PathInfo struct {
-	Name    string        `json:"name"`
-	Source  interface{}   `json:"source"`
-	Ready   bool          `json:"ready"`
-	Readers []interface{} `json:"readers"`
+	Name      string        `json:"name"`
+	Source    interface{}   `json:"source"`
+	Available bool          `json:"available"`
+	Online    bool          `json:"online"`
+	Ready     bool          `json:"ready"` // kompatibilitas MediaMTX sebelum v1.20
+	Readers   []interface{} `json:"readers"`
+}
+
+// SourceReady memakai field available MediaMTX v1.20. Field ready hanya
+// dipakai sebagai fallback agar rolling upgrade dari versi lama tetap aman.
+func (p PathInfo) SourceReady() bool {
+	return p.Available || p.Ready
 }
 
 // defaultMediaMTXURL adalah URL default MediaMTX REST API bila env tidak di-set.
@@ -113,9 +122,34 @@ func (c *MediaMTXClient) AddPath(name string, config PathConfig) error {
 // RemovePath menghapus sebuah path dari MediaMTX. Mengembalikan error bila
 // status respon bukan 2xx atau bila client tidak valid.
 func (c *MediaMTXClient) RemovePath(name string) error {
-	endpoint := "/v3/config/paths/remove/" + url.PathEscape(name)
-	_, _, err := c.doRequest(http.MethodPost, endpoint, nil)
+	endpoint := "/v3/config/paths/delete/" + url.PathEscape(name)
+	status, _, err := c.doRequest(http.MethodDelete, endpoint, nil)
+	if status == http.StatusNotFound {
+		return nil
+	}
 	return err
+}
+
+// ListPathConfigs mengambil daftar path yang terdaftar, terpisah dari
+// ListPaths yang hanya merepresentasikan kondisi operasional sumber.
+func (c *MediaMTXClient) ListPathConfigs() ([]PathConfig, error) {
+	_, respBody, err := c.doRequest(http.MethodGet, "/v3/config/paths/list?itemsPerPage=10000", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var paged struct {
+		Items []PathConfig `json:"items"`
+	}
+	if err := json.Unmarshal(respBody, &paged); err == nil && paged.Items != nil {
+		return paged.Items, nil
+	}
+
+	var configs []PathConfig
+	if err := json.Unmarshal(respBody, &configs); err != nil {
+		return nil, fmt.Errorf("gagal decode daftar konfigurasi path MediaMTX: %w", err)
+	}
+	return configs, nil
 }
 
 // GetPath mengambil informasi detail sebuah path dari MediaMTX dan
@@ -140,7 +174,7 @@ func (c *MediaMTXClient) GetPath(name string) (*PathInfo, error) {
 // mendekode-nya ke dalam slice PathInfo. Mengembalikan error pada status
 // non-2xx, kegagalan decode JSON, atau client tidak valid.
 func (c *MediaMTXClient) ListPaths() ([]PathInfo, error) {
-	endpoint := "/v3/paths/list"
+	endpoint := "/v3/paths/list?itemsPerPage=10000"
 	_, respBody, err := c.doRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err

@@ -83,10 +83,11 @@ Dokumen ini berisi rekomendasi solusi, bukan bukti bahwa perbaikan telah diimple
 
 - URL: `/monitor`
 - Prioritas: **P0**
-- Status: **Perlu reproduksi runtime/deployment**
+- Status: **Source + staging terisolasi PASS; production/public/mobile NOT RUN**
 - Temuan: compose hanya memublikasikan UDP 8189; konfigurasi belum menetapkan host publik WebRTC; image memakai tag `latest-ffmpeg`. WHEP signaling yang berhasil belum membuktikan jalur ICE/media dapat dicapai.
 - Solusi: pin versi MediaMTX, set `webrtcAdditionalHosts`, buka UDP 8189 pada firewall, sediakan TURN/TLS bila perlu, dan pecah health diagnostic menjadi API, path registration, source RTSP, WHEP, ICE, dan frame playback.
-- Acceptance: container API dapat mengakses MediaMTX, path `ready=true`, WHEP memberi SDP answer, dan frame video diterima dari desktop serta jaringan seluler eksternal.
+- Acceptance: container API dapat mengakses MediaMTX, path `available=true`, WHEP memberi SDP answer, dan frame video diterima dari desktop serta jaringan seluler eksternal.
+- Evidence 2026-08-20: image `1.20.0-ffmpeg`, simulator H.264 deterministik, lifecycle add/list/delete idempotent, WHEP + ICE/TCP, frame browser 640×360, dan recovery restart lulus pada staging VPS loopback melalui tunnel; staging dibersihkan dan production tidak dimutasi. Gate UDP/firewall/TURN/TLS production serta jaringan seluler eksternal tetap `NOT RUN`. Lihat `TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ### BB-09 — Navigasi forced change-password membingungkan dan terjadi redirect flash
 

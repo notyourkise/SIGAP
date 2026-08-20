@@ -1,0 +1,39 @@
+logLevel: info
+logDestinations: [stdout]
+
+rtsp: true
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: ""
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: [127.0.0.1]
+
+api: true
+apiAddress: :9997
+
+authInternalUsers:
+  - user: any
+    pass: ""
+    permissions:
+      - action: read
+        path: ""
+      - action: playback
+        path: ""
+      - action: publish
+        path: ""
+      - action: api
+        path: ""
+
+paths:
+  test-pattern:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re
+      -f lavfi -i testsrc2=size=640x360:rate=15
+      -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p
+      -preset ultrafast -tune zerolatency -g 30 -bf 0
+      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/test-pattern
+    runOnInitRestart: true

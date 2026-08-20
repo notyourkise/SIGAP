@@ -1,6 +1,6 @@
 # Findings Remediation Implementation Plan
 
-> **Status:** sedang dieksekusi — Gelombang 1, Task 1A implementasi dan runtime gate QR selesai; Task 1B berikutnya.
+> **Status:** sedang dieksekusi — Gelombang 1, Task 1A selesai; Task 1B source dan runtime staging terisolasi selesai, gate jaringan publik/seluler masih `NOT RUN`.
 >
 > **Tanggal rencana:** 19 Agustus 2026. **Mulai eksekusi:** 20 Agustus 2026.
 > **Sumber:** `docs/audits/BLACKBOX-FINDINGS-2026-08-19.md` dan `docs/audits/MANUAL-TEST-AUDIT-SUMMARY.md`.
@@ -12,7 +12,10 @@
 - [x] Task 0.2 — governance manual/black-box formal, metadata contract, historical-status handling, dan safety guard selesai; tidak ada runtime PASS yang diciptakan.
 - [x] Task 1A — lifecycle QR diperbaiki pada source: rotasi memakai ID CCTV yang sama, scanner menolak payload lama, cache label memakai versi payload, dan regression test lulus.
 - [x] Task 1A runtime gate — label QR baru berubah tanpa hard refresh, payload hasil decode diterima, QR lama ditolak, RBAC/audit tervalidasi, dan staging dibersihkan.
-- [ ] Task 1B dan Gelombang 2–7 — belum dimulai.
+- [x] Task 1B source — image MediaMTX dipin, ICE host configurable, API/status dipisah, stop idempotent, simulator deterministik tersedia, dan status `Live` menunggu frame nyata.
+- [x] Task 1B runtime staging terisolasi — RTSP test-pattern, WHEP signaling, ICE/TCP, frame 640×360, recovery setelah restart, lifecycle path, serta cleanup tervalidasi tanpa mutasi production.
+- [ ] Task 1B gate eksternal — UDP/firewall/TURN/TLS production dan jaringan seluler eksternal masih `NOT RUN` sesuai scope yang disetujui.
+- [ ] Gelombang 2–7 — belum dimulai.
 
 ## Tujuan
 
@@ -139,12 +142,12 @@ Files utama:
 
 Langkah:
 
-1. Pin image MediaMTX ke versi eksplisit.
-2. Konfigurasikan hostname/IP publik WebRTC melalui environment dan `webrtcAdditionalHosts`.
-3. Verifikasi UDP 8189/firewall; dokumentasikan TURN/TLS bila jaringan klien memblokir UDP.
-4. Pisahkan health state: API reachable, path registered, source ready, WHEP signaling, ICE connected, frame received.
-5. Sediakan RTSP simulator/non-production source untuk pengujian deterministik.
-6. Perbaiki UI agar tidak menyamakan registrasi path dengan stream siap diputar.
+1. [x] Pin image MediaMTX ke versi eksplisit `1.20.0-ffmpeg`.
+2. [x] Konfigurasikan hostname/IP WebRTC melalui environment dan `webrtcAdditionalHosts`.
+3. [ ] Verifikasi UDP 8189/firewall production dan dokumentasikan TURN/TLS bila jaringan klien memblokir UDP — `NOT RUN`, di luar scope staging terisolasi.
+4. [x] Pisahkan health state: API reachable, path registered, source ready, WHEP signaling, ICE connected, frame received.
+5. [x] Sediakan RTSP simulator/non-production source untuk pengujian deterministik.
+6. [x] Perbaiki UI agar tidak menyamakan registrasi path dengan stream siap diputar.
 
 Verifikasi:
 
@@ -154,7 +157,7 @@ cd backend
 go test ./utils ./handlers -run 'Test.*MediaMTX|Test.*Stream' -count=1
 ```
 
-Runtime gate: playback terbukti dari desktop dan jaringan seluler eksternal; tidak cukup hanya `ready=true`.
+Runtime sub-gate staging: **PASS** pada desktop melalui tunnel TCP terisolasi; browser menerima frame nyata dan pulih setelah restart. Runtime gate production/public/mobile: **NOT RUN**; tidak cukup hanya `available=true`. Bukti: `docs/audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ## Gelombang 2 — Otorisasi dan Isolasi Kawasan
 
