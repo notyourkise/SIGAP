@@ -10,12 +10,23 @@ import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
 
-// Client-side only component that uses searchParams
-function ChangePasswordForm() {
-  const router = useRouter();
-  // Use search params after mount (client-side only)
-  const searchParams = new URLSearchParams(window.location.search);
+// Get search params safely - only on client side
+function getQueryParams() {
+  if (typeof window !== 'undefined') {
+    return new URLSearchParams(window.location.search);
+  }
+  return new URLSearchParams();
+}
+
+export default function ChangePasswordPage() {
+  // Client-side only logic wrapped in useEffect
+  const [queryParams, setQueryParams] = useState(new URLSearchParams());
   
+  useEffect(() => {
+    setQueryParams(getQueryParams());
+  }, []);
+  
+  const router = useRouter();
   const { user, login, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   
@@ -238,9 +249,4 @@ function ChangePasswordForm() {
       </div>
     </div>
   );
-}
-
-// Default export wrapping the component
-export default function ChangePasswordPage() {
-  return <ChangePasswordForm />;
 }
