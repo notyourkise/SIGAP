@@ -1,5 +1,8 @@
 'use client';
 
+// Force dynamic rendering for authenticated-only pages to avoid static export errors
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldAlert, Sun } from 'lucide-react';
