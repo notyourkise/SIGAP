@@ -1,23 +1,48 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldAlert, Sun } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
 
 export default function ChangePasswordPage() {
-  const { user, login } = useAuth();
+  const { user, login, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Early guard: Redirect authenticated non-forced users to dashboard immediately
+  // This prevents flash of change-password page when user is already logged in normally
+  useEffect(() => {
+    if (user && !user.must_change_password) {
+      router.push('/dashboard');
+    }
+  }, [user, router]);
+
   const forced = user?.must_change_password === true;
+
+  // Handle successful password change navigation
+  const handleSuccess = (updatedUser: AuthUser) => {
+    login(updatedUser);
+    
+    // For non-forced mode (direct change), return to profile/context
+    // For forced mode, just stay or go to login gracefully
+    if (!forced) {
+      // Try to go back, fallback to profile
+      router.replace('/profile?password_changed=true');
+    } else {
+      // Forced mode complete - redirect to login to restart session cleanly
+      router.push('/login?force_logout=true');
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -43,7 +68,7 @@ export default function ChangePasswordPage() {
         body: JSON.stringify({ new_password: newPassword }),
       });
       if (response.status === 'success' && response.data) {
-        login(response.data.user);
+        handleSuccess(response.data.user);
       } else {
         setError(response.message || 'Kata sandi belum dapat diubah. Periksa kembali isian Anda.');
       }
@@ -54,7 +79,26 @@ export default function ChangePasswordPage() {
     }
   };
 
-  const cancelToDashboard = () => router.push('/dashboard');
+  // Exit to login for forced mode users (if they want to abort/reset)
+  const exitToLogin = () => {
+    // Only show exit button if we came from somewhere specific
+    const fromParam = searchParams.get('from');
+    if (fromParam) {
+      router.push(fromParam);
+    } else {
+      // Default: log out and go to login
+      router.push('/login');
+    }
+  };
+
+  // Cancel for non-forced mode: go back or to profile
+  const cancelToProfile = () => {
+    try {
+      router.back();
+    } catch {
+      router.push('/profile');
+    }
+  };
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
@@ -79,7 +123,9 @@ export default function ChangePasswordPage() {
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Ganti Kata Sandi</h1>
           <p className="mt-2 text-sm text-muted">
-            {forced ? 'Demi keamanan, Anda wajib mengganti kata sandi sebelum menggunakan SIGAP.' : 'Perbarui kata sandi akun Anda untuk menjaga keamanan.'}
+            {forced 
+              ? 'Demi keamanan, Anda wajib mengganti kata sandi sebelum menggunakan SIGAP.' 
+              : 'Perbarui kata sandi akun Anda untuk menjaga keamanan.'}
           </p>
         </header>
 
@@ -147,16 +193,28 @@ export default function ChangePasswordPage() {
           </div>
 
           <div className="flex items-center justify-end gap-3">
-            {!forced && (
+            {/* Force mode: Show exit to login button */}
+            {forced ? (
               <button
                 type="button"
-                onClick={cancelToDashboard}
+                onClick={exitToLogin}
+                disabled={loading}
+                className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+              >
+                Kembali ke Login
+              </button>
+            ) : (
+              /* Non-forced mode: Show cancel to profile button */
+              <button
+                type="button"
+                onClick={cancelToProfile}
                 disabled={loading}
                 className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-muted transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
               >
                 Batal
               </button>
             )}
+            
             <button
               type="submit"
               disabled={loading}
