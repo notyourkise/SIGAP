@@ -3,7 +3,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getAllSitesForSelect } from '@/lib/api';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -16,6 +16,7 @@ import {
   Edit2,
   X,
   LoaderCircle,
+  Building2
 } from 'lucide-react';
 import SortableHeader from '@/components/SortableHeader';
 import { useSortableRows } from '@/hooks/useSortableRows';
@@ -34,6 +35,7 @@ interface SparePart {
   harga_satuan: number;
   keterangan: string;
   created_at: string;
+  site_nama?: string;
 }
 
 interface SparePartsResponse {
@@ -85,6 +87,10 @@ export default function SparePartsPage() {
   // Search & filter kategori
   const [search, setSearch] = useState('');
   const [kategoriFilter, setKategoriFilter] = useState('');
+  
+  // Filter kawasan
+  const [siteFilter, setSiteFilter] = useState('');
+  const [sites, setSites] = useState<{ id: string; nama: string }[]>([]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -134,6 +140,7 @@ export default function SparePartsPage() {
       const queryParams = [`page=${page}`, 'limit=10'];
       if (kategoriFilter) queryParams.push(`kategori=${encodeURIComponent(kategoriFilter)}`);
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+      if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
 
       const response = await apiRequest<SparePartsResponse>(`/spare-parts?${queryParams.join('&')}`);
       if (response.status === 'success' && response.data) {
@@ -172,6 +179,25 @@ export default function SparePartsPage() {
       unsub();
     };
   }, [subscribe, fetchSpareParts]);
+
+  // Load sites untuk dropdown filter kawasan
+  useEffect(() => {
+    let cancelled = false;
+    const loadSites = async () => {
+      try {
+        const allSitesResponse = await getAllSitesForSelect();
+        if (!cancelled && allSitesResponse.status === 'success' && allSitesResponse.data) {
+          setSites(allSitesResponse.data);
+        }
+      } catch (err) {
+        console.error('Gagal memuat list site:', err);
+      }
+    };
+    loadSites();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -353,6 +379,23 @@ export default function SparePartsPage() {
                   <option key={k} value={k}>{k}</option>
                 ))}
               </select>
+              
+              <select
+                id="spare-site-filter"
+                aria-label="Filter kawasan"
+                value={siteFilter}
+                onChange={(e) => {
+                  setSiteFilter(e.target.value);
+                  setPage(1);
+                }}
+                disabled={loading}
+                className="min-h-11 rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">Semua kawasan</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>{site.nama}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -395,6 +438,7 @@ export default function SparePartsPage() {
                       <th className="px-5 py-3.5"><SortableHeader label="SKU" sortKey="sku" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Nama" sortKey="nama" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Kategori" sortKey="kategori" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                      <th className="px-5 py-3.5 text-sm font-semibold text-muted">Kawasan</th>
                       <th className="px-5 py-3.5"><SortableHeader label="Stok" sortKey="stok" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Min. Order" sortKey="minimum_order" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
                       <th className="px-5 py-3.5"><SortableHeader label="Satuan" sortKey="satuan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
@@ -417,6 +461,18 @@ export default function SparePartsPage() {
                             )}
                           </td>
                           <td className="px-5 py-4 text-muted">{item.kategori || '-'}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2">
+                              {item.site_nama ? (
+                                <>
+                                  <Building2 className="h-4 w-4 text-primary" />
+                                  <span className="text-sm">{item.site_nama}</span>
+                                </>
+                              ) : (
+                                <span className="text-sm italic text-muted">Belum ditentukan</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2">
                               <span className="font-bold tabular-nums">{item.stok}</span>

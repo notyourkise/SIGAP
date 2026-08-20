@@ -70,9 +70,9 @@ func TestBuildRTSPURL_EdgeCase_NegativeChannel(t *testing.T) {
 }
 
 func TestBuildRTSPURL_Defaults(t *testing.T) {
-	// Tanpa env: fallback host 36.91.27.35, port 554, user admin.
+	// Tanpa env: fallback host kosong, port 554, user admin.
 	got := BuildRTSPURL(19, "secret123", SubStream)
-	want := "rtsp://admin:secret123@36.91.27.35:554/Streaming/channels/1902"
+	want := "rtsp://admin:secret123@:554/Streaming/channels/1902"
 	if got != want {
 		t.Fatalf("BuildRTSPURL(default) = %q, want %q", got, want)
 	}

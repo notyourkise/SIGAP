@@ -2,7 +2,7 @@
 
 > Prosedur backup database & uploads SIGAP secara otomatis beserta pemulihan
 > (disaster recovery). Menggunakan skrip `scripts/backup.sh` dan `scripts/restore.sh`.
-> Diperbarui: 2026-08-07 (Task 7.3, Fase 7 Kesiapan Produksi).
+> Diperbarui: 2026-08-21 (Task 7.3 + Encryption新增, Fase 7 Kesiapan Produksi).
 
 ---
 
@@ -19,14 +19,19 @@ kegagalan perangkat, penghapusan tak sengaja, atau korupsi data. Tersedia dua
 cara menjadwalkan: **container `backup` di docker-compose (opsi utama)** dan
 **cron job di host** (opsi alternatif).
 
+> ⚠️ **Keamanan Backup:** Untuk production, **WAKTU MENGGUNAKAN ENKRIPSI** untuk
+> melindungi backup dari akses tidak sah saat off-site storage atau transfer.
+
 Hasil backup disimpan di `backups/`:
 
 ```
 backups/
 ├── db/
-│   └── sigap_YYYYMMDD_HHMMSS.sql.gz        # dump DB + gzip
+│   ├── sigap_YYYYMMDD_HHMMSS.sql.gz           # raw gzip dump (tidak aman)
+│   └── sigap_YYYYMMDD_HHMMSS.sql.gz.gpg       # AES-256 encrypted ← RECOMMENDED
 └── uploads/
-    └── uploads_YYYYMMDD_HHMMSS.tar.gz      # tar uploads + gzip
+    ├── uploads_YYYYMMDD_HHMMSS.tar.gz         # raw tar+gzip (tidak aman)
+    └── uploads_YYYYMMDD_HHMMSS.tar.gz.gpg     # AES-256 encrypted ← RECOMMENDED
 ```
 
 > `YYYYMMDD_HHMMSS` memakai zona waktu **WITA (Asia/Makassar, UTC+8)**.
@@ -47,7 +52,6 @@ backups/
 
 Kedua skrip membaca konfigurasi dari environment variable (dengan nilai default
 yang menyesuaikan deployment Docker SIGAP). Dapat di-override per pemanggilan.
-
 | Variabel | Default | Deskripsi |
 |----------|---------|-----------|
 | `DB_HOST` | `db` | Host/name PostgreSQL |
@@ -60,6 +64,13 @@ yang menyesuaikan deployment Docker SIGAP). Dapat di-override per pemanggilan.
 | `RETENTION_DAYS` | `7` | Retensi backup dalam hari |
 | `CRON_SCHEDULE` | `0 6 * * *` | Jadwal cron (container backup saja) |
 | `TZ` | `Asia/Makassar` | Zona waktu container backup |
+
+> **Variabel Enkripsi (NEW):**  
+> Untuk enkripsi backup AES-256, tambahkan:
+> - `ENCRYPT_BACKUPS=true` — aktifkan enkripsi
+> - `ENCRYPTION_KEY=<strong_password>` — kunci AES-256 untuk enkripsi/dekripsi
+> 
+> Contoh secure key generation: `openssl rand -base64 32`
 
 ---
 
@@ -132,6 +143,61 @@ docker compose exec backup sh
 >   `docker compose stop api`.
 > - Pastikan file `.sql.gz` valid dan dibuat dengan versi `pg_dump` yang kompatibel.
 > - Setelah restore, jalankan kembali: `docker compose start api`.
+
+---
+
+## 5.3 Backup Terenkripsi (NEW)
+
+Untuk meningkatkan keamanan, backup dapat dienkripsi menggunakan **AES-256** sebelum disimpan.
+Fitur ini sangat disarankan untuk production environment atau jika backup akan disimpan
+di lokasi off-site (AWS S3, Google Cloud Storage, dll).
+
+### 5.3.1 Cara mengaktifkan enkripsi
+
+Set environment variable berikut saat menjalankan backup:
+
+```bash
+ENCRYPTION_KEY="your-secure-encryption-key"
+ENCRYPT_BACKUPS=true
+./scripts/backup.sh
+```
+
+Atau di dalam `docker-compose.yml`:
+
+```yaml
+environment:
+  - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+  - ENCRYPT_BACKUPS=true
+```
+
+### 5.3.2 Output backup terenkripsi
+
+Jika enkripsi aktif, skrip akan membuat dua versi file:
+
+- `sigap_<TS>.sql.gz` — raw dump (tidak aman untuk off-site)
+- `sigap_<TS>.sql.gz.gpg` — AES-256 encrypted ← gunakan ini untuk backup
+
+File `.gpg` hanya bisa dibuka dengan kunci yang sama saat restore.
+
+### 5.3.3 Restore backup terenkripsi
+
+Gunakan `ENCRYPTION_KEY` yang sama dengan saat backup:
+
+```bash
+export ENCRYPTION_KEY="your-secure-encryption-key"
+./scripts/restore.sh backups/db/sigap_20260806_060000.sql.gz.gpg \
+                      backups/uploads/uploads_20260806_060000.tar.gz.gpg
+```
+
+Skrip otomatis mendeteksi ekstensi `.gpg` dan mendekripsi sebelum restore.
+
+### 5.3.4 Best practices
+
+- 🔒 **Generate strong key:** Gunakan `openssl rand -base64 32` untuk generate key baru.
+- 🔐 **Jangan hardcode key di repo:** Simpan di Docker secrets atau env file terpisah (.gitignore).
+- 🔄 **Rotasi key:** Ganti key secara berkala dan backup semua file lama dengan key lama.
+- 📦 **Backup key separately:** Jangan simpan key di lokasi yang sama dengan backup files.
+- ✅ **Verifikasi restore:** Selalu test restore dengan key baru di staging sebelum production.
 
 ---
 

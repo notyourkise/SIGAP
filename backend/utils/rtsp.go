@@ -39,11 +39,11 @@ func getenvOr(key, fallback string) string {
 //   - channel_port 1,  MainStream → 1*100 + 1  = 101
 //
 // Host, port, dan user dibaca dari environment RTSP_NVR_HOST, RTSP_NVR_PORT,
-// dan RTSP_NVR_USER (dengan fallback nilai default). Password diterima dalam
+// dan RTSP_NVR_USER (fallback kosong — wajib dikonfigurasi di production). Password diterima dalam
 // bentuk terdekripsi (dekripsi dilakukan pada Task 9.3). Baik password maupun
 // user di-escape dengan url.QueryEscape agar aman saat berisi karakter khusus.
 func BuildRTSPURL(channelPort int, decryptedPassword string, streamType StreamType) string {
-	host := getenvOr("RTSP_NVR_HOST", "36.91.27.35")
+	host := getenvOr("RTSP_NVR_HOST", "")
 	port := getenvOr("RTSP_NVR_PORT", "554")
 	user := getenvOr("RTSP_NVR_USER", "admin")
 
@@ -66,7 +66,7 @@ func BuildStreamPath(cctvID string) string {
 // ResolveRTSPURL menentukan URL RTSP final untuk sebuah CCTV.
 //
 // Bila `rtspURL` (field rtsp_url pada master CCTV) diisi — misalnya
-//   rtsp://admin:hik12345@36.91.27.35:554/Streaming/channels/1901
+//   rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901
 // — URL tersebut dipakai langsung sebagai sumber stream MediaMTX.
 //
 // Jika kosong, URL disusun otomatis dari channel port + kredensial NVR global
@@ -78,9 +78,9 @@ func ResolveRTSPURL(rtspURL string, channelPort int, decryptedPassword string, s
 	return BuildRTSPURL(channelPort, decryptedPassword, streamType)
 }
 
-// GetRTSPHost membaca host NVR dari environment RTSP_NVR_HOST (fallback default).
+// GetRTSPHost membaca host NVR dari environment RTSP_NVR_HOST (fallback kosong — wajib dikonfigurasi).
 func GetRTSPHost() string {
-	return getenvOr("RTSP_NVR_HOST", "36.91.27.35")
+	return getenvOr("RTSP_NVR_HOST", "")
 }
 
 // GetRTSPPort membaca port NVR dari environment RTSP_NVR_PORT dengan fallback

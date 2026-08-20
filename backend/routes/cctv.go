@@ -12,8 +12,13 @@ import (
 func SetupCCTVRoutes(router fiber.Router) {
 	cctvGroup := router.Group("/cctv")
 
+	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-04)
+	// Middleware ini membaca X-Site-ID header dan validasi site di database
+	siteMiddleware := middleware.SiteContext()
+
 	// Rute list dapat diakses via sesi JWT (web) ATAU API key integrasi eksternal
 	// (Task 12.1, Sprint 29) dengan scope cctv:read.
+	cctvGroup.Use(siteMiddleware)
 	cctvGroup.Get("/", middleware.APIKeyOrProtected(models.ScopeCCTVRead), handlers.GetAllCCTV)
 
 	// Rute yang dapat diakses oleh Admin & Teknisi (via sesi JWT)
