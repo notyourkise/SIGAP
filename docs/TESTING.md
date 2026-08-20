@@ -1,7 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). Sebelumnya diperbarui 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
+> Diperbarui: 2026-08-20 (Task 1A: regression lifecycle QR memastikan rotasi tetap menunjuk ID CCTV yang sama, scanner menolak payload lama, dan service worker tidak menyimpan/menyajikan QR atau respons `no-store`). Sebelumnya diperbarui 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64).
 
 ## Tata Kelola Manual/Black-box
 
@@ -82,6 +82,13 @@ go vet ./handlers/ ./middleware/ ./utils/
 Semua test berjalan **tanpa PostgreSQL fisik** — memakai `github.com/DATA-DOG/go-sqlmock`.
 Jalankan di direktori `backend/` (modul `sigap-backend`).
 
+Regression test service worker dijalankan terpisah dari direktori frontend:
+
+```bash
+cd frontend
+npm run test:sw
+```
+
 ---
 
 ## 2. Matriks Cakupan Test
@@ -103,7 +110,8 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
-| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
+| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, payload aktif sukses, payload lama setelah rotasi ditolak), RotateQRCode (ciphertext baru tetap mendekripsi ke ID CCTV yang sama), GetCCTVQRCode (`Cache-Control: no-store`), DownloadTemplateCCTV, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
+| `frontend` | `tests/service-worker-cache.test.mjs` | Request gambar QR selalu network-only tanpa cache fallback; respons API dengan `Cache-Control: no-store` tidak ditulis ke runtime cache service worker |
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah; assign/re-assign (Fase 5.3): assign normal → 200, re-assign log `ongoing` ke teknisi baru → 200, assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` → 403 (RequireRole admin) |
 | `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif`; GenerateFieldMaintenanceReportPDF (content-type/prefix PDF, teknisi pemilik/non-pemilik, not found) |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong), GetDailyDigests (admin paginasi/urutan terbaru) |

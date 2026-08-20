@@ -30,6 +30,12 @@ func cctvMockRow() (*sqlmock.Rows, uuid.UUID) {
 // dipakai untuk menguji sinkronisasi status otomatis (Fase 5.2).
 func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 	id := uuid.New()
+	return cctvMockRowWithIdentity(id, "encrypted-payload", status), id
+}
+
+// cctvMockRowWithIdentity membangun row CCTV dengan identitas dan payload QR
+// eksplisit agar test lifecycle QR tidak dapat lolos dengan ID yang berbeda.
+func cctvMockRowWithIdentity(id uuid.UUID, qrPayload, status string) *sqlmock.Rows {
 	rows := sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
 		"kode_cctv", "id_channel", "nama", "lokasi_area",
@@ -39,8 +45,8 @@ func cctvMockRowWithStatus(status string) (*sqlmock.Rows, uuid.UUID) {
 		"channel_port", "rtsp_password", "stream_enabled",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-001", "CH-01", "Kamera Depan", "Area Utama",
 		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", status,
-		"192.168.1.10", "192.168.1.11", "Aman", "encrypted-payload", 100, 19, "encrypted-rtsp", true)
-	return rows, id
+		"192.168.1.10", "192.168.1.11", "Aman", qrPayload, 100, 19, "encrypted-rtsp", true)
+	return rows
 }
 
 func TestGetCCTVByID_InvalidUUID(t *testing.T) {
@@ -184,11 +190,11 @@ func TestScanCCTV_InvalidPayload(t *testing.T) {
 func TestScanCCTV_Success(t *testing.T) {
 	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
 	_, mock := setupMockGORM(t)
-	rows, _ := cctvMockRow()
 
 	cctvID := uuid.New()
 	encrypted, err := utils.EncryptAES256(cctvID.String())
 	assert.NoError(t, err)
+	rows := cctvMockRowWithIdentity(cctvID, encrypted, "aktif")
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(rows)
@@ -209,6 +215,70 @@ func TestScanCCTV_Success(t *testing.T) {
 	assert.Equal(t, "success", result["status"])
 	data := result["data"].(map[string]interface{})
 	assert.Equal(t, "Kamera Depan", data["nama"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestScanCCTV_RejectsPreviousPayloadAfterRotation(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+	_, mock := setupMockGORM(t)
+
+	cctvID := uuid.New()
+	previousPayload, err := utils.EncryptAES256(cctvID.String())
+	assert.NoError(t, err)
+	activePayload, err := utils.EncryptAES256(cctvID.String())
+	assert.NoError(t, err)
+	assert.NotEqual(t, previousPayload, activePayload)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvMockRowWithIdentity(cctvID, activePayload, "aktif"))
+
+	app := newTestApp()
+	app.Post("/cctv/scan", ScanCCTV)
+
+	payload := `{"qr_payload":"` + previousPayload + `"}`
+	req := httptest.NewRequest("POST", "/cctv/scan", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "error", result["status"])
+	assert.Equal(t, "QR Code tidak aktif atau sudah dirotasi", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRotateQRCode_EncryptsSameCCTVIDWithFreshPayload(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+	_, mock := setupMockGORM(t)
+
+	cctvID := uuid.New()
+	previousPayload, err := utils.EncryptAES256(cctvID.String())
+	assert.NoError(t, err)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvMockRowWithIdentity(cctvID, previousPayload, "aktif"))
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	app := newTestApp()
+	app.Post("/cctv/:id/rotate-qr", RotateQRCode)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/cctv/"+cctvID.String()+"/rotate-qr", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	rotatedPayload := data["qr_payload"].(string)
+	assert.NotEqual(t, previousPayload, rotatedPayload)
+
+	decryptedID, err := utils.DecryptAES256(rotatedPayload)
+	assert.NoError(t, err)
+	assert.Equal(t, cctvID.String(), decryptedID)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -243,6 +313,23 @@ func TestGetCCTVQRCode_InvalidUUID(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/cctv/not-a-uuid/qrcode", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func TestGetCCTVQRCode_DisablesHTTPCache(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvMockRowWithIdentity(id, "encrypted-payload", "aktif"))
+
+	app := newTestApp()
+	app.Get("/cctv/:id/qrcode", GetCCTVQRCode)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/cctv/"+id.String()+"/qrcode", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.Equal(t, "image/png", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestUpdateCCTV_InvalidUUID(t *testing.T) {
@@ -425,12 +512,11 @@ func TestRTSPPasswordNotInResponse(t *testing.T) {
 
 	t.Run("Scan", func(t *testing.T) {
 		_, mock := setupMockGORM(t)
-		rows, _ := cctvMockRow()
-		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
-
 		cctvID := uuid.New()
 		encrypted, err := utils.EncryptAES256(cctvID.String())
 		assert.NoError(t, err)
+		rows := cctvMockRowWithIdentity(cctvID, encrypted, "aktif")
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
 
 		app := newTestApp()
 		app.Post("/cctv/scan", ScanCCTV)

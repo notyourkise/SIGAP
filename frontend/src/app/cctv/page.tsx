@@ -252,11 +252,15 @@ export default function CCTVPage() {
 
   // Ambil gambar QR PNG (dengan autentikasi cookie httpOnly) lalu konversi ke data URL untuk <img>
   const fetchQRDataUrl = useCallback(async (cctv: CCTV): Promise<string> => {
-    if (qrCacheRef.current[cctv.id]) {
-      return qrCacheRef.current[cctv.id];
+    // Payload ikut menjadi cache version. Rotasi mempertahankan ID aset tetapi
+    // mengganti payload, jadi label baru tidak boleh memakai data URL lama.
+    const cacheKey = `${cctv.id}:${cctv.qr_payload}`;
+    if (qrCacheRef.current[cacheKey]) {
+      return qrCacheRef.current[cacheKey];
     }
     const response = await fetch(`${API_BASE_URL}/cctv/${cctv.id}/qrcode`, {
       credentials: 'include',
+      cache: 'no-store',
     });
     if (!response.ok) {
       throw new Error('Gagal mengambil QR Code dari server');
@@ -268,7 +272,7 @@ export default function CCTVPage() {
       reader.onerror = () => reject(new Error('Gagal membaca QR Code'));
       reader.readAsDataURL(blob);
     });
-    qrCacheRef.current[cctv.id] = dataUrl;
+    qrCacheRef.current[cacheKey] = dataUrl;
     return dataUrl;
   }, []);
 

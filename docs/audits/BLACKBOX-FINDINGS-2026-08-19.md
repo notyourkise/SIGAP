@@ -102,9 +102,11 @@ Dokumen ini berisi rekomendasi solusi, bukan bukti bahwa perbaikan telah diimple
 - URL terkait: `/cctv`; laporan menyebut alur forced `/change-password`
 - Prioritas: **P0**
 - Status: **Terkonfirmasi**
+- Status remediasi source: **✅ Selesai 2026-08-20**; runtime black-box fixture non-production masih `NOT RUN`.
 - Temuan: rotasi mengenkripsi UUID acak baru, bukan ID CCTV; scanner lalu mencari CCTV berdasarkan UUID yang tidak ada. Scanner tidak membandingkan payload dengan `qr_payload` aktif, dan cache gambar QR hanya menggunakan ID CCTV sehingga gambar lama dapat tetap dipakai.
 - Solusi: enkripsi ulang ID CCTV yang sama dengan nonce baru, validasi ID sekaligus payload aktif saat scan, invalidasi cache setelah rotasi atau gunakan key berbasis versi/hash payload, dan tambah round-trip test.
 - Acceptance: QR baru berbeda dan memetakan CCTV yang sama; QR lama ditolak; cetak sesudah rotasi memakai gambar baru tanpa hard refresh.
+- Checklist: [x] backend round-trip dan active-payload guard; [x] frontend cache version + HTTP/service-worker `no-store`; [x] automated regression backend + service worker; [ ] cetak/pindai non-production dengan evidence MT-11.
 
 ### BB-11 — PushManager menolak `applicationServerKey`
 

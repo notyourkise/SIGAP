@@ -1,5 +1,31 @@
 # Changelog - Backend SIGAP
 
+## [0.64.2] - 2026-08-20
+
+### Perbaikan lifecycle rotasi QR CCTV
+
+perubahan yang dilakukan: **Rotasi QR kini membuat ciphertext baru dari ID CCTV yang sama dan scanner hanya menerima payload yang masih aktif.**
+
+before:
+- Rotasi mengenkripsi UUID acak yang tidak memiliki record CCTV, sehingga QR baru gagal dipindai.
+- QR lama tetap menemukan CCTV karena scanner hanya memeriksa ID hasil dekripsi.
+
+after:
+- `RotateQRCode` mengenkripsi `cctv.ID.String()` dengan nonce AES-256-GCM baru.
+- `ScanCCTV` membandingkan payload hasil pindai dengan `qr_payload` aktif dan menolak QR lama dengan 404.
+- Endpoint gambar QR mengirim `Cache-Control: no-store` agar URL aset yang sama tidak mempertahankan label lama.
+- Regression test membuktikan ciphertext berubah, hasil dekripsi tetap ID aset yang sama, payload aktif diterima, previous payload ditolak, dan HTTP cache dinonaktifkan.
+- Swagger diregenerasi agar kontrak API menjelaskan rotasi ID CCTV yang sama dengan nonce baru.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Backend (Perbaikan + Security Hardening)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+
 ## [0.64.1] - 2026-08-19
 
 ### Koreksi identitas resmi SIGAP pada keluaran backend
