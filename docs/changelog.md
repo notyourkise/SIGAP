@@ -3,6 +3,18 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.50] — 2026-08-20 — Mulai remediasi: baseline dan provenance production
+
+### Perubahan
+
+- **Baseline Wave 0**: backend build/test/vet lulus; frontend lint 0 error (77 warning baseline) dan production build lulus pada source `5394ea0`.
+- **Decision gates**: DG-01–DG-06 ditandai disetujui pemilik produk, termasuk jadwal tanpa teknisi, notifikasi jadwal/zona, stok per site, split akses inventaris, dan forced-password navigation.
+- **Production provenance**: checkout SHA, image digest/ID, waktu runtime, versi, port, topologi edge, nama konfigurasi non-secret, dan ICE MediaMTX dicatat pada `docs/audits/PRODUCTION-ARTIFACT-PROVENANCE-2026-08-20.md`.
+- **Temuan release engineering**: production memakai edge Nginx host di depan container Nginx; checkout production memiliki modifikasi lokal; image frontend/API belum membawa revision label sehingga source SHA artifact tidak dapat dibuktikan secara immutable.
+- **Batasan**: pengambilan evidence bersifat read-only dan tidak mengubah VPS. Task 0.2 serta perbaikan fitur belum dimulai pada entri ini.
+
+Timestamp: 2026-08-20 WITA | Kategori: Sedang, Dokumentasi + Production Provenance + Quality Baseline
+
 ## [1.28.49] — 2026-08-19 — Register temuan black-box, audit manual test, dan rencana remediasi
 
 ### Perubahan

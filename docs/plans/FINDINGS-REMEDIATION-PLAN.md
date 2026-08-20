@@ -1,9 +1,16 @@
 # Findings Remediation Implementation Plan
 
-> **Status:** rencana, belum dieksekusi.
+> **Status:** sedang dieksekusi — Gelombang 0.
 >
-> **Tanggal:** 19 Agustus 2026.
+> **Tanggal rencana:** 19 Agustus 2026. **Mulai eksekusi:** 20 Agustus 2026.
 > **Sumber:** `docs/audits/BLACKBOX-FINDINGS-2026-08-19.md` dan `docs/audits/MANUAL-TEST-AUDIT-SUMMARY.md`.
+
+## Status Eksekusi
+
+- [x] Baseline lokal pada `5394ea0c543766aa9979115f899307076152fd12`: backend build/test/vet lulus; frontend lint 0 error (77 warning baseline) dan build lulus.
+- [x] Task 0.1 — artifact production, topologi edge, checkout SHA, image digest/ID, waktu runtime, port, dan konfigurasi non-secret telah dicatat.
+- [ ] Task 0.2 — belum dimulai; menunggu Task 0.1 selesai agar setiap hasil test dapat menunjuk artifact yang benar.
+- [ ] Gelombang 1–7 — belum dimulai.
 
 ## Tujuan
 
@@ -22,18 +29,28 @@ Menutup seluruh temuan black-box dan audit manual test melalui perubahan kecil y
 
 Keputusan berikut harus disetujui pemilik produk pada awal eksekusi:
 
-| ID | Keputusan | Rekomendasi |
-|---|---|---|
-| DG-01 | Arti jadwal tanpa teknisi | Tetap `scheduled` dan tampil “Belum ada teknisi”; admin tidak otomatis menjadi pelaksana. |
-| DG-02 | Waktu notifikasi jadwal | Kirim “Jadwal dibuat” saat create dan “Tugas tersedia” saat occurrence jatuh tempo. |
-| DG-03 | Model inventaris kawasan | Master barang global + tabel stok per site `spare_part_stocks`; paling aman untuk SKU yang sama di banyak kawasan. |
-| DG-04 | Akses teknisi ke inventaris | Halaman dan API admin ditutup; teknisi hanya memakai endpoint opsi minimal dalam workflow maintenance. |
-| DG-05 | Navigasi forced password | Tidak ada kembali ke aplikasi; sediakan logout/kembali login. Setelah sukses menuju `returnTo` aman atau dashboard. |
-| DG-06 | Zona unassignment notification | Kirim `ZONE_ASSIGNED` dan `ZONE_UNASSIGNED` agar perubahan tanggung jawab dapat diaudit. |
+| ID | Keputusan | Keputusan pemilik produk | Status |
+|---|---|---|---|
+| DG-01 | Arti jadwal tanpa teknisi | Tetap `scheduled` dan tampil “Belum ada teknisi”; admin tidak otomatis menjadi pelaksana. | ✅ Disetujui 2026-08-20 |
+| DG-02 | Waktu notifikasi jadwal | Kirim “Jadwal dibuat” saat create dan “Tugas tersedia” saat occurrence jatuh tempo. | ✅ Disetujui 2026-08-20 |
+| DG-03 | Model inventaris kawasan | Master barang global + tabel stok per site `spare_part_stocks`; stok/minimum order disimpan per site. | ✅ Disetujui 2026-08-20 |
+| DG-04 | Akses teknisi ke inventaris | Halaman dan API admin ditutup; teknisi hanya memakai endpoint opsi minimal yang di-scope ke site tugas maintenance. | ✅ Disetujui 2026-08-20 |
+| DG-05 | Navigasi forced password | Tidak ada kembali ke aplikasi; sediakan logout/kembali login. Setelah sukses menuju `returnTo` aman atau dashboard. Mode biasa kembali ke halaman sebelumnya. | ✅ Disetujui 2026-08-20 |
+| DG-06 | Zona unassignment notification | Kirim `ZONE_ASSIGNED` dan `ZONE_UNASSIGNED` setelah transaksi berhasil; perubahan tanpa delta tidak mengirim duplikat. | ✅ Disetujui 2026-08-20 |
 
 ## Gelombang 0 — Baseline, Provenance, dan Reproduksi
 
 ### Task 0.1 — Catat artifact production
+
+Status: **✅ SELESAI — evidence diambil read-only dari host production pada 2026-08-20**.
+
+- [x] Catat source branch/SHA pembanding dan konfigurasi non-secret di repository.
+- [x] Catat response publik frontend, API health, edge Nginx, dan route MediaMTX.
+- [x] Dokumentasikan perbedaan edge production dengan container Nginx di source.
+- [x] Catat checkout/deploy SHA aktual pada host production.
+- [x] Catat image digest atau immutable image ID, created/start time, dan versi aktual untuk frontend, API, Nginx, serta MediaMTX.
+- [x] Catat nama variable runtime yang tersedia tanpa menyalin nilainya, port binding, dan konfigurasi ICE aktual.
+- [x] Cocokkan seluruh artifact host dengan source branch; gap revision label dan dirty worktree dicatat sebagai temuan provenance.
 
 Target operasional:
 
@@ -45,6 +62,7 @@ Output:
 
 - Evidence untuk BB-08, BB-13, BB-16, BB-20, dan perbedaan BB-25 dengan changelog.
 - Matriks “production artifact vs source branch”.
+- Dokumen kerja: `docs/audits/PRODUCTION-ARTIFACT-PROVENANCE-2026-08-20.md`.
 
 ### Task 0.2 — Tetapkan status test formal
 
