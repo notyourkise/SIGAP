@@ -34,6 +34,8 @@
 |---|---|---|---|---|---|
 | MT-04-S1 | YES | Tepat satu digest per tanggal WITA dibuat, catch-up tidak menggandakan data, angka cocok dengan sumber, dan akses/page 2 terbukti. | NOT RECORDED | NOT RECORDED | NOT RUN |
 
+> **Cakupan aggregate Wave 0:** Baris formal aggregate di atas adalah **sole atomic suite-level acceptance gate** untuk baseline Wave 0. Skenario legacy terperinci di bawah ini tetap non-formal dan historical/non-authoritative sampai diperluas selama Wave 7.
+
 **Aturan kesimpulan suite:** sebelum eksekusi suite `NOT RUN`; setelah run dimulai, setiap mandatory scenario harus `PASS`. Satu mandatory scenario berstatus `FAIL`, `BLOCKED`, atau `NOT RUN` membuat kesimpulan suite `FAIL`.
 
 > **Guard keselamatan wajib:** Untuk setiap SQL mutasi, `DELETE`/`TRUNCATE`, rotasi/regenerasi key atau QR, penghapusan, reset kredensial, atau mutasi credential, lanjut hanya bila environment bukan production dan target bukan `nexaspace.site`, fixture prefix `E2E-MT04-` serta exact targets sudah dicatat, backup/recovery terverifikasi untuk perubahan data/key state, dan cleanup/rollback didefinisikan serta dicatat setelah run. Jika salah satu syarat tidak tersedia, hentikan prosedur dan set scenario status ke `BLOCKED`; jangan jalankan pada production. Jangan menyalin credential, token, private key, RTSP password, atau payload production yang belum disanitasi.
@@ -50,7 +52,9 @@
 1. Login sebagai Admin lalu pastikan menu **Ringkasan** dengan ikon `ClipboardList` tampil di sidebar. NOT RUN
 2. Buka `/ringkasan` dan pastikan timeline menampilkan kartu per tanggal jika digest sudah tersedia. NOT RUN
 3. Periksa setiap kartu: tanggal, summary naratif, tugas baru, selesai, gagal, overdue, pengecekan lapangan, jumlah attention, dan perubahan status CCTV. NOT RUN
-4. Jika tersedia lebih dari 10 digest, gunakan paginasi dan pastikan halaman berikutnya memuat tanggal yang lebih lama. NOT RUN sebagian — komponen & API paginasi tersedia, tapi data nyata baru 4 digest sehingga halaman ke-2 tidak dapat diuji (terbatas data).
+4. Jika tersedia lebih dari 10 digest, gunakan paginasi dan pastikan halaman berikutnya memuat tanggal yang lebih lama. NOT RUN
+
+> **Catatan historis/non-authoritative:** Komponen dan API paginasi tersedia, tetapi data nyata pada observasi legacy hanya empat digest sehingga halaman kedua belum dapat diuji (terbatas data).
 5. Jalankan atau tunggu generator pada pukul 06:00 WITA. Pastikan digest tanggal tersebut dibuat satu kali. NOT RUN
 6. Pastikan Admin menerima notifikasi **Ringkasan operasional [tanggal] tersedia** pada menu Pemberitahuan. NOT RUN
 7. Login sebagai Teknisi. Pastikan menu Ringkasan tidak tampil dan membuka `/ringkasan` mengarahkan kembali ke `/dashboard`. NOT RUN

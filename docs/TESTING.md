@@ -20,6 +20,10 @@ Sebelum eksekusi, suite berstatus `NOT RUN`. Setelah run dimulai, satu mandatory
 
 Untuk catatan historis yang dipertahankan: failure runtime yang eksplisit dipetakan menjadi `FAIL` saat direkam ulang dengan kontrak formal; kegagalan prerequisite eksternal dipetakan menjadi `BLOCKED` bila blocker evidence tersedia; code inspection, unit-test review, checkmark lama, atau metadata/evidence yang hilang dipetakan menjadi `NOT RUN`.
 
+### Aggregate formal row untuk baseline Wave 0
+
+Untuk baseline Wave 0, suite yang saat ini memiliki satu aggregate formal row memakai baris tunggal tersebut sebagai **sole atomic suite-level acceptance gate**. Skenario legacy terperinci di bawahnya tetap non-formal dan historical/non-authoritative sampai diperluas selama Wave 7. Aggregate formal row tetap wajib memiliki expected, actual, evidence, mandatory flag, dan status persis dari vocabulary di atas.
+
 ### Metadata eksekusi wajib
 
 Setiap execution record wajib memuat seluruh field berikut: test ID, owner, build SHA, artifact digest/ID, tester, timestamp WITA, environment, fixture prefix/data, cleanup result, expected, actual, evidence path/link, mandatory flag, scenario status, dan suite status. Nilai yang belum tersedia ditulis `NOT RECORDED`; status yang belum dijalankan ditulis `NOT RUN`.
