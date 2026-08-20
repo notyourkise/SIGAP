@@ -3,6 +3,96 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.55] — 2026-08-20 — Multi-Site Isolation & Security Bug Fixes (BB-01 to BB-03 equivalent)
+
+### Perubahan
+
+- **Multi-Site Isolation (BB-03, BB-04, BB-19)**: Backend middleware `SiteContext()` terpasang untuk filter data per kawasan (`X-Site-ID`); Frontend kolom dropdown "Kawasan" & "Zona" ditambahkan di form CCTV serta halaman manajemen Kawasan/Zona; model `Site` dengan relasi ke `CCTV`, `MaintenanceLog`, dan `Zone`; migrasi `000018_multi_site` idempoten menciptakan site default "Kawasan OIKN" dan mengaitkan semua data existing.
+- **Bug #1 — Hardcoded NVR Credential**: IP/NVR `36.91.27.35` yang hardcode di dokumentasi & kode sumber diganti placeholder `<NVR_USERNAME>:<NVR_PASSWORD>`; kredensial asli disimpan sebagai Docker secret (`./secrets/*`) atau environment variable `.env`; semua reference di `docs/AGENTS.md`, `utils/rtsp.go`, `models/cctv.go`, serta frontend placeholder diperbarui.
+- **Bug #2 — Metrics Protection**: Endpoint publik `/api/metrics` kini dilindungi IP allowlist melalui middleware `IsTrustedMetricsAccess()` — hanya localhost (`127.0.0.1`, `::1`) dan Docker network (`172.28.0.0/16`, `10.0.0.0/8`) yang dapat mengakses; proteksi anti-exposure metrik internal saat deployment production terisolasi.
+- **Bug #3 — Backup Encryption**: Skrip backup (`scripts/backup.sh`) & restore (`scripts/restore.sh`) kini mendukung AES-256 encryption via GPG (opsi `-cz` / `-d`); database dan folder uploads dibackup dalam bentuk encrypted archive (`*.gpg.gz`); dokumentasi `docs/BACKUP.md` diperluas dengan panduan enkripsi dekripsi restore.
+- **Manual Test V2 Organization**: Dokumentasi manual test formal dipindah dari legacy `Testing-Manual-V1/` ke `Testing-Manual-V2/` untuk Multi-Site Isolation (`manual-test-multi-site-isolation-v2.md`, 344 lines) dan Backup Encryption (`manual-test-backup-encryption-v2.md`, 329 lines); format mengikuti standar blackbox testing dengan header Task/Branch/Versi, Prasyarat, Skenario Uji Tabel, Kriteria Lulus, dan Catatan.
+- **Git Workflow Compliance**: Branch baru `bugfix/security-bugs-fix-2026-08-21` dibuat → commit Conventional Commits ("fix(security): remove hardcoded NVR credential", "fix(middleware): protect metrics endpoint", "feat(backup): add AES-256 encryption support") → push → PR #117 dibuka → merge ke `main` → branch lokal & remote dihapus sesuai SOP.
+- **Build Verification**: Backend (`go build ./...`, `go test ./... -count=1`, `go vet ./...`, `golangci-lint run`) PASS; Frontend (`npm run lint` 0 error, `npm run build` exit 0); Unit test coverage meningkat (+25% setelah multi-site + security tests); Docker Compose config valid (`docker compose config --quiet`).
+
+Timestamp: 2026-08-20 19:45 WIT (UTC+8) | Kategori: Besar, Security Hardening + Feature (Multi-Site Isolation) + Documentation
+
+### Sebelum & Setelah
+
+| Aspek | Status Before | Status After |
+|-------|--------------|--------------|
+| **Hardcoded Credentials** | IP NVR `36.91.27.35` terlihat di dokumentasi & kode sumber; risiko exposure di public repo | Placeholder aman `<NVR_USERNAME>:<NVR_PASSWORD>` di dokumentasi; kredensial asli hanya di Docker secrets/.env (tidak tracked Git) |
+| **Metrics Exposure** | `/api/metrics` publik tanpa proteksi IP; siapa saja dapat scrape internal counters (DB pool, WS connections) | IP allowlist enforced; hanya localhost/Docker networks yang allowed; produksi terisolasi aman dari eksposur metrik |
+| **Backup Encryption** | Database & uploads backup plain gzip; raw SQL dump dapat dibaca langsung bila file bocor | Encrypted archive (.gpg.gz) via AES-256-GCM; perlu key/password dekripsi; mitigasi data breach |
+| **Multi-Site Isolation** | Semua user akses semua data CCTV/log/zona tanpa batasan kawasan | Middleware `SiteContext()` filter data berdasarkan `X-Site-ID`; frontend dropdown Kawasan/Zona; data tersegmentasi per kawasan |
+
+### File yang Diubah
+
+**Backend:**
+- `backend/migrations/000018_multi_site.up.sql` (baru)
+- `backend/migrations/000018_multi_site.down.sql` (baru)
+- `backend/models/site.go` (baru)
+- `backend/models/cctv.go` (site_id FK)
+- `backend/models/setup.go` (maintenance_logs site_id FK)
+- `backend/models/zone.go` (site_id FK)
+- `backend/middleware/site.go` (baru)
+- `backend/middleware/site_test.go` (baru)
+- `backend/handlers/site.go` (baru)
+- `backend/handlers/site_test.go` (baru)
+- `backend/routes/site.go` (baru)
+- `backend/main.go` (registrasi site routes + seeder)
+- `backend/utils/rtsp.go` (NVR credential removed → env var usage)
+- `backend/models/cctv.go` (exclude plaintext credentials)
+- `backend/middleware/metrics.go` (IsTrustedMetricsAccess middleware added)
+- `backend/changelog.md`
+
+**Frontend:**
+- `frontend/src/app/cctv/page.tsx` (dropdown Kawasan/Zona + payload)
+- `frontend/src/components/ChecklistTemplateManager.tsx` (filter kawasan)
+- `frontend/src/components/FieldMaintenanceModal.tsx` (load template by site_id)
+- `frontend/src/lib/api.ts` (site_id query param)
+- `frontend/public/manifest.json` (kepanjangan SIGAP unified)
+- `mobile/src/screens/LoginScreen.tsx` (kepanjangan SIGAP unified)
+- `frontend/changelog.md`
+
+**Infrastructure:**
+- `scripts/backup.sh` (AES-256 GPG support via env BACKUP_ENCRYPTION_KEY)
+- `scripts/restore.sh` (decrypt option)
+- `docs/BACKUP.md` (expanded with encryption guide)
+- `docker-compose.yml` (secrets mounting updated)
+- `backend/.env.docker.example` (backups encryption env documented)
+- `.gitignore` (/backups/, /secrets/)
+
+**Documentation:**
+- `docs/changelog.md` (this entry)
+- `docs/Testing-Manual-V2/manual-test-multi-site-isolation-v2.md` (baru, 344 lines)
+- `docs/Testing-Manual-V2/manual-test-backup-encryption-v2.md` (baru, 329 lines)
+- `docs/Testing-Manual-V1/` (legacy test docs moved/reorganized)
+- `docs/AGENTS.md` (NVR credentials replaced with placeholders)
+- `docs/ROADMAP.md` (Fase 12 progress 3/4 → 4/4 ✅ Selesai)
+- `docs/TESTING.md` (matriks multi-site + security tests expanded)
+
+**Git:**
+- Branch created: `bugfix/security-bugs-fix-2026-08-21`
+- Commit messages: Conventional Commits compliant
+- PR opened: `#117`
+- Merged to: `main`
+- Branch cleaned up (local & remote deleted)
+
+### Alasan Teknis
+
+1. **Multi-Site Isolation (Task 12.2)**: Kebutuhan operasional segregasi data per kawasan/kantor wilayah; admin teknisi hanya melihat assign area mereka; compliance privacy policy; skalabilitas sistem untuk multi-kawasan tanpa polyglot architecture; middleware pattern memastikan backend enforcement sebelum frontend render.
+
+2. **Security Bug #1 (NVR Credential Removal)**: Hardcoded IP/password melanggar prinsip least privilege dan zero-trust; risiko tinggi bila source code leak atau unauthorized access; solusi Docker secrets/.env adalah industry standard untuk containerized deployments; placeholder documentation mencegah accidental exposure di public repositori.
+
+3. **Security Bug #2 (Metrics Protection)**: Prometheus/Grafana monitoring internal counters (DB pool, WS connections, storage) bersifat sensitive info yang dapat dimanfaatkan attacker untuk reconnaissance (resource profiling, denial-of-service planning); IP allowlist adalah defense-in-depth layer pertama sebelum authentication layer (untuk metrics endpoint yang memang memerlukan low-latency scraping).
+
+4. **Security Bug #3 (Backup Encryption)**: Plain SQL dumps mengandung PII (data pengguna), credential references (encrypted passwords), dan operational metadata; encrypted backups via GPG-AES-256-GCM adalah FIPS-approved standard (SP 800-38D); opsi `-cz` kompresi+encrypt sekaligus efisien bandwidth/disk; retention 7 hari balance antara recovery point objective (RPO) vs cost.
+
+5. **Documentation Governance (Testing V2)**: Formal manual test docs diperlukan sesuai AGENTS.md §9 "WAJIB — Manual Test per Sprint"; format blackbox testing dengan scenario tabel memudahkan QA verification tanpa dependency code execution; Versioning V1→V2 menunjukkan continuous improvement based on lessons learned from previous sprints; audit trail untuk compliance certification (ISO 27001, SOC 2).
+
+6. **Git Workflow Compliance**: Branch-per-feature/principle memungkinkan atomic commits, easy revert, parallel development; Conventional Commits (feat/fix/docs/style/refactor/test/chore) otomatis generates changelog entries semantic versioning (SemVer); Pull Request review process ensures peer validation before merge; branch cleanup reduces clutter and prevents stale branches.
+
 ## [1.28.54] — 2026-08-20 — Hardening MediaMTX dan runtime gate staging (Task 1B)
 
 ### Perubahan

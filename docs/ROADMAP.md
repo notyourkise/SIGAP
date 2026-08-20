@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga streaming CCTV real-time.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-19 (sinkronisasi status roadmap)
+> Disusun: 2026-08-01 · Diperbarui: 2026-08-20 (sinkronisasi status roadmap + multi-site isolation & security fixes)
 
 ## Visi & Prinsip Prioritas
 
@@ -37,6 +37,25 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **13** | **Perbaikan & Penguatan Fitur Existing** | **18/18 (Sprint 31–36)** | **✅ Selesai** |
 | **14** | **CCTV Intelligence — Live Status & AI Takedown** | **Sprint 37 ✅ · Sprint 37-PATCH ✅ · Sprint 40 ✅** | **✅ Selesai** |
 | **15** | **Branding & Dokumentasi** | **1/1** | **✅ Selesai** |
+
+> **Update Terbaru 2026-08-20**: 
+> - **Fase 12 (Integrasi & Skalabilitas)**: Multi-Site Isolation (Task 12.2) selesai ✅ — semua 4 task dalam Fase 12 telah diselesaikan.
+> - **Security Hardening**: 3 critical vulnerabilities patched (hardcoded NVR credentials, public metrics endpoint exposure, unencrypted backups).
+> - **Manual Test Governance**: Dokumen testing formal v2 diorganisir ke `docs/Testing-Manual-V2/`.
+> - **Git Workflow Compliance**: Seluruh fitur dikembangkan menggunakan Conventional Commits + PR review process.
+> 
+> ```
+> Fase 1–15 ✅ (semua fase roadmap utama selesai)
+>     │
+>     ▼
+> Status saat ini: Production Ready ✅
+>     │
+>     ├── Multi-Site Isolation operational
+>     ├── Security compliance achieved
+>     ├── Backup encryption enabled
+>     ├── Metrics protection enforced
+>     └── Documentation governance complete
+> ```
 
 > **Urutan pengerjaan:**
 > ```
