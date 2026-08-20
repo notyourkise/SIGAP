@@ -35,7 +35,8 @@ import {
   History,
   Network,
   ShieldCheck,
-  TrendingUp
+  TrendingUp,
+  Building2
 } from 'lucide-react';
 
 interface CCTV {
@@ -65,6 +66,7 @@ interface CCTV {
   // Zona operasional & kawasan (site) — opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
   site_id?: string | null;
+  site_nama?: string; // Added for Multi-Site Isolation (Fix BB-04)
 }
 
 interface QRPrintItem {
@@ -1238,6 +1240,19 @@ export default function CCTVPage() {
                       />
                     </th>
                     <th className="px-5 py-3.5">Koneksi</th>
+                    {/* Kolom Kawasan / Site — Added for Multi-Site Isolation (Fix BB-04) */}
+                    <th
+                      className="px-5 py-3.5"
+                      aria-sort={sortBy === 'site_id' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <SortableHeader
+                        label="Kawasan"
+                        sortKey="site_id"
+                        activeKey={sortBy}
+                        direction={sortOrder}
+                        onSort={handleHeaderSort}
+                      />
+                    </th>
                     <th
                       className="px-5 py-3.5"
                       aria-sort={sortBy === 'lokasi_area' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -1321,6 +1336,17 @@ export default function CCTVPage() {
                             <p className="mt-0.5 text-xs capitalize text-muted">{cctv.indoor_outdoor || '-'}</p>
                           </div>
                         </div>
+                      </td>
+                      {/* Kolom Kawasan / Site — Added for Multi-Site Isolation (Fix BB-04) */}
+                      <td className="px-5 py-4">
+                        {cctv.site_id ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            <Building2 className="h-3 w-3" aria-hidden="true" />
+                            <span>{cctv.site_nama || 'Kawasan'}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted italic">Belum ditentukan</span>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
@@ -1661,13 +1687,13 @@ export default function CCTVPage() {
 
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-muted">URL RTSP Kamera</label>
-                        <input
-                          type="text"
-                          value={formData.rtsp_url}
-                          onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
-                          placeholder="rtsp://admin:hik12345@36.91.27.35:554/Streaming/channels/1901"
-                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                        />
+                          <input
+                            type="text"
+                            value={formData.rtsp_url}
+                            onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
+                            placeholder="rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/XXXX"
+                            className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
                         <p className="text-[11px] text-muted">
                           Isi URL RTSP penuh bila kamera punya sumber stream sendiri. Bila kosong, sistem akan menyusun
                           URL otomatis dari Nomor Channel NVR + kredensial di bawah.
@@ -1724,14 +1750,14 @@ export default function CCTVPage() {
                           title={
                             formData.rtsp_url ||
                             (formData.channel_port > 0
-                              ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
+                              ? `rtsp://USER:***@NVR_HOST:554/Streaming/channels/${formData.channel_port * 100 + 2}`
                               : '')
                           }
                         >
                           {formData.rtsp_url
                             ? formData.rtsp_url
                             : formData.channel_port > 0
-                              ? `rtsp://admin:***@36.91.27.35:554/Streaming/channels/${formData.channel_port * 100 + 2}`
+                              ? `rtsp://USER:***@NVR_HOST:554/Streaming/channels/${formData.channel_port * 100 + 2}`
                               : 'Isi URL RTSP atau channel port untuk melihat URI stream (sub stream).'}
                         </p>
                       </div>

@@ -11,8 +11,13 @@ import (
 // (Task 11.1, Sprint 26). CRUD suku cadang khusus admin; daftar & penggunaan
 // dapat diakses admin/teknisi yang sudah login.
 func SetupSparePartRoutes(router fiber.Router) {
+	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-19)
+	// Middleware ini membaca X-Site-ID header dan validasi site di database
+	siteMiddleware := middleware.SiteContext()
+	
 	// Rute suku cadang — daftar & detail untuk admin/teknisi, CRUD khusus admin.
 	spGroup := router.Group("/spare-parts", middleware.Protected())
+	spGroup.Use(siteMiddleware)
 
 	// Rute statis didaftarkan sebelum rute dinamis (gotcha Fiber route ordering):
 	// /low-stock harus sebelum /:id.
@@ -25,6 +30,7 @@ func SetupSparePartRoutes(router fiber.Router) {
 
 	// Penggunaan suku cadang — terikat maintenance log (admin & teknisi).
 	mlGroup := router.Group("/maintenance-logs", middleware.Protected())
+	mlGroup.Use(middleware.SiteContext()) // Add site context here too
 	mlGroup.Post("/:id/spare-parts", handlers.RecordSparePartUsage)
 	mlGroup.Get("/:id/spare-parts", handlers.GetSparePartUsageByLog)
 }

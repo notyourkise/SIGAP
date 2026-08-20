@@ -3,7 +3,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
-import { apiRequest, downloadApiFile } from '@/lib/api';
+import { apiRequest, downloadApiFile, getAllSitesForSelect, getCookie, setCookie } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
@@ -29,6 +29,7 @@ import {
   ArrowLeftRight,
   PackagePlus,
   Camera,
+  Building2
 } from 'lucide-react';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import SortableHeader from '@/components/SortableHeader';
@@ -49,7 +50,7 @@ interface User {
 interface MaintenanceLog {
   id: string;
   cctv_id: string;
-  cctv: (MasterCCTV & { lokasi_area?: string }) | null;
+  cctv: (MasterCCTV & { lokasi_area?: string, site_nama?: string }) | null;
   technician_id: string | null;
   // technician null saat log belum ditugaskan ke teknisi
   technician: User | null;
@@ -147,6 +148,10 @@ export default function MaintenanceLogsPage() {
   const [cctvFilter, setCctvFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [siteFilter, setSiteFilter] = useState('');
+  
+  // Sites for dropdown
+  const [sites, setSites] = useState<{ id: string; nama: string }[]>([]);
 
   // Sort State (disembunyikan — diatur lewat modal "Sortir")
   const [sortBy, setSortBy] = useState('created_at');
@@ -160,6 +165,7 @@ export default function MaintenanceLogsPage() {
   const [draftCctvFilter, setDraftCctvFilter] = useState('');
   const [draftStartDate, setDraftStartDate] = useState('');
   const [draftEndDate, setDraftEndDate] = useState('');
+  const [draftSiteFilter, setDraftSiteFilter] = useState('');
 
   // Jumlah filter/sortir aktif — dipakai untuk badge pada tombol Sortir
   const activeFilterCount =
@@ -167,6 +173,7 @@ export default function MaintenanceLogsPage() {
     (statusFilter ? 1 : 0) +
     (startDate ? 1 : 0) +
     (endDate ? 1 : 0) +
+    (siteFilter ? 1 : 0) +
     (sortBy !== 'created_at' || sortOrder !== 'desc' ? 1 : 0);
 
   // Modal State
@@ -248,6 +255,7 @@ export default function MaintenanceLogsPage() {
       if (cctvFilter) queryParams.push(`cctv_id=${encodeURIComponent(cctvFilter)}`);
       if (startDate) queryParams.push(`start_date=${encodeURIComponent(startDate)}`);
       if (endDate) queryParams.push(`end_date=${encodeURIComponent(endDate)}`);
+      if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
       if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
       if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
       
@@ -266,7 +274,7 @@ export default function MaintenanceLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cctvFilter, page, sortBy, sortOrder, statusFilter, startDate, endDate]);
+  }, [cctvFilter, page, sortBy, sortOrder, statusFilter, startDate, endDate, siteFilter]);
 
   const fetchCCTVsList = useCallback(async () => {
     setCctvsError('');
@@ -373,6 +381,25 @@ export default function MaintenanceLogsPage() {
   }, [fetchCCTVsList]);
 
   const { subscribe } = useWebSocket();
+
+  // Load sites untuk dropdown filter kawasan
+  useEffect(() => {
+    let cancelled = false;
+    const loadSites = async () => {
+      try {
+        const allSitesResponse = await getAllSitesForSelect();
+        if (!cancelled && allSitesResponse.status === 'success' && allSitesResponse.data) {
+          setSites(allSitesResponse.data);
+        }
+      } catch (err) {
+        console.error('Gagal memuat list site:', err);
+      }
+    };
+    loadSites();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const unsubCreated = subscribe('MAINTENANCE_CREATED', () => fetchLogs());
@@ -691,6 +718,7 @@ export default function MaintenanceLogsPage() {
     if (draftCctvFilter !== cctvFilter) { setCctvFilter(draftCctvFilter); changed = true; }
     if (draftStartDate !== startDate) { setStartDate(draftStartDate); changed = true; }
     if (draftEndDate !== endDate) { setEndDate(draftEndDate); changed = true; }
+    if (draftSiteFilter !== siteFilter) { setSiteFilter(draftSiteFilter); changed = true; }
     if (changed) setPage(1);
     setIsSortModalOpen(false);
   };
@@ -702,6 +730,7 @@ export default function MaintenanceLogsPage() {
     setCctvFilter('');
     setStartDate('');
     setEndDate('');
+    setSiteFilter('');
     setPage(1);
     setIsSortModalOpen(false);
   };
@@ -809,16 +838,17 @@ export default function MaintenanceLogsPage() {
           <div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                    <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                    <th className="px-5 py-3.5"><SortableHeader label="Pekerjaan" sortKey="pekerjaan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                    <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                    <th className="px-5 py-3.5"><SortableHeader label="Waktu" sortKey="waktu" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                    <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                    <th className="px-5 py-3.5 text-right">Tindakan</th>
-                  </tr>
-                </thead>
+                 <thead>
+                   <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
+                     <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5"><SortableHeader label="Pekerjaan" sortKey="pekerjaan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5 text-sm font-semibold text-muted">Kawasan</th>
+                     <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5"><SortableHeader label="Waktu" sortKey="waktu" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5 text-right">Tindakan</th>
+                   </tr>
+                 </thead>
                 <tbody className="divide-y divide-border text-sm">
                   {sortedRows.map((log) => (
                     <tr key={log.id} className="transition-colors hover:bg-background/40">
@@ -859,6 +889,19 @@ export default function MaintenanceLogsPage() {
                       <td className="max-w-xs px-5 py-4">
                         <p className="line-clamp-1 font-medium" title={log.action_taken}>{log.action_taken}</p>
                         {log.notes && <p className="mt-0.5 line-clamp-1 text-xs text-muted" title={log.notes}>{log.notes}</p>}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          {log.cctv?.site_nama ? (
+                            <>
+                              <Building2 className="h-4 w-4 text-primary" />
+                              <span className="text-sm">{log.cctv.site_nama}</span>
+                            </>
+                          ) : (
+                            <span className="text-sm italic text-muted">Belum ditentukan</span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-5 py-4 text-muted">{log.technician?.full_name || 'Belum ditugaskan'}</td>
@@ -1071,6 +1114,21 @@ export default function MaintenanceLogsPage() {
                         className="min-h-11 w-full rounded-xl border border-input-border bg-input px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="maintenance-sort-site-filter" className="mb-1.5 block text-xs font-semibold text-muted">Kawasan</label>
+                    <select
+                      id="maintenance-sort-site-filter"
+                      value={draftSiteFilter}
+                      onChange={(e) => setDraftSiteFilter(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
+                    >
+                      <option value="">Semua Kawasan</option>
+                      {sites.map((site) => (
+                        <option key={site.id} value={site.id}>{site.nama}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
