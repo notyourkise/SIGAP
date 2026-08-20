@@ -81,7 +81,10 @@ Evidence berikut membuktikan perubahan source dan regression automation, bukan r
 - [x] Scanner menerima payload aktif dan menolak payload sebelumnya.
 - [x] Cache gambar frontend memakai `id + qr_payload`, HTTP/fetch `no-store`, dan jalur QR bypass cache service worker; versi shell cache dinaikkan untuk membuang cache lama.
 - [x] Targeted backend regression `TestRotateQRCode|TestScanCCTV|TestGetCCTVQRCode_DisablesHTTPCache` dan `npm run test:sw` lulus pada branch `codex/qr-lifecycle`.
-- [ ] Jalankan MT-11-S1 dengan fixture non-production `E2E-MT11-`, bukti cetak/pindai, dan cleanup terverifikasi.
+- [x] Jalankan sub-gate QR Task 1A dengan fixture non-production `E2E-MT11-`: label baru berubah tanpa hard refresh, payload hasil decode diterima, QR lama ditolak, teknisi 403, audit tercatat, dan cleanup terverifikasi.
+- [ ] Jalankan sisa acceptance agregat MT-11-S1 untuk API key, webhook, dan perluasan seluruh role-negative sebelum mengubah status suite dari `NOT RUN`.
+
+Evidence sub-gate QR: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`. Hasil `PASS` ini hanya berlaku untuk lifecycle QR/BB-10 dan tidak mengubah status suite agregat MT-11.
 
 | Item | Observasi historis (non-authoritative) |
 |------|-------------|

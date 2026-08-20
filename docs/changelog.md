@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.53] — 2026-08-20 — Runtime gate lifecycle QR (Task 1A)
+
+### Perubahan
+
+- **Runtime staging terisolasi**: source `914e0432` dijalankan pada Compose project, database, Redis, volume, subnet, dan loopback port terpisah; production tidak dimutasi.
+- **Lifecycle QR**: rotasi API dan UI mempertahankan ID CCTV, menghasilkan payload/PNG baru, menerima QR aktif, menolak QR sebelumnya, serta mencatat audit.
+- **Label dan cetak**: label UI berubah langsung tanpa hard refresh; tombol cetak dapat dijalankan dan aplikasi mengonfirmasi label terbaru siap dicetak.
+- **RBAC**: permintaan rotasi oleh teknisi ditolak dengan HTTP 403.
+- **Evidence aktual**: payload didekode dari PNG label sebelum/sesudah rotasi; hash label UI terbaru sama dengan payload aktif backend dan scanner mengembalikan aset yang sama.
+- **Cleanup**: stack, database, Redis, volume, network, source staging, dan tunnel dihapus; service production tetap berjalan dan komponen ber-healthcheck tetap sehat.
+- **Batas status**: Task 1A/BB-10 runtime gate `PASS`; suite agregat MT-11 tetap `NOT RUN` sampai skenario API key dan webhook selesai.
+
+Timestamp: 2026-08-20 WITA | Kategori: Kritis, Runtime Acceptance + Security Verification
+
 ## [1.28.52] — 2026-08-20 — Perbaikan lifecycle rotasi QR (Task 1A)
 
 ### Perubahan

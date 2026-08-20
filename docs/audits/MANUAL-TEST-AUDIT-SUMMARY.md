@@ -104,9 +104,11 @@ Prioritas tertinggi adalah isolasi data multi-site, otorisasi laporan dan suku c
 
 - File: `manual-test-infra-integration.md`
 - Severity: **P1**
+- Status: sub-gate lifecycle QR Task 1A **PASS 2026-08-20**; acceptance agregat MT-11 tetap `NOT RUN` untuk API key, webhook, dan perluasan role-negative.
 - Temuan: rotasi QR, regenerasi key, dan penghapusan webhook log bersifat destruktif tanpa guard non-production, backup, rollback, dan cleanup; beberapa RBAC hanya opsional.
 - Solusi: wajibkan test environment, fixture khusus, recovery procedure, dan matriks 401/403 untuk seluruh endpoint mutasi.
 - Exit criteria: kredensial/QR lama ditolak, pengganti berfungsi, cleanup hanya menyentuh fixture, audit tercatat, dan seluruh role negatif lulus.
+- Evidence QR: `MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ### MT-12 — Multi-site
 
