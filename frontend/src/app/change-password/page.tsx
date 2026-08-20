@@ -1,20 +1,23 @@
 'use client';
 
-// Force dynamic rendering - authenticated-only pages can't be statically exported
+// Force dynamic rendering for authenticated-only pages to avoid static export errors
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldAlert, Sun } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
 
-export default function ChangePasswordPage() {
+// Client-side only component that uses searchParams
+function ChangePasswordForm() {
+  const router = useRouter();
+  // Use search params after mount (client-side only)
+  const searchParams = new URLSearchParams(window.location.search);
+  
   const { user, login, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -235,4 +238,9 @@ export default function ChangePasswordPage() {
       </div>
     </div>
   );
+}
+
+// Default export wrapping the component
+export default function ChangePasswordPage() {
+  return <ChangePasswordForm />;
 }
