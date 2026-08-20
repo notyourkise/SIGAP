@@ -42,6 +42,7 @@ function navigateAfterAuth(path: string) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forceRedirect, setForceRedirect] = useState<string | null>(null);
 
   // Sesi disimpan dalam cookie httpOnly (tidak dapat dibaca JavaScript).
   // Saat aplikasi dimuat, profil pengguna diambil dari endpoint /auth/me.
@@ -56,13 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await apiRequest<User>('/auth/me', { skipAuthRedirect: true });
         if (!cancelled && response.status === 'success' && response.data) {
           setUser(response.data);
-          // Paksa ganti password saat login pertama (akun baru / password di-reset
-          // Admin) sebelum mengakses menu lain.
-          if (response.data.must_change_password && typeof window !== 'undefined') {
-            const path = window.location.pathname;
-            if (path !== '/change-password' && !path.startsWith('/change-password')) {
-              navigateAfterAuth('/change-password');
-            }
+          
+          // Early forced password check - redirect IMMEDIATELY without waiting for render
+          // This prevents flash of other pages before redirect to change-password
+          if (response.data.must_change_password) {
+            setForceRedirect('/change-password');
           }
         }
       } catch {
@@ -78,6 +77,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // Force redirect after user state is set - use setTimeout to avoid blocking render
+  useEffect(() => {
+    if (forceRedirect && !loading && user) {
+      const timer = setTimeout(() => {
+        window.location.replace(forceRedirect);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [forceRedirect, loading, user]);
 
   // Sesi berakhir di sisi server (401) — bersihkan state user.
   useEffect(() => {
