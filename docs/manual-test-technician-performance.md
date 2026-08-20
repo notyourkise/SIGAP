@@ -1,5 +1,46 @@
 # Panduan Uji Manual - Dashboard Kinerja Teknisi (Task 6.2)
 
+> **Kontrak uji formal — MT-23**
+>
+> Dokumen ini mendefinisikan prosedur; hasil sebelum **2026-08-20** adalah catatan historis/non-authoritative dan harus diuji ulang dengan execution record formal. Inspeksi kode, review unit test, atau checkmark lama bukan `PASS` black-box.
+>
+> **Skenario audit reproduktif:** Dengan fixture per teknisi yang memiliki hasil matematis diketahui, uji periode 90/365 hari, boundary tanggal, sort/chart, empty state, dan parameter invalid.
+>
+> **Status suite:** `NOT RUN`
+
+### Formal execution metadata
+
+| Field | Value |
+|---|---|
+| Test ID / Audit ID | MT-23 |
+| Capability owner | QA Analytics + Frontend/Backend |
+| Status suite | NOT RUN |
+| Build SHA | NOT RECORDED |
+| Artifact digest/ID | NOT RECORDED |
+| Tester | NOT RECORDED |
+| Timestamp WITA | NOT RECORDED |
+| Environment | NOT RECORDED |
+| Fixture prefix/data | `E2E-MT23-` / NOT RECORDED |
+| Cleanup result | NOT RUN |
+| Expected | Metrik cocok dengan perhitungan independen, boundary benar, invalid range ditolak, RBAC lulus, dan UI terbukti di browser. |
+| Actual | NOT RECORDED |
+| Evidence path/link | NOT RECORDED |
+| Mandatory flag | YES |
+| Scenario status | NOT RUN |
+
+### Formal scenario record
+
+| ID | Mandatory | Expected | Actual | Evidence | Status |
+|---|---|---|---|---|---|
+| MT-23-S1 | YES | Metrik cocok dengan perhitungan independen, boundary benar, invalid range ditolak, RBAC lulus, dan UI terbukti di browser. | NOT RECORDED | NOT RECORDED | NOT RUN |
+
+> **Cakupan aggregate Wave 0:** Baris formal aggregate di atas adalah **sole atomic suite-level acceptance gate** untuk baseline Wave 0. Skenario legacy terperinci di bawah ini tetap non-formal dan historical/non-authoritative sampai diperluas selama Wave 7.
+
+**Aturan kesimpulan suite:** sebelum eksekusi suite `NOT RUN`; setelah run dimulai, setiap mandatory scenario harus `PASS`. Satu mandatory scenario berstatus `FAIL`, `BLOCKED`, atau `NOT RUN` membuat kesimpulan suite `FAIL`.
+
+> **Guard keselamatan wajib:** Untuk setiap SQL mutasi, `DELETE`/`TRUNCATE`, rotasi/regenerasi key atau QR, penghapusan, reset kredensial, atau mutasi credential, lanjut hanya bila environment bukan production dan target bukan `nexaspace.site`, fixture prefix `E2E-MT23-` serta exact targets sudah dicatat, backup/recovery terverifikasi untuk perubahan data/key state, dan cleanup/rollback didefinisikan serta dicatat setelah run. Jika salah satu syarat tidak tersedia, hentikan prosedur dan set scenario status ke `BLOCKED`; jangan jalankan pada production. Jangan menyalin credential, token, private key, RTSP password, atau payload production yang belum disanitasi.
+
+
 ## Prasyarat
 
 - Backend dan frontend berjalan pada environment yang sama.
@@ -36,18 +77,18 @@ Respons sukses memiliki `status: "success"` dan `data` berupa array. Setiap item
 - `overdue_count` mencakup tugas aktif yang melewati `scheduled_date` dan tugas completed yang selesai setelah `scheduled_date`.
 - `quality_score` = pengecekan dengan `overall_status = ok` dibagi total pengecekan lapangan.
 
-## Hasil Nyata (18 Agu 2026, produksi `https://nexaspace.site`)
+## Observasi Historis (Non-authoritative) (18 Agu 2026, produksi `<PRODUCTION_TARGET>`)
 
-| ID | Hasil nyata |
+| ID | Observasi historis (non-authoritative) |
 |----|-------------|
-| S1 | ✅ |
-| S2 | ✅ |
-| S3 | ✅ |
-| S4 | ✅ |
-| S5 | ✅ |
-| S6 | ✅ |
-| S7 | ✅ |
-| S8 | ✅ |
+| S1 | NOT RUN |
+| S2 | NOT RUN |
+| S3 | NOT RUN |
+| S4 | NOT RUN |
+| S5 | NOT RUN |
+| S6 | NOT RUN |
+| S7 | NOT RUN |
+| S8 | NOT RUN |
 
 **Catatan verifikasi:**
 - S1: admin `GET /api/dashboard/technician-performance` → 200; menu "Kinerja Teknisi" tampil untuk admin (`DashboardLayout.tsx`).

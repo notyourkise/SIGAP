@@ -1,5 +1,46 @@
 # Uji Manual - Multi-Site (Task 12.2)
 
+> **Kontrak uji formal — MT-12**
+>
+> Dokumen ini mendefinisikan prosedur; hasil sebelum **2026-08-20** adalah catatan historis/non-authoritative dan harus diuji ulang dengan execution record formal. Inspeksi kode, review unit test, atau checkmark lama bukan `PASS` black-box.
+>
+> **Skenario audit reproduktif:** Dengan dua site, dua user, dan fixture CCTV/maintenance/zona per site, uji list, detail, write, export, site switch, dan invalid site.
+>
+> **Status suite:** `NOT RUN`
+
+### Formal execution metadata
+
+| Field | Value |
+|---|---|
+| Test ID / Audit ID | MT-12 |
+| Capability owner | QA Security + Backend |
+| Status suite | NOT RUN |
+| Build SHA | NOT RECORDED |
+| Artifact digest/ID | NOT RECORDED |
+| Tester | NOT RECORDED |
+| Timestamp WITA | NOT RECORDED |
+| Environment | NOT RECORDED |
+| Fixture prefix/data | `E2E-MT12-` / NOT RECORDED |
+| Cleanup result | NOT RUN |
+| Expected | Konteks site A tidak dapat membaca atau memutasi data site B, invalid site ditolak, dan tidak ada endpoint melewati scope. |
+| Actual | NOT RECORDED |
+| Evidence path/link | NOT RECORDED |
+| Mandatory flag | YES |
+| Scenario status | NOT RUN |
+
+### Formal scenario record
+
+| ID | Mandatory | Expected | Actual | Evidence | Status |
+|---|---|---|---|---|---|
+| MT-12-S1 | YES | Konteks site A tidak dapat membaca atau memutasi data site B, invalid site ditolak, dan tidak ada endpoint melewati scope. | NOT RECORDED | NOT RECORDED | NOT RUN |
+
+> **Cakupan aggregate Wave 0:** Baris formal aggregate di atas adalah **sole atomic suite-level acceptance gate** untuk baseline Wave 0. Skenario legacy terperinci di bawah ini tetap non-formal dan historical/non-authoritative sampai diperluas selama Wave 7.
+
+**Aturan kesimpulan suite:** sebelum eksekusi suite `NOT RUN`; setelah run dimulai, setiap mandatory scenario harus `PASS`. Satu mandatory scenario berstatus `FAIL`, `BLOCKED`, atau `NOT RUN` membuat kesimpulan suite `FAIL`.
+
+> **Guard keselamatan wajib:** Untuk setiap SQL mutasi, `DELETE`/`TRUNCATE`, rotasi/regenerasi key atau QR, penghapusan, reset kredensial, atau mutasi credential, lanjut hanya bila environment bukan production dan target bukan `nexaspace.site`, fixture prefix `E2E-MT12-` serta exact targets sudah dicatat, backup/recovery terverifikasi untuk perubahan data/key state, dan cleanup/rollback didefinisikan serta dicatat setelah run. Jika salah satu syarat tidak tersedia, hentikan prosedur dan set scenario status ke `BLOCKED`; jangan jalankan pada production. Jangan menyalin credential, token, private key, RTSP password, atau payload production yang belum disanitasi.
+
+
 > **Task:** 12.2 Multi-Site
 > **Branch:** `feature/multi-site`
 > **Versi:** monorepo `1.28.41`
@@ -24,14 +65,14 @@ cd backend
 go build ./... && go test ./... -count=1 && go vet ./...
 ```
 
-Hasil yang diharapkan: `go build` sukses (exit 0), `go test ./... -count=1` semua package hijau (termasuk `handlers/site_test.go` & `middleware/site_test.go` untuk Task 12.2), dan `go vet` tidak melaporkan error. Catatan: beberapa `warning` lint lama yang sudah ada tidak memengaruhi lulus/tidaknya.
+Hasil yang diharapkan: `go build` sukses (exit 0), `go test ./... -count=1` semua package hijau (termasuk `handlers/site_test.go` & `middleware/site_test.go` untuk Task 12.2), dan `go vet` tidak melaporkan error. Catatan: beberapa `warning` lint lama yang sudah ada tidak memengaruhi memenuhi kriteria/tidaknya.
 
-| Item | Hasil nyata |
+| Item | Observasi historis (non-authoritative) |
 |------|-------------|
-| `go build ./...` | ✅ |
-| `go test ./... -count=1` (subset relevan) | ✅ |
-| `go vet ./...` | ✅ |
-| `npm run lint` / `npm run build` | ✅ |
+| `go build ./...` | NOT RUN |
+| `go test ./... -count=1` (subset relevan) | NOT RUN |
+| `go vet ./...` | NOT RUN |
+| `npm run lint` / `npm run build` | NOT RUN |
 
 Verifikasi tambahan (backend & frontend bila tersedia):
 
@@ -42,78 +83,78 @@ npm run lint && npm run build
 
 ## 3. Skenario Uji (Blackbox)
 
-> **Catatan verifikator:** setelah menyelesaikan setiap skenario, isi kolom "Hasil nyata" dengan **LULUS** / **GAGAL** + catatan singkat.
+> **Catatan legacy:** tabel di bawah adalah observasi historis/non-authoritative; jangan gunakan sebagai status formal. Isi `Formal scenario record` di atas dengan expected, actual, evidence, dan status formal.
 
 ### S1 - Migrasi default site OIKN
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Jalankan aplikasi & biarkan migrasi berjalan saat startup | Migrasi sukses; tabel `sites` dibuat berisi satu baris "Kawasan OIKN" dengan kode `OIKN` dan `is_default=true` | ✅ |
-| 2 | Cek tabel `sites` di database (via `psql`/adminer) | Terdapat baris `Kawasan OIKN` (kode `OIKN`, `is_default=true`) | ✅ |
-| 3 | Cek seluruh CCTV existing | Semua CCTV yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
-| 4 | Cek seluruh maintenance log existing | Semua maintenance log yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
-| 5 | Cek seluruh zona existing | Semua zona yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | ✅ |
-| 6 | Buka UI dan login | Halaman termuat normal; site aktif default adalah "Kawasan OIKN" | ✅ |
+| 1 | Jalankan aplikasi & biarkan migrasi berjalan saat startup | Migrasi sukses; tabel `sites` dibuat berisi satu baris "Kawasan OIKN" dengan kode `OIKN` dan `is_default=true` | NOT RUN |
+| 2 | Cek tabel `sites` di database (via `psql`/adminer) | Terdapat baris `Kawasan OIKN` (kode `OIKN`, `is_default=true`) | NOT RUN |
+| 3 | Cek seluruh CCTV existing | Semua CCTV yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | NOT RUN |
+| 4 | Cek seluruh maintenance log existing | Semua maintenance log yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | NOT RUN |
+| 5 | Cek seluruh zona existing | Semua zona yang ada sebelum migrasi memiliki `site_id` = ID site OIKN | NOT RUN |
+| 6 | Buka UI dan login | Halaman termuat normal; site aktif default adalah "Kawasan OIKN" | NOT RUN |
 
 ### S2 - CRUD site (admin)
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin, buka halaman manajemen site | Daftar site tampil (termasuk "Kawasan OIKN") | ✅ |
-| 2 | Buat site baru (mis. "Kawasan Balikpapan", kode `BPN`) via form/API `POST /api/sites` | Site baru tersimpan; muncul di daftar site; `is_default=false` | ✅ |
-| 3 | Edit site baru (ubah nama/alamat/koordinat) via `PUT /api/sites/:id` | Perubahan tersimpan; daftar site ter-refresh | ✅ |
-| 4 | Soft-delete site baru via `DELETE /api/sites/:id` | Site berpindah status soft-delete (tidak tampil di list normal; `deleted_at` terisi di DB) | ✅ |
-| 5 | Coba hapus site default "Kawasan OIKN" | Permintaan ditolak (4xx) — site default **tidak bisa dihapus**; pesan error jelas | ✅ |
+| 1 | Login sebagai admin, buka halaman manajemen site | Daftar site tampil (termasuk "Kawasan OIKN") | NOT RUN |
+| 2 | Buat site baru (mis. "Kawasan Balikpapan", kode `BPN`) via form/API `POST /api/sites` | Site baru tersimpan; muncul di daftar site; `is_default=false` | NOT RUN |
+| 3 | Edit site baru (ubah nama/alamat/koordinat) via `PUT /api/sites/:id` | Perubahan tersimpan; daftar site ter-refresh | NOT RUN |
+| 4 | Soft-delete site baru via `DELETE /api/sites/:id` | Site berpindah status soft-delete (tidak tampil di list normal; `deleted_at` terisi di DB) | NOT RUN |
+| 5 | Coba hapus site default "Kawasan OIKN" | Permintaan ditolak (4xx) — site default **tidak bisa dihapus**; pesan error jelas | NOT RUN |
 
 ### S3 - Assign teknisi ke site
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Pastikan ada user ber-role `teknisi` | Teknisi tersedia di daftar user | ✅ |
-| 2 | Panggil `POST /api/sites/:id/assign-users` dengan body berisi ID teknisi | Teknisi berhasil di-assign ke site; relasi user↔site tersimpan | ✅ |
-| 3 | Coba assign user ber-role `admin` (bukan teknisi) | Permintaan ditolak (400) — hanya role `teknisi` yang bisa di-assign | ✅ |
-| 4 | Login sebagai teknisi yang telah di-assign | Teknisi dapat mengakses site tersebut; data site tampil sesuai relasi | ✅ |
+| 1 | Pastikan ada user ber-role `teknisi` | Teknisi tersedia di daftar user | NOT RUN |
+| 2 | Panggil `POST /api/sites/:id/assign-users` dengan body berisi ID teknisi | Teknisi berhasil di-assign ke site; relasi user↔site tersimpan | NOT RUN |
+| 3 | Coba assign user ber-role `admin` (bukan teknisi) | Permintaan ditolak (400) — hanya role `teknisi` yang bisa di-assign | NOT RUN |
+| 4 | Login sebagai teknisi yang telah di-assign | Teknisi dapat mengakses site tersebut; data site tampil sesuai relasi | NOT RUN |
 
 ### S4 - Switch site di UI
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin/teknisi | Terdapat dropdown **site switcher** di header (menampilkan site aktif saat ini) | ✅ |
-| 2 | Klik dropdown, pilih site lain (mis. site yang baru dibuat) | Cookie `sigap_site_id` tersimpan di browser dengan ID site terpilih | ✅ |
-| 3 | Amati perilaku setelah pilihan site | Halaman di-`reload`; site aktif di header berubah | ✅ |
-| 4 | Amati data yang ditampilkan | Data (CCTV/log/zona) difilter sesuai site aktif terpilih | ⚠️ SEBAGIAN — frontend mengirim header `X-Site-ID` dari cookie, TETAPI middleware `SiteContext()` saat ini hanya terpasang pada grup `/api/sites` — belum terpasang di route `/api/cctv`, `/api/maintenance-logs`, `/api/zones`. Tes nyata: `GET /api/cctv` dgn `X-Site-ID` acak/invalid → 200 (filter tidak aktif). Lihat Catatan Verifikator |
-| 5 | Muat ulang halaman manual (F5) | Site aktif tetap dipertahankan (dibaca dari cookie `sigap_site_id`) | ✅ |
+| 1 | Login sebagai admin/teknisi | Terdapat dropdown **site switcher** di header (menampilkan site aktif saat ini) | NOT RUN |
+| 2 | Klik dropdown, pilih site lain (mis. site yang baru dibuat) | Cookie `sigap_site_id` tersimpan di browser dengan ID site terpilih | NOT RUN |
+| 3 | Amati perilaku setelah pilihan site | Halaman di-`reload`; site aktif di header berubah | NOT RUN |
+| 4 | Amati data yang ditampilkan | Data (CCTV/log/zona) difilter sesuai site aktif terpilih | NOT RUN SEBAGIAN — frontend mengirim header `X-Site-ID` dari cookie, TETAPI middleware `SiteContext()` saat ini hanya terpasang pada grup `/api/sites` — belum terpasang di route `/api/cctv`, `/api/maintenance-logs`, `/api/zones`. Tes nyata: `GET /api/cctv` dgn `X-Site-ID` acak/invalid → 200 (filter tidak aktif). Lihat Catatan Verifikator |
+| 5 | Muat ulang halaman manual (F5) | Site aktif tetap dipertahankan (dibaca dari cookie `sigap_site_id`) | NOT RUN |
 
 ### S5 - Isolasi data per site
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Pastikan ada ≥ 2 site dengan data berbeda (mis. site OIKN & site BPN) | Kedua site memiliki CCTV/log sendiri-sendiri |✅|
-| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | ⚠️ Aset CCTV tidak di bisa di sortir dan terlihat dari kawasan|
-| 3 | Catat kode CCTV yang terlihat | Ada minimal 1 CCTV milik site A | ✅ |
-| 4 | Pilih site B di dropdown, buka daftar CCTV | CCTV site B tampil; **CCTV site A TIDAK tampil** | ⚠️ Saat di filter per kawasan, tetap saja semua kawasan yang tertampil
-| 5 | Ulangi untuk maintenance log & zona | Log/zona site A tidak tampil saat memilih site B (isolasi data berjalan) | ⚠️ Filtering belum berfungsi untuk dropdown kawasan
+| 1 | Pastikan ada ≥ 2 site dengan data berbeda (mis. site OIKN & site BPN) | Kedua site memiliki CCTV/log sendiri-sendiri |NOT RUN|
+| 2 | Pilih site A di dropdown, buka daftar CCTV | CCTV site A tampil | NOT RUN Aset CCTV tidak di bisa di sortir dan terlihat dari kawasan|
+| 3 | Catat kode CCTV yang terlihat | Ada minimal 1 CCTV milik site A | NOT RUN |
+| 4 | Pilih site B di dropdown, buka daftar CCTV | CCTV site B tampil; **CCTV site A TIDAK tampil** | NOT RUN Saat di filter per kawasan, tetap saja semua kawasan yang tertampil
+| 5 | Ulangi untuk maintenance log & zona | Log/zona site A tidak tampil saat memilih site B (isolasi data berjalan) | NOT RUN Filtering belum berfungsi untuk dropdown kawasan
 
 ### S6 - Endpoint daftar site
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Panggil `GET /api/sites` (login) | Respons berisi daftar site **terpaginasi** (`{ rows, pagination }`); site default tampil | ✅ |
-| 2 | Uji paginasi (`?page=2&limit=1`) | `total_rows`/`total_pages` sesuai; page 2 kosong bila hanya 1 site | ✅ |
-| 3 | Panggil `GET /api/sites/all` (login) | Respons berisi seluruh site (tanpa paginasi) — cocok untuk dropdown site switcher | ✅ |
-| 4 | Cek respons `GET /api/sites/all` | Site default "Kawasan OIKN" ada di daftar; field `is_default` tersedia | ✅ |
+| 1 | Panggil `GET /api/sites` (login) | Respons berisi daftar site **terpaginasi** (`{ rows, pagination }`); site default tampil | NOT RUN |
+| 2 | Uji paginasi (`?page=2&limit=1`) | `total_rows`/`total_pages` sesuai; page 2 kosong bila hanya 1 site | NOT RUN |
+| 3 | Panggil `GET /api/sites/all` (login) | Respons berisi seluruh site (tanpa paginasi) — cocok untuk dropdown site switcher | NOT RUN |
+| 4 | Cek respons `GET /api/sites/all` | Site default "Kawasan OIKN" ada di daftar; field `is_default` tersedia | NOT RUN |
 
 ### S7 - Role access
 
-| # | Langkah | Hasil yang diharapkan | Hasil nyata |
+| # | Langkah | Hasil yang diharapkan | Observasi historis (non-authoritative) |
 |---|---------|------------------------|-------------|
-| 1 | Login sebagai admin | Dapat **menulis** site (CRUD, assign-users) — sukses | ✅ |
-| 2 | Login sebagai teknisi | Dapat **membaca** daftar site (`GET /api/sites`, `GET /api/sites/all`) — sukses | ✅ |
-| 3 | Login sebagai teknisi, coba buat/ubah/hapus site | Permintaan ditolak (403) — hanya admin yang bisa menulis site | ✅ |
-| 4 | Login sebagai teknisi, coba `POST /api/sites/:id/assign-users` | Permintaan ditolak (403) — assign teknisi hanya untuk admin | ✅ |
-| 5 | Akses endpoint site tanpa login | Permintaan ditolak (401) — endpoint site wajib autentikasi | ✅ |
+| 1 | Login sebagai admin | Dapat **menulis** site (CRUD, assign-users) — sukses | NOT RUN |
+| 2 | Login sebagai teknisi | Dapat **membaca** daftar site (`GET /api/sites`, `GET /api/sites/all`) — sukses | NOT RUN |
+| 3 | Login sebagai teknisi, coba buat/ubah/hapus site | Permintaan ditolak (403) — hanya admin yang bisa menulis site | NOT RUN |
+| 4 | Login sebagai teknisi, coba `POST /api/sites/:id/assign-users` | Permintaan ditolak (403) — assign teknisi hanya untuk admin | NOT RUN |
+| 5 | Akses endpoint site tanpa login | Permintaan ditolak (401) — endpoint site wajib autentikasi | NOT RUN |
 
-## 4. Kriteria Lulus
+## 4. Kriteria Penerimaan
 
 1. Migrasi berhasil: tabel `sites` berisi "Kawasan OIKN" (kode `OIKN`, `is_default=true`); semua CCTV/log/zona existing memiliki `site_id` = site OIKN.
 2. CRUD site admin berfungsi (create/edit/soft-delete), dan site default **tidak dapat dihapus**.
@@ -122,7 +163,7 @@ npm run lint && npm run build
 5. Isolasi data per site berjalan: data site A tidak tampil saat memilih site B.
 6. `GET /api/sites` terpaginasi dan `GET /api/sites/all` (untuk dropdown) tersedia.
 7. Role access benar: hanya admin yang bisa menulis site; semua role login bisa membaca.
-8. `go build`/`go test ./... -count=1`/`go vet` lulus; `npm run lint` & `npm run build` lulus (bila frontend tersedia).
+8. `go build`/`go test ./... -count=1`/`go vet` memenuhi kriteria; `npm run lint` & `npm run build` memenuhi kriteria (bila frontend tersedia).
 
 ## Catatan
 
@@ -132,7 +173,7 @@ npm run lint && npm run build
 - Scope penulisan site (CRUD & assign-users) dibatasi admin via `RequireRole("admin")`; pembacaan tersedia untuk semua role login.
 - Catatan gotchas test `site_test.go` (handlers) & `middleware/site_test.go` (bila tersedia): pola sqlmock sama dengan test CRUD lain — `SetupTestDB` memakai `SkipDefaultTransaction: true`; `LogAudit`/broadcast ditulis async di goroutine sehingga jangan mem-mock query user/audit pada test success; operasi transaksi (assign-users) memerlukan `mock.ExpectBegin()`/`mock.ExpectCommit()`.
 
-## Hasil Nyata — Catatan Verifikator
+## Observasi Historis (Non-authoritative) — Catatan Verifikator
 
 **TEMUAN (S4 #4 & S5):** Filter data per site belum aktif di produksi untuk endpoint selain `/api/sites`.
 - Middleware `SiteContext()` (membaca `X-Site-ID` / `?site_id=`, validasi UUID + keberadaan site) hanya dipasang pada grup `/api/sites`. Route `/api/cctv`, `/api/maintenance-logs`, dan `/api/zones` **belum** memuat middleware ini.
