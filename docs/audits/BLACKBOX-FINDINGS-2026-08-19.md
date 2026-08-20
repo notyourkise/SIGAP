@@ -101,12 +101,12 @@ Dokumen ini berisi rekomendasi solusi, bukan bukti bahwa perbaikan telah diimple
 
 - URL terkait: `/cctv`; laporan menyebut alur forced `/change-password`
 - Prioritas: **P0**
-- Status: **Terkonfirmasi**
-- Status remediasi source: **✅ Selesai 2026-08-20**; runtime black-box fixture non-production masih `NOT RUN`.
+- Status: **✅ Remediasi terverifikasi 2026-08-20**
+- Status remediasi source/runtime: **PASS** untuk acceptance lifecycle QR BB-10 pada staging terisolasi; suite agregat MT-11 tetap `NOT RUN` untuk cakupan API key/webhook.
 - Temuan: rotasi mengenkripsi UUID acak baru, bukan ID CCTV; scanner lalu mencari CCTV berdasarkan UUID yang tidak ada. Scanner tidak membandingkan payload dengan `qr_payload` aktif, dan cache gambar QR hanya menggunakan ID CCTV sehingga gambar lama dapat tetap dipakai.
 - Solusi: enkripsi ulang ID CCTV yang sama dengan nonce baru, validasi ID sekaligus payload aktif saat scan, invalidasi cache setelah rotasi atau gunakan key berbasis versi/hash payload, dan tambah round-trip test.
 - Acceptance: QR baru berbeda dan memetakan CCTV yang sama; QR lama ditolak; cetak sesudah rotasi memakai gambar baru tanpa hard refresh.
-- Checklist: [x] backend round-trip dan active-payload guard; [x] frontend cache version + HTTP/service-worker `no-store`; [x] automated regression backend + service worker; [ ] cetak/pindai non-production dengan evidence MT-11.
+- Checklist: [x] backend round-trip dan active-payload guard; [x] frontend cache version + HTTP/service-worker `no-store`; [x] automated regression backend + service worker; [x] label terbaru tampil/siap dicetak tanpa hard refresh dan payload hasil decode dipindai pada staging non-production; [x] QR lama ditolak, teknisi 403, audit serta cleanup terverifikasi. Evidence: `MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ### BB-11 — PushManager menolak `applicationServerKey`
 

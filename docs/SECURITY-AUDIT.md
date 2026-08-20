@@ -63,7 +63,10 @@ Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.
 - [x] Scanner menolak payload valid secara kriptografis yang bukan lagi payload aktif di database.
 - [x] Cache gambar label dipisahkan berdasarkan ID dan payload aktif; respons PNG/fetch memakai `no-store`, service worker melewati cache QR, dan versi shell cache dinaikkan untuk menghapus cache lama.
 - [x] Regression test backend membuktikan round-trip QR baru dan penolakan QR lama; Node test membuktikan policy cache service worker.
-- [ ] Runtime black-box non-production MT-11 masih wajib sebelum release acceptance; pengujian rotasi pada production dilarang.
+- [x] Runtime sub-gate QR non-production membuktikan label berubah tanpa hard refresh, payload aktual dari PNG baru diterima, payload lama ditolak, teknisi mendapat 403, audit tercatat, dan cleanup staging tidak menyentuh production.
+- [ ] Acceptance agregat MT-11 masih menunggu skenario API key dan webhook; pengujian rotasi pada production tetap dilarang.
+
+Bukti runtime: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 ---
 
