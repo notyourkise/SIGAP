@@ -8,6 +8,8 @@
 >
 > **Status suite:** `NOT RUN`
 
+> **Supporting evidence Task 1B — 2026-08-20:** decoded frame WHEP 640×360 terbukti dan player source hanya memberi badge `Live` setelah frame diterima. Suite agregat MT-24 tetap `NOT RUN` untuk snapshot/timeline, fullscreen, pop-out, dan role matrix. Evidence: `audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
+
 ### Formal execution metadata
 
 | Field | Value |

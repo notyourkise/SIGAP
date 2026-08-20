@@ -173,6 +173,7 @@ Prioritas tertinggi adalah isolasi data multi-site, otorisasi laporan dan suku c
 - Temuan: NVR tidak reachable sehingga UI/live behavior belum terbukti; kebijakan probe semua stream bertentangan dengan aturan Metro-E langsung dan GSM pasif.
 - Solusi: samakan kebijakan jaringan, gunakan simulator RTSP/MediaMTX, dan uji event status nyata.
 - Exit criteria: Metro-E dan GSM mengikuti jalur masing-masing, timestamp/status berubah dari stimulus nyata, WebSocket diterima, dan counter UI cocok.
+- Evidence remediasi 2026-08-20: simulator RTSP/MediaMTX reachable dan status `registered`/`available` telah dipisah serta diuji di staging. Matriks Metro-E/GSM, timestamp, WebSocket, dan counter UI tetap `NOT RUN`.
 
 ### MT-20 — Suku Cadang
 
@@ -189,6 +190,7 @@ Prioritas tertinggi adalah isolasi data multi-site, otorisasi laporan dan suku c
 - Temuan: stop stream gagal 502, video tidak tampil, tetapi start-all dianggap sukses hanya dari registrasi path; dokumen memuat topologi/IP dan username NVR nyata.
 - Solusi: redaksi data sensitif, gunakan simulator/environment reachable, dan bedakan status `registered`, `ready`, serta `playing`.
 - Exit criteria: start, readiness, playback, stop, SD/HD, reconnect, bulk action, dan role enforcement lulus tanpa 5xx.
+- Evidence remediasi 2026-08-20: akar 502 stop diperbaiki ke kontrak v1.20 (`DELETE .../delete`) dengan 404 idempotent; playback WHEP/ICE/TCP dan recovery restart lulus memakai frame simulator nyata. Suite aplikasi lengkap S1–S9 dan jaringan publik/mobile tetap `NOT RUN`.
 
 ### MT-22 — Sinkronisasi CCTV
 
@@ -213,6 +215,7 @@ Prioritas tertinggi adalah isolasi data multi-site, otorisasi laporan dan suku c
 - Temuan: dua suite besar digabung; hook `maintenance_completed` belum terimplementasi; banyak UI belum dijalankan; ekspektasi role ambigu.
 - Solusi: pecah suite, tetapkan matriks role, gunakan fixture JPEG/timeline dan simulator stream.
 - Exit criteria: empat tipe event timeline muncul, rotasi 10 snapshot terbukti, role konsisten, dan monitor/fullscreen/pop-out diuji nyata.
+- Evidence remediasi 2026-08-20: source player hanya menandai `Live` setelah decoded frame dan state-machine regression test lulus. Timeline, snapshot, fullscreen, pop-out, dan matriks role tetap `NOT RUN`.
 
 ### MT-25 — Zona dan SLA
 
@@ -227,6 +230,8 @@ Prioritas tertinggi adalah isolasi data multi-site, otorisasi laporan dan suku c
 | ID | Tema | File terkait | Solusi lintas modul |
 |---|---|---|---|
 | SYS-MT-01 | MediaMTX/streaming tidak dapat diverifikasi | Streaming, RTSP, visual, UX, email, webhook | Sediakan environment/simulator yang reachable dan event-delivery matrix dari sumber stream sampai seluruh kanal. |
+
+Status 2026-08-20: bagian simulator/environment reachable untuk SYS-MT-01 **selesai** melalui Compose terisolasi; event-delivery matrix lintas seluruh kanal belum dijalankan.
 | SYS-MT-02 | Notifikasi tidak diuji sebagai satu rantai | Push, email, reassign, schedules, overdue, SLA, spare parts | Buat matriks event × penerima × in-app × WebSocket × push × email × webhook beserta correlation ID. |
 | SYS-MT-03 | Guard UI dianggap setara otorisasi | Report, spare parts, schedules, visual, infra, checklist | Uji navigasi, URL langsung, dan API langsung secara terpisah untuk anonymous/admin/teknisi. |
 | SYS-MT-04 | Isolasi kawasan tidak menjadi invariant | Multi-site, calendar, checklist, spare parts, SLA, report | Terapkan site scope terpusat dan contract test untuk list/detail/write/export. |

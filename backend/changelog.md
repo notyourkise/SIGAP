@@ -1,5 +1,18 @@
 # Changelog - Backend SIGAP
 
+## [0.64.3] - 2026-08-20
+
+### Perbaikan kontrak MediaMTX v1.20 dan status streaming
+
+- Stop path memakai endpoint `DELETE /v3/config/paths/delete/{name}` dan 404 diperlakukan idempotent.
+- Status API membedakan MediaMTX reachable, path registered, source available, dan viewer count.
+- Field API v1.20 `available/online` serta `rtspTransport` menggantikan kontrak deprecated, dengan fallback `ready` untuk rolling upgrade.
+- Respons start tidak lagi mengembalikan source URL RTSP yang dapat memuat decrypted credential.
+- Unit dan integration test mencakup lifecycle add/list/delete serta response credential guard.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Backend (Streaming + Security)
+
 ## [0.64.2] - 2026-08-20
 
 ### Perbaikan lifecycle rotasi QR CCTV

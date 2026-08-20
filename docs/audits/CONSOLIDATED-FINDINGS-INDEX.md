@@ -76,6 +76,7 @@ Semua workstream
 
 - BB-11 adalah kegagalan konfigurasi/validasi push; BB-12 menegaskan in-app harus diuji terpisah.
 - BB-08 membedakan API MediaMTX, path registration, source ready, WHEP signaling, ICE, dan playback frame. Status “path registered” bukan berarti video berjalan.
+- Evidence Task 1B 2026-08-20 menutup sub-gate source dan staging terisolasi untuk WS-02; gate production/public/mobile masih `NOT RUN` dan WS-02 belum ditutup penuh.
 - BB-03 mencakup site context/filter maintenance dan masalah sorting `/sites`; keduanya boleh satu workstream tetapi harus memiliki acceptance terpisah.
 - BB-13 mencakup cacat konstanta sembilan dan kemungkinan masalah payload production tepat 9/9; capture production tetap diperlukan.
 - BB-16/BB-20 membedakan akses shell halaman, guard frontend, dan authorization API. Redirect UI tidak membuktikan API aman.

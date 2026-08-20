@@ -114,7 +114,7 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
         if (response.status === 'success' && response.data?.whep_url) {
           const path = extractStreamPath(response.data.whep_url);
           setStreamPath(path);
-          toast.success(`Streaming "${cctv.nama}" dimulai.`);
+          toast.info(`Jalur stream "${cctv.nama}" terdaftar. Menunggu video…`);
         } else {
           throw new Error(response.message || 'Stream tidak dapat dimulai.');
         }

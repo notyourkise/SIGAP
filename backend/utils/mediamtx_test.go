@@ -43,7 +43,7 @@ func TestAddPath(t *testing.T) {
 		Source:                   "rtsp://admin:pw@host:554/Streaming/channels/101",
 		SourceOnDemand:           true,
 		SourceOnDemandCloseAfter: "10s",
-		SourceProtocol:           "udp",
+		RTSPTransport:            "tcp",
 	}
 	if err := client.AddPath("cam-123", config); err != nil {
 		t.Fatalf("AddPath() unexpected error: %v", err)
@@ -70,8 +70,8 @@ func TestAddPath(t *testing.T) {
 	if decoded.SourceOnDemandCloseAfter != config.SourceOnDemandCloseAfter {
 		t.Errorf("AddPath() body SourceOnDemandCloseAfter = %q, want %q", decoded.SourceOnDemandCloseAfter, config.SourceOnDemandCloseAfter)
 	}
-	if decoded.SourceProtocol != config.SourceProtocol {
-		t.Errorf("AddPath() body SourceProtocol = %q, want %q", decoded.SourceProtocol, config.SourceProtocol)
+	if decoded.RTSPTransport != config.RTSPTransport {
+		t.Errorf("AddPath() body RTSPTransport = %q, want %q", decoded.RTSPTransport, config.RTSPTransport)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestAddPathURLEncodesName(t *testing.T) {
 	}
 }
 
-// TestRemovePath memverifikasi bahwa RemovePath mengirim POST ke endpoint yang
+// TestRemovePath memverifikasi bahwa RemovePath mengirim DELETE ke endpoint yang
 // benar dan tidak error saat server membalas 2xx.
 func TestRemovePath(t *testing.T) {
 	var (
@@ -130,27 +130,27 @@ func TestRemovePath(t *testing.T) {
 		t.Fatalf("RemovePath() unexpected error: %v", err)
 	}
 
-	if gotMethod != http.MethodPost {
-		t.Errorf("RemovePath() method = %q, want %q", gotMethod, http.MethodPost)
+	if gotMethod != http.MethodDelete {
+		t.Errorf("RemovePath() method = %q, want %q", gotMethod, http.MethodDelete)
 	}
-	if want := "/v3/config/paths/remove/cam-456"; gotPath != want {
+	if want := "/v3/config/paths/delete/cam-456"; gotPath != want {
 		t.Errorf("RemovePath() path = %q, want %q", gotPath, want)
 	}
 }
 
-// TestGetPath memverifikasi bahwa GetPath mem-parsing JSON respon menjadi
-// PathInfo dengan field Ready dan Name yang benar, untuk kasus ready=true dan
-// ready=false.
+// TestGetPath memverifikasi bahwa GetPath mem-parsing status operasional
+// MediaMTX v1.20 tanpa bergantung pada field ready yang sudah deprecated.
 func TestGetPath(t *testing.T) {
 	cases := []struct {
 		name      string
-		ready     bool
+		available bool
+		online    bool
 		pathName  string
 		sourceStr string
 		readerCnt int
 	}{
-		{name: "ready true", ready: true, pathName: "cam-ready", sourceStr: "rtsp://src", readerCnt: 1},
-		{name: "ready false", ready: false, pathName: "cam-notready", sourceStr: "", readerCnt: 0},
+		{name: "source available", available: true, online: true, pathName: "cam-ready", sourceStr: "rtsp://src", readerCnt: 1},
+		{name: "source unavailable", available: false, online: false, pathName: "cam-notready", sourceStr: "", readerCnt: 0},
 	}
 
 	for _, tc := range cases {
@@ -164,8 +164,8 @@ func TestGetPath(t *testing.T) {
 				if tc.readerCnt > 0 {
 					readers = `[{"id":"r1"},{"id":"r2"}]`
 				}
-				payload := fmt.Sprintf(`{"name":%q,"source":%q,"ready":%v,"readers":%s}`,
-					tc.pathName, tc.sourceStr, tc.ready, readers)
+				payload := fmt.Sprintf(`{"name":%q,"source":%q,"available":%v,"online":%v,"readers":%s}`,
+					tc.pathName, tc.sourceStr, tc.available, tc.online, readers)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(payload))
 			}))
@@ -185,8 +185,11 @@ func TestGetPath(t *testing.T) {
 			if info.Name != tc.pathName {
 				t.Errorf("GetPath() Name = %q, want %q", info.Name, tc.pathName)
 			}
-			if info.Ready != tc.ready {
-				t.Errorf("GetPath() Ready = %v, want %v", info.Ready, tc.ready)
+			if info.Available != tc.available {
+				t.Errorf("GetPath() Available = %v, want %v", info.Available, tc.available)
+			}
+			if info.Online != tc.online {
+				t.Errorf("GetPath() Online = %v, want %v", info.Online, tc.online)
 			}
 			if tc.readerCnt > 0 && len(info.Readers) != 2 {
 				t.Errorf("GetPath() len(Readers) = %d, want 2", len(info.Readers))
@@ -258,9 +261,9 @@ func TestAddPathStatusError(t *testing.T) {
 	}
 }
 
-// TestRemovePathStatusError memverifikasi bahwa status non-2xx pada RemovePath
-// menghasilkan error yang memuat kode status.
-func TestRemovePathStatusError(t *testing.T) {
+// TestRemovePathNotFoundIsIdempotent memastikan stop tetap berhasil ketika path
+// sudah tidak ada, sehingga klik ulang tidak berubah menjadi 502.
+func TestRemovePathNotFoundIsIdempotent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -268,11 +271,26 @@ func TestRemovePathStatusError(t *testing.T) {
 
 	client := newTestMediaMTXClient(server)
 	err := client.RemovePath("cam-x")
-	if err == nil {
-		t.Fatal("RemovePath() expected error for status 404, got nil")
+	if err != nil {
+		t.Fatalf("RemovePath() unexpected error for idempotent 404: %v", err)
 	}
-	if !strings.Contains(err.Error(), "404") {
-		t.Errorf("RemovePath() error = %q, want contains 404", err.Error())
+}
+
+func TestListPathConfigsParsesPaginatedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/config/paths/list" {
+			t.Fatalf("ListPathConfigs() path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"itemCount":2,"pageCount":1,"items":[{"name":"cam-a"},{"name":"cam-b"}]}`))
+	}))
+	defer server.Close()
+
+	configs, err := newTestMediaMTXClient(server).ListPathConfigs()
+	if err != nil {
+		t.Fatalf("ListPathConfigs() unexpected error: %v", err)
+	}
+	if len(configs) != 2 || configs[0].Name != "cam-a" || configs[1].Name != "cam-b" {
+		t.Fatalf("ListPathConfigs() = %#v", configs)
 	}
 }
 
