@@ -8,7 +8,8 @@
      - Aset statis     : cache-first dengan pembaruan latar belakang
                          (hashed oleh Next.js sehingga aman di-cache).
      - API calls       : network-first, fallback ke cache (bila ada), selain itu
-                         respons JSON ringan "offline".
+                         respons JSON ringan "offline". Request `no-store` dan
+                         gambar QR selalu network-only agar data lama tidak dipakai.
    Push (Task 8.3): menangani event `push` dari server (Web Push/VAPID) dan
    menampilkan notifikasi OS via showNotification, serta membuka halaman yang
    relevan saat notifikasi diklik.
@@ -16,7 +17,7 @@
    ========================================== */
 
 // Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
-const CACHE_VERSION = 'sigap-shell-v2';
+const CACHE_VERSION = 'sigap-shell-v3';
 const SHELL_CACHE = CACHE_VERSION;
 
 // Aset inti shell yang di-pre-cache saat install (diperbarui saat activate).
@@ -69,6 +70,20 @@ function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
 }
 
+// QR hasil rotasi tidak boleh memiliki fallback cache: gambar lama yang masih
+// tersedia offline lebih berbahaya daripada menampilkan kegagalan jaringan.
+function isQRCodeImageRequest(url) {
+  return /^\/api\/cctv\/[^/]+\/qrcode\/?$/.test(url.pathname);
+}
+
+// Hormati kebijakan cache dari caller maupun server untuk data operasional
+// yang harus selalu segar.
+function isRuntimeCacheAllowed(request, response) {
+  if (request.cache === 'no-store') return false;
+  const cacheControl = response.headers.get('Cache-Control') || '';
+  return !cacheControl.toLowerCase().includes('no-store');
+}
+
 // ---- Helper: apakah ini aset statis yang aman di-cache-first ----
 function isStaticAsset(url) {
   const path = url.pathname;
@@ -88,7 +103,9 @@ async function networkFirst(request) {
     const response = await Promise.race([fetchPromise, timeoutPromise]);
     if (response && response.ok) {
       // Simpan salinan untuk offline / fallback.
-      cache.put(request, response.clone());
+      if (isRuntimeCacheAllowed(request, response)) {
+        cache.put(request, response.clone());
+      }
       return response;
     }
     throw new Error('response not ok');
@@ -112,13 +129,17 @@ async function cacheFirst(request) {
     // Pembaruan latar belakang tanpa memblokir respons cache.
     fetch(request)
       .then((resp) => {
-        if (resp && resp.ok) cache.put(request, resp);
+        if (resp && resp.ok && isRuntimeCacheAllowed(request, resp)) {
+          cache.put(request, resp);
+        }
       })
       .catch(() => {});
     return cached;
   }
   const response = await fetch(request);
-  if (response && response.ok) cache.put(request, response.clone());
+  if (response && response.ok && isRuntimeCacheAllowed(request, response)) {
+    cache.put(request, response.clone());
+  }
   return response;
 }
 
@@ -146,6 +167,13 @@ self.addEventListener('fetch', (event) => {
 
   // Permintaan bukan GET tidak di-cache (biarkan jaringan normal).
   if (request.method !== 'GET') return;
+
+  // Request no-store dan gambar QR harus network-only. Jangan pernah fallback
+  // ke label lama setelah rotasi ketika jaringan lambat atau offline.
+  if (request.cache === 'no-store' || isQRCodeImageRequest(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // API calls: network-first (data selalu segar), fallback cache/offline.
   if (isApiRequest(url)) {

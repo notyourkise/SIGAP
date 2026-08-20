@@ -1453,7 +1453,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga QR Code lama tidak berlaku lagi. Khusus admin.",
+                "description": "Membuat QrPayload baru dari ID CCTV yang sama dengan nonce AES-256 baru sehingga QR Code lama tidak berlaku lagi. Khusus admin.",
                 "consumes": [
                     "application/json"
                 ],

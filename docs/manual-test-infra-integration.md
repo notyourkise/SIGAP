@@ -53,7 +53,7 @@
 | P1 | Aplikasi berjalan | `docker compose up -d --build`, buka `https://localhost` |
 | P2 | Akun admin | Login sebagai admin |
 | P3 | Migrasi | Migrasi `000016_webhook_retention` berjalan otomatis saat startup (kolom `max_log_retention_days`) |
-| P4 | Data CCTV | Pastikan ada minimal 1 CCTV dengan QR Code (bisa dicetak) |
+| P4 | Data CCTV | Buat minimal 1 fixture CCTV non-production berawalan `E2E-MT11-` dengan QR Code; catat exact ID, backup/recovery, dan target cleanup |
 | P5 | Data API key & webhook | Pastikan ada minimal 1 API key dan 1 webhook endpoint yang sudah pernah menerima event (punya log) |
 | P6 | Alat API client | Swagger (`https://localhost/swagger/index.html`) atau `curl` untuk verifikasi endpoint |
 
@@ -73,6 +73,16 @@ npm run build
 
 Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 error).
 
+### Supporting evidence remediasi QR — 2026-08-20
+
+Evidence berikut membuktikan perubahan source dan regression automation, bukan runtime black-box `PASS`:
+
+- [x] Rotasi menghasilkan ciphertext baru yang mendekripsi ke ID CCTV yang sama.
+- [x] Scanner menerima payload aktif dan menolak payload sebelumnya.
+- [x] Cache gambar frontend memakai `id + qr_payload`, HTTP/fetch `no-store`, dan jalur QR bypass cache service worker; versi shell cache dinaikkan untuk membuang cache lama.
+- [x] Targeted backend regression `TestRotateQRCode|TestScanCCTV|TestGetCCTVQRCode_DisablesHTTPCache` dan `npm run test:sw` lulus pada branch `codex/qr-lifecycle`.
+- [ ] Jalankan MT-11-S1 dengan fixture non-production `E2E-MT11-`, bukti cetak/pindai, dan cleanup terverifikasi.
+
 | Item | Observasi historis (non-authoritative) |
 |------|-------------|
 | `go build ./...` | NOT RUN |
@@ -80,6 +90,7 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 | `go vet ./...` | NOT RUN |
 | `npm run lint` (frontend) | NOT RUN |
 | `npm run build` (frontend) | NOT RUN |
+| `npm run test:sw` (cache policy QR/no-store) | NOT RUN |
 
 ## 3. Skenario Uji (Blackbox)
 
@@ -93,9 +104,10 @@ Hasil yang diharapkan: seluruh perintah sukses; lint tidak memiliki error (0 err
 | 2 | Klik tombol ⋮ pada sebuah CCTV | Muncul menu "Detail", "Edit", "🔄 Rotasi QR", "Hapus" | NOT RUN |
 | 3 | Klik "Rotasi QR" | Dialog konfirmasi muncul: "QR Code lama akan tidak berlaku" | NOT RUN |
 | 4 | Konfirmasi rotasi | Toast sukses "QR Code berhasil dirotasi"; dialog cetak label QR baru terbuka otomatis | NOT RUN |
-| 5 | Cetak label QR baru | Label QR dengan payload baru tercetak | NOT RUN |
-| 6 | Scan label QR lama (cetakan sebelum rotasi) | QR lama tidak dikenali (payload baru berbeda) | NOT RUN |
-| 7 | (opsional) Panggil `POST /api/cctv/:id/rotate-qr` sebagai teknisi | Respons 403 (admin only) | NOT RUN |
+| 5 | Cetak label QR baru tanpa hard refresh | Label menampilkan QR dari payload baru, bukan gambar cache lama | NOT RUN |
+| 6 | Scan label QR baru | CCTV fixture yang sama berhasil diidentifikasi | NOT RUN |
+| 7 | Scan label QR lama (cetakan sebelum rotasi) | Respons menolak QR dengan pesan bahwa QR tidak aktif/sudah dirotasi | NOT RUN |
+| 8 | (opsional) Panggil `POST /api/cctv/:id/rotate-qr` sebagai teknisi | Respons 403 (admin only) | NOT RUN |
 
 ### S2 - Regenerasi API Key (Task 13.16)
 

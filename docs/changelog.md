@@ -3,6 +3,20 @@
 > Catatan perubahan tingkat proyek (monorepo: `backend/`, `frontend/`, infra).
 > Rincian per-bagian lihat `../backend/changelog.md` & `../frontend/changelog.md`.
 
+## [1.28.52] — 2026-08-20 — Perbaikan lifecycle rotasi QR (Task 1A)
+
+### Perubahan
+
+- **Rotasi QR**: backend mengenkripsi ulang ID CCTV yang sama dengan nonce baru; QR baru tetap menunjuk aset yang benar.
+- **Invalidasi QR lama**: scanner membandingkan payload hasil pindai dengan `qr_payload` aktif dan menolak payload sebelum rotasi.
+- **Cache label**: frontend memakai cache key `id + qr_payload`; respons PNG/fetch memakai `no-store`; service worker memperlakukan QR sebagai network-only, tidak menyimpan respons `no-store`, dan menaikkan versi shell cache untuk membuang cache lama.
+- **Regression test**: ditambahkan round-trip rotasi, penolakan previous payload, kebijakan HTTP `no-store`, serta dua Node test policy service worker yang dijalankan oleh frontend CI.
+- **Kontrak API**: artefak Swagger diregenerasi sehingga deskripsi rotasi menyatakan ID CCTV yang sama dengan nonce baru.
+- **Dokumentasi**: BB-10, MT-11, remediation plan, testing matrix, dan security audit diperbarui. Runtime black-box non-production tetap `NOT RUN` dan tidak diklaim `PASS`.
+- **Verifikasi source**: `go build ./...`, `go test ./... -count=1`, `go vet ./...`, `npm run test:sw`, frontend lint (0 error; 77 warning baseline), frontend build, Compose config dengan placeholder non-secret, dan `git diff --check` lulus.
+
+Timestamp: 2026-08-20 WITA | Kategori: Kritis, Backend + Frontend + Security Hardening
+
 ## [1.28.51] — 2026-08-20 — Governance manual test formal (Task 0.2)
 
 ### Perubahan

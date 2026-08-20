@@ -782,6 +782,16 @@ func ScanCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// ID hasil dekripsi hanya mengidentifikasi aset. Payload juga harus sama
+	// dengan nilai aktif di database supaya label lama tidak dapat dipakai lagi
+	// setelah admin melakukan rotasi QR.
+	if cctv.QrPayload != req.QrPayload {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "QR Code tidak aktif atau sudah dirotasi",
+		})
+	}
+
 	// Password RTSP tidak boleh bocor ke klien pada respons.
 	cctv.RTSPPassword = ""
 
@@ -1143,14 +1153,15 @@ func GetCCTVQRCode(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "image/png")
 	c.Set("Content-Disposition", fmt.Sprintf("inline; filename=%s-qr.png", cctv.KodeCCTV))
+	c.Set("Cache-Control", "no-store")
 	return c.Send(qrBytes)
 }
 
-// RotateQRCode merotasi QR Code CCTV (Admin saja). Menghasilkan UUID baru,
-// mengenkripsinya ulang dengan AES-256 sebagai QrPayload baru, sehingga QR lama
+// RotateQRCode merotasi QR Code CCTV (Admin saja). Mengenkripsi ulang ID CCTV
+// dengan nonce baru sebagai QrPayload baru, sehingga QR lama
 // tidak lagi valid untuk pemindaian. (Task 13.14, Sprint 34)
 // @Summary      Rotasi QR Code CCTV (Admin)
-// @Description  Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga QR Code lama tidak berlaku lagi. Khusus admin.
+// @Description  Membuat QrPayload baru dari ID CCTV yang sama dengan nonce AES-256 baru sehingga QR Code lama tidak berlaku lagi. Khusus admin.
 // @Tags         Master CCTV
 // @Accept       json
 // @Produce      json
@@ -1181,9 +1192,9 @@ func RotateQRCode(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate UUID baru & enkripsi sebagai QrPayload baru.
-	newID := uuid.New()
-	encryptedPayload, err := utils.EncryptAES256(newID.String())
+	// Enkripsi ulang ID aset yang sama. EncryptAES256 menghasilkan nonce acak,
+	// sehingga ciphertext berubah tanpa memutus hubungan QR dengan CCTV.
+	encryptedPayload, err := utils.EncryptAES256(cctv.ID.String())
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",

@@ -1,5 +1,28 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.1] - 2026-08-20
+
+### Perbaikan cache label setelah rotasi QR CCTV
+
+perubahan yang dilakukan: **Cache QR kini dibedakan berdasarkan ID CCTV dan payload aktif agar label hasil rotasi langsung memakai gambar baru.**
+
+before:
+- Cache data URL hanya memakai ID CCTV; rotasi mempertahankan ID sehingga gambar label lama dapat dipakai ulang.
+
+after:
+- Cache key memakai kombinasi `cctv.id` dan `cctv.qr_payload`; fetch gambar memakai mode `no-store`.
+- Respons rotasi dengan payload baru otomatis memicu fetch gambar QR baru sebelum dialog cetak.
+- Service worker memperlakukan endpoint QR sebagai network-only, tidak menyimpan respons `no-store`, dan memakai cache shell v3 agar cache lama dibuang saat aktivasi.
+- Dua Node regression test memverifikasi bypass QR dan larangan menyimpan respons `no-store`.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Frontend (Perbaikan)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/public/sw.js
+- frontend/tests/service-worker-cache.test.mjs
+- frontend/package.json
+
 ## [1.55.0] - 2026-08-13
 
 ### Perbaikan UI & fitur kecil (Sprint 40 cleanup)

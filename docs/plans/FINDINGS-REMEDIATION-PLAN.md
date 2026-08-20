@@ -1,6 +1,6 @@
 # Findings Remediation Implementation Plan
 
-> **Status:** sedang dieksekusi — Gelombang 0.
+> **Status:** sedang dieksekusi — Gelombang 1, Task 1A implementasi selesai; runtime acceptance non-production masih `NOT RUN`.
 >
 > **Tanggal rencana:** 19 Agustus 2026. **Mulai eksekusi:** 20 Agustus 2026.
 > **Sumber:** `docs/audits/BLACKBOX-FINDINGS-2026-08-19.md` dan `docs/audits/MANUAL-TEST-AUDIT-SUMMARY.md`.
@@ -10,7 +10,9 @@
 - [x] Baseline lokal pada `5394ea0c543766aa9979115f899307076152fd12`: backend build/test/vet lulus; frontend lint 0 error (77 warning baseline) dan build lulus.
 - [x] Task 0.1 — artifact production, topologi edge, checkout SHA, image digest/ID, waktu runtime, port, dan konfigurasi non-secret telah dicatat.
 - [x] Task 0.2 — governance manual/black-box formal, metadata contract, historical-status handling, dan safety guard selesai; tidak ada runtime PASS yang diciptakan.
-- [ ] Gelombang 1–7 — belum dimulai.
+- [x] Task 1A — lifecycle QR diperbaiki pada source: rotasi memakai ID CCTV yang sama, scanner menolak payload lama, cache label memakai versi payload, dan regression test lulus.
+- [ ] Task 1A runtime gate — cetak dan pindai QR baru serta penolakan QR lama pada fixture non-production belum dijalankan.
+- [ ] Task 1B dan Gelombang 2–7 — belum dimulai.
 
 ## Tujuan
 
@@ -89,6 +91,8 @@ Checkpoint:
 
 ### Task 1A — Perbaiki lifecycle rotasi QR
 
+Status: **IMPLEMENTASI SELESAI — runtime black-box non-production `NOT RUN`**.
+
 Temuan: BB-10, MT-11.
 
 Files utama:
@@ -100,12 +104,12 @@ Files utama:
 
 Langkah:
 
-1. Tambah test bahwa rotate menghasilkan ciphertext baru yang mendekripsi ke ID CCTV yang sama.
-2. Tambah test bahwa scanner menerima payload aktif dan menolak payload sebelumnya.
-3. Ubah rotasi agar mengenkripsi `cctv.ID.String()` dengan nonce baru, bukan UUID baru.
-4. Saat scan, cocokkan ID hasil dekripsi dan `qr_payload` aktif.
-5. Invalidasi cache frontend setelah rotasi atau gunakan key `id + payloadVersion/hash`.
-6. Uji cetak label langsung setelah rotasi tanpa hard refresh.
+- [x] Tambah test bahwa rotate menghasilkan ciphertext baru yang mendekripsi ke ID CCTV yang sama.
+- [x] Tambah test bahwa scanner menerima payload aktif dan menolak payload sebelumnya.
+- [x] Ubah rotasi agar mengenkripsi `cctv.ID.String()` dengan nonce baru, bukan UUID baru.
+- [x] Saat scan, cocokkan ID hasil dekripsi dan `qr_payload` aktif.
+- [x] Gunakan cache key frontend berbasis `id + qr_payload`, HTTP/fetch `no-store`, dan bypass service-worker cache agar payload baru tidak memakai gambar lama; naikkan versi shell cache untuk membuang cache lama.
+- [ ] Uji cetak label langsung setelah rotasi tanpa hard refresh pada fixture non-production `E2E-MT11-`.
 
 Verifikasi:
 
@@ -116,6 +120,8 @@ go test ./... -count=1
 ```
 
 Done: QR baru bekerja untuk aset yang sama, QR lama ditolak, dan label baru tampil.
+
+Supporting evidence 2026-08-20: targeted backend test `TestRotateQRCode|TestScanCCTV|TestGetCCTVQRCode_DisablesHTTPCache` serta Node service-worker cache test lulus; full verification dicatat pada changelog PR. Supporting evidence ini tidak mengubah MT-11 menjadi `PASS` sebelum runtime gate dijalankan.
 
 ### Task 1B — Pulihkan MediaMTX dan playback eksternal
 

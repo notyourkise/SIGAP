@@ -1,7 +1,7 @@
 # SECURITY-AUDIT — SIGAP
 
 > Audit keamanan, pemahaman sistem, dan rekomendasi pengembangan.
-> Audit awal: 2026-08-01 · Diperbarui: 2026-08-19 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
+> Audit awal: 2026-08-01 · Diperbarui: 2026-08-20 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
 >
 > Temuan 1–20 di bagian 3 adalah rekam audit awal. Ringkasan arsitektur dan catatan risiko terbuka telah diselaraskan dengan kondisi proyek setelah Sprint 40.
 
@@ -24,6 +24,8 @@ telah dihapus pada Sprint 40.
   token-version, blacklist Redis, dan logout server-side.
 - Enkripsi QR dan kredensial RTSP per-CCTV memakai AES-256-GCM; nilai sensitif tidak boleh muncul
   pada respons API atau dokumentasi.
+- Lifecycle QR memvalidasi ciphertext aktif selain ID hasil dekripsi; rotasi mengenkripsi ulang ID CCTV
+  yang sama dengan nonce baru sehingga payload lama ditolak tanpa memutus identitas aset.
 - Rate limiting global (100 req/menit), autentikasi (5 req/menit), dan API key (100 req/menit per key).
 - Upload foto dengan deteksi MIME via magic bytes (tanpa fallback ekstensi), akses file dilindungi JWT.
 - Validasi input terpusat (`go-playground/validator`), whitelist kolom sorting (anti SQL-injection).
@@ -54,6 +56,14 @@ teridentifikasi dari dokumentasi dan inspeksi statis terbatas:
 | **Sedang** | Backup default disimpan pada volume lokal dengan retensi 7 hari; enkripsi at-rest dan salinan off-site belum didokumentasikan. | Kegagalan host atau akses volume dapat menyebabkan kehilangan atau kebocoran backup. | Tambahkan backup terenkripsi, off-site, verifikasi restore berkala, serta kebijakan akses dan retensi produksi. |
 
 Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.
+
+### 1.2 Hardening lifecycle QR — 2026-08-20
+
+- [x] Rotasi QR mempertahankan ID CCTV dan menghasilkan ciphertext baru melalui nonce acak.
+- [x] Scanner menolak payload valid secara kriptografis yang bukan lagi payload aktif di database.
+- [x] Cache gambar label dipisahkan berdasarkan ID dan payload aktif; respons PNG/fetch memakai `no-store`, service worker melewati cache QR, dan versi shell cache dinaikkan untuk menghapus cache lama.
+- [x] Regression test backend membuktikan round-trip QR baru dan penolakan QR lama; Node test membuktikan policy cache service worker.
+- [ ] Runtime black-box non-production MT-11 masih wajib sebelum release acceptance; pengujian rotasi pada production dilarang.
 
 ---
 
