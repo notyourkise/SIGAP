@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Disable static generation for all pages - app router uses server components by default
+  output: 'standalone', // Ensures optimal deployment configuration
+  
   async rewrites() {
     // Di dalam Docker container, service backend bernama 'api:3000'.
     // Pada environment standalone local (npm run dev), fallback ke 'localhost:3000'.
