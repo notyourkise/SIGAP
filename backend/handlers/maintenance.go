@@ -417,14 +417,10 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	})
 }
 
-// maintenanceCheckTotal adalah jumlah item checklist wajib (9 tahap) yang harus
-// dilaporkan teknisi untuk menyelesaikan tugas. Status menjadi "completed"
-// hanya bila 9/9 item berstatus ok; selain itu "failed".
-//
-// NOTE: Konstanta ini masih dipakai sebagai fallback jika template tidak tersedia,
-// tapi sudah tidak lagi memaksa jumlah exact 9 items.
-// Bug BB-13 Fix (2026-08-20): Status sekarang dinamis - semua item OK -> completed,
-// apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).
+// maintenanceCheckTotal adalah jumlah item checklist standar (9 tahap) yang umum digunakan.
+// Konstanta ini dipertahankan sebagai fallback default dan referensi, meskipun sistem sekarang
+// mendukung jumlah items dinamis berdasarkan template aktif. Bug BB-13 Fix (2026-08-20): 
+// Status "completed" kini bersifat dinamis - semua item OK → completed, apa pun jumlah itemsnya.
 const maintenanceCheckTotal = 9
 
 // AssignMaintenanceLog menugaskan atau mengalihkan log pemeliharaan ke teknisi (Admin saja)
@@ -677,6 +673,17 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Validasi input gagal",
 			"errors":  errs,
+		})
+	}
+
+	// Validasi minimum checklist items (minimal 1 item wajib diisi)
+	// Konstanta maintenanceCheckTotal = 9 adalah standar umum, tapi sistem sekarang
+	// mendukung jumlah variatif tergantung template aktif. Bug BB-13 Fix (2026-08-20).
+	minItems := 1 // Minimum requirement - bisa diubah jika diperlukan
+	if len(req.Checks) < minItems {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": fmt.Sprintf("Minimal %d item checklist harus diisi", minItems),
 		})
 	}
 
