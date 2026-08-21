@@ -839,12 +839,12 @@ func DownloadTemplateCCTV(c *fiber.Ctx) error {
 	// Set nama sheet default
 	sheetName := "Sheet1"
 
-	// Daftar header kolom template
+	// Daftar header kolom template (site_id adalah opsi, nullable)
 	headers := []string{
 		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area",
 		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik",
 		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status",
-		"IP NVR", "IP Camera", "Keterangan",
+		"IP NVR", "IP Camera", "Keterangan", "Site ID",
 	}
 
 	// Tulis header ke baris pertama (Baris 1) secara berurutan
@@ -1009,6 +1009,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 		ipNVR := getCell(12)
 		ipCamera := getCell(13)
 		keterangan := getCell(14)
+		siteIDStr := getCell(15) // Site ID - opsi (nullable)
 
 		// Validasi kolom wajib
 		if kodeCCTV == "" {
@@ -1095,7 +1096,35 @@ func ImportCCTV(c *fiber.Ctx) error {
 			Keterangan:    keterangan,
 			QrPayload:     encryptedPayload,
 			HealthScore:   100,
+			// Site ID adalah opsi - tidak diisi jika kosong/null di Excel
 		}
+		
+		// Parse dan validasi Site ID (jika diisi)
+		if strings.TrimSpace(siteIDStr) != "" {
+			siteUUID, err := uuid.Parse(strings.TrimSpace(siteIDStr))
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Format Site ID tidak valid. Gunakan UUID format.", rowNum),
+				})
+			}
+			
+			// Validasi bahwa Site ID benar-benar ada di database
+			var site models.Site
+			if err := tx.First(&site, "id = ?", siteUUID).Error; err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Site '%s' tidak ditemukan. Pastikan Site ID valid.", rowNum, siteIDStr),
+				})
+			}
+			
+			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
+		}
+		// Jika siteIDStr kosong/tidak diisi, SiteID tetap NULL (tidak di-set)
+		
+		// Generate unique ID untuk CCTV
 		cctv.ID = newID
 
 		if err := tx.Create(&cctv).Error; err != nil {

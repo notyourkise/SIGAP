@@ -35,13 +35,16 @@ export default function ChangePasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hasHandledRedirect, setHasHandledRedirect] = useState(false);
 
   // Early guard: Redirect authenticated non-forced users to dashboard immediately
+  // Only do this ONCE to prevent infinite loop
   useEffect(() => {
-    if (user && !user.must_change_password) {
-      router.push('/dashboard');
+    if (user && !user.must_change_password && !hasHandledRedirect) {
+      setHasHandledRedirect(true);
+      router.replace('/dashboard');
     }
-  }, [user, router]);
+  }, [user, router, hasHandledRedirect]);
 
   const forced = user?.must_change_password === true;
 
@@ -60,6 +63,11 @@ export default function ChangePasswordPage() {
     event.preventDefault();
     setError('');
     
+    if (!newPassword || !confirmPassword) {
+      setError('Mohon isi semua field');
+      return;
+    }
+    
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -72,17 +80,40 @@ export default function ChangePasswordPage() {
 
     setLoading(true);
     try {
-      await apiRequest(
+      // Get CSRF token from cookie
+      const name = 'sigap_csrf=';
+      const decodedCookie = decodeURIComponent(document.cookie);
+      const ca = decodedCookie.split(';');
+      let csrfToken = '';
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) === 0) {
+          csrfToken = c.substring(name.length, c.length);
+          break;
+        }
+      }
+      
+      const response = await apiRequest(
         '/auth/change-password', 
         {
           method: 'POST',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+          },
           body: JSON.stringify({ new_password: newPassword }),
         }
       );
       
-      if (user) {
-        const updatedUser = { ...user, must_change_password: false };
-        handleSuccess(updatedUser);
+      if (response.status === 'success') {
+        if (user) {
+          const updatedUser = { ...user, must_change_password: false };
+          handleSuccess(updatedUser);
+        }
+      } else {
+        throw new Error(response.message || 'Failed to change password');
       }
     } catch (err: any) {
       console.error('Failed to change password:', err);
