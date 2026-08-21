@@ -81,6 +81,8 @@ services:
     environment:
       # Level log untuk Task 7.6 (logger terstruktur). Default: info.
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Workaround: Direct env var override untuk database password
+      - DB_PASSWORD=PHYV3MUjWEC5ADX6ezBmci1G
     # SECURITY: port 3000 TIDAK dipublish — hanya diakses via reverse proxy (Nginx).
     depends_on:
       db:

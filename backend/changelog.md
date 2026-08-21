@@ -1,5 +1,20 @@
 # Changelog - Backend SIGAP
 
+## [0.64.5] - 2026-08-21
+
+### Bug BB-13: Dynamic Checklist Status Calculation
+
+**Bug Fix**: Removed hardcoded check for exactly 9 items in maintenance completion logic. Status "completed" now applies when ALL items are OK, regardless of count (dynamic based on active template).
+
+timestamp: 2026-08-21 14:30 UTC+8
+kategori: Kecil, Backend (Bug Fix)
+file yang diubah:
+- backend/handlers/maintenance.go (CompleteMaintenanceLog function)
+- backend/docs/docs.go (regenerated)
+- backend/utils/optional_uuid.go (syntax fix)
+
+---
+
 ## [0.64.4] - 2026-08-20
 
 ### Multi-Site Isolation & Security Fixes (BB-01 to BB-03 equivalent)

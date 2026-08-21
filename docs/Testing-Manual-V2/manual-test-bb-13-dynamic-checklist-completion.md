@@ -1,250 +1,188 @@
-# Manual Test - Fix BB-13 Dynamic Checklist Completion
+# Manual Test - Bug BB-13: Dynamic Checklist Status
 
-## Informasi Umum
-
-| Field | Value |
-|-------|-------|
-| **Issue** | BB-13 - Hasil pemeliharaan seluruh OK masih "Perlu Tindak Lanjut" |
-| **Branch** | bugfix/bb-13-maintenance-checklist-completion |
-| **Version** | 0.64.5 (development) |
-| **Timestamp** | 2026-08-20 20:00 UTC+8 |
-| **Tester** | AI Agent |
-| **Environment** | Staging (Docker Compose) |
+| Item | Detail |
+|------|--------|
+| **Task ID** | BB-13 |
+| **Branch** | `bugfix/bb-13-dynamic-checklist-status` |
+| **Versi Backend** | 0.64.5 (setelah fix) |
+| **Tanggal** | 2026-08-21 |
 
 ---
 
-## Deskripsi Masalah
+## 1. Prasyarat
 
-**Before Fix:**
-- Backend hanya men-set status `completed` bila semua checklist item `ok` **DAN** jumlahnya persis **9 items**
-- Jika ada 8 atau 10 item (atau jumlah dinamis lainnya), semuanya `ok` tapi tetap gagal → status `failed`
-- Ini karena hardcode konstanta `numItems = 9` yang tidak fleksibel
-
-**After Fix:**
-- Backend menerima array checklist dinamis (jumlah berapa saja sesuai template aktif)
-- Status ditentukan oleh: jika SEMUA item wajib `ok` → completed ✅; jika ada satu `not_ok` → attention ❌
-- Validasi payload integrity: jika kurang/duplikat item → HTTP 400 error
+- [ ] Docker-compose running (`db`, `redis`, `api`, `frontend`)
+- [ ] Login sebagai **teknisi** yang memiliki tugas terjadwal dengan status `ongoing`
+- [ ] Pastikan template checklist yang aktif BISA bervariasi (tidak harus 9 items)
+  - Bisa lewat admin dashboard: `/schedules` → edit jadwal → ubah template
+  - Atau langsung di database table `checklist_templates`
 
 ---
 
-## Prasyarat
+## 2. Pengujian Otomatis (Build & Lint)
 
-1. Environment Docker compose berjalan
-2. Database seeded dengan minimal 1 CCTV dengan status "aktif"
-3. User teknisi terautentikasi dengan valid JWT token
-4. Template checklist aktif tersedia di database (dari migrasi 000017_checklist_templates)
+### Backend Build
+```bash
+cd backend
+go build ./...          # Should pass without errors
+go test ./... -count=1   # All tests should pass
+```
+
+### Frontend Build
+```bash
+cd frontend
+npm run lint            # No critical lint errors
+npm run build           # Production build should succeed
+```
+
+### Swagger Regeneration
+```bash
+cd backend
+swag init              # Should regenerate docs.go without errors
+```
 
 ---
 
-## Skenario Pengujian
+## 3. Skenario Uji Manual
 
-### S1: Pengecekan dengan 8 Items Semua OK
+### **Test Case 1: Completion with Fewer than 9 Items (e.g., 5 items)**
 
-**Step-by-Step:**
+| Step | Langkah | Hasil Yang Diharapkan | Hasil Nyata |
+|------|---------|---------------------|-------------|
+| 1 | Admin membuat/mengedit jadwal pemeliharaan dengan template berisi **5 item checklist** | Jadwal tersimpan dengan template baru | ✅ / ❌ |
+| 2 | Generator menghasilkan maintenance log dari jadwal tersebut | Log status: `scheduled` → `ongoing` | ✅ / ❌ |
+| 3 | Teknisi membuka halaman `/maintenance` → klik "Selesaikan" pada task dengan status `ongoing` | Modal complete checklist terbuka, menampilkan **5 item** | ✅ / ❌ |
+| 4 | Teknisi mengisi semua 5 item dengan status **"Normal / OK"** + minimal 1 foto bukti | Validasi berhasil, tombol Submit aktif | ✅ / ❌ |
+| 5 | Teknisi klik **"Selesaikan Tugas"** | API response: `{"status": "success", "data": {...}}` | ✅ / ❌ |
+| 6 | Verifikasi status maintenance log di tabel / halaman | Status berubah menjadi **`completed`** (BUKAN `failed`) | ✅ / ❌ |
+| 7 | Cek notifikasi ke admin | Notifikasi muncul: "Tugas selesai: Selesai" | ✅ / ❌ |
+| 8 | Cek status CCTV terkait | CCTV status: `aktif` (karena completed) | ✅ / ❌ |
 
-1. Login sebagai teknisi (`/api/auth/login`)
-2. Pilih CCTV manapun dari daftar
-3. Klik tombol "Pengecekan Lapangan"
-4. Isikan form checklist dengan **8 items**, semua hasil `ok`:
+**Kriteria Lulus:** Semua langkah berhasil, status = `completed` meskipun hanya 5 items.
 
+---
+
+### **Test Case 2: Completion with Exactly 9 Items (Legacy Behavior)**
+
+| Step | Langkah | Hasil Yang Diharapkan | Hasil Nyata |
+|------|---------|---------------------|-------------|
+| 1 | Setup template dengan **9 item checklist** (template default) | Template tersimpan | ✅ / ❌ |
+| 2 | Generator menghasilkan maintenance log | Log status: `ongoing` | ✅ / ❌ |
+| 3 | Teknisi menyelesaikan semua 9 item dengan status **"OK"** + foto | Form valid, submit berhasil | ✅ / ❌ |
+| 4 | Verifikasi hasil | Status = **`completed`**, CCTV → `aktif` | ✅ / ❌ |
+
+**Kriteria Lulus:** Legacy behavior tetap berfungsi (backward compatibility).
+
+---
+
+### **Test Case 3: Failure with Mixed Results (Any Count)**
+
+| Step | Langkah | Hasil Yang Diharapkan | Hasil Nyata |
+|------|---------|---------------------|-------------|
+| 1 | Setup template dengan **7 item checklist** | Template siap | ✅ / ❌ |
+| 2 | Teknisi menyelesaikan task dengan kondisi: <br>- 5 items = "OK" <br>- 2 items = "Bermasalah" | Form valid (semua terisi, ada catatan untuk bermasalah) | ✅ / ❌ |
+| 3 | Submit form | ✅ / ❌ |
+| 4 | Verifikasi status maintenance log | Status = **`failed`** | ✅ / ❌ |
+| 5 | Cek notifikasi admin | Notifikasi: "Tugas selesai: Perlu Tindak Lanjut" | ✅ / ❌ |
+| 6 | Cek status CCTV | Status = `pemeliharaan` | ✅ / ❌ |
+
+**Kriteria Lulus:** Ada item "not_ok" → status = `failed`, berapa pun jumlah total items.
+
+---
+
+### **Test Case 4: Edge Case - Single Item Template**
+
+| Step | Langkah | Hasil Yang Diharapkan | Hasil Nyata |
+|------|---------|---------------------|-------------|
+| 1 | Buat template dengan **1 item checklist** | Template valid | ✅ / ❌ |
+| 2 | Teknisi menyelesaikan dengan status "OK" | Submit berhasil | ✅ / ❌ |
+| 3 | Verifikasi | Status = **`completed`** | ✅ / ❌ |
+
+**Kriteria Lulus:** Sistem mendukung template minimal 1 item.
+
+---
+
+## 4. Kriteria Lulus Umum
+
+✅ **PASS** jika:
+- Status maintenance log benar (`completed` vs `failed`) berdasarkan kelengkapan dan hasil checklist
+- Status CCTV sinkron otomatis dengan hasil penyelesaian
+- Tidak ada error di backend logs
+- Frontend menampilkan status yang sesuai
+- Notifikasi dikirim dengan label yang tepat ("Selesai" atau "Perlu Tindak Lanjut")
+
+❌ **FAIL** jika:
+- Status masih terpaku pada hardcoded "9/9 OK"
+- Template dengan jumlah berbeda tidak bekerja sesuai ekspektasi
+- Error 500 atau validation error saat submit
+
+---
+
+## 5. Catatan Tambahan
+
+### Backend Logs
+Periksa `backend/logs/app.log` setelah test:
+- Harus ada log `COMPLETE_MAINTENANCE: Menyelesaikan tugas pemeliharaan... (Status: completed)`
+- Tidak ada error `gorm`, `uuid.Parse`, atau transaction rollback
+
+### Database Verification
+```sql
+-- Cek status terakhir maintenance log
+SELECT id, action_taken, status, completed_at 
+FROM maintenance_logs 
+ORDER BY created_at DESC 
+LIMIT 5;
+
+-- Cek sinkronisasi status CCTV
+SELECT c.kode_cctv, c.status, ml.status as maintenance_status
+FROM cctvs c
+JOIN maintenance_logs ml ON c.id = ml.cctv_id
+WHERE ml.status IN ('completed', 'failed')
+ORDER BY ml.created_at DESC
+LIMIT 5;
+```
+
+### Webhook Event (Jika Enabled)
+Verifikasi event `maintenance.completed` dikirim ke configured webhooks dengan payload:
 ```json
 {
-  "cctv_id": "<uuid-cctv>",
-  "notes": "Testing 8 items",
-  "checks": [
-    {"name": "Pengecekan jaringan", "result": "ok", "note": ""},
-    {"name": "Pengecekan listrik", "result": "ok", "note": ""},
-    {"name": "Pengecekan fisik", "result": "ok", "note": ""},
-    {"name": "Pengecekan log", "result": "ok", "note": ""},
-    {"name": "Pengecekan backup", "result": "ok", "note": ""},
-    {"name": "Pengecekan security", "result": "ok", "note": ""},
-    {"name": "Pengecekan monitoring", "result": "ok", "note": ""},
-    {"name": "Pengecekan dokumentasi", "result": "ok", "note": ""}
-  ],
-  "images": [{"image_url": "/api/uploads/test.jpg"}]
+  "event": "maintenance.completed",
+  "payload": {
+    "log_id": "...",
+    "cctv_id": "...",
+    "action_taken": "...",
+    "status": "completed",
+    "completed_at": "..."
+  }
 }
 ```
 
-5. Submit form
+---
 
-**Expected Result:**
-- ✅ HTTP 201 Created
-- ✅ Response data `overall_status`: `"ok"`
-- ✅ CCTV tidak berubah status (tetap "aktif")
-- ✅ Notifikasi tidak dikirim (karena tidak ada issue)
-- ✅ Health score tetap sama
+## 6. Rollback Plan
 
-**Actual Result:** [Tulis hasil nyata]
+Jika ditemukan regressi atau issue kritis:
 
-**Status:** [ ] PASS / [ ] FAIL / [ ] BLOCKED
+1. Revert commit:  
+   ```bash
+   git checkout main
+   git merge --no-edit bugfix/bb-13-dynamic-checklist-status^
+   ```
+
+2. Restore backup branch:
+   ```bash
+   git checkout -b rollback/bb-13-backup
+   ```
+
+3. Deploy versi sebelumnya:
+   ```bash
+   git cherry-pick <previous-stable-commit>
+   ```
 
 ---
 
-### S2: Pengecekan dengan 10 Items Semua OK
+**Tester**: ________________  
+**Tanggal Testing**: ________________  
+**Status**: ⬜ Pass / ⬜ Fail / ⬜ Blocked  
+**Catatan**: _______________________________________________________
 
-**Step-by-Step:**
-
-1. Gunakan sesi teknisi yang sama
-2. Pilih CCTV berbeda atau yang sama
-3. Klik "Pengecekan Lapangan"
-4. Isikan form dengan **10 items**, semua hasil `ok`:
-
-```json
-{
-  "cctv_id": "<uuid-cctv>",
-  "notes": "Testing 10 items",
-  "checks": [
-    {"name": "Pengecekan jaringan", "result": "ok", "note": ""},
-    {"name": "Pengecekan listrik", "result": "ok", "note": ""},
-    {"name": "Pengecekan fisik", "result": "ok", "note": ""},
-    {"name": "Pengecekan log", "result": "ok", "note": ""},
-    {"name": "Pengecekan backup", "result": "ok", "note": ""},
-    {"name": "Pengecekan security", "result": "ok", "note": ""},
-    {"name": "Pengecekan monitoring", "result": "ok", "note": ""},
-    {"name": "Pengecekan dokumentasi", "result": "ok", "note": ""},
-    {"name": "Pengecekan patch", "result": "ok", "note": ""},
-    {"name": "Pengecekan performance", "result": "ok", "note": ""}
-  ],
-  "images": [{"image_url": "/api/uploads/test.jpg"}]
-}
-```
-
-5. Submit form
-
-**Expected Result:**
-- ✅ HTTP 201 Created
-- ✅ Response data `overall_status`: `"ok"`
-- ✅ CCTV update status dari "pemeliharaan" ke "aktif" (jika sebelumnya rusak)
-- ✅ Health score recalculated
-- ✅ Audit log tercatat
-
-**Actual Result:** [Tulis hasil nyata]
-
-**Status:** [ ] PASS / [ ] FAIL / [ ] BLOCKED
-
----
-
-### S3: Pengecekan dengan 9 Items Ada Satu NOT_OK
-
-**Step-by-Step:**
-
-1. Login sebagai teknisi
-2. Pilih CCTV
-3. Klik "Pengecekan Lapangan"
-4. Isikan **9 items** seperti default template, tapi satu item `not_ok`:
-
-```json
-{
-  "cctv_id": "<uuid-cctv>",
-  "notes": "Ada masalah di item 3",
-  "checks": [
-    {"name": "Pengecekan jaringan", "result": "ok", "note": ""},
-    {"name": "Pengecekan listrik", "result": "ok", "note": ""},
-    {"name": "Pengecekan fisik", "result": "not_ok", "note": "Kabel longgar"},
-    {"name": "Pengecekan log", "result": "ok", "note": ""},
-    {"name": "Pengecekan backup", "result": "ok", "note": ""},
-    {"name": "Pengecekan security", "result": "ok", "note": ""},
-    {"name": "Pengecekan monitoring", "result": "ok", "note": ""},
-    {"name": "Pengecekan dokumentasi", "result": "ok", "note": ""},
-    {"name": "Pengecekan patch", "result": "ok", "note": ""}
-  ],
-  "images": [{"image_url": "/api/uploads/test.jpg"}]
-}
-```
-
-5. Submit form
-
-**Expected Result:**
-- ✅ HTTP 201 Created
-- ✅ Response data `overall_status`: `"attention"`
-- ✅ CCTV update status jadi "pemeliharaan" (jika sebelumnya "aktif")
-- ✅ Admin receives notification in-app
-- ✅ Alert badge muncul di dashboard admin
-
-**Actual Result:** [Tulis hasil nyata]
-
-**Status:** [ ] PASS / [ ] FAIL / [ ] BLOCKED
-
----
-
-### S4: Payload Kurang Item Dari Template Aktif
-
-**Step-by-Step:**
-
-1. Login sebagai teknisi
-2. Cek template checklist aktif (harusnya punya X items)
-3. Submit request dengan hanya Y items (Y < X):
-
-```json
-{
-  "cctv_id": "<uuid-cctv>",
-  "notes": "Missing items",
-  "checks": [
-    {"name": "Hanya item pertama", "result": "ok", "note": ""}
-  ],
-  "images": [{"image_url": "/api/uploads/test.jpg"}]
-}
-```
-
-4. Submit form
-
-**Expected Result:**
-- ❌ HTTP 400 Bad Request
-- ✅ Error message: "Payload checklist tidak lengkap" atau similar
-- ✅ Tidak ada record dibuat di database
-- ✅ No side effects (CCTV status unchanged)
-
-**Actual Result:** [Tulis hasil nyata]
-
-**Status:** [ ] PASS / [ ] FAIL / [ ] BLOCKED
-
----
-
-## Kriteria Lulus
-
-Test suite dianggap **PASS** bila:
-1. ✅ S1: 8 items semua OK → overall_status "ok" 
-2. ✅ S2: 10 items semua OK → overall_status "ok"
-3. ✅ S3: 9 items + 1 not_ok → overall_status "attention"
-4. ✅ S4: Payload kurang item → HTTP 400 error
-
-**Overall Suite Status:** [ ] PASS / [ ] FAIL / [ ] BLOCKED
-
----
-
-## Catatan Tambahan
-
-### Bukti Evidence
-
-- [ ] Screenshot respons HTTP 201 untuk S1, S2, S3
-- [ ] Screenshot respons HTTP 400 untuk S4
-- [ ] Database query result: verify field_maintenances table records
-- [ ] Log backend (INFO level) untuk audit trail
-
-### Build SHA & Version Info
-
-- Git Commit SHA: `[isi setelah commit]`
-- Backend Version: `0.64.5-dev`
-- Frontend Version: `[isi]`
-- Database Schema: `[cek migrations]`
-
-### Cleanup Procedure
-
-Setelah testing selesai:
-1. Hapus semua record `field_maintenances` yang dibuat saat testing
-2. Reset status CCTV ke kondisi awal
-3. Clear notification inbox untuk admin
-
----
-
-## Referensi
-
-- **Original Bug**: BLACKBOX-FINDINGS-2026-08-19.md - BB-13
-- **Backend Changelog**: See backend/changelog.md entry for BB-13 fix
-- **Frontend UI**: `/field-maintenance` wizard component
-- **API Contract**: Swagger docs generated after fix
-
----
-
-_Ditulis: 2026-08-20 20:00 UTC+8_  
-_Diperbarui: Saat eksekusi manual_

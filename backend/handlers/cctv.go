@@ -64,9 +64,9 @@ type CreateCCTVRequest struct {
 	StreamEnabled bool     `json:"stream_enabled"`
 	RTSPURL       string   `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
 	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
+	SiteID utils.OptionalUUID `json:"site_id" validate:"omitempty"`
 }
 
 // Request body untuk update data CCTV
@@ -91,9 +91,9 @@ type UpdateCCTVRequest struct {
 	StreamEnabled *bool    `json:"stream_enabled"`
 	RTSPURL       *string  `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
 	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
+	SiteID utils.OptionalUUID `json:"site_id" validate:"omitempty"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -273,8 +273,15 @@ func CreateCCTV(c *fiber.Ctx) error {
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
 	cctv.RTSPURL = req.RTSPURL
-	cctv.ZoneID = req.ZoneID
-	cctv.SiteID = req.SiteID
+	
+	// Set zone_id dan site_id hanya jika ada value (tidak null dan bukan zero)
+	if req.ZoneID.HasValue() {
+		cctv.ZoneID = req.ZoneID.Value
+	}
+	if req.SiteID.HasValue() {
+		cctv.SiteID = req.SiteID.Value
+	}
+	
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -637,12 +644,24 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	if req.RTSPURL != nil {
 		cctv.RTSPURL = *req.RTSPURL
 	}
-	// Zona & kawasan operasional — diisi bila dikirim (nilai kosong tidak mengubah).
-	if req.ZoneID != nil {
-		cctv.ZoneID = req.ZoneID
+	
+	// Zona & kawasan operasional — tiga keadaan: diisi (UUID valid), dikosongkan (null), atau tidak dikirim (biar asli)
+	if req.ZoneID.Present {
+		if req.ZoneID.Null {
+			cctv.ZoneID = nil // Kosongkan zona (set to NULL di database)
+		} else if req.ZoneID.Value != nil {
+			cctv.ZoneID = req.ZoneID.Value // Update ke zona baru
+		}
+		// else: zone_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
-	if req.SiteID != nil {
-		cctv.SiteID = req.SiteID
+	
+	if req.SiteID.Present {
+		if req.SiteID.Null {
+			cctv.SiteID = nil // Kosongkan kawasan (set to NULL di database)
+		} else if req.SiteID.Value != nil {
+			cctv.SiteID = req.SiteID.Value // Update ke kawasan baru
+		}
+		// else: site_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {
@@ -820,12 +839,12 @@ func DownloadTemplateCCTV(c *fiber.Ctx) error {
 	// Set nama sheet default
 	sheetName := "Sheet1"
 
-	// Daftar header kolom template
+	// Daftar header kolom template (site_id adalah opsi, nullable)
 	headers := []string{
 		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area",
 		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik",
 		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status",
-		"IP NVR", "IP Camera", "Keterangan",
+		"IP NVR", "IP Camera", "Keterangan", "Site ID",
 	}
 
 	// Tulis header ke baris pertama (Baris 1) secara berurutan
@@ -990,6 +1009,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 		ipNVR := getCell(12)
 		ipCamera := getCell(13)
 		keterangan := getCell(14)
+		siteIDStr := getCell(15) // Site ID - opsi (nullable)
 
 		// Validasi kolom wajib
 		if kodeCCTV == "" {
@@ -1076,7 +1096,35 @@ func ImportCCTV(c *fiber.Ctx) error {
 			Keterangan:    keterangan,
 			QrPayload:     encryptedPayload,
 			HealthScore:   100,
+			// Site ID adalah opsi - tidak diisi jika kosong/null di Excel
 		}
+		
+		// Parse dan validasi Site ID (jika diisi)
+		if strings.TrimSpace(siteIDStr) != "" {
+			siteUUID, err := uuid.Parse(strings.TrimSpace(siteIDStr))
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Format Site ID tidak valid. Gunakan UUID format.", rowNum),
+				})
+			}
+			
+			// Validasi bahwa Site ID benar-benar ada di database
+			var site models.Site
+			if err := tx.First(&site, "id = ?", siteUUID).Error; err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Site '%s' tidak ditemukan. Pastikan Site ID valid.", rowNum, siteIDStr),
+				})
+			}
+			
+			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
+		}
+		// Jika siteIDStr kosong/tidak diisi, SiteID tetap NULL (tidak di-set)
+		
+		// Generate unique ID untuk CCTV
 		cctv.ID = newID
 
 		if err := tx.Create(&cctv).Error; err != nil {

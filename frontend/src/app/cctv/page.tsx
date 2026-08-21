@@ -619,6 +619,9 @@ export default function CCTVPage() {
         ...formData,
         longitude: toCoordinateNumber(formData.longitude),
         latitude: toCoordinateNumber(formData.latitude),
+        // Kirim null untuk zone_id dan site_id bila kosong, bukan string kosong
+        zone_id: formData.zone_id === '' ? null : formData.zone_id || undefined,
+        site_id: formData.site_id === '' ? null : formData.site_id || undefined,
       };
 
       const response = await apiRequest<CCTV>(endpoint, {
