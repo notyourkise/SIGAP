@@ -13,7 +13,8 @@ type Site struct {
 	KoordinatLng *float64 `gorm:"type:double precision" json:"koordinat_lng"`
 	IsDefault    bool     `gorm:"type:boolean;not null;default:false" json:"is_default"`
 	// Relasi many-to-many ke user via join table user_sites.
-	Users []User `gorm:"many2many:user_sites;" json:"users,omitempty"`
+	Users        []User     `gorm:"many2many:user_sites;" json:"users,omitempty"`
+	UserSites    []UserSite `gorm:"foreignKey:SiteID" json:"user_sites,omitempty"`
 }
 
 // UserSite adalah join table many-to-many User ↔ Site.
