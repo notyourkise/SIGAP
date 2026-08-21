@@ -417,12 +417,6 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	})
 }
 
-// maintenanceCheckTotal adalah jumlah item checklist standar (9 tahap) yang umum digunakan.
-// Konstanta ini dipertahankan sebagai fallback default dan referensi, meskipun sistem sekarang
-// mendukung jumlah items dinamis berdasarkan template aktif. Bug BB-13 Fix (2026-08-20): 
-// Status "completed" kini bersifat dinamis - semua item OK → completed, apa pun jumlah itemsnya.
-const maintenanceCheckTotal = 9
-
 // AssignMaintenanceLog menugaskan atau mengalihkan log pemeliharaan ke teknisi (Admin saja)
 // @Summary      Tugaskan / Alihkan Log ke Teknisi
 // @Description  Menugaskan log berstatus "scheduled" ke teknisi (assign pertama) atau mengalihkan log berstatus "ongoing" ke teknisi lain (re-assign, Fase 5.3). Status log otomatis menjadi "ongoing"; pada re-assign teknisi lama dilepas dan diberi notifikasi. User tujuan wajib berperan "teknisi" dan tidak boleh sama dengan teknisi yang sedang ditugaskan.
