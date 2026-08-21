@@ -1100,8 +1100,9 @@ func ImportCCTV(c *fiber.Ctx) error {
 		}
 		
 		// Parse dan validasi Site ID (jika diisi)
-		if strings.TrimSpace(siteIDStr) != "" {
-			siteUUID, err := uuid.Parse(strings.TrimSpace(siteIDStr))
+		// Jika kolom Site ID kosong/null di Excel, biarkan NULL (tidak set SiteID)
+		if trimmedSiteID := strings.TrimSpace(siteIDStr); trimmedSiteID != "" {
+			siteUUID, err := uuid.Parse(trimmedSiteID)
 			if err != nil {
 				tx.Rollback()
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -1116,13 +1117,13 @@ func ImportCCTV(c *fiber.Ctx) error {
 				tx.Rollback()
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 					"status":  "error",
-					"message": fmt.Sprintf("Baris %d: Site '%s' tidak ditemukan. Pastikan Site ID valid.", rowNum, siteIDStr),
+					"message": fmt.Sprintf("Baris %d: Site ID '%s' tidak ditemukan di database. Pastikan Site ID valid atau biarkan kolom ini kosong untuk assign ke default site.", rowNum, siteIDStr),
 				})
 			}
 			
 			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
 		}
-		// Jika siteIDStr kosong/tidak diisi, SiteID tetap NULL (tidak di-set)
+		// Jika kolom Site ID kosong di Excel, SiteID tetap NULL (tidak diset)
 		
 		// Generate unique ID untuk CCTV
 		cctv.ID = newID
