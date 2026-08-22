@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -63,7 +63,7 @@ interface CCTV {
   stream_enabled: boolean;
   rtsp_url?: string;
   snapshot_url?: string;
-  // Zona operasional & kawasan (site) — opsional (Task 11.4 & 12.2).
+  // Zona operasional & kawasan (site) â€” opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
   site_id?: string | null;
   site_nama?: string; // Added for Multi-Site Isolation (Fix BB-04)
@@ -74,7 +74,7 @@ interface QRPrintItem {
   qrDataUrl: string;
 }
 
-// Satu baris kejadian pada timeline CCTV — sesuai struktur respons backend:
+// Satu baris kejadian pada timeline CCTV â€” sesuai struktur respons backend:
 // { id, cctv_id, event_type, image_path, notes, created_at }
 interface TimelineEvent {
   id: string;
@@ -115,8 +115,8 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 const eventTypeLabel = (type: string) =>
   EVENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-// Konversi nilai koordinat dari input teks menjadi number | null. Kosong → null;
-// nilai yang tidak valid (bukan angka) → null; angka valid → number.
+// Konversi nilai koordinat dari input teks menjadi number | null. Kosong â†’ null;
+// nilai yang tidak valid (bukan angka) â†’ null; angka valid â†’ number.
 const toCoordinateNumber = (value: string): number | null => {
   const trimmed = value.trim();
   if (trimmed === '') return null;
@@ -145,8 +145,10 @@ export default function CCTVPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [ioFilter, setIoFilter] = useState('');
+  // Site filter untuk Multi-Site Isolation (Fix BB-04)
+  const [siteFilter, setSiteFilter] = useState('');
 
-  // Sort State — default urut A-Z berdasarkan nama (perubahan Sprint 40)
+  // Sort State â€” default urut A-Z berdasarkan nama (perubahan Sprint 40)
   const [sortBy, setSortBy] = useState('nama');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -157,7 +159,7 @@ export default function CCTVPage() {
   const [draftStatusFilter, setDraftStatusFilter] = useState('');
   const [draftIoFilter, setDraftIoFilter] = useState('');
 
-  // Jumlah filter/sortir aktif — dipakai untuk badge pada tombol Sortir
+  // Jumlah filter/sortir aktif â€” dipakai untuk badge pada tombol Sortir
   const activeFilterCount =
     (statusFilter ? 1 : 0) +
     (ioFilter ? 1 : 0) +
@@ -244,7 +246,7 @@ export default function CCTVPage() {
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
 
-  // QR Code State — gambar QR di-generate server-side (tidak bergantung API pihak ketiga)
+  // QR Code State â€” gambar QR di-generate server-side (tidak bergantung API pihak ketiga)
   const qrCacheRef = useRef<Record<string, string>>({});
 
   const [printQueue, setPrintQueue] = useState<QRPrintItem[] | null>(null);
@@ -386,7 +388,7 @@ export default function CCTVPage() {
           }
         }
       } catch {
-        // Gagal memuat dropdown tidak fatal — form tetap bisa diisi tanpa zona/kawasan.
+        // Gagal memuat dropdown tidak fatal â€” form tetap bisa diisi tanpa zona/kawasan.
       }
     })();
     return () => {
@@ -407,7 +409,7 @@ export default function CCTVPage() {
   const isStatus = (status: string, values: string[]) => values.includes(normalizedStatus(status));
 
   // Normalisasi nilai status dari database (huruf kecil Indonesia / legacy huruf
-  // besar Inggris) ke nilai opsi <select> — enum backend: aktif/pemeliharaan/nonaktif.
+  // besar Inggris) ke nilai opsi <select> â€” enum backend: aktif/pemeliharaan/nonaktif.
   const toStatusValue = (status: string) => {
     const norm = status.trim().toUpperCase();
     if (norm === 'ACTIVE') return 'aktif';
@@ -569,7 +571,7 @@ export default function CCTVPage() {
         ip_nvr: cctv.ip_nvr || '',
         ip_camera: cctv.ip_camera || '',
         keterangan: cctv.keterangan || '',
-        // rtsp_password tidak pernah dikembalikan API — selalu dikosongkan; hanya terisi bila user mengetik ulang
+        // rtsp_password tidak pernah dikembalikan API â€” selalu dikosongkan; hanya terisi bila user mengetik ulang
         channel_port: typeof cctv.channel_port === 'number' ? cctv.channel_port : 0,
         rtsp_password: '',
         stream_enabled: !!cctv.stream_enabled,
@@ -654,7 +656,7 @@ export default function CCTVPage() {
   const handleDeleteCCTV = async (cctv: CCTV) => {
     const ok = await confirm({
       title: 'Hapus CCTV?',
-      message: `Hapus CCTV “${cctv.nama}”? CCTV tidak akan ditampilkan dalam daftar aktif.`,
+      message: `Hapus CCTV â€œ${cctv.nama}â€? CCTV tidak akan ditampilkan dalam daftar aktif.`,
       confirmLabel: 'Hapus',
     });
     if (!ok) return;
@@ -680,7 +682,7 @@ export default function CCTVPage() {
   const handleRotateQR = async (cctv: CCTV) => {
     const ok = await confirm({
       title: 'Rotasi QR Code?',
-      message: `QR Code lama untuk “${cctv.nama}” akan tidak berlaku. Cetak label QR baru setelah rotasi. Lanjutkan?`,
+      message: `QR Code lama untuk â€œ${cctv.nama}â€ akan tidak berlaku. Cetak label QR baru setelah rotasi. Lanjutkan?`,
       confirmLabel: 'Rotasi QR',
     });
     if (!ok) return;
@@ -1091,7 +1093,7 @@ export default function CCTVPage() {
                       className="flex w-full items-center gap-3 border-t border-border px-4 py-3 text-left text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60"
                     >
                       {actionLoading === 'delete-all' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      {actionLoading === 'delete-all' ? 'Menghapus…' : 'Hapus semua CCTV'}
+                      {actionLoading === 'delete-all' ? 'Menghapusâ€¦' : 'Hapus semua CCTV'}
                     </button>
                   )}
                 </div>
@@ -1179,7 +1181,7 @@ export default function CCTVPage() {
                 className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-error px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-error/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-wait disabled:opacity-60"
               >
                 {actionLoading === 'delete-selected' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {actionLoading === 'delete-selected' ? 'Menghapus…' : `Hapus ${selectedIDs.length} CCTV`}
+                {actionLoading === 'delete-selected' ? 'Menghapusâ€¦' : `Hapus ${selectedIDs.length} CCTV`}
               </button>
             </div>
           )}
@@ -1187,7 +1189,7 @@ export default function CCTVPage() {
           {loading ? (
           <div className="flex items-center justify-center gap-3 py-20" role="status">
             <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
-            <span className="text-sm text-muted">Memuat data CCTV…</span>
+            <span className="text-sm text-muted">Memuat data CCTVâ€¦</span>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
@@ -1203,13 +1205,13 @@ export default function CCTVPage() {
             <Camera className="mb-3 h-10 w-10 text-muted/45" />
             <h3 className="text-base font-semibold">{search || statusFilter || ioFilter ? 'Tidak ada CCTV yang cocok' : 'Belum ada data CCTV'}</h3>
             <p className="mt-1 max-w-sm text-xs text-muted">
-              {search || statusFilter || ioFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol “Tambah CCTV” atau “Impor Excel” untuk menambahkan data.'}
+              {search || statusFilter || ioFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol â€œTambah CCTVâ€ atau â€œImpor Excelâ€ untuk menambahkan data.'}
             </p>
           </div>
         ) : (
           <>
             {/* Saat menu aksi terbuka, overflow-x-auto dihilangkan agar dropdown
-                tidak terpotong oleh wrapper tabel (z-index saja tidak cukup —
+                tidak terpotong oleh wrapper tabel (z-index saja tidak cukup â€”
                 overflow menciptakan clipping context). */}
             <div className={openActionMenu ? 'overflow-visible' : 'overflow-x-auto'}>
               <table className="w-full min-w-[740px] border-collapse text-left">
@@ -1243,7 +1245,7 @@ export default function CCTVPage() {
                       />
                     </th>
                     <th className="px-5 py-3.5">Koneksi</th>
-                    {/* Kolom Kawasan / Site — Added for Multi-Site Isolation (Fix BB-04) */}
+                    {/* Kolom Kawasan / Site â€” Added for Multi-Site Isolation (Fix BB-04) */}
                     <th
                       className="px-5 py-3.5"
                       aria-sort={sortBy === 'site_id' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -1311,7 +1313,7 @@ export default function CCTVPage() {
                       )}
                       <td className="px-5 py-4">
                         <div className="min-w-0">
-                          <h3 className="max-w-[240px] truncate font-semibold" title={cctv.id_channel ? `${cctv.nama} · Channel ${cctv.id_channel}` : cctv.nama}>{cctv.nama}</h3>
+                          <h3 className="max-w-[240px] truncate font-semibold" title={cctv.id_channel ? `${cctv.nama} Â· Channel ${cctv.id_channel}` : cctv.nama}>{cctv.nama}</h3>
                           <div className="mt-1 flex items-center gap-1.5">
                             <span className="font-mono text-xs font-semibold text-primary">{cctv.kode_cctv}</span>
                             {cctv.id_channel && (
@@ -1324,7 +1326,7 @@ export default function CCTVPage() {
                         <div className="flex items-center gap-1.5">
                           <Network className="h-3.5 w-3.5 shrink-0 text-muted/50" aria-hidden="true" />
                           <span className="truncate font-mono text-xs text-muted" title={cctv.ip_camera || 'IP kamera belum dicatat'}>
-                            {cctv.ip_camera || '—'}
+                            {cctv.ip_camera || 'â€”'}
                           </span>
                           {cctv.ip_nvr && (
                             <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted">NVR</span>
@@ -1340,7 +1342,7 @@ export default function CCTVPage() {
                           </div>
                         </div>
                       </td>
-                      {/* Kolom Kawasan / Site — Added for Multi-Site Isolation (Fix BB-04) */}
+                      {/* Kolom Kawasan / Site â€” Added for Multi-Site Isolation (Fix BB-04) */}
                       <td className="px-5 py-4">
                         {cctv.site_id ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -1662,7 +1664,7 @@ export default function CCTVPage() {
                         onChange={(e) => setFormData({ ...formData, site_id: e.target.value })}
                         className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       >
-                        <option value="">— Pilih kawasan —</option>
+                        <option value="">â€” Pilih kawasan â€”</option>
                         {sites.map((s) => (
                           <option key={s.id} value={s.id}>{s.nama}</option>
                         ))}
@@ -1677,7 +1679,7 @@ export default function CCTVPage() {
                         onChange={(e) => setFormData({ ...formData, zone_id: e.target.value })}
                         className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       >
-                        <option value="">— Pilih zona —</option>
+                        <option value="">â€” Pilih zona â€”</option>
                         {zones.map((z) => (
                           <option key={z.id} value={z.id}>{z.nama}</option>
                         ))}
@@ -1717,7 +1719,7 @@ export default function CCTVPage() {
                           className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                         <p className="text-[11px] text-muted">
-                          Opsional — cukup isi bila Anda <span className="font-semibold">tidak</span> memakai URL RTSP
+                          Opsional â€” cukup isi bila Anda <span className="font-semibold">tidak</span> memakai URL RTSP
                           penuh di atas. Ini nomor channel kamera (bukan port TCP; port seperti{' '}
                           <span className="font-mono">554</span> sudah ada di URL RTSP). Kosongkan bila sudah memakai URL
                           RTSP penuh.
@@ -1803,7 +1805,7 @@ export default function CCTVPage() {
                     className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer shadow-md shadow-primary/15 disabled:cursor-wait disabled:opacity-65"
                   >
                     {actionLoading === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                    {actionLoading === 'save' ? 'Menyimpan data CCTV…' : currentCCTV ? 'Simpan Perubahan' : 'Tambah CCTV'}
+                    {actionLoading === 'save' ? 'Menyimpan data CCTVâ€¦' : currentCCTV ? 'Simpan Perubahan' : 'Tambah CCTV'}
                   </button>
                 </div>
               </form>
@@ -1824,7 +1826,7 @@ export default function CCTVPage() {
 
               {!scannedResult ? (
                 <div className="space-y-3">
-                  {/* CAMERA SCANNER VIEW — toggle input manual dihapus (Sprint 40 cleanup) */}
+                  {/* CAMERA SCANNER VIEW â€” toggle input manual dihapus (Sprint 40 cleanup) */}
                   <div className="text-center">
                     <div className="relative mx-auto flex min-h-[220px] w-full max-w-sm items-center justify-center overflow-hidden rounded-xl border border-border bg-black">
                       {/* html5-qrcode video container */}
@@ -2012,7 +2014,7 @@ export default function CCTVPage() {
                     disabled={importLoading || !selectedFile}
                     className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/95 text-white font-semibold text-sm cursor-pointer disabled:opacity-50"
                   >
-                    {importLoading ? 'Mengimpor data CCTV…' : 'Impor Data CCTV'}
+                    {importLoading ? 'Mengimpor data CCTVâ€¦' : 'Impor Data CCTV'}
                   </button>
                 </div>
               </form>
@@ -2052,7 +2054,7 @@ export default function CCTVPage() {
                 </div>
               </div>
 
-              <p className="text-center text-[11px] text-muted">Ukuran cetak 38 × 100 mm (horizontal)</p>
+              <p className="text-center text-[11px] text-muted">Ukuran cetak 38 Ã— 100 mm (horizontal)</p>
 
               <div className="flex justify-end gap-2">
                 <button
@@ -2089,7 +2091,7 @@ export default function CCTVPage() {
                   <div>
                     <h4 className="text-lg font-bold">{currentCCTV.nama}</h4>
                     <p className="mt-1 font-mono text-xs font-semibold text-primary">
-                      {currentCCTV.kode_cctv}{currentCCTV.id_channel ? ` · Channel ${currentCCTV.id_channel}` : ''}
+                      {currentCCTV.kode_cctv}{currentCCTV.id_channel ? ` Â· Channel ${currentCCTV.id_channel}` : ''}
                     </p>
                   </div>
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold capitalize ${
@@ -2105,15 +2107,15 @@ export default function CCTVPage() {
 
                 <dl className="grid overflow-hidden rounded-xl border border-border text-sm sm:grid-cols-2">
                   {[
-                    { label: 'Lokasi', value: currentCCTV.lokasi_area || '—' },
-                    { label: 'Pemasangan', value: currentCCTV.indoor_outdoor || '—' },
-                    { label: 'IP kamera', value: currentCCTV.ip_camera || '—', technical: true },
-                    { label: 'IP NVR', value: currentCCTV.ip_nvr || '—', technical: true },
-                    { label: 'Koordinat', value: `${currentCCTV.latitude || '—'}, ${currentCCTV.longitude || '—'}`, technical: true },
-                    { label: 'Jenis CCTV', value: currentCCTV.jenis_cctv || '—' },
-                    { label: 'Koneksi', value: currentCCTV.tipe_koneksi || '—' },
-                    { label: 'Sumber listrik', value: currentCCTV.sumber_listrik || '—' },
-                    { label: 'Pengelola', value: currentCCTV.pemilik || '—' },
+                    { label: 'Lokasi', value: currentCCTV.lokasi_area || 'â€”' },
+                    { label: 'Pemasangan', value: currentCCTV.indoor_outdoor || 'â€”' },
+                    { label: 'IP kamera', value: currentCCTV.ip_camera || 'â€”', technical: true },
+                    { label: 'IP NVR', value: currentCCTV.ip_nvr || 'â€”', technical: true },
+                    { label: 'Koordinat', value: `${currentCCTV.latitude || 'â€”'}, ${currentCCTV.longitude || 'â€”'}`, technical: true },
+                    { label: 'Jenis CCTV', value: currentCCTV.jenis_cctv || 'â€”' },
+                    { label: 'Koneksi', value: currentCCTV.tipe_koneksi || 'â€”' },
+                    { label: 'Sumber listrik', value: currentCCTV.sumber_listrik || 'â€”' },
+                    { label: 'Pengelola', value: currentCCTV.pemilik || 'â€”' },
                     { label: 'Ditambahkan', value: new Date(currentCCTV.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }) },
                   ].map((item) => (
                     <div key={item.label} className="border-b border-border px-4 py-3 sm:odd:border-r">
@@ -2128,7 +2130,7 @@ export default function CCTVPage() {
                 </dl>
               </div>
 
-              {/* Breakdown skor kesehatan — alasan penurunan skor */}
+              {/* Breakdown skor kesehatan â€” alasan penurunan skor */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-t border-border pt-4">
                   <h4 className="flex items-center gap-1.5 text-sm font-bold">
@@ -2145,7 +2147,7 @@ export default function CCTVPage() {
                 {healthLoading ? (
                   <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted" role="status">
                     <LoaderCircle className="h-4 w-4 animate-spin" />
-                    <span>Menghitung skor kesehatan…</span>
+                    <span>Menghitung skor kesehatanâ€¦</span>
                   </div>
                 ) : healthError ? (
                   <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
@@ -2238,7 +2240,7 @@ export default function CCTVPage() {
                 {timelineLoading ? (
                   <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted" role="status">
                     <LoaderCircle className="h-4 w-4 animate-spin" />
-                    <span>Memuat riwayat CCTV…</span>
+                    <span>Memuat riwayat CCTVâ€¦</span>
                   </div>
                 ) : timelineError ? (
                   <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-500">
@@ -2308,7 +2310,7 @@ export default function CCTVPage() {
         )}
       </div>
 
-      {/* Area cetak label QR — dirender via portal ke document.body, hanya tampil saat print */}
+      {/* Area cetak label QR â€” dirender via portal ke document.body, hanya tampil saat print */}
       {printQueue &&
         printQueue.length > 0 &&
         createPortal(
@@ -2583,8 +2585,8 @@ function CCTVPrintBatchLabels({ items, logoUrl }: { items: QRPrintItem[]; logoUr
     <div className="sigap-batch">
       <div className="sigap-batch-header">
         <div>
-          <h1>SIGAP — Label QR Code Perangkat CCTV</h1>
-          <p>Dicetak pada {formattedDate} • Total: {items.length} Perangkat CCTV</p>
+          <h1>SIGAP â€” Label QR Code Perangkat CCTV</h1>
+          <p>Dicetak pada {formattedDate} â€¢ Total: {items.length} Perangkat CCTV</p>
         </div>
         <img src={logoUrl} alt="Logo Nusantara" className="sigap-batch-logo" />
       </div>
