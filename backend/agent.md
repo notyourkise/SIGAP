@@ -41,18 +41,22 @@ alasan perubahan:
 - Pengerjaan di area backend harus terisolasi sepenuhnya di dalam direktori `backend/`
 - Jika ada kebutuhan integrasi dengan frontend, komunikasikan terlebih dahulu atau pastikan perubahan frontend telah disetujui oleh Intan secara eksplisit
 
-### 2. Documentation Management (BARU)
-**DILARANG KERAS menaruh file documentation di ROOT FOLDER project.**
-- Semua file documentation HARUS ditempatkan di dalam folder `docs/` yang sudah ada
-- Struktur folder docs:
-  - `docs/01-documentation/` - Guide, roadmap, design documents
-  - `docs/02-audits/` - Security audit reports
-  - `docs/03-plans/` - Project plans & strategies
-  - `docs/04-manual-tests/` - Testing guides & manuals
-  - `docs/05-reports/` - Status reports, completion summaries, bug fix documentation
-  - `docs/06-migration/` - Migration guides & changelogs
-- Penamaan file:ikuti konteks dan urutkan sesuai tanggal/tipe (contoh: `FIX-BB-01-SOMETHING.md`)
-- Tujuan: Root folder tetap bersih dan semua dokumentasi terorganisir dengan jelas di satu tempat
+### 2. Documentation Management (TERBARU)
+**DOKUMENTASI TERSTRUKTUR DI DUA TEMPAT:**
+
+1. **Root Level (Terbatas):**
+   - `README.md` - Overview & project introduction ✅ (baru)
+   - `CHANGELOG.md` - Bug fixes summary ✅ (baru)
+
+2. **Detailed Docs Folder `docs/`:**
+   Semua file documentation detail HARUS ditempatkan di dalam folder `docs/` yang sudah ada:
+   - `docs/01-documentation/` - Guide, roadmap, design documents
+   - `docs/02-audits/` - Security audit reports  
+   - `docs/04-manual-tests/` - Testing guides & manuals
+   - `docs/05-reports/` - Status reports, completion summaries, bug fix documentation
+   
+Penamaan file ikuti konteks dan urutkan sesuai tanggal/tipe (contoh: `FIX-BB-01-SOMETHING.md`)
+Tujuan: Root folder tetap bersih dengan hanya 3 file penting, semua dokumentasi detail terorganisir di docs/
 
 ---
 
