@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -145,8 +145,8 @@ export default function CCTVPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [ioFilter, setIoFilter] = useState('');
+const [siteFilter, setSiteFilter] = useState('');
   // Site filter untuk Multi-Site Isolation (Fix BB-04)
-  const [siteFilter, setSiteFilter] = useState('');
 
   // Sort State â€” default urut A-Z berdasarkan nama (perubahan Sprint 40)
   const [sortBy, setSortBy] = useState('nama');
