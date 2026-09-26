@@ -183,7 +183,7 @@ func TestRunProbeCycle_GSM(t *testing.T) {
 	// GSM: kamera tidak pernah diprobe langsung; status dari path MediaMTX.
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "36.91.27.35", false, nil, nil, nil))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil))
 
 	// Status berubah false → true → UPDATE stream_live=true + last_active + checked.
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
@@ -208,7 +208,7 @@ func TestRunProbeCycle_GSMNotReady(t *testing.T) {
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "36.91.27.35", false, nil, nil, nil))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil))
 
 	// Status tetap offline → hanya UPDATE stream_checked_at.
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"updated_at"=\$2 WHERE id = \$3 AND "cctvs"."deleted_at" IS NULL$`).
@@ -235,7 +235,7 @@ func TestRunProbeCycle_GSMReadyKeepsLive(t *testing.T) {
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "36.91.27.35", true, past, nil, past))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", true, past, nil, past))
 
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, sqlmock.AnyArg(), id.String()).
@@ -249,7 +249,7 @@ func TestRunProbeCycle_GSMReadyKeepsLive(t *testing.T) {
 // TestNetworkType memverifikasi klasifikasi tipe jaringan kamera.
 func TestNetworkType(t *testing.T) {
 	assert.Equal(t, "metro-e", networkType(models.CCTV{IPCamera: "10.20.105.62"}))
-	assert.Equal(t, "gsm", networkType(models.CCTV{IPCamera: "36.91.27.35"}))
+	assert.Equal(t, "gsm", networkType(models.CCTV{IPCamera: "10.99.99.99"}))
 	assert.Equal(t, "gsm", networkType(models.CCTV{IPCamera: ""}))
 }
 

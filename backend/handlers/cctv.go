@@ -64,9 +64,9 @@ type CreateCCTVRequest struct {
 	StreamEnabled bool     `json:"stream_enabled"`
 	RTSPURL       string   `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
 	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
+	SiteID utils.OptionalUUID `json:"site_id" validate:"omitempty"`
 }
 
 // Request body untuk update data CCTV
@@ -91,9 +91,9 @@ type UpdateCCTVRequest struct {
 	StreamEnabled *bool    `json:"stream_enabled"`
 	RTSPURL       *string  `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-	ZoneID *uuid.UUID `json:"zone_id" validate:"omitempty,uuid"`
+	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
 	// SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-	SiteID *uuid.UUID `json:"site_id" validate:"omitempty,uuid"`
+	SiteID utils.OptionalUUID `json:"site_id" validate:"omitempty"`
 }
 
 // Batas keamanan impor Excel: ukuran file maksimum (mengikuti BodyLimit Fiber
@@ -273,8 +273,15 @@ func CreateCCTV(c *fiber.Ctx) error {
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
 	cctv.RTSPURL = req.RTSPURL
-	cctv.ZoneID = req.ZoneID
-	cctv.SiteID = req.SiteID
+	
+	// Set zone_id dan site_id hanya jika ada value (tidak null dan bukan zero)
+	if req.ZoneID.HasValue() {
+		cctv.ZoneID = req.ZoneID.Value
+	}
+	if req.SiteID.HasValue() {
+		cctv.SiteID = req.SiteID.Value
+	}
+	
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -637,12 +644,24 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	if req.RTSPURL != nil {
 		cctv.RTSPURL = *req.RTSPURL
 	}
-	// Zona & kawasan operasional — diisi bila dikirim (nilai kosong tidak mengubah).
-	if req.ZoneID != nil {
-		cctv.ZoneID = req.ZoneID
+	
+	// Zona & kawasan operasional — tiga keadaan: diisi (UUID valid), dikosongkan (null), atau tidak dikirim (biar asli)
+	if req.ZoneID.Present {
+		if req.ZoneID.Null {
+			cctv.ZoneID = nil // Kosongkan zona (set to NULL di database)
+		} else if req.ZoneID.Value != nil {
+			cctv.ZoneID = req.ZoneID.Value // Update ke zona baru
+		}
+		// else: zone_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
-	if req.SiteID != nil {
-		cctv.SiteID = req.SiteID
+	
+	if req.SiteID.Present {
+		if req.SiteID.Null {
+			cctv.SiteID = nil // Kosongkan kawasan (set to NULL di database)
+		} else if req.SiteID.Value != nil {
+			cctv.SiteID = req.SiteID.Value // Update ke kawasan baru
+		}
+		// else: site_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {
@@ -782,6 +801,16 @@ func ScanCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// ID hasil dekripsi hanya mengidentifikasi aset. Payload juga harus sama
+	// dengan nilai aktif di database supaya label lama tidak dapat dipakai lagi
+	// setelah admin melakukan rotasi QR.
+	if cctv.QrPayload != req.QrPayload {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "QR Code tidak aktif atau sudah dirotasi",
+		})
+	}
+
 	// Password RTSP tidak boleh bocor ke klien pada respons.
 	cctv.RTSPPassword = ""
 
@@ -810,12 +839,12 @@ func DownloadTemplateCCTV(c *fiber.Ctx) error {
 	// Set nama sheet default
 	sheetName := "Sheet1"
 
-	// Daftar header kolom template
+	// Daftar header kolom template (site_id adalah opsi, nullable)
 	headers := []string{
 		"Kode CCTV", "ID Channel", "Nama CCTV", "Lokasi Area",
 		"Longitude", "Latitude", "Jenis CCTV", "Sumber Listrik",
 		"Tipe Koneksi", "Indoor/Outdoor", "Pemilik", "Status",
-		"IP NVR", "IP Camera", "Keterangan",
+		"IP NVR", "IP Camera", "Keterangan", "Site ID",
 	}
 
 	// Tulis header ke baris pertama (Baris 1) secara berurutan
@@ -980,6 +1009,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 		ipNVR := getCell(12)
 		ipCamera := getCell(13)
 		keterangan := getCell(14)
+		siteIDStr := getCell(15) // Site ID - opsi (nullable)
 
 		// Validasi kolom wajib
 		if kodeCCTV == "" {
@@ -1066,7 +1096,36 @@ func ImportCCTV(c *fiber.Ctx) error {
 			Keterangan:    keterangan,
 			QrPayload:     encryptedPayload,
 			HealthScore:   100,
+			// Site ID adalah opsi - tidak diisi jika kosong/null di Excel
 		}
+		
+		// Parse dan validasi Site ID (jika diisi)
+		// Jika kolom Site ID kosong/null di Excel, biarkan NULL (tidak set SiteID)
+		if trimmedSiteID := strings.TrimSpace(siteIDStr); trimmedSiteID != "" {
+			siteUUID, err := uuid.Parse(trimmedSiteID)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Format Site ID tidak valid. Gunakan UUID format.", rowNum),
+				})
+			}
+			
+			// Validasi bahwa Site ID benar-benar ada di database
+			var site models.Site
+			if err := tx.First(&site, "id = ?", siteUUID).Error; err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Baris %d: Site ID '%s' tidak ditemukan di database. Pastikan Site ID valid atau biarkan kolom ini kosong untuk assign ke default site.", rowNum, siteIDStr),
+				})
+			}
+			
+			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
+		}
+		// Jika kolom Site ID kosong di Excel, SiteID tetap NULL (tidak diset)
+		
+		// Generate unique ID untuk CCTV
 		cctv.ID = newID
 
 		if err := tx.Create(&cctv).Error; err != nil {
@@ -1143,14 +1202,15 @@ func GetCCTVQRCode(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "image/png")
 	c.Set("Content-Disposition", fmt.Sprintf("inline; filename=%s-qr.png", cctv.KodeCCTV))
+	c.Set("Cache-Control", "no-store")
 	return c.Send(qrBytes)
 }
 
-// RotateQRCode merotasi QR Code CCTV (Admin saja). Menghasilkan UUID baru,
-// mengenkripsinya ulang dengan AES-256 sebagai QrPayload baru, sehingga QR lama
+// RotateQRCode merotasi QR Code CCTV (Admin saja). Mengenkripsi ulang ID CCTV
+// dengan nonce baru sebagai QrPayload baru, sehingga QR lama
 // tidak lagi valid untuk pemindaian. (Task 13.14, Sprint 34)
 // @Summary      Rotasi QR Code CCTV (Admin)
-// @Description  Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga QR Code lama tidak berlaku lagi. Khusus admin.
+// @Description  Membuat QrPayload baru dari ID CCTV yang sama dengan nonce AES-256 baru sehingga QR Code lama tidak berlaku lagi. Khusus admin.
 // @Tags         Master CCTV
 // @Accept       json
 // @Produce      json
@@ -1181,9 +1241,9 @@ func RotateQRCode(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate UUID baru & enkripsi sebagai QrPayload baru.
-	newID := uuid.New()
-	encryptedPayload, err := utils.EncryptAES256(newID.String())
+	// Enkripsi ulang ID aset yang sama. EncryptAES256 menghasilkan nonce acak,
+	// sehingga ciphertext berubah tanpa memutus hubungan QR dengan CCTV.
+	encryptedPayload, err := utils.EncryptAES256(cctv.ID.String())
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",

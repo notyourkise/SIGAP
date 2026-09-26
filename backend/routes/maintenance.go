@@ -11,6 +11,11 @@ import (
 func SetupMaintenanceRoutes(router fiber.Router) {
 	logGroup := router.Group("/maintenance-logs", middleware.Protected())
 
+	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-03)
+	// Middleware ini membaca X-Site-ID header dan validasi site di database
+	siteMiddleware := middleware.SiteContext()
+	logGroup.Use(siteMiddleware)
+
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	logGroup.Get("/", handlers.GetAllMaintenanceLogs)
 	logGroup.Get("/export", handlers.ExportMaintenanceLogs)

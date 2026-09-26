@@ -16,7 +16,7 @@ func TestIsMetroE_True(t *testing.T) {
 }
 
 func TestIsMetroE_False(t *testing.T) {
-	cctv := models.CCTV{IPCamera: "36.91.27.35"}
+	cctv := models.CCTV{IPCamera: "10.99.99.99"}
 	assert.False(t, IsMetroE(cctv))
 }
 

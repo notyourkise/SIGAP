@@ -34,7 +34,34 @@ alasan perubahan:
 2. Setiap pengerjaan fitur atau perbaikan bug harus dilakukan di dalam **branch baru** yang dibuat terpisah.
 3. Setelah pengerjaan di branch baru selesai, developer wajib membuat **Pull Request (PR)**.
 4. Setiap Pull Request (PR) **wajib melalui proses review** terlebih dahulu oleh pengembang lain sebelum diperbolehkan untuk di-merge ke branch `main`.
-
 ## ⚠️ BATASAN OTORITAS & KEAMANAN KETAT
-1. **AI Agent DILARANG KERAS menyentuh, memodifikasi, membuat, membaca, atau menghapus file/folder apa pun di dalam folder `frontend/` tanpa seizin Intan.**
-2. Pengerjaan di area backend harus terisolasi sepenuhnya di dalam direktori `backend/`. Jika ada kebutuhan integrasi dengan frontend, komunikasikan terlebih dahulu atau pastikan perubahan frontend telah disetujui oleh Intan secara eksplisit.
+
+### 1. Frontend Restrictions
+**AI Agent DILARANG KERAS menyentuh, memodifikasi, membuat, membaca, atau menghapus file/folder apa pun di dalam folder `frontend/` tanpa seizin Intan.**
+- Pengerjaan di area backend harus terisolasi sepenuhnya di dalam direktori `backend/`
+- Jika ada kebutuhan integrasi dengan frontend, komunikasikan terlebih dahulu atau pastikan perubahan frontend telah disetujui oleh Intan secara eksplisit
+
+### 2. Documentation Management (TERBARU)
+**DOKUMENTASI TERSTRUKTUR DI DUA TEMPAT:**
+
+1. **Root Level (Terbatas):**
+   - `README.md` - Overview & project introduction ✅ (baru)
+   - `CHANGELOG.md` - Bug fixes summary ✅ (baru)
+
+2. **Detailed Docs Folder `docs/`:**
+   Semua file documentation detail HARUS ditempatkan di dalam folder `docs/` yang sudah ada:
+   - `docs/01-documentation/` - Guide, roadmap, design documents
+   - `docs/02-audits/` - Security audit reports  
+   - `docs/04-manual-tests/` - Testing guides & manuals
+   - `docs/05-reports/` - Status reports, completion summaries, bug fix documentation
+   
+Penamaan file ikuti konteks dan urutkan sesuai tanggal/tipe (contoh: `FIX-BB-01-SOMETHING.md`)
+Tujuan: Root folder tetap bersih dengan hanya 3 file penting, semua dokumentasi detail terorganisir di docs/
+
+---
+
+## 📝 Catatan Tambahan untuk AI Agent:
+
+1. **Prioritas Keamanan:** Selalu patuhi batasan akses frontend
+2. **Organisasi Dokumentasi:** Pastikan setiap file docs masuk ke subfolder yang tepat di `docs/`
+3. **Konsistensi:** Ikuti struktur folder yang sudah ditentukan untuk memudahkan navigasi

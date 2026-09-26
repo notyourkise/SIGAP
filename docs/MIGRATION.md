@@ -166,3 +166,4 @@ Contoh: menambah kolom `serial_number` pada `cctvs`.
 - Library: `github.com/golang-migrate/migrate/v4` v4.19.1 (driver `database/pgx/v5`,
   sumber `source/iofs`).
 - Status task: `docs/ROADMAP.md` Fase 7 (Task 7.1).
+

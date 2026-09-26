@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // No explicit output - rely on ISR/server-side rendering for app router
+  
   async rewrites() {
     // Di dalam Docker container, service backend bernama 'api:3000'.
     // Pada environment standalone local (npm run dev), fallback ke 'localhost:3000'.

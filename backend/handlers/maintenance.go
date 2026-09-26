@@ -417,11 +417,6 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	})
 }
 
-// maintenanceCheckTotal adalah jumlah item checklist wajib (9 tahap) yang harus
-// dilaporkan teknisi untuk menyelesaikan tugas. Status menjadi "completed"
-// hanya bila 9/9 item berstatus ok; selain itu "failed".
-const maintenanceCheckTotal = 9
-
 // AssignMaintenanceLog menugaskan atau mengalihkan log pemeliharaan ke teknisi (Admin saja)
 // @Summary      Tugaskan / Alihkan Log ke Teknisi
 // @Description  Menugaskan log berstatus "scheduled" ke teknisi (assign pertama) atau mengalihkan log berstatus "ongoing" ke teknisi lain (re-assign, Fase 5.3). Status log otomatis menjadi "ongoing"; pada re-assign teknisi lama dilepas dan diberi notifikasi. User tujuan wajib berperan "teknisi" dan tidak boleh sama dengan teknisi yang sedang ditugaskan.
@@ -601,7 +596,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 // CompleteMaintenanceLog menyelesaikan tugas terjadwal lewat checklist (Admin & Teknisi)
 // @Summary      Selesaikan Tugas Pemeliharaan
-// @Description  Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed → "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis.
+// @Description  Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi "completed" bila semua item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed â†’ "aktif", failed â†’ "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -> completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json
@@ -675,7 +670,20 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Status akhir: completed hanya bila 9/9 item checklist berstatus ok
+	// Validasi minimum checklist items (minimal 1 item wajib diisi)
+	// Konstanta maintenanceCheckTotal = 9 adalah standar umum, tapi sistem sekarang
+	// mendukung jumlah variatif tergantung template aktif. Bug BB-13 Fix (2026-08-20).
+	minItems := 1 // Minimum requirement - bisa diubah jika diperlukan
+	if len(req.Checks) < minItems {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": fmt.Sprintf("Minimal %d item checklist harus diisi", minItems),
+		})
+	}
+
+	// Status akhir: completed hanya bila semua item checklist berstatus ok
+	// Bug BB-13 Fix (2026-08-20): Tidak lagi terpaku pada exact count 9 items.
+	// Status "completed" diberikan bila ALL items OK, berapa pun jumlah itemsnya.
 	allOk := true
 	for _, chk := range req.Checks {
 		if chk.Result != "ok" {
@@ -684,7 +692,9 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 	newStatus := "failed"
-	if allOk && len(req.Checks) == maintenanceCheckTotal {
+	if allOk && len(req.Checks) > 0 {
+		// Semua item checklist diisi dan semua OK -> completed
+		// Jumlah items bisa bervariasi tergantung template yang aktif
 		newStatus = "completed"
 	}
 
@@ -750,10 +760,10 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		}
 
 		// Fase 5.2: sinkronisasi status CCTV otomatis (konservatif) dalam
-		// transaksi yang sama — completed (9/9 item ok) mengembalikan CCTV ke
+		// transaksi yang sama — completed (semua checklist OK) mengembalikan CCTV ke
 		// "aktif"; failed (ada item tidak ok) memindahkannya ke "pemeliharaan".
 		targetStatus := "pemeliharaan"
-		syncReason := "tugas pemeliharaan gagal — ada item checklist tidak OK"
+		syncReason := "tugas pemeliharaan gagal â€” ada item checklist tidak OK"
 		if newStatus == "completed" {
 			targetStatus = "aktif"
 			syncReason = "semua checklist pemeliharaan berhasil"
@@ -772,7 +782,7 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "COMPLETE_MAINTENANCE", "MAINTENANCE", "Menyelesaikan tugas pemeliharaan: "+logEntry.ActionTaken+" (Status: "+newStatus+")", nil, "", "")
 
-	// Notifikasi in-app ke seluruh admin: hasil selesai (9/9 ok) atau perlu
+	// Notifikasi in-app ke seluruh admin: hasil selesai (semua OK) atau perlu
 	// tindak lanjut (failed karena ada item tidak ok) — Fase 5.1.
 	label := "Selesai"
 	if newStatus == "failed" {

@@ -1456,7 +1456,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga QR Code lama tidak berlaku lagi. Khusus admin.",
+                "description": "Membuat QrPayload baru dari ID CCTV yang sama dengan nonce AES-256 baru sehingga QR Code lama tidak berlaku lagi. Khusus admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3153,7 +3153,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta foto bukti. Status menjadi \"completed\" bila 9/9 item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → \"aktif\", failed → \"pemeliharaan\"; status \"nonaktif\" tidak pernah ditimpa otomatis.",
+                "description": "Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi \"completed\" bila semua item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed â†’ \"aktif\", failed â†’ \"pemeliharaan\"; status \"nonaktif\" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -\u003e completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).",
                 "consumes": [
                     "application/json"
                 ],
@@ -8082,7 +8082,11 @@ const docTemplate = `{
                 },
                 "site_id": {
                     "description": "SiteID menunjuk kawasan operasional (Task 12.2) — opsional.",
-                    "type": "string"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.OptionalUUID"
+                        }
+                    ]
                 },
                 "status": {
                     "type": "string",
@@ -8105,7 +8109,11 @@ const docTemplate = `{
                 },
                 "zone_id": {
                     "description": "ZoneID menunjuk zona operasional (Task 11.4) — opsional.",
-                    "type": "string"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.OptionalUUID"
+                        }
+                    ]
                 }
             }
         },
@@ -8712,7 +8720,11 @@ const docTemplate = `{
                 },
                 "site_id": {
                     "description": "SiteID menunjuk kawasan operasional (Task 12.2) — opsional.",
-                    "type": "string"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.OptionalUUID"
+                        }
+                    ]
                 },
                 "status": {
                     "type": "string",
@@ -8735,7 +8747,11 @@ const docTemplate = `{
                 },
                 "zone_id": {
                     "description": "ZoneID menunjuk zona operasional (Task 11.4) — opsional.",
-                    "type": "string"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.OptionalUUID"
+                        }
+                    ]
                 }
             }
         },
@@ -8984,6 +9000,22 @@ const docTemplate = `{
                     "minLength": 2
                 }
             }
+        },
+        "utils.OptionalUUID": {
+            "type": "object",
+            "properties": {
+                "null": {
+                    "description": "true if field is null or empty string",
+                    "type": "boolean"
+                },
+                "present": {
+                    "description": "true if field was explicitly in JSON",
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
         }
     },
     "securityDefinitions": {
@@ -9003,7 +9035,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api",
 	Schemes:          []string{"https"},
 	Title:            "SIGAP API",
-	Description:      "Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.",
+	Description:      "Dokumentasi API Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

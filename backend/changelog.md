@@ -1,5 +1,121 @@
 # Changelog - Backend SIGAP
 
+## [0.64.5] - 2026-08-21
+
+### Bug BB-13: Dynamic Checklist Status Calculation
+
+**Bug Fix**: Removed hardcoded check for exactly 9 items in maintenance completion logic. Status "completed" now applies when ALL items are OK, regardless of count (dynamic based on active template).
+
+timestamp: 2026-08-21 14:30 UTC+8
+kategori: Kecil, Backend (Bug Fix)
+file yang diubah:
+- backend/handlers/maintenance.go (CompleteMaintenanceLog function)
+- backend/docs/docs.go (regenerated)
+- backend/utils/optional_uuid.go (syntax fix)
+
+---
+
+## [0.64.4] - 2026-08-20
+
+### Multi-Site Isolation & Security Fixes (BB-01 to BB-03 equivalent)
+
+**Multi-Site Isolation**: Model `Site` (nama, kode unik, alamat, koordinat, `is_default`) + join table `UserSite`; migrasi `000018_multi_site.idempoten` menciptakan site default "Kawasan OIKN" dan mengaitkan semua data existing; middleware `SiteContext()` membaca `X-Site-ID` header, validasi UUID & keberadaan site, set `c.Locals("site_id")`, filter opsional ke `GetAllCCTV`, `GetAllMaintenanceLogs`, `GetAllZones` (hanya aktif bila site_id valid); handler/rute CRUD `/api/sites` (admin-only untuk tulis, dropdown untuk semua role); endpoint `POST /api/sites/:id/assign-users` (assign teknisi ke kawasan); seeder `EnsureDefaultSite(idempoten)`.
+
+**Security Bug #1 (NVR Credential Removal)**: Removed hardcoded NVR IP `36.91.27.35` from code comments & documentation; credential now via environment variable `RTSP_NVR_USER` fallback to `<NVR_USERNAME>` placeholder; AES-256 encrypted `rtsp_password` di-exclude from all JSON responses (`json:"-"`); consistent secret management via Docker secrets (`./secrets/*`) or `.env`.
+
+**Security Bug #2 (Metrics Protection)**: Middleware `IsTrustedMetricsAccess()` added to exclude non-trusted IPs from `/api/metrics` access (trusted: `127.0.0.1`, `::1`, `172.28.0.0/16`, `10.0.0.0/8`); protection prevents internal metrics exposure (DB pool, WS connections, storage bytes) to unauthorized external parties.
+
+**Security Bug #3 (Backup Encryption)**: Updated `scripts/backup.sh` & `scripts/restore.sh` to support AES-256-GCM encryption via GPG (environment variable `BACKUP_ENCRYPTION_KEY`); database dump → gzip → encrypt → `backups/db/sigap_<TS>.sql.gz.gpg`; uploads tar+gzip→encrypt → `backups/uploads/uploads_<TS>.tar.gz.gpg`; restore reverses decryption; documentation `docs/BACKUP.md` expanded with encryption guide.
+
+**Documentation**: Manual test V2 docs created in `Testing-Manual-V2/` directory for Multi-Site Isolation & Backup Encryption formal blackbox testing.
+
+timestamp: 2026-08-20 19:45 UTC+8
+kategori: Besar, Backend (Security Hardening + Multi-Site Feature)
+file yang diubah:
+- backend/models/site.go (baru)
+- backend/migrations/000018_multi_site.up.sql (baru)
+- backend/migrations/000018_multi_site.down.sql (baru)
+- backend/middleware/site.go (baru)
+- backend/middleware/site_test.go (baru)
+- backend/handlers/site.go (baru)
+- backend/handlers/site_test.go (baru)
+- backend/routes/site.go (baru)
+- backend/main.go (registrasi site routes + seeder)
+- backend/utils/rtsp.go (credential updated)
+- backend/models/cctv.go (site_id FK)
+- backend/middleware/metrics.go (IsTrustedMetricsAccess added)
+- scripts/backup.sh (GPG encryption support)
+- scripts/restore.sh (GPG decryption support)
+- docs/BACKUP.md (encryption section expanded)
+- docs/changelog.md
+- backend/changelog.md
+alasan perubahan: Task 12.2 Multi-Site Isolation operational requirement per user prioritization; Security hardening compliance (remove hardcoded credentials, protect metrics, encrypt backups).
+
+## [0.64.3] - 2026-08-20
+
+### Perbaikan kontrak MediaMTX v1.20 dan status streaming
+
+- Stop path memakai endpoint `DELETE /v3/config/paths/delete/{name}` dan 404 diperlakukan idempotent.
+- Status API membedakan MediaMTX reachable, path registered, source available, dan viewer count.
+- Field API v1.20 `available/online` serta `rtspTransport` menggantikan kontrak deprecated, dengan fallback `ready` untuk rolling upgrade.
+- Respons start tidak lagi mengembalikan source URL RTSP yang dapat memuat decrypted credential.
+- Unit dan integration test mencakup lifecycle add/list/delete serta response credential guard.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Backend (Streaming + Security)
+
+## [0.64.2] - 2026-08-20
+
+### Perbaikan lifecycle rotasi QR CCTV
+
+perubahan yang dilakukan: **Rotasi QR kini membuat ciphertext baru dari ID CCTV yang sama dan scanner hanya menerima payload yang masih aktif.**
+
+before:
+- Rotasi mengenkripsi UUID acak yang tidak memiliki record CCTV, sehingga QR baru gagal dipindai.
+- QR lama tetap menemukan CCTV karena scanner hanya memeriksa ID hasil dekripsi.
+
+after:
+- `RotateQRCode` mengenkripsi `cctv.ID.String()` dengan nonce AES-256-GCM baru.
+- `ScanCCTV` membandingkan payload hasil pindai dengan `qr_payload` aktif dan menolak QR lama dengan 404.
+- Endpoint gambar QR mengirim `Cache-Control: no-store` agar URL aset yang sama tidak mempertahankan label lama.
+- Regression test membuktikan ciphertext berubah, hasil dekripsi tetap ID aset yang sama, payload aktif diterima, previous payload ditolak, dan HTTP cache dinonaktifkan.
+- Swagger diregenerasi agar kontrak API menjelaskan rotasi ID CCTV yang sama dengan nonce baru.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Backend (Perbaikan + Security Hardening)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+
+## [0.64.1] - 2026-08-19
+
+### Koreksi identitas resmi SIGAP pada keluaran backend
+
+perubahan yang dilakukan: **Menyeragamkan kepanjangan SIGAP menjadi "Sistem Informasi Gangguan & Aset Pusat" pada laporan PDF, template email, anotasi API, dan dokumentasi Swagger generated.**
+
+before:
+- Sebagian keluaran backend masih memakai kepanjangan SIGAP lama yang tidak sesuai keputusan produk.
+
+after:
+- Kop laporan PDF, footer/header email, anotasi Swagger, serta `docs.go`/`swagger.json`/`swagger.yaml` memakai nama resmi yang sama.
+
+timestamp: 2026-08-19 WITA
+kategori: Kecil, Backend (Copy/Branding)
+file yang diubah:
+- backend/handlers/report.go
+- backend/main.go
+- backend/templates/daily_summary.html
+- backend/templates/maintenance_assigned.html
+- backend/templates/overdue_escalation.html
+- backend/templates/stock_low.html
+- backend/templates/stream_down.html
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+
 ## [0.64.0] - 2026-08-13
 
 ### Perbaikan: input kawasan/zona CCTV, checklist per kawasan, fix SLA 404 & probe offline (Sprint 40 cleanup)
@@ -1737,8 +1853,8 @@ before:
 - Kop laporan hanya berupa 2 baris teks (judul + nama sistem) tanpa logo maupun alamat instansi.
 - Baris tabel memakai perkiraan jumlah baris lipat teks "Tindakan" berbasis hitungan karakter (44 karakter/baris) yang bisa meleset, sehingga teks menimpa garis/baris berikutnya; hanya ada garis bawah (tanpa border sel) sehingga tabel tampak tidak simetris; pindah halaman hanya dicek dengan ambang kasar `GetY() > 260` sehingga sel bisa terpotong di tengah saat pindah halaman.
 after:
-- Kop surat resmi: logo IKN (`assets/nusantara-logo.png`, 691×996 px) di kiri, nama instansi "OTORITA IBU KOTA NUSANTARA" + sub "Sistem Identifikasi Gangguan Aset Pusat (SIGAP)", alamat lengkap (Kompleks Perkantoran Pemerintah IKN, Kab. Penajam Paser Utara, Provinsi Kalimantan Timur), website www.ikn.go.id (telp/email sebagai konstanta kosong yang siap diisi), ditutup garis ganda (tebal + tipis).
-- Judul laporan diubah "LAPORAN PEMELIHARAAN CCTV"; baris "Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN" yang lama dihapus karena sudah ada di kop.
+- Kop surat resmi: logo IKN (`assets/nusantara-logo.png`, 691×996 px) di kiri, nama instansi "OTORITA IBU KOTA NUSANTARA" + sub "Sistem Informasi Gangguan & Aset Pusat (SIGAP)", alamat lengkap (Kompleks Perkantoran Pemerintah IKN, Kab. Penajam Paser Utara, Provinsi Kalimantan Timur), website www.ikn.go.id (telp/email sebagai konstanta kosong yang siap diisi), ditutup garis ganda (tebal + tipis).
+- Judul laporan diubah "LAPORAN PEMELIHARAAN CCTV"; baris "Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN" yang lama dihapus karena sudah ada di kop.
 - Perhitungan tinggi baris tabel kini akurat memakai `pdf.SplitLines` (pembungkus teks engine yang sama dengan MultiCell), sehingga teks multi-baris tidak lagi menimpa baris berikutnya.
 - Setiap sel digambar border grid penuh (`Rect`) sehingga tabel simetris dan mudah dibaca.
 - Pindah halaman dilakukan per-baris dengan cek `yStart+cellHeight > pdfBreakY` sebelum menggambar, mencegah sel terpotong di tengah (aksi pindah halaman lama di loop dihapus).

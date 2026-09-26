@@ -23,7 +23,7 @@ import (
 
 // @title                      SIGAP API
 // @version                    1.0
-// @description                Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
+// @description                Dokumentasi API Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN.
 // @host                       localhost
 // @schemes                    https
 // @BasePath                   /api
@@ -299,9 +299,9 @@ func main() {
 	// scope health:read untuk integrasi eksternal — Task 12.1).
 	api.Get("/health", handlers.HealthCheck)
 
-	// Rute Metrik Prometheus (publik untuk monitoring / scraping). Mengembalikan
+	// Rute Metrik Prometheus (protected: internal network only). Mengembalikan
 	// format text exposition Prometheus (Task 7.4).
-	api.Get("/metrics", monitoring.Handler)
+	api.Get("/metrics", middleware.IsTrustedMetricsAccess(), monitoring.Handler)
 
 	// Rute root API
 	app.Get("/", func(c *fiber.Ctx) error {

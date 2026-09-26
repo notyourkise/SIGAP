@@ -1,7 +1,71 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). Sebelumnya diperbarui 2026-08-12 (Task 14A, Sprint 37: test `handlers/stream_probe_test.go` — probe status live RTSP; `handlers/stream_health_test.go` diperluas — deteksi down tanpa viewer via `stream_live`). Sebelumnya diperbarui 2026-08-07 (Task 7.1: test migrasi DB versioned; Task 7.2: blacklist & limiter Redis via interface mockable; Task 9.1: test `utils/rtsp_test.go` + field streaming pada `cctv_test.go`; Task 9.3: test `utils/mediamtx_test.go` + `handlers/stream_test.go` + `routes/stream_test.go`; Task 10.1+10.2: test `handlers/snapshot_test.go` — snapshot & timeline; Task 10.4: test `handlers/stream_health_test.go` — stream health & deteksi down).
+> Diperbarui: 2026-08-20 (Task 1A: regression lifecycle QR memastikan rotasi tetap menunjuk ID CCTV yang sama, scanner menolak payload lama, dan service worker tidak menyimpan/menyajikan QR atau respons `no-store`). Sebelumnya diperbarui 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). 
+> **Update Terbaru 2026-08-20**: Security Hardening patches (metrics IP allowlist protection, backup encryption via GPG, NVR credential removal); Multi-Site Isolation tests added (site context middleware + handlers). Total file test meningkat menjadi 67 (+3 files baru). Manual Test V2 organization di `docs/Testing-Manual-V2/`.
+
+## Tata Kelola Manual/Black-box
+
+Bagian ini adalah kontrak formal untuk seluruh hasil pada `docs/manual-test-*.md`. Hasil sebelum **2026-08-20** adalah catatan historis/non-authoritative: pertahankan observasi yang berguna, tetapi jangan menganggapnya sebagai active run sampai direkam ulang dengan metadata dan evidence lengkap.
+
+### Vocabulary dan aturan status
+
+Hanya nilai status yang case-sensitive berikut yang boleh dipakai sebagai status test atau suite:
+
+- `PASS`: scenario executed against the recorded artifact/environment, actual equals expected, and an evidence path/link is recorded.
+- `FAIL`: scenario executed and actual differs from expected.
+- `BLOCKED`: execution was attempted but an external prerequisite prevented reaching the assertion; blocker evidence is recorded.
+- `NOT RUN`: no conforming runtime execution exists. Code inspection, unit-test review, or an old checkmark without complete metadata maps here, not to `PASS`.
+
+Sebelum eksekusi, suite berstatus `NOT RUN`. Setelah run dimulai, satu mandatory scenario yang bukan `PASS` membuat kesimpulan suite `FAIL`, termasuk bila scenario tersebut `BLOCKED` atau `NOT RUN`. Inspeksi kode dan unit test hanya boleh dicatat sebagai supporting evidence; keduanya bukan bukti black-box untuk `PASS`.
+
+Untuk catatan historis yang dipertahankan: failure runtime yang eksplisit dipetakan menjadi `FAIL` saat direkam ulang dengan kontrak formal; kegagalan prerequisite eksternal dipetakan menjadi `BLOCKED` bila blocker evidence tersedia; code inspection, unit-test review, checkmark lama, atau metadata/evidence yang hilang dipetakan menjadi `NOT RUN`.
+
+### Aggregate formal row untuk baseline Wave 0
+
+Untuk baseline Wave 0, suite yang saat ini memiliki satu aggregate formal row memakai baris tunggal tersebut sebagai **sole atomic suite-level acceptance gate**. Skenario legacy terperinci di bawahnya tetap non-formal dan historical/non-authoritative sampai diperluas selama Wave 7. Aggregate formal row tetap wajib memiliki expected, actual, evidence, mandatory flag, dan status persis dari vocabulary di atas.
+
+### Metadata eksekusi wajib
+
+Setiap execution record wajib memuat seluruh field berikut: test ID, owner, build SHA, artifact digest/ID, tester, timestamp WITA, environment, fixture prefix/data, cleanup result, expected, actual, evidence path/link, mandatory flag, scenario status, dan suite status. Nilai yang belum tersedia ditulis `NOT RECORDED`; status yang belum dijalankan ditulis `NOT RUN`.
+
+### Release gate dan production safety gate
+
+Release hanya boleh menyimpulkan suite berhasil bila setiap mandatory scenario berstatus `PASS` dengan expected, actual, dan evidence yang dapat ditelusuri.
+
+Destructive SQL, key regeneration/rotation, QR rotation, deletion, dan credential mutation **dilarang pada production**. Prosedur hanya boleh dijalankan bila environment bukan production dan target bukan `nexaspace.site`, fixture prefix `E2E-MTNN-` serta exact targets sudah dicatat, backup/recovery terverifikasi untuk perubahan data/key state, dan cleanup/rollback sudah didefinisikan serta akan dicatat. Bila salah satu prasyarat itu tidak tersedia, hentikan prosedur dan catat scenario sebagai `BLOCKED` beserta blocker evidence. Jangan menyalin credential, token, private key, RTSP password, atau payload production yang belum disanitasi.
+
+### Reusable Markdown execution-record template
+
+```markdown
+### Formal execution metadata
+
+| Field | Value |
+|---|---|
+| Test ID / Audit ID | MT-NN |
+| Capability owner | NOT RECORDED |
+| Build SHA | NOT RECORDED |
+| Artifact digest/ID | NOT RECORDED |
+| Tester | NOT RECORDED |
+| Timestamp WITA | NOT RECORDED |
+| Environment | NOT RECORDED |
+| Fixture prefix/data | E2E-MTNN- / NOT RECORDED |
+| Cleanup result | NOT RUN |
+| Expected | NOT RECORDED |
+| Actual | NOT RECORDED |
+| Evidence path/link | NOT RECORDED |
+| Mandatory flag | YES |
+| Scenario status | NOT RUN |
+| Status suite | NOT RUN |
+
+### Formal scenario record
+
+| ID | Mandatory | Expected | Actual | Evidence | Status |
+|---|---|---|---|---|---|
+| MT-NN-S1 | YES | NOT RECORDED | NOT RECORDED | NOT RECORDED | NOT RUN |
+
+Suite conclusion: sebelum eksekusi `NOT RUN`; setelah run dimulai, setiap mandatory scenario harus `PASS`, atau suite `FAIL`.
+```
 
 ---
 
@@ -18,6 +82,13 @@ go vet ./handlers/ ./middleware/ ./utils/
 
 Semua test berjalan **tanpa PostgreSQL fisik** — memakai `github.com/DATA-DOG/go-sqlmock`.
 Jalankan di direktori `backend/` (modul `sigap-backend`).
+
+Regression test service worker dijalankan terpisah dari direktori frontend:
+
+```bash
+cd frontend
+npm run test:sw
+```
 
 ---
 
@@ -40,7 +111,8 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
-| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, sukses), DownloadTemplateCCTV, GetCCTVQRCode, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
+| `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, payload aktif sukses, payload lama setelah rotasi ditolak), RotateQRCode (ciphertext baru tetap mendekripsi ke ID CCTV yang sama), GetCCTVQRCode (`Cache-Control: no-store`), DownloadTemplateCCTV, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
+| `frontend` | `tests/service-worker-cache.test.mjs` | Request gambar QR selalu network-only tanpa cache fallback; respons API dengan `Cache-Control: no-store` tidak ditulis ke runtime cache service worker |
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah; assign/re-assign (Fase 5.3): assign normal → 200, re-assign log `ongoing` ke teknisi baru → 200, assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` → 403 (RequireRole admin) |
 | `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif`; GenerateFieldMaintenanceReportPDF (content-type/prefix PDF, teknisi pemilik/non-pemilik, not found) |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong), GetDailyDigests (admin paginasi/urutan terbaru) |
@@ -86,7 +158,23 @@ Jalankan di direktori `backend/` (modul `sigap-backend`).
 | `middleware` | `apikey_test.go` (Task 12.1, Sprint 29) | `APIKeyAuth` (tanpa header → 401, key tidak valid → 401, key valid + scope → 200 + locals terisi, scope kurang → 403) |
 | `routes` | `routes_test.go` (Sprint 29, diperluas) | `TestAPIKeyRoutesRequireAuthentication`, `TestWebhookRoutesRequireAuthentication`, registrasi `SetupAPIKeyRoutes`/`SetupWebhookRoutes` pada `TestSetupAllRoutesRegistersProtectedEndpoints` |
 | `handlers` | `site_test.go` (Task 12.2, Sprint 30) | `CreateSite` (sukses → 201, validasi kode/nama kosong → 400), `GetAllSites` (paginasi + `is_default`), `GetAllSitesForSelect` (dropdown `GET /api/sites/all`), `UpdateSite` (sukses), `DeleteSite` (soft delete), `DeleteSite` site default → ditolak, `AssignUsersToSite` (sukses → relasi dalam transaksi, user bukan teknisi → 400) |
-| `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi) |
+| `middleware` | `site_test.go` (Task 12.2, Sprint 30) | guard penulisan site via `RequireRole("admin")` — teknisi → 403; pembacaan site tersedia untuk semua role login; endpoint site wajib autentikasi (401 tanpa sesi); validasi `X-Site-ID` header → UUID format check + site existence check → success/set locals; header missing/query param fallback |
+| `middleware` | `metrics_test.go` (Security Fix #2) | `IsTrustedMetricsAccess`: IP localhost (`127.0.0.1`, `::1`) → allow; Docker network (`172.28.0.x`, `10.0.0.x`) → allow; external IP → deny with 403; edge case IPv6; protection prevents metrics exposure to unauthorized networks |
+| `handlers` | `infra_integration_test.go` (Security Task P5+P10+P14+P16) | Webhook log cleanup retention, QR rotation endpoint, API key regeneration - all operational hardening features |
+
+**Total: 67 file test** (14 utils, 9 middleware, 34 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
+
+### Matriks Multi-Site Isolation (Fase 12, Task 12.2 / Sprint 30)
+
+Ringkasan cakupan test multi-site isolation:
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `middleware/site_test.go` | 12.2 | `SiteContext` middleware: `X-Site-ID` valid header → set locals `site_id`; invalid UUID header → reject 401; missing header + query param `?site_id=` fallback → valid/invalid; site not found → 401 |
+| `handlers/site_test.go` | 12.2 | CRUD sites admin-only (CRUD: sukses, validation empty name/code → 400, code duplicate incl soft-delete → 400, delete default site →拒绝, rollback on error), `GetAllSites` paginasi dengan `user_count`, `GetAllSitesForSelect` dropdown data, `AssignUsersToSite` transactional relation update (user bukan teknisi → 400) |
+| `handlers/cctv_test.go` (diperluas) | 12.2 | Filter CCTV by `site_id` dari `X-Site-ID` local (valid site_id → scoped results; no site_id → global results); payload create/update accepts `site_id` field |
+| `handlers/maintenance_test.go` (diperluas) | 12.2 | Maintenance logs filtered by site context (same logic as CCTV) |
+| `handlers/zone_test.go` (diper-expanded) | 12.2 | Zones filtered by site context; zone assignment to site (bulk assign zones to site) |
 | `handlers` | `checklist_template_test.go` (Task 13.12, Sprint 35) | `CreateChecklistTemplate` (sukses → 201, validasi nama kosong → 400, default wajib/aktif), `GetAllChecklistTemplates` (paginasi + filter `?aktif=`), `UpdateChecklistTemplate` (sukses), `DeleteChecklistTemplate` (soft delete → `aktif=false`), `ReorderChecklistTemplates` (batch update urutan), guard role (teknisi → 403) |
 | `handlers` | `stream_probe_test.go` (Task 14A, Sprint 37) | `ProbeRTSPHost` (host reachable via listener TCP → true, port tak terpakai → false), `ProbeRTSPChannel` (response RTSP/1.0 200 → true, koneksi gagal → false) — via `startTestRTSPListener` mock; (catatan: `utils/rtsp_probe_test.go` untuk `RunRTSPProber`/`GetLiveStatus` dijadwalkan pada Task 14A) |
 
@@ -279,5 +367,29 @@ Prioritas lanjutan:
 2. **WebSocket revocation:** test token version mismatch saat handshake.
 3. **Migration data penuh:** test `MigrateMaintenanceToCCTV` sampai update `maintenance_logs.cctv_id`.
 
+### Manual Test Organization (V1 & V2)
+
+**Testing-Manual-V2** (Formal Blackbox Testing):
+- `manual-test-multi-site-isolation-v2.md`: 344 lines — Multi-Site Isolation operational testing
+- `manual-test-backup-encryption-v2.md`: 329 lines — Backup encryption/decryption workflow validation
+- Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
+
+**Testing-Manual-V1** (Legacy Documentation):
+- API & Integration tests (API keys, webhooks, calendar, email, report builder, etc.)
+- Core Features tests (CCTV, maintenance, health score, geotag, etc.)
+- Infrastructure tests (backup, streaming, snapshot, etc.)
+
+### Security Fixes Coverage (2026-08-20 Patch)
+
+Tiga critical vulnerabilities telah ditangani:
+
+| Fix | Vulnerability | Status | Test Coverage |
+|-----|---------------|--------|--------------|
+| **#1** | Hardcoded NVR Credential Exposure | ✅ Patched | Unit tests verify `rtsp_password` excluded; code review confirms no plain-text in source/docs |
+| **#2** | Metrics Endpoint Public Access | ✅ Patched | New middleware test `IsTrustedMetricsAccess` (localhost/Docker network allowlist) |
+| **#3** | Unencrypted Backup Storage | ✅ Patched | Manual test V2 blackbox scenarios for encryption/decryption workflow (6+ scenarios) |
+
+---
+
 Referensi perencanaan: `docs/ROADMAP.md` Fase 4 (task 4.1–4.8). Catat setiap penambahan di
-`backend/changelog.md` dengan format before/after + timestamp WITA.
+`backend/changelog.md` dengan format before/after + timestamp UTC+8.

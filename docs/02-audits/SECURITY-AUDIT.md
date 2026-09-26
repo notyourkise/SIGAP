@@ -1,28 +1,39 @@
 # SECURITY-AUDIT — SIGAP
 
 > Audit keamanan, pemahaman sistem, dan rekomendasi pengembangan.
-> Audit awal: 2026-08-01 · Status terakhir: 2026-08-03 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, infra).
+> Audit awal: 2026-08-01 · Diperbarui: 2026-08-20 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
+>
+> Temuan 1–20 di bagian 3 adalah rekam audit awal. Ringkasan arsitektur dan catatan risiko terbuka telah diselaraskan dengan kondisi proyek setelah Sprint 40.
 
 ---
 
 ## 1. Ringkasan Eksekutif
 
-SIGAP (Sistem Identifikasi Gangguan Aset Pusat) adalah sistem internal berbasis web untuk
+SIGAP (Sistem Informasi Gangguan & Aset Pusat) adalah sistem internal berbasis web dan mobile untuk
 mengelola, memantau, menginventarisasi, dan mencatat pemeliharaan CCTV kawasan IKN.
 
-**Arsitektur:** Monorepo dengan 4 service Docker — Go Fiber API (`:3000` internal), Next.js 16
-App Router (`:3000` internal), PostgreSQL 15 (`:5432` internal), dan Nginx reverse proxy
-(`:80`/`:443`) — diorkestrasi dengan Docker Compose. Akses browser resmi adalah
-`https://localhost`; Cloudflare quick tunnel sudah dihapus.
+**Arsitektur saat ini:** Monorepo dengan 7 service Docker: PostgreSQL 15, Redis 7, Go Fiber API,
+Next.js 16, Nginx TLS, backup cron, dan MediaMTX. Nginx memublikasikan HTTP/TLS (`80`/`443`)
+dan MediaMTX memublikasikan UDP `8189` untuk media ICE; database, Redis, API, frontend, backup,
+serta endpoint HTTP/API MediaMTX tetap berada di network internal.
+Akses browser resmi staging adalah `https://localhost`. Fitur AI detection dan service `sigap_ai`
+telah dihapus pada Sprint 40.
 
 **Kekuatan keamanan yang sudah ada:**
 
-- Autentikasi JWT (HMAC-SHA256) + RBAC (Admin/Teknisi) + blacklist token + logout server-side.
-- Enkripsi QR AES-256-GCM (tanpa menyimpan kredensial perangkat).
-- Rate limiting global (100 req/menit) & khusus login (5 req/menit).
+- Autentikasi JWT HMAC-SHA256 dalam cookie httpOnly, CSRF double-submit, RBAC Admin/Teknisi,
+  token-version, blacklist Redis, dan logout server-side.
+- Enkripsi QR dan kredensial RTSP per-CCTV memakai AES-256-GCM; nilai sensitif tidak boleh muncul
+  pada respons API atau dokumentasi.
+- Lifecycle QR memvalidasi ciphertext aktif selain ID hasil dekripsi; rotasi mengenkripsi ulang ID CCTV
+  yang sama dengan nonce baru sehingga payload lama ditolak tanpa memutus identitas aset.
+- Rate limiting global (100 req/menit), autentikasi (5 req/menit), dan API key (100 req/menit per key).
 - Upload foto dengan deteksi MIME via magic bytes (tanpa fallback ekstensi), akses file dilindungi JWT.
 - Validasi input terpusat (`go-playground/validator`), whitelist kolom sorting (anti SQL-injection).
-- Soft-delete, graceful shutdown, security headers, audit trail, Swagger off di production.
+- API key disimpan sebagai hash dan hanya ditampilkan sekali; webhook ditandatangani HMAC-SHA256.
+- Soft-delete, graceful shutdown, security headers, audit trail, Swagger nonaktif di production.
+- Container API berjalan non-root, root filesystem read-only, `cap_drop: [ALL]`, resource limit,
+  serta Docker secrets dengan fallback environment untuk development.
 - Single-origin melalui Nginx dengan TLS, routing API/WebSocket, dan cookie sesi httpOnly yang
   konsisten di `https://localhost`.
 
@@ -34,6 +45,41 @@ App Router (`:3000` internal), PostgreSQL 15 (`:5432` internal), dan Nginx rever
 - 🟡 Sedang/Rendah: **8/8 ✅ Selesai** (temuan 13, 14, 15, 16, 17, 18, 19, 20).
 - Rencana bertahap & to-do per item: lihat `ROADMAP.md` dan bagian **3.4**.
 
+### 1.1 Risiko Terbuka pada Pembaruan 2026-08-19
+
+Pembaruan ini adalah sinkronisasi dokumentasi dan bukan penetration test baru. Risiko berikut
+teridentifikasi dari dokumentasi dan inspeksi statis terbatas:
+
+| Severity | Temuan | Dampak | Tindak lanjut |
+|----------|--------|--------|---------------|
+| **Tinggi** | Contoh kredensial NVR nyata masih muncul di komentar backend dan placeholder form frontend. Dokumentasi telah memakai placeholder. | Siapa pun yang memperoleh source code atau UI dapat mengetahui kredensial perangkat. | Hapus nilai nyata dari source/UI, gunakan placeholder, rotasi kredensial NVR, dan perlakukan riwayat Git sebagai pernah terekspos. |
+| **Sedang** | Endpoint Prometheus `/api/metrics` didokumentasikan publik. | Detail traffic, error, koneksi, dan penggunaan storage dapat membantu reconnaissance bila terekspos internet. | Batasi melalui Nginx/IP allowlist atau autentikasi di production. |
+| **Sedang** | Backup default disimpan pada volume lokal dengan retensi 7 hari; enkripsi at-rest dan salinan off-site belum didokumentasikan. | Kegagalan host atau akses volume dapat menyebabkan kehilangan atau kebocoran backup. | Tambahkan backup terenkripsi, off-site, verifikasi restore berkala, serta kebijakan akses dan retensi produksi. |
+
+Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.
+
+### 1.2 Hardening lifecycle QR — 2026-08-20
+
+- [x] Rotasi QR mempertahankan ID CCTV dan menghasilkan ciphertext baru melalui nonce acak.
+- [x] Scanner menolak payload valid secara kriptografis yang bukan lagi payload aktif di database.
+- [x] Cache gambar label dipisahkan berdasarkan ID dan payload aktif; respons PNG/fetch memakai `no-store`, service worker melewati cache QR, dan versi shell cache dinaikkan untuk menghapus cache lama.
+- [x] Regression test backend membuktikan round-trip QR baru dan penolakan QR lama; Node test membuktikan policy cache service worker.
+- [x] Runtime sub-gate QR non-production membuktikan label berubah tanpa hard refresh, payload aktual dari PNG baru diterima, payload lama ditolak, teknisi mendapat 403, audit tercatat, dan cleanup staging tidak menyentuh production.
+- [ ] Acceptance agregat MT-11 masih menunggu skenario API key dan webhook; pengujian rotasi pada production tetap dilarang.
+
+Bukti runtime: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
+
+### 1.3 Hardening streaming MediaMTX — 2026-08-20
+
+- [x] Image MediaMTX dipin ke `1.20.0-ffmpeg`; konfigurasi memakai field v1.20 `rtspTransports`, `rtspTransport`, `available`, dan `online`.
+- [x] Kandidat ICE `webrtcAdditionalHosts` dikonfigurasi melalui environment deployment; nilainya tidak di-hardcode pada source.
+- [x] Respons start tidak lagi mengembalikan URL sumber RTSP/decrypted credential ke browser.
+- [x] Stop path memakai endpoint v1.20 dan bersifat idempotent ketika path sudah tidak ada.
+- [x] Simulator non-production bind loopback membuktikan WHEP, ICE/TCP, decoded frame, reconnect, dan cleanup tanpa membuka service staging ke internet.
+- [ ] Firewall UDP 8189, kandidat public, dan kebutuhan TURN/TLS pada production masih harus diverifikasi setelah deployment; jaringan seluler eksternal tetap `NOT RUN`.
+
+Bukti runtime: `docs/audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
+
 ---
 
 ## 2. Pemahaman Sistem & Alur
@@ -42,26 +88,28 @@ App Router (`:3000` internal), PostgreSQL 15 (`:5432` internal), dan Nginx rever
 
 ```text
 SIGAP/
-├── docker-compose.yml      # Orkestrasi db, api, frontend, nginx (TLS)
-├── makefile                # Task runner (BE + FE)
-├── README.md
-├── docs/                   # Dokumentasi: AGENTS, ACCESS, ROADMAP, SECURITY-AUDIT, TESTING, PRODUCT, DESIGN, changelog, plan
+├── docker-compose.yml      # 7 service: db, redis, api, frontend, nginx, backup, mediamtx
+├── docker-compose.override.yml # Prometheus + Grafana opsional
+├── mediamtx.yml            # Relay RTSP → WebRTC/WHEP/HLS, source-on-demand
+├── nginx/                  # TLS, security headers, reverse proxy single-origin
+├── scripts/                # Backup/restore database dan uploads
 ├── backend/
-│   ├── main.go             # Entry point, middleware stack, graceful shutdown
-│   ├── config/database.go  # Koneksi PostgreSQL + connection pooling
-│   ├── models/             # User, MaintenanceLog, CCTV, AuditLog + seeder
-│   ├── handlers/           # auth, cctv, maintenance, user, audit, dashboard, upload, report, health
-│   ├── middleware/         # auth (JWT), limiter, security, logger, recovery
-│   ├── routes/             # Registrasi rute per modul + websocket
-│   ├── utils/              # encryption, jwt, blacklist, audit, websocket, pagination, validator
-│   ├── docs/               # Swagger/OpenAPI (generated)
-│   └── uploads/            # Foto bukti pemeliharaan
-└── frontend/
-    └── src/
-        ├── app/            # dashboard, cctv, maintenance, users, audit-logs, login
-        ├── components/     # DashboardLayout, ProtectedRoute, AuthenticatedImage, CCTVMap, Pagination
-        ├── context/        # AuthContext, ThemeContext, WebSocketContext
-        └── lib/api.ts      # Fetch wrapper (Bearer token + auto 401)
+│   ├── main.go             # Startup, migration, middleware, routes, worker, shutdown
+│   ├── migrations/         # Migration SQL versioned yang di-embed ke binary
+│   ├── config/             # PostgreSQL, Redis, migration
+│   ├── models/             # CCTV, user, maintenance, site/zone/SLA, integrasi, notifikasi
+│   ├── handlers/           # REST API dan background worker
+│   ├── middleware/         # JWT/RBAC, CSRF, API key, limiter, site context, security
+│   ├── monitoring/         # Metrik Prometheus
+│   ├── routes/             # Registrasi rute termasuk WebSocket dan streaming
+│   ├── utils/              # Enkripsi, token, notifikasi, MediaMTX, email, audit
+│   ├── docs/               # Swagger/OpenAPI generated
+│   └── uploads/            # Bukti foto, thumbnail, dan snapshot
+├── frontend/
+│   ├── public/             # Manifest PWA, service worker, ikon
+│   └── src/                # App Router, komponen, context, API client
+├── mobile/                 # Expo React Native untuk teknisi lapangan
+└── docs/                   # Arsitektur, roadmap, audit, testing, dan manual-test
 ```
 
 ### 2.2 Alur Utama
@@ -74,6 +122,14 @@ SIGAP/
 - **Pemeliharaan:** Log CRUD + upload foto bukti yang langsung merujuk ke CCTV melalui `cctv_id`.
 - **Realtime:** WSHub broadcast event (`CCTV_UPDATED`, `MAINTENANCE_CREATED/UPDATED`, `AUDIT_LOG_ADDED`) → frontend auto-refetch.
 - **Audit trail:** `LogAudit` async mencatat seluruh aksi penting dengan retry terbatas dan broadcast setelah tersimpan.
+- **Streaming:** API admin-only mengelola path MediaMTX; password RTSP didekripsi hanya saat
+  membangun source URL dan tidak boleh dikembalikan pada respons JSON.
+- **Integrasi:** API key memakai scope, expiry, revoke, dan rate limit per key. Webhook dikirim
+  asinkron dengan signature HMAC-SHA256, retry terbatas, serta log delivery ber-retensi.
+- **Multi-site:** Site aktif diteruskan melalui context/filter backend; write operation site,
+  zona, SLA, API key, dan webhook tetap dilindungi role admin.
+- **Mobile:** Klien Expo menggunakan Bearer token yang disimpan melalui secure storage;
+  kebijakan cookie/CSRF web tidak diterapkan pada request Bearer.
 
 ---
 
@@ -171,10 +227,10 @@ backend 0.16.0: sliding session tidak dipertahankan dan JWT berlaku tetap selama
 ## 5. Rekomendasi Kualitas & Infrastruktur
 
 - **CI/CD** (`.github/workflows/ci.yml`): `npm run lint`, `golangci-lint`, build, dan unit test sudah dijalankan; cakupan unit test Fase 4.1 sudah diperluas ke handler, middleware, utils, routes, models, dan config.
-- **Migrasi DB versioned** (golang-migrate/Atlas) — `AutoMigrate` tidak cukup untuk produksi.
-- **Redis** untuk rate-limit & blacklist token agar mendukung multi-instance.
-- **Backup**: cron `pg_dump` + backup volume uploads + restore script.
-- **Monitoring**: endpoint metrics (Prometheus) di samping health check; log Zap sudah baik.
-- **Docker hardening**: container non-root, resource limits, jangan publish 5432 ke host, secret via secrets/env.
+- **Migrasi DB versioned** — ✅ golang-migrate v4 dengan migration SQL berpasangan dan verifikasi CI.
+- **Redis** — ✅ rate-limit dan blacklist token mendukung multi-instance dengan fallback development.
+- **Backup** — ✅ cron `pg_dump`, archive uploads, rotasi 7 hari, dan restore script; enkripsi/off-site masih menjadi risiko terbuka.
+- **Monitoring** — ✅ endpoint metrics Prometheus dan health check; pembatasan akses metrics di production masih perlu ditetapkan.
+- **Docker hardening** — ✅ container API non-root, resource limits, rootfs read-only, capabilities di-drop, port internal tidak dipublish, dan Docker secrets.
 - **Reverse proxy** Nginx + TLS + security headers sudah diterapkan; akses resmi kini melalui `https://localhost`.
 - **Isi `docs/changelog.md`** sesuai rencana `plan.md` sudah diterapkan untuk milestone proyek.

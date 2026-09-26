@@ -126,6 +126,14 @@ jobs:
         run: npm ci
         working-directory: ./frontend
 
+      - name: Run Service Worker Cache Tests
+        run: npm run test:sw
+        working-directory: ./frontend
+
+      - name: Run WHEP State Tests
+        run: npm run test:whep
+        working-directory: ./frontend
+
       - name: Run Build
         run: npm run build
         working-directory: ./frontend

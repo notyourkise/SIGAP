@@ -1,5 +1,64 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.3] - 2026-08-20
+
+### Multi-Site Isolation UI & Security Hardening
+
+**Multi-Site Isolation**: Dropdown "Kawasan" dan "Zona" ditambahkan di halaman `/cctv` form (data dari `/sites/all` dan `/zones/all`); payload create/update CCTV mengirim `zone_id` dan `site_id`; halaman `/checklist-templates` filter per kawasan + field kawasan di form (kosong = global template); wizard FieldMaintenanceModal load template sesuai kawasan CCTV yang dipilih; cookie `sigap_site_id` untuk persistensi site aktif across pages.
+
+**Security Bug #1 Credential Cleanup**: Unified kepanjangan SIGAP di manifest PWA & mobile ke "Sistem Informasi Gangguan & Aset Pusat"; semua placeholder NVR credential diganti `<NVR_USERNAME>:<NVR_PASSWORD>`; dokumentasi frontend konsisten dengan security policy.
+
+**Manual Test V2**: Dokumentasi formal testing Multi-Site Isolation & Backup Encryption diorganisir ke `docs/Testing-Manual-V2/` mengikuti blackbox format standar AGENTS.md §9.
+
+timestamp: 2026-08-20 19:45 UTC+8
+kategori: Sedang, Frontend (UI Enhancement + Documentation)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx (dropdown Kawasan/Zona)
+- frontend/src/components/ChecklistTemplateManager.tsx (filter kawasan)
+- frontend/src/components/FieldMaintenanceModal.tsx (template by site_id)
+- frontend/src/lib/api.ts (site_id query param support)
+- frontend/public/manifest.json (kepanjangan unified)
+- mobile/src/screens/LoginScreen.tsx (kepanjangan unified)
+- docs/changelog.md
+- frontend/changelog.md
+alasan perubahan: Completing frontend UI for multi-site isolation feature (backend already deployed); consistency across web/mobile branding; formal documentation governance.
+
+## [1.55.2] - 2026-08-20
+
+### Status playback WHEP berbasis decoded frame
+
+- Player membedakan signaling, koneksi media, menunggu frame, live, dan reconnecting.
+- Event track tidak lagi langsung menampilkan badge `Live`; status live menunggu frame video yang benar-benar didekode.
+- Timeout frame memberi pesan pemulihan yang spesifik dan memicu reconnect.
+- Toast start menjelaskan bahwa jalur baru terdaftar dan video masih ditunggu.
+- Node regression test menjaga urutan state dan race antara track dengan penyelesaian SDP.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Frontend (Streaming UX + Reliability)
+
+## [1.55.1] - 2026-08-20
+
+### Perbaikan cache label setelah rotasi QR CCTV
+
+perubahan yang dilakukan: **Cache QR kini dibedakan berdasarkan ID CCTV dan payload aktif agar label hasil rotasi langsung memakai gambar baru.**
+
+before:
+- Cache data URL hanya memakai ID CCTV; rotasi mempertahankan ID sehingga gambar label lama dapat dipakai ulang.
+
+after:
+- Cache key memakai kombinasi `cctv.id` dan `cctv.qr_payload`; fetch gambar memakai mode `no-store`.
+- Respons rotasi dengan payload baru otomatis memicu fetch gambar QR baru sebelum dialog cetak.
+- Service worker memperlakukan endpoint QR sebagai network-only, tidak menyimpan respons `no-store`, dan memakai cache shell v3 agar cache lama dibuang saat aktivasi.
+- Dua Node regression test memverifikasi bypass QR dan larangan menyimpan respons `no-store`.
+
+timestamp: 2026-08-20 WITA
+kategori: Kritis, Frontend (Perbaikan)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/public/sw.js
+- frontend/tests/service-worker-cache.test.mjs
+- frontend/package.json
+
 ## [1.55.0] - 2026-08-13
 
 ### Perbaikan UI & fitur kecil (Sprint 40 cleanup)
@@ -15,7 +74,7 @@ before:
 - Form CCTV tidak bisa memilih kawasan/zona (padahal master data ada).
 - Template checklist sama untuk semua kawasan.
 - Halaman checklist-templates menampilkan badge "Halaman Admin".
-- Kepanjangan SIGAP di manifest PWA & mobile masih "Sistem Informasi & Inventaris CCTV Terpadu".
+- Kepanjangan SIGAP di manifest PWA & mobile masih belum konsisten dengan nama resmi proyek.
 
 after:
 - **`login/page.tsx`**: hapus ikon lonceng notifikasi (hanya toggle tema).

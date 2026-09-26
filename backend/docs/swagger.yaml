@@ -135,8 +135,9 @@ definitions:
         maxLength: 500
         type: string
       site_id:
+        allOf:
+        - $ref: '#/definitions/utils.OptionalUUID'
         description: SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-        type: string
       status:
         enum:
         - aktif
@@ -152,8 +153,9 @@ definitions:
         maxLength: 50
         type: string
       zone_id:
+        allOf:
+        - $ref: '#/definitions/utils.OptionalUUID'
         description: ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-        type: string
     required:
     - kode_cctv
     - nama
@@ -593,8 +595,9 @@ definitions:
         maxLength: 500
         type: string
       site_id:
+        allOf:
+        - $ref: '#/definitions/utils.OptionalUUID'
         description: SiteID menunjuk kawasan operasional (Task 12.2) — opsional.
-        type: string
       status:
         enum:
         - aktif
@@ -610,8 +613,9 @@ definitions:
         maxLength: 50
         type: string
       zone_id:
+        allOf:
+        - $ref: '#/definitions/utils.OptionalUUID'
         description: ZoneID menunjuk zona operasional (Task 11.4) — opsional.
-        type: string
     type: object
   handlers.UpdateChecklistTemplateRequest:
     properties:
@@ -791,10 +795,21 @@ definitions:
         minLength: 2
         type: string
     type: object
+  utils.OptionalUUID:
+    properties:
+      "null":
+        description: true if field is null or empty string
+        type: boolean
+      present:
+        description: true if field was explicitly in JSON
+        type: boolean
+      value:
+        type: string
+    type: object
 host: localhost
 info:
   contact: {}
-  description: Dokumentasi API Sistem Identifikasi Gangguan Aset Pusat (SIGAP) IKN.
+  description: Dokumentasi API Sistem Informasi Gangguan & Aset Pusat (SIGAP) IKN.
   title: SIGAP API
   version: "1.0"
 paths:
@@ -1668,8 +1683,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Membuat QrPayload baru (UUID baru terenkripsi AES-256) sehingga
-        QR Code lama tidak berlaku lagi. Khusus admin.
+      description: Membuat QrPayload baru dari ID CCTV yang sama dengan nonce AES-256
+        baru sehingga QR Code lama tidak berlaku lagi. Khusus admin.
       parameters:
       - description: CCTV UUID
         in: path
@@ -2850,11 +2865,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Teknisi melaporkan hasil pengecekan 9 tahap checklist beserta
-        foto bukti. Status menjadi "completed" bila 9/9 item "ok", selain itu "failed".
-        Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan.
-        Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif",
-        failed → "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis.'
+      description: 'Teknisi melaporkan hasil pengecekan checklist beserta foto bukti.
+        Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status
+        menjadi "completed" bila semua item "ok", selain itu "failed". Teknisi wajib
+        menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status
+        CCTV ikut disinkronkan otomatis (konservatif): completed â†’ "aktif", failed
+        â†’ "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13
+        Fix (2026-08-20): Status kini dinamis - semua item OK -> completed, apa pun
+        jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).'
       parameters:
       - description: Log UUID
         in: path

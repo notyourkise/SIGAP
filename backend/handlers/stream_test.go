@@ -64,13 +64,14 @@ func encryptedTestPassword(t *testing.T, plaintext string) string {
 
 // mockMTXConfig mengendalikan perilaku server MediaMTX tiruan.
 type mockMTXConfig struct {
-	addErr              error
-	removeErr           error
-	getErr              error
-	listErr             error
-	pingErr             error
-	getInfo             *utils.PathInfo
-	listPaths           []utils.PathInfo
+	addErr               error
+	removeErr            error
+	getErr               error
+	listErr              error
+	pingErr              error
+	getInfo              *utils.PathInfo
+	listPaths            []utils.PathInfo
+	listConfigs          []utils.PathConfig
 	addFailBeforeSuccess int
 }
 
@@ -89,7 +90,7 @@ func newMockMediaMTXClient(t *testing.T, cfg mockMTXConfig) (*utils.MediaMTXClie
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-		case strings.Contains(r.URL.Path, "/config/paths/remove/"):
+		case strings.Contains(r.URL.Path, "/config/paths/delete/") && r.Method == http.MethodDelete:
 			if cfg.removeErr != nil {
 				http.Error(w, "gagal menghapus path", http.StatusInternalServerError)
 				return
@@ -111,6 +112,8 @@ func newMockMediaMTXClient(t *testing.T, cfg mockMTXConfig) (*utils.MediaMTXClie
 				return
 			}
 			_ = json.NewEncoder(w).Encode(cfg.listPaths)
+		case strings.Contains(r.URL.Path, "/v3/config/paths/list"):
+			_ = json.NewEncoder(w).Encode(fiber.Map{"items": cfg.listConfigs})
 		case strings.Contains(r.URL.Path, "/v3/config/global/get"):
 			if cfg.pingErr != nil {
 				http.Error(w, "belum siap", http.StatusServiceUnavailable)
@@ -160,6 +163,10 @@ func TestStartStream_Success(t *testing.T) {
 	assert.Contains(t, data["whep_url"].(string), "/stream/cam-"+id.String()+"/whep")
 	assert.Equal(t, "cam-"+id.String(), data["path"])
 	assert.Equal(t, "sub", data["quality"])
+	assert.Equal(t, true, data["mediamtx_reachable"])
+	assert.Equal(t, true, data["path_registered"])
+	assert.Equal(t, false, data["source_ready"])
+	assert.NotContains(t, data, "source", "respons start tidak boleh membocorkan URL/kredensial RTSP")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -250,12 +257,14 @@ func TestGetStreamStatus(t *testing.T) {
 	id := uuid.New()
 	// ListPaths mengembalikan satu path siap (ready=true) dengan 2 penonton.
 	injectMockMTX(t, mockMTXConfig{
+		listConfigs: []utils.PathConfig{{Name: "cam-" + id.String()}},
 		listPaths: []utils.PathInfo{
 			{
-				Name:    "cam-" + id.String(),
-				Source:  "rtsp://...",
-				Ready:   true,
-				Readers: []interface{}{"r1", "r2"},
+				Name:      "cam-" + id.String(),
+				Source:    "rtsp://...",
+				Available: true,
+				Online:    true,
+				Readers:   []interface{}{"r1", "r2"},
 			},
 		},
 	})
@@ -277,6 +286,9 @@ func TestGetStreamStatus(t *testing.T) {
 	assert.Equal(t, id.String(), item["cctv_id"])
 	assert.Equal(t, true, item["stream_active"])
 	assert.Equal(t, true, item["stream_ready"])
+	assert.Equal(t, true, item["mediamtx_reachable"])
+	assert.Equal(t, true, item["path_registered"])
+	assert.Equal(t, true, item["source_ready"])
 	assert.Equal(t, float64(2), item["viewers"])
 	assert.Contains(t, item["whep_url"].(string), "/stream/cam-"+id.String()+"/whep")
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -288,11 +300,13 @@ func TestGetStreamURL(t *testing.T) {
 	id := uuid.New()
 	injectMockMTX(t, mockMTXConfig{
 		getInfo: &utils.PathInfo{
-			Name:    "cam-" + id.String(),
-			Source:  "rtsp://...",
-			Ready:   true,
-			Readers: []interface{}{"r1"},
+			Name:      "cam-" + id.String(),
+			Source:    "rtsp://...",
+			Available: true,
+			Online:    true,
+			Readers:   []interface{}{"r1"},
 		},
+		listConfigs: []utils.PathConfig{{Name: "cam-" + id.String()}},
 	})
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
@@ -311,6 +325,9 @@ func TestGetStreamURL(t *testing.T) {
 	assert.Contains(t, data["whep_url"].(string), "/stream/cam-"+id.String()+"/whep")
 	assert.Contains(t, data["hls_url"].(string), "/hls/cam-"+id.String()+"/index.m3u8")
 	assert.Equal(t, true, data["stream_ready"])
+	assert.Equal(t, true, data["mediamtx_reachable"])
+	assert.Equal(t, true, data["path_registered"])
+	assert.Equal(t, true, data["source_ready"])
 	assert.Equal(t, float64(1), data["viewers"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
