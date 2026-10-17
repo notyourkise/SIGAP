@@ -1,15 +1,17 @@
 # ==========================================
-# SIGAP — Git Attributes (Line Ending Normalization)
+# SIGAP - Git Attributes (Line Ending Normalization)
 # ==========================================
-# Menyelesaikan bug container backup di Docker Desktop:
-# tanpa file ini, core.autocrlf=true mengubah file .sh menjadi CRLF pada
-# checkout Windows, sehingga shebang `#!/bin/sh\r` tidak dikenali di dalam
-# container Linux (error: /entrypoint.sh: no such file or directory).
+# Menyelesaikan bug container backup di Docker Desktop: tanpa file ini,
+# core.autocrlf=true mengubah file .sh menjadi CRLF pada checkout Windows,
+# sehingga shebang `#!/bin/sh\r` tidak dikenali di dalam container Linux
+# (error: /entrypoint.sh: no such file or directory).
 #
-# Aturan: seluruh skrip shell WAJIB memakai line ending LF di dalam repo.
-# *.sh        text eol=lf
-# *.yml       text eol=lf
-# *.yaml      text eol=lf
-# *.conf      text eol=lf
-# Dockerfile  text eol=lf
-# *.md        text eol=lf
+# Aturan: skrip shell & berkas konfigurasi yang dijalankan di Linux/container
+# memakai line ending LF di dalam repo, agar identik antara Windows dan Linux.
+# Dokumentasi (*.md) sengaja tidak disertakan agar tidak menyentuh riwayat doc.
+*.sh           text eol=lf
+*.yml          text eol=lf
+*.yaml         text eol=lf
+*.conf         text eol=lf
+Dockerfile     text eol=lf
+.gitattributes text eol=lf
