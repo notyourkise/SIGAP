@@ -1,5 +1,23 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.4] - 2026-10-18
+
+### Perbaikan loop redirect halaman ganti sandi (alur wajib ganti sandi)
+
+**Bug**: Halaman `/change-password` mengalami reload tanpa henti saat pengguna wajib mengganti sandi (akun baru / hasil reset). `AuthContext` memanggil `window.location.replace('/change-password')` tanpa memeriksa path aktif, sehingga provider ter-mount ulang terus-menerus. Akibatnya `/auth/me` dipanggil ratusan kali sampai kena rate limit (429); state pengguna gagal dimuat dan elemen mode wajib (banner peringatan + tombol "Exit / Back to Login") tidak muncul.
+
+**Perbaikan**: Pengalihan dipusatkan ke satu effect idempoten yang hanya menavigasi bila path saat ini berbeda dari tujuan, memakai navigasi halus `router.replace` (provider tidak ter-mount ulang). Guard keliru di halaman `/change-password` yang membuang pengguna non-wajib ke `/dashboard` dihapus sehingga ganti sandi mandiri dari halaman Profil berfungsi kembali; `handleSuccess` memakai `updateUser` agar tujuan navigasi tepat (wajib -> `/dashboard`, mandiri -> `/profile`).
+
+timestamp: 2026-10-18 02:12 UTC+8
+kategori: Tinggi, Frontend (Bug Fix - Autentikasi)
+file yang diubah:
+- frontend/src/context/AuthContext.tsx (redirect wajib ganti sandi idempoten)
+- frontend/src/app/change-password/page.tsx (hapus guard salah + handleSuccess)
+- e2e/tests/change-password.spec.ts (regression test Playwright)
+- e2e/playwright.config.ts, e2e/package.json (setup Playwright)
+- frontend/changelog.md
+alasan perubahan: Mencegah loop reload tanpa henti + rate limit pada alur wajib ganti sandi, sekaligus memulihkan fungsi ganti sandi mandiri.
+
 ## [1.55.3] - 2026-08-20
 
 ### Multi-Site Isolation UI & Security Hardening

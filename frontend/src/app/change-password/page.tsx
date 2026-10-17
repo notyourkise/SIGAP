@@ -27,7 +27,7 @@ export default function ChangePasswordPage() {
   }, []);
   
   const router = useRouter();
-  const { user, login, logout } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   
   const [newPassword, setNewPassword] = useState('');
@@ -35,27 +35,23 @@ export default function ChangePasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [hasHandledRedirect, setHasHandledRedirect] = useState(false);
-
-  // Early guard: Redirect authenticated non-forced users to dashboard immediately
-  // Only do this ONCE to prevent infinite loop
-  useEffect(() => {
-    if (user && !user.must_change_password && !hasHandledRedirect) {
-      setHasHandledRedirect(true);
-      router.replace('/dashboard');
-    }
-  }, [user, router, hasHandledRedirect]);
 
   const forced = user?.must_change_password === true;
 
   // Handle successful password change navigation
   const handleSuccess = (updatedUser: AuthUser) => {
-    login(updatedUser);
-    
-    if (!forced) {
-      router.replace('/profile?password_changed=true');
+    // Perbarui state pengguna TANPA memicu navigasi otomatis AuthContext
+    // (memakai login() akan mengarahkan ulang dan menimpa tujuan di bawah,
+    // sekaligus memicu reload penuh yang tidak perlu).
+    updateUser(updatedUser);
+
+    if (forced) {
+      // Backend sudah menerbitkan sesi baru yang valid setelah ganti sandi
+      // (lihat handlers/auth.go: naikkan TokenVersion + SetSessionCookie),
+      // jadi lanjutkan ke dasbor alih-alih memaksa login ulang.
+      router.replace('/dashboard');
     } else {
-      router.push('/login?force_logout=true');
+      router.replace('/profile?password_changed=true');
     }
   };
 

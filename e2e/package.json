@@ -1,0 +1,15 @@
+{
+  "name": "sigap-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end tests untuk SIGAP (berjalan terhadap https://localhost)",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}
