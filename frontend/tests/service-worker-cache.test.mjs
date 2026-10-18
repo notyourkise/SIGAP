@@ -86,10 +86,12 @@ test('QR image requests bypass service-worker runtime cache', async () => {
   assert.deepEqual(calls, { open: 0, match: 0, put: 0 });
 });
 
-test('network-first does not store responses marked no-store', async () => {
+test('API responses are network-only and never touch the cache', async () => {
+  // Hardening keamanan P0: respons API terautentikasi TIDAK boleh di-cache,
+  // bahkan bila server tidak mengirim Cache-Control: no-store.
   const fresh = new Response('{"status":"success"}', {
     status: 200,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'application/json' },
   });
   const { listeners, calls } = loadServiceWorker(async () => fresh.clone());
 
@@ -101,6 +103,8 @@ test('network-first does not store responses marked no-store', async () => {
   });
 
   assert.equal(response.status, 200);
-  assert.equal(calls.open, 1);
-  assert.equal(calls.put, 0);
+  assert.equal(await response.text(), '{"status":"success"}');
+  assert.equal(calls.open, 0, 'API request must not open the shell cache');
+  assert.equal(calls.match, 0, 'API request must not read from the cache');
+  assert.equal(calls.put, 0, 'API request must never be stored in the cache');
 });

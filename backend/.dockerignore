@@ -1,9 +1,10 @@
 # ==========================================
 # File dan Folder Sensitif / Rahasia
 # ==========================================
-# Jangan masukkan file .env lokal ke dalam image Docker
+# Jangan masukkan file .env / secret ke dalam image Docker.
+# `.env.*` mencakup .env.docker (kredensial produksi) dan varian lain.
 .env
-.env.local
+.env.*
 
 # ==========================================
 # Direktori Output & Build Artefak

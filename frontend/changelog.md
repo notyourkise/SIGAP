@@ -1,5 +1,23 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.5] - 2026-10-18
+
+### Service worker: API selalu network-only (hardening cache PWA)
+
+**Konteks**: Temuan keamanan P0 — service worker lama menyimpan respons API/HTML terautentikasi di Cache Storage, berpotensi membocorkan data antar sesi pengguna pada perangkat bersama dan menyajikan data usang setelah logout.
+
+**Perbaikan**: `public/sw.js` ditulis ulang (`CACHE_VERSION = 'sigap-shell-v4'`): request `/api/` selalu network-only (fallback JSON 503 saat offline), navigasi selalu network (fallback HTML offline generik), HTML terautentikasi tidak di-cache; pre-cache dibatasi pada manifest & ikon shell. Cache lama dibersihkan saat event `activate`.
+
+timestamp: 2026-10-18 10:00 UTC+8
+kategori: Sedang, Frontend (Security Hardening PWA)
+file yang diubah:
+- frontend/public/sw.js (network-only API + bersihkan cache lama)
+- frontend/tests/service-worker-cache.test.mjs (kontrak API network-only)
+- frontend/changelog.md
+alasan perubahan: Mencegah kebocoran data via Cache Storage PWA dan penyajian data usang pasca logout.
+
+---
+
 ## [1.55.4] - 2026-10-18
 
 ### Perbaikan loop redirect halaman ganti sandi (alur wajib ganti sandi)
