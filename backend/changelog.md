@@ -1,5 +1,41 @@
 # Changelog - Backend SIGAP
 
+## [0.64.6] - 2026-10-18
+
+### Hardening Keamanan P0 (Tindak Lanjut Audit)
+
+**P0-1 (Secret di docker-compose)**: Menghapus password database hardcoded (`DB_PASSWORD`) dari `docker-compose.yml`. Nilai kini hanya bersumber dari `.env` dan Docker secret (`./secrets/db_password`), mengikuti presedensi `GetSecret` (file secret > env).
+
+**P0-2 (Env bocor ke build context)**: `backend/.dockerignore` diperketat (`.env` + `.env.*`) dan ditambahkan `.dockerignore` di root untuk mengecualikan `secrets/`, `**/.env*`, `nginx/certs/`, `*.key`, `*.pem` dari konteks build Docker.
+
+**P0-3 (Kredensial di contoh env)**: `backend/.env.example` dibersihkan — VAPID public/private key asli dikosongkan, `RTSP_NVR_HOST`/`RTSP_NVR_USER` diganti placeholder (`192.168.1.100` / `GANTI_NVR_USER`). CATATAN: kunci VAPID & kredensial NVR yang pernah ter-commit WAJIB dirotasi, karena history git tidak dapat "di-un-leak".
+
+**P0-4 (Cache service worker)**: `frontend/public/sw.js` ditulis ulang — request `/api/` SELALU network-only (fallback JSON 503), navigasi network-only (fallback HTML offline generik), HTML terautentikasi tidak lagi di-cache, pre-cache dibatasi manifest + ikon.
+
+**P0-5 (SSRF webhook)**: Utility baru `backend/utils/ssrf.go` — `ValidateExternalURL` (hanya http/https), `isBlockedIP` (loopback/privat/link-local/multicast/unspecified/0.0.0.0-8/100.64-10), `NewSafeHTTPClient` (resolusi DNS dicek via DialContext anti-rebinding, `CheckRedirect` maks 3 + validasi ulang). Diintegrasikan di `backend/handlers/webhook.go` pada Create/Update (validasi URL) serta `deliverWebhook`/`TestWebhook` (klien aman).
+
+**P0-6 (Isolasi multi-site)**: `backend/middleware/site.go` menambah `enforceSiteMembership` — user non-admin terautentikasi wajib terdaftar di `user_sites` untuk site yang diminta, else 403 "Akses ditolak: Anda tidak ditugaskan ke site ini".
+
+**Catatan teknis**: `enforceSiteMembership` mengembalikan flag `handled` (bukan `error`) karena `c.Status(...).JSON(...)` mengembalikan `nil`; tanpa flag ini `SiteContext` akan lanjut `c.Next()` sehingga respons 403 tertimpa handler berikutnya.
+
+timestamp: 2026-10-18 10:00 UTC+8
+kategori: Besar, Backend (Security Hardening P0)
+file yang diubah:
+- docker-compose.yml (hapus DB_PASSWORD hardcoded)
+- backend/.dockerignore (perketat .env.*)
+- .dockerignore (baru, root)
+- backend/.env.example (bersihkan VAPID/NVR)
+- backend/utils/ssrf.go (baru)
+- backend/utils/ssrf_test.go (baru)
+- backend/handlers/webhook.go (integrasi SSRF guard)
+- backend/middleware/site.go (enforceSiteMembership)
+- backend/middleware/site_membership_test.go (baru)
+- frontend/public/sw.js (network-only API)
+- backend/changelog.md
+alasan perubahan: Menutup temuan keamanan P0 dari audit (secret hardcoded, kebocoran env/credential, cache SW berisiko, SSRF, isolasi site tidak ditegakkan).
+
+---
+
 ## [0.64.5] - 2026-08-21
 
 ### Bug BB-13: Dynamic Checklist Status Calculation

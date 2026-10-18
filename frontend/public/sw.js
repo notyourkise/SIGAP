@@ -2,29 +2,27 @@
    SIGAP — Service Worker (Task 8.1 PWA + Task 8.3 Push)
    ==========================================
    Scope: installability + offline shell + notifikasi push browser.
-   Strategi cache:
-     - Shell (HTML navigasi, CSS, JS chunks, ikon/font): disimpan di cache.
-     - Navigasi HTML   : network-first, fallback ke cache (offline shell).
-     - Aset statis     : cache-first dengan pembaruan latar belakang
-                         (hashed oleh Next.js sehingga aman di-cache).
-     - API calls       : network-first, fallback ke cache (bila ada), selain itu
-                         respons JSON ringan "offline". Request `no-store` dan
-                         gambar QR selalu network-only agar data lama tidak dipakai.
-   Push (Task 8.3): menangani event `push` dari server (Web Push/VAPID) dan
-   menampilkan notifikasi OS via showNotification, serta membuka halaman yang
-   relevan saat notifikasi diklik.
+   Strategi cache (HARDENING KEAMANAN):
+     - Shell statis (CSS, JS chunk, ikon/font): cache-first (di-hash Next.js).
+     - Aset statis  : cache-first dengan pembaruan latar belakang.
+     - Navigasi HTML: network-only; bila offline tampilkan halaman offline
+                      generik. HTML terautentikasi TIDAK pernah di-cache.
+     - API calls    : SELALU network-only. Respons API terautentikasi TIDAK
+                      di-cache (mencegah data pengguna bocor lintas sesi/user
+                      pada perangkat bersama). Bila offline, kembalikan JSON 503.
+     - Request `no-store` & gambar QR: network-only.
+   Push (Task 8.3): menangani event `push` (Web Push/VAPID) dan menampilkan
+   notifikasi OS via showNotification, serta membuka halaman terkait saat diklik.
    BUKAN full offline (tanpa IndexedDB) — data tetap butuh jaringan/API.
    ========================================== */
 
 // Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
-const CACHE_VERSION = 'sigap-shell-v3';
+const CACHE_VERSION = 'sigap-shell-v4';
 const SHELL_CACHE = CACHE_VERSION;
 
-// Aset inti shell yang di-pre-cache saat install (diperbarui saat activate).
+// Aset inti shell yang di-pre-cache saat install (hanya aset statis publik;
+// TIDAK ada Halaman HTML terautentikasi agar tidak bocor ke perangkat bersama).
 const PRECACHE_URLS = [
-  '/',
-  '/dashboard',
-  '/login',
   '/manifest.json',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
@@ -70,8 +68,7 @@ function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
 }
 
-// QR hasil rotasi tidak boleh memiliki fallback cache: gambar lama yang masih
-// tersedia offline lebih berbahaya daripada menampilkan kegagalan jaringan.
+// QR hasil rotasi tidak boleh memiliki fallback cache.
 function isQRCodeImageRequest(url) {
   return /^\/api\/cctv\/[^/]+\/qrcode\/?$/.test(url.pathname);
 }
@@ -91,37 +88,19 @@ function isStaticAsset(url) {
   return /\.(?:css|js|png|jpg|jpeg|webp|svg|ico|woff2?|ttf|eot|json)$/i.test(path);
 }
 
-// ---- Strategi: network-first (untuk navigasi & API) ----
-async function networkFirst(request) {
-  const cache = await caches.open(SHELL_CACHE);
-  try {
-    // Beri batas waktu agar tidak menggantung saat offline.
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT)
-    );
-    const fetchPromise = fetch(request);
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    if (response && response.ok) {
-      // Simpan salinan untuk offline / fallback.
-      if (isRuntimeCacheAllowed(request, response)) {
-        cache.put(request, response.clone());
-      }
-      return response;
-    }
-    throw new Error('response not ok');
-  } catch (err) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    // Fallback khusus navigasi ke shell utama (halaman dashboard).
-    if (isNavigationRequest(request)) {
-      const index = await cache.match('/dashboard');
-      if (index) return index;
-    }
-    throw err;
+// ---- Strategi: network-only dengan batas waktu (navigasi & API) ----
+async function networkOnly(request) {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT)
+  );
+  const response = await Promise.race([fetch(request), timeoutPromise]);
+  if (!response) {
+    throw new Error('response kosong');
   }
+  return response;
 }
 
-// ---- Strategi: cache-first (untuk aset statis shell) ----
+// ---- Strategi: cache-first (untuk aset statis shell saja) ----
 async function cacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(request);
@@ -143,7 +122,7 @@ async function cacheFirst(request) {
   return response;
 }
 
-// ---- Fallback kecil bila permintaan API gagal & tidak ada cache ----
+// ---- Fallback JSON bila permintaan API gagal (tanpa cache) ----
 function offlineApiResponse() {
   return new Response(
     JSON.stringify({
@@ -158,6 +137,26 @@ function offlineApiResponse() {
   );
 }
 
+// ---- Fallback HTML statis generik bila navigasi gagal saat offline ----
+function offlineShellResponse() {
+  return new Response(
+    '<!doctype html><html lang="id"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<title>SIGAP — Offline</title></head>' +
+      '<body style="font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;' +
+      'display:flex;min-height:100vh;align-items:center;justify-content:center;' +
+      'background:#0f172a;color:#e2e8f0;text-align:center">' +
+      '<div style="max-width:24rem;padding:2rem">' +
+      '<h1 style="font-size:1.25rem;margin:0 0 .5rem">Tidak ada koneksi</h1>' +
+      '<p style="margin:0;opacity:.8">Halaman tidak dapat dimuat saat offline. ' +
+      'Sambungkan kembali ke jaringan lalu muat ulang.</p></div></body></html>',
+    {
+      status: 503,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    }
+  );
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -168,22 +167,21 @@ self.addEventListener('fetch', (event) => {
   // Permintaan bukan GET tidak di-cache (biarkan jaringan normal).
   if (request.method !== 'GET') return;
 
-  // Request no-store dan gambar QR harus network-only. Jangan pernah fallback
-  // ke label lama setelah rotasi ketika jaringan lambat atau offline.
+  // Request no-store dan gambar QR harus network-only.
   if (request.cache === 'no-store' || isQRCodeImageRequest(url)) {
     event.respondWith(fetch(request));
     return;
   }
 
-  // API calls: network-first (data selalu segar), fallback cache/offline.
+  // API calls: SELALU network-only — respons terautentikasi tidak boleh di-cache.
   if (isApiRequest(url)) {
-    event.respondWith(networkFirst(request).catch(() => offlineApiResponse()));
+    event.respondWith(networkOnly(request).catch(() => offlineApiResponse()));
     return;
   }
 
-  // Navigasi halaman (HTML shell): network-first, fallback cache offline.
+  // Navigasi halaman (HTML): network-only; offline → halaman offline generik.
   if (isNavigationRequest(request)) {
-    event.respondWith(networkFirst(request).catch(() => caches.match(request)));
+    event.respondWith(networkOnly(request).catch(() => offlineShellResponse()));
     return;
   }
 
