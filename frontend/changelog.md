@@ -12,6 +12,7 @@ timestamp: 2026-10-18 10:00 UTC+8
 kategori: Sedang, Frontend (Security Hardening PWA)
 file yang diubah:
 - frontend/public/sw.js (network-only API + bersihkan cache lama)
+- frontend/tests/service-worker-cache.test.mjs (kontrak API network-only)
 - frontend/changelog.md
 alasan perubahan: Mencegah kebocoran data via Cache Storage PWA dan penyajian data usang pasca logout.
 
