@@ -1,5 +1,23 @@
 # Changelog - Backend SIGAP
 
+## [0.64.7] - 2026-10-20
+
+### Fix: Form Tambah CCTV gagal saat Kawasan/Zona kosong
+
+**Masalah**: Frontend mengirim `zone_id` dan `site_id` bernilai `null` ketika dropdown Kawasan/Zona dikosongkan. `OptionalUUID.UnmarshalJSON` tidak menangani JSON `null` (hanya string kosong), sehingga `uuid.Parse("null")` gagal dan `BodyParser` mengembalikan 400 "Format input tidak valid". Akibatnya pembuatan CCTV tidak bisa dilakukan selama belum ada zona yang dipilih.
+
+**Perbaikan**: `OptionalUUID.UnmarshalJSON` kini mendeteksi JSON `null` secara eksplisit, mengosongkan `Value`, menandai `Null=true`, dan tetap `Present=true`. Ditambahkan unit test untuk `null`, string kosong, UUID valid, UUID invalid, field tidak dikirim, dan reset nilai lama.
+
+timestamp: 2026-10-20 10:05 UTC+8
+kategori: Kecil, Backend (Bug Fix)
+file yang diubah:
+- backend/utils/optional_uuid.go
+- backend/utils/optional_uuid_test.go (baru)
+- backend/changelog.md
+alasan perubahan: Field Kawasan/Zona bersifat opsional; nilai `null` harus diterima dan tidak boleh menggagalkan parsing seluruh request CCTV.
+
+---
+
 ## [0.64.6] - 2026-10-18
 
 ### Hardening Keamanan P0 (Tindak Lanjut Audit)
