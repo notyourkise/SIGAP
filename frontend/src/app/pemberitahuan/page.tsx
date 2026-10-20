@@ -129,7 +129,7 @@ export default function NotificationsPage() {
       }
       toast.success('Semua pemberitahuan ditandai dibaca');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gagal menandai semua pemberitahuan');
+      toast.error(err instanceof Error ? err.message : 'Gagal menandai semua pemberitahuan', err);
     } finally {
       setIsMarkingAll(false);
     }

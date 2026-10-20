@@ -171,7 +171,7 @@ export default function ChecklistTemplateManager({
         void fetchTemplates();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Item belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Item belum dapat disimpan. Periksa isian lalu coba lagi.', err);
     } finally {
       setSaving(false);
     }
@@ -195,7 +195,7 @@ export default function ChecklistTemplateManager({
         void fetchTemplates();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Item belum dapat dinonaktifkan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Item belum dapat dinonaktifkan. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -216,7 +216,7 @@ export default function ChecklistTemplateManager({
         void fetchTemplates();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Status item belum dapat diubah. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Status item belum dapat diubah. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -243,7 +243,7 @@ export default function ChecklistTemplateManager({
         void fetchTemplates();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Urutan item belum dapat diubah. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Urutan item belum dapat diubah. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

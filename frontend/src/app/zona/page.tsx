@@ -199,7 +199,7 @@ export default function ZonaPage() {
       setAssignZone(null);
       fetchZones();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Penugasan zona belum dapat disimpan.');
+      toast.error(err instanceof Error ? err.message : 'Penugasan zona belum dapat disimpan.', err);
     } finally {
       setActionLoading(null);
     }
@@ -236,7 +236,7 @@ export default function ZonaPage() {
         fetchZones();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Zona belum dapat disimpan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Zona belum dapat disimpan. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -257,7 +257,7 @@ export default function ZonaPage() {
         fetchZones();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Zona belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Zona belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

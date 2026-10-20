@@ -284,7 +284,7 @@ export default function FieldMaintenanceModal({
         }
       }
     } catch (err: any) {
-      toast.error(err.message || 'Foto bukti belum dapat diunggah. Coba lagi.');
+      toast.error(err.message || 'Foto bukti belum dapat diunggah. Coba lagi.', err);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -350,7 +350,8 @@ export default function FieldMaintenanceModal({
         err.message ||
           (isCompleteMode
             ? 'Tugas belum dapat diselesaikan. Periksa isian lalu coba lagi.'
-            : 'Pengecekan lapangan belum dapat disimpan. Periksa isian lalu coba lagi.')
+            : 'Pengecekan lapangan belum dapat disimpan. Periksa isian lalu coba lagi.'),
+        err
       );
     } finally {
       setSubmitting(false);

@@ -489,7 +489,7 @@ export default function MaintenanceLogsPage() {
         fetchLogs();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -505,7 +505,7 @@ export default function MaintenanceLogsPage() {
       // Siapkan daftar suku cadang untuk dropdown pencatatan (admin).
       if (isAdmin) void fetchSpareParts();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail pemeliharaan belum dapat dimuat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -557,7 +557,7 @@ export default function MaintenanceLogsPage() {
         void fetchSpareParts();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Penggunaan suku cadang belum dapat dicatat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Penggunaan suku cadang belum dapat dicatat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -584,7 +584,7 @@ export default function MaintenanceLogsPage() {
         fetchLogs();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Tugas belum dapat dialihkan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Tugas belum dapat dialihkan. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -604,7 +604,7 @@ export default function MaintenanceLogsPage() {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
       toast.success('Data log pemeliharaan berhasil diekspor ke CSV.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat diekspor. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat diekspor. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -620,7 +620,7 @@ export default function MaintenanceLogsPage() {
       await downloadApiFile(`/maintenance-logs/report-pdf?${params}`, 'laporan-pemeliharaan.pdf');
       toast.success('Laporan PDF berhasil dibuat.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Laporan PDF belum dapat dibuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Laporan PDF belum dapat dibuat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -643,7 +643,7 @@ export default function MaintenanceLogsPage() {
         fetchLogs();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Catatan pemeliharaan belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

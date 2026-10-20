@@ -1,5 +1,31 @@
 # Changelog - Backend SIGAP
 
+## [0.64.9] - 2026-10-20
+
+### Peningkatan: Tombol detail pada seluruh toast error frontend
+
+**Masalah**: Toast error di frontend hanya menampilkan satu kalimat. Saat backend mengembalikan field, penyebab, atau status HTTP, pengguna tidak bisa melihat konteksnya tanpa membuka DevTools.
+
+**Perbaikan**:
+- Toast error kini selalu memiliki tombol **Detail error**, termasuk error validasi yang dibuat langsung di halaman.
+- Modal detail menampilkan pesan, field, penyebab, nilai, baris/kolom JSON, status HTTP, endpoint, request ID (bila ada), halaman, dan waktu.
+- `ApiError` di frontend membawa metadata `status`, `endpoint`, `method`, `requestId`, `detail`, dan `errors` dari respons backend.
+- Semua pemanggil `toast.error` yang sudah memiliki objek error meneruskan error tersebut sebagai argumen kedua; error validasi halaman tetap mendapat konteks halaman dan waktu.
+- Toast error bertahan 9 detik dan ditutup saat modal detail dibuka agar tidak menutupi modal.
+- Modal bisa ditutup dengan Escape/klik overlay, dan detail bisa disalin sebagai JSON.
+
+timestamp: 2026-10-20 10:58 UTC+8
+kategori: Sedang, Frontend (Error UX)
+file yang diubah:
+- frontend/src/components/Toast.tsx
+- frontend/src/lib/api.ts
+- frontend/src/app/{api-keys,cctv,field-maintenance,laporan-kustom,maintenance,pemberitahuan,schedules,sites,suku-cadang,users,webhooks,zona}/page.tsx
+- frontend/src/components/{ChecklistTemplateManager,FieldMaintenanceModal,NotificationBell,StreamModal}.tsx
+- backend/changelog.md
+alasan perubahan: Setiap error harus bisa dijelaskan lokasi dan penyebabnya langsung dari toast, tanpa membuka DevTools.
+
+---
+
 ## [0.64.8] - 2026-10-20
 
 ### Peningkatan: Pesan error parsing body request

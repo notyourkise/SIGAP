@@ -1,10 +1,20 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+export interface ApiErrorDetail {
+  field?: string;
+  reason?: string;
+  value?: string;
+  line?: number;
+  column?: number;
+  [key: string]: unknown;
+}
+
 export interface ApiResponse<T> {
   status: string;
   message?: string;
   data?: T;
   errors?: ApiFieldError[];
+  detail?: ApiErrorDetail;
 }
 
 // Error validasi per field yang dikirim backend (format utils/validator.go):
@@ -15,14 +25,50 @@ export interface ApiFieldError {
   value?: string;
 }
 
+export interface ApiErrorOptions {
+  status?: number;
+  endpoint?: string;
+  method?: string;
+  requestId?: string;
+  detail?: ApiErrorDetail;
+  errors?: ApiFieldError[];
+}
+
+// Error API membawa konteks tambahan agar toast bisa menampilkan tombol
+// "Detail error" berisi field/penyebab/status tanpa harus membuka DevTools.
+export class ApiError extends Error {
+  status?: number;
+  endpoint?: string;
+  method?: string;
+  requestId?: string;
+  detail?: ApiErrorDetail;
+  errors?: ApiFieldError[];
+
+  constructor(message: string, options: ApiErrorOptions = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = options.status;
+    this.endpoint = options.endpoint;
+    this.method = options.method;
+    this.requestId = options.requestId;
+    this.detail = options.detail;
+    this.errors = options.errors;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
+
 // Error khusus untuk respons validasi: selain .message yang sudah berisi
 // ringkasan, .errors menyimpan detail per field agar halaman bisa
 // menampilkan daftar isian yang bermasalah secara terstruktur.
-export class ApiValidationError extends Error {
+export class ApiValidationError extends ApiError {
   errors: ApiFieldError[];
 
-  constructor(message: string, errors: ApiFieldError[]) {
-    super(message);
+  constructor(
+    message: string,
+    errors: ApiFieldError[],
+    options: Omit<ApiErrorOptions, 'errors'> = {}
+  ) {
+    super(message, { ...options, errors });
     this.name = 'ApiValidationError';
     this.errors = errors;
     Object.setPrototypeOf(this, ApiValidationError.prototype);
@@ -201,11 +247,20 @@ export interface ApiRequestOptions extends RequestInit {
   skipAuthRedirect?: boolean;
 }
 
+function getResponseRequestId(response: Response): string | undefined {
+  return (
+    response.headers.get('x-request-id') ||
+    response.headers.get('x-correlation-id') ||
+    undefined
+  );
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: ApiRequestOptions = {}
 ): Promise<ApiResponse<T>> {
   const { skipAuthRedirect, ...fetchOptions } = options;
+  const method = (fetchOptions.method || 'GET').toUpperCase();
 
   const headers = new Headers(fetchOptions.headers);
   if (!(fetchOptions.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -237,8 +292,13 @@ export async function apiRequest<T>(
   try {
     response = await fetch(`${API_BASE_URL}${endpoint}`, config);
   } catch {
-    throw new Error(
-      'Tidak dapat terhubung ke server SIGAP. Pastikan backend server berjalan.'
+    throw new ApiError(
+      'Tidak dapat terhubung ke server SIGAP. Pastikan backend server berjalan.',
+      {
+        endpoint,
+        method,
+        detail: { reason: 'Koneksi ke server gagal atau terputus' },
+      }
     );
   }
 
@@ -253,24 +313,48 @@ export async function apiRequest<T>(
   try {
     data = await response.json();
   } catch {
-    throw new Error(
-      response.ok
-        ? 'Respons server SIGAP tidak dapat dibaca.'
-        : `Server SIGAP mengembalikan kesalahan HTTP ${response.status}.`
-    );
+    const message = response.ok
+      ? 'Respons server SIGAP tidak dapat dibaca.'
+      : `Server SIGAP mengembalikan kesalahan HTTP ${response.status}.`;
+    throw new ApiError(message, {
+      status: response.status,
+      endpoint,
+      method,
+      requestId: getResponseRequestId(response),
+      detail: {
+        reason: response.ok
+          ? 'Respons server bukan JSON yang valid'
+          : `Server mengembalikan HTTP ${response.status} tanpa body JSON`,
+      },
+    });
   }
 
   if (!response.ok) {
+    const requestId = getResponseRequestId(response);
+
     // Respons validasi backend memuat detail per field (errors[]) yang selama
     // ini dibuang — sekarang diubah menjadi pesan yang menjelaskan apa yang salah.
     if (Array.isArray(data.errors) && data.errors.length > 0) {
       const details = formatValidationMessages(data.errors as ApiFieldError[]);
       throw new ApiValidationError(
         `${data.message || 'Validasi input gagal'}: ${details.join('; ')}`,
-        data.errors as ApiFieldError[]
+        data.errors as ApiFieldError[],
+        {
+          status: response.status,
+          endpoint,
+          method,
+          requestId,
+          detail: data.detail,
+        }
       );
     }
-    throw new Error(data.message || 'Terjadi kesalahan pada server');
+    throw new ApiError(data.message || 'Terjadi kesalahan pada server', {
+      status: response.status,
+      endpoint,
+      method,
+      requestId,
+      detail: data.detail,
+    });
   }
 
   return data;
@@ -369,24 +453,47 @@ export async function reorderChecklistTemplates(
 }
 
 export async function downloadApiFile(endpoint: string, fallbackName: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    credentials: 'include',
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      credentials: 'include',
+    });
+  } catch {
+    throw new ApiError('Tidak dapat terhubung ke server SIGAP.', {
+      endpoint,
+      method: 'GET',
+      detail: { reason: 'Koneksi ke server gagal atau terputus' },
+    });
+  }
 
   if (response.status === 401) {
     handleUnauthorized();
-    throw new Error('Sesi Anda telah berakhir. Silakan masuk kembali.');
+    throw new ApiError('Sesi Anda telah berakhir. Silakan masuk kembali.', {
+      status: 401,
+      endpoint,
+      method: 'GET',
+      requestId: getResponseRequestId(response),
+      detail: { reason: 'Sesi tidak valid atau sudah kedaluwarsa' },
+    });
   }
 
   if (!response.ok) {
     let message = 'Gagal mengunduh file';
+    let detail: ApiErrorDetail | undefined;
     try {
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<unknown>;
       message = payload.message || message;
+      detail = payload.detail;
     } catch {
       // Respons unduhan yang gagal tidak selalu berupa JSON.
     }
-    throw new Error(message);
+    throw new ApiError(message, {
+      status: response.status,
+      endpoint,
+      method: 'GET',
+      requestId: getResponseRequestId(response),
+      detail: detail ?? { reason: message },
+    });
   }
 
   const blob = await response.blob();

@@ -120,7 +120,8 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
         }
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : 'Stream tidak dapat dimulai.'
+          err instanceof Error ? err.message : 'Stream tidak dapat dimulai.',
+          err
         );
       } finally {
         setStarting(false);
@@ -139,7 +140,8 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
       toast.info(`Streaming "${cctv.nama}" dihentikan.`);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Stream tidak dapat dihentikan.'
+        err instanceof Error ? err.message : 'Stream tidak dapat dihentikan.',
+        err
       );
     } finally {
       setStopping(false);
@@ -164,7 +166,10 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   // Laporkan error dari WHEPPlayer ke toast.
   const handlePlayerError = useCallback(
     (message: string) => {
-      toast.error(message);
+      toast.error(message, {
+        source: 'Pemutar video (WHEP)',
+        reason: 'Stream video gagal diputar atau koneksi WHEP terputus.',
+      });
     },
     [toast]
   );

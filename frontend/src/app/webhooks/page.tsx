@@ -236,7 +236,7 @@ export default function WebhooksPage() {
         fetchWebhooks();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Webhook belum dapat disimpan.');
+      toast.error(err instanceof Error ? err.message : 'Webhook belum dapat disimpan.', err);
     } finally {
       setSaveLoading(false);
     }
@@ -257,7 +257,7 @@ export default function WebhooksPage() {
         fetchWebhooks();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Webhook belum dapat dihapus.');
+      toast.error(err instanceof Error ? err.message : 'Webhook belum dapat dihapus.', err);
     } finally {
       setActionLoading(null);
     }
@@ -275,7 +275,7 @@ export default function WebhooksPage() {
         fetchWebhooks();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gagal mengubah status webhook.');
+      toast.error(err instanceof Error ? err.message : 'Gagal mengubah status webhook.', err);
     } finally {
       setActionLoading(null);
     }
@@ -291,7 +291,7 @@ export default function WebhooksPage() {
         toast.error(response.data?.error || 'Test webhook gagal.');
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Test webhook gagal.');
+      toast.error(err instanceof Error ? err.message : 'Test webhook gagal.', err);
     } finally {
       setActionLoading(null);
     }
@@ -304,7 +304,7 @@ export default function WebhooksPage() {
         setDetail(response.data);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Detail webhook belum dapat dimuat.');
+      toast.error(err instanceof Error ? err.message : 'Detail webhook belum dapat dimuat.', err);
     }
   };
 
@@ -326,7 +326,7 @@ export default function WebhooksPage() {
         fetchWebhooks();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Log belum dapat dibersihkan.');
+      toast.error(err instanceof Error ? err.message : 'Log belum dapat dibersihkan.', err);
     } finally {
       setActionLoading(null);
     }

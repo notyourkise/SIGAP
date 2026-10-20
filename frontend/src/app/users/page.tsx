@@ -118,7 +118,7 @@ export default function UsersPage() {
       setNewPassword('');
       setModal(mode);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Detail pengguna belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail pengguna belum dapat dimuat. Coba lagi.', err);
     }
   };
 
@@ -138,7 +138,7 @@ export default function UsersPage() {
       setModal(null);
       loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Data pengguna belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Data pengguna belum dapat disimpan. Periksa isian lalu coba lagi.', err);
     }
   };
 
@@ -153,7 +153,7 @@ export default function UsersPage() {
       setModal(null);
       toast.success('Kata sandi pengguna berhasil diperbarui.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Kata sandi belum dapat diperbarui. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Kata sandi belum dapat diperbarui. Coba lagi.', err);
     }
   };
 
@@ -169,7 +169,7 @@ export default function UsersPage() {
       toast.success(`Pengguna "${item.full_name}" berhasil dihapus.`);
       loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.', err);
     }
   };
 
@@ -187,7 +187,7 @@ export default function UsersPage() {
       toast.success(`Pengguna "${selected.full_name}" berhasil dihapus.`);
       loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Pengguna belum dapat dihapus. Coba lagi.', err);
     }
   };
 

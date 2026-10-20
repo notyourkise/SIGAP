@@ -297,7 +297,7 @@ export default function CCTVPage() {
         setPrintQueue(qrItems);
         toast.success(`${qrItems.length} QR Code CCTV berhasil disiapkan untuk dicetak.`);
       } catch (err: any) {
-        toast.error(err?.message || 'Gagal menyiapkan QR Code untuk dicetak. Coba lagi.');
+        toast.error(err?.message || 'Gagal menyiapkan QR Code untuk dicetak. Coba lagi.', err);
       }
     },
     [fetchQRDataUrl, toast]
@@ -447,7 +447,7 @@ export default function CCTVPage() {
         setIsDetailModalOpen(true);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -646,7 +646,7 @@ export default function CCTVPage() {
             : [err.message]
         );
       } else {
-        toast.error(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.');
+        toast.error(err.message || 'Data CCTV belum dapat disimpan. Periksa isian lalu coba lagi.', err);
       }
     } finally {
       setActionLoading(null);
@@ -671,7 +671,7 @@ export default function CCTVPage() {
         fetchCCTVs();
       }
     } catch (err: any) {
-      toast.error(err.message || 'CCTV belum dapat dihapus. Coba lagi.');
+      toast.error(err.message || 'CCTV belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -698,7 +698,7 @@ export default function CCTVPage() {
         openQRPrint([response.data], 'single');
       }
     } catch (err: any) {
-      toast.error(err.message || 'QR Code belum dapat dirotasi. Coba lagi.');
+      toast.error(err.message || 'QR Code belum dapat dirotasi. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -726,7 +726,7 @@ export default function CCTVPage() {
       const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`);
       setSelectedIDs(response.data?.rows.map((cctv) => cctv.id) ?? []);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.', err);
       setSelectedIDs([]);
     } finally {
       setIsSelectingAll(false);
@@ -768,7 +768,7 @@ export default function CCTVPage() {
       fetchCCTVs();
       toast.success(response.message || (deleteAll ? 'Seluruh data CCTV berhasil dihapus.' : `${selectedIDs.length} CCTV terpilih berhasil dihapus.`));
     } catch (err: any) {
-      toast.error(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.');
+      toast.error(err.message || 'Data CCTV belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -780,7 +780,7 @@ export default function CCTVPage() {
       await downloadApiFile('/cctv/template', 'template_import_cctv.xlsx');
       toast.success('Template impor Excel berhasil diunduh.');
     } catch (err: any) {
-      toast.error(err.message || 'Template impor belum dapat diunduh. Coba lagi.');
+      toast.error(err.message || 'Template impor belum dapat diunduh. Coba lagi.', err);
     }
   };
 

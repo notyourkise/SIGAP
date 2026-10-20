@@ -284,7 +284,7 @@ export default function SparePartsPage() {
         fetchSpareParts();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Suku cadang belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Suku cadang belum dapat disimpan. Periksa isian lalu coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -305,7 +305,7 @@ export default function SparePartsPage() {
         fetchSpareParts();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Suku cadang belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Suku cadang belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

@@ -197,7 +197,7 @@ export default function SitesPage() {
         }
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Site belum dapat disimpan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Site belum dapat disimpan. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -219,7 +219,7 @@ export default function SitesPage() {
       }
     } catch (err) {
       // Backend menolak hapus site default — tampilkan pesannya.
-      toast.error(err instanceof Error ? err.message : 'Site belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Site belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -263,7 +263,7 @@ export default function SitesPage() {
         fetchSites();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Penugasan teknisi belum dapat disimpan.');
+      toast.error(err instanceof Error ? err.message : 'Penugasan teknisi belum dapat disimpan.', err);
     } finally {
       setActionLoading(null);
     }
