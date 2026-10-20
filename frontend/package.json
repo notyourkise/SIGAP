@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:sw": "node --test tests/service-worker-cache.test.mjs",
-    "test:whep": "node --no-warnings --experimental-strip-types --test tests/whep-status.test.mts"
+    "test:whep": "node --no-warnings --experimental-strip-types --test tests/whep-status.test.mts",
+    "test:live": "node --no-warnings --experimental-strip-types --test tests/live-status.test.mts"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",

@@ -1,5 +1,33 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.10] - 2026-10-20
+
+### Badge status Siaga untuk stream on-demand
+
+**Konteks**: Kamera GSM dengan path on-demand yang belum berjalan tidak lagi dilaporkan offline oleh backend. UI perlu menampilkan status `idle` secara terpisah dari `offline`.
+
+**Perubahan**:
+- Logika badge dipindahkan ke `src/lib/live-status.ts` agar dapat diuji tanpa React/DOM.
+- Badge `idle` menjadi **🔵 Siaga (on-demand)**; `offline` tetap merah; `unknown` abu-abu dan memakai riwayat “Pernah aktif hari ini” bila relevan.
+- Peta dan grid memakai logika badge yang sama; status bar peta menambahkan hitungan **Siaga**.
+- `sebaran-cctv` membawa `stream_state` dari API dan event WebSocket tanpa menimpa nilai lama saat payload belum memuat field tersebut.
+- Test unit baru untuk klasifikasi live/idle/offline/unknown dan fallback data lama.
+
+timestamp: 2026-10-20 18:20 UTC+8
+kategori: Kecil, Frontend (Streaming/Status)
+file yang diubah:
+- frontend/src/lib/live-status.ts
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/tests/live-status.test.mts
+- frontend/package.json
+- frontend/changelog.md
+
+alasan perubahan: Menampilkan status siaga on-demand secara akurat dan menghindari label offline palsu.
+
+---
+
 ## [1.55.9] - 2026-10-20
 
 ### Default SD/sub dan pesan codec per-perangkat

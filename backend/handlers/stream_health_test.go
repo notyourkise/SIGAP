@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"sigap-backend/middleware"
+	"sigap-backend/models"
 	"sigap-backend/utils"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -163,5 +164,54 @@ func TestRunStreamHealthOnce_DownAndRestored(t *testing.T) {
 	assert.False(t, streamDownNotified[path])
 	_, hasLastReady := streamLastReady[path]
 	assert.True(t, hasLastReady)
+	streamHealthMu.Unlock()
+}
+
+// Path on-demand yang idle tidak boleh memicu STREAM_DOWN atau penalti
+// health_score. Countdown lama (jika ada) harus direset.
+func TestRunStreamHealthOnce_IdleDoesNotTriggerDown(t *testing.T) {
+	resetStreamHealthState()
+	db, mock := setupMockGORM(t)
+	events := captureStreamEvents(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	now := time.Now()
+	seedStreamDownState(path, now.Add(-1*time.Hour), now.Add(-16*time.Minute), false)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp", false, now.Add(-16*time.Minute), models.StreamStateIdle))
+
+	runStreamHealthOnce(db, map[string]bool{path: false})
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+	assert.Empty(t, *events, "idle on-demand tidak boleh menghasilkan event STREAM_DOWN")
+	streamHealthMu.Lock()
+	_, stillDown := streamDownSince[path]
+	assert.False(t, stillDown)
+	assert.False(t, streamDownNotified[path])
+	streamHealthMu.Unlock()
+}
+
+// Status unknown (mis. MediaMTX tidak dapat dihubungi) juga tidak boleh
+// memulai countdown offline.
+func TestRunStreamHealthOnce_UnknownDoesNotStartDown(t *testing.T) {
+	resetStreamHealthState()
+	db, mock := setupMockGORM(t)
+	events := captureStreamEvents(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp", false, nil, models.StreamStateUnknown))
+
+	runStreamHealthOnce(db, map[string]bool{path: false})
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+	assert.Empty(t, *events)
+	streamHealthMu.Lock()
+	_, isDown := streamDownSince[path]
+	assert.False(t, isDown)
 	streamHealthMu.Unlock()
 }

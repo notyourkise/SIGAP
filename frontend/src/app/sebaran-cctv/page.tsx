@@ -7,6 +7,7 @@ import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest, getAllSitesForSelect, getCookie } from '@/lib/api';
 import type { Site } from '@/lib/api';
 import type { CCTVMapItem } from '@/components/CCTVMap';
+import type { StreamState } from '@/lib/live-status';
 import { LayoutGrid, Map as MapIcon } from 'lucide-react';
 
 const CCTVMap = dynamic(() => import('@/components/CCTVMap'), {
@@ -53,6 +54,8 @@ interface LiveStatusItem {
   nama?: string;
   kode_cctv?: string;
   stream_live?: boolean | null;
+  // Status empat keadaan: live, idle (on-demand tanpa penonton), offline, unknown.
+  stream_state?: StreamState | null;
   stream_checked_at?: string | null;
   // Sprint 37-PATCH: strategi probe jaringan — Metro-E (ICMP, binary) vs GSM (4-state).
   network_type?: 'metro-e' | 'gsm' | null;
@@ -65,6 +68,7 @@ interface LiveStatusResponse {
   message?: string;
   summary?: {
     online: number;
+    idle?: number;
     offline: number;
     unchecked: number;
   };
@@ -152,6 +156,7 @@ export default function SebaranCCTVPage() {
               ? {
                   ...c,
                   stream_live: live.stream_live ?? null,
+                  stream_state: live.stream_state ?? null,
                   stream_checked_at: live.stream_checked_at ?? null,
                   // Sprint 37-PATCH: bawa field strategi probe jaringan dari live-status
                   // agar badge Metro-E vs GSM berfungsi; bila field absen (data lama)
@@ -187,8 +192,8 @@ export default function SebaranCCTVPage() {
     const unsubCCTV = subscribe('CCTV_UPDATED', () => loadMap());
 
     // Update status live streaming secara real-time tanpa reload penuh peta.
-    // Payload: { cctv_id, stream_live, stream_checked_at, nama, kode_cctv } (+ Sprint 37-PATCH:
-    // network_type, ping_latency_ms, stream_last_active_at).
+    // Payload: { cctv_id, stream_live, stream_state, stream_checked_at, nama, kode_cctv }
+    // (+ network_type, ping_latency_ms, stream_last_active_at).
     const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload: any) => {
       if (payload?.cctv_id) {
         setCctvs((prev) =>
@@ -198,6 +203,7 @@ export default function SebaranCCTVPage() {
             return {
               ...c,
               stream_live: payload.stream_live ?? null,
+              stream_state: payload.stream_state ?? prevItem.stream_state ?? null,
               stream_checked_at: payload.stream_checked_at ?? null,
               // Sprint 37-PATCH: pertahankan field probe jaringan; payload tanpa field
               // (event lama) tidak menimpa nilai yang sudah ada di item.

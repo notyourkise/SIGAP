@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getLiveBadge, formatLatency } from '@/components/CCTVMap';
+import { formatLatency } from '@/components/CCTVMap';
+import { getLiveBadge } from '@/lib/live-status';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 
 // Format waktu pengecekan status live menjadi HH:mm (waktu lokal). Mengembalikan
@@ -82,17 +83,24 @@ function StreamCell({
   );
 
   // Ring/border warna berdasarkan status live streaming (RTSP) pada sel kamera:
-  //   true → emerald, false → merah, null/undefined → abu tipis.
+  // live → emerald, idle → biru, offline → merah, unknown/data lama → abu tipis.
   const liveRingClass =
-    cctv.stream_live === true
+    cctv.stream_state === 'live'
       ? 'ring-1 ring-emerald-500/60'
-      : cctv.stream_live === false
-        ? 'ring-1 ring-red-500/60 ring-inset'
-        : 'ring-1 ring-gray-500/20';
+      : cctv.stream_state === 'idle'
+        ? 'ring-1 ring-blue-500/60'
+        : cctv.stream_state === 'offline'
+          ? 'ring-1 ring-red-500/60 ring-inset'
+          : cctv.stream_state === 'unknown'
+            ? 'ring-1 ring-gray-500/20'
+            : cctv.stream_live === true
+              ? 'ring-1 ring-emerald-500/60'
+              : cctv.stream_live === false
+                ? 'ring-1 ring-red-500/60 ring-inset'
+                : 'ring-1 ring-gray-500/20';
 
-  // Badge status live (Sprint 37-PATCH): memakai logika yang sama dengan marker peta —
-  // getLiveBadge dari CCTVMap menangani Metro-E binary vs GSM 4-state
-  // (🟢 Online / 🟡 Pernah aktif hari ini / 🔴 Offline / ⚪ Tidak diketahui).
+  // Badge status live memakai logika yang sama dengan marker peta.
+  // (🟢 Live / 🔵 Siaga on-demand / 🟡 Pernah aktif / 🔴 Offline / ⚪ Unknown)
   const badge = getLiveBadge(cctv);
   const liveIndicator = badge.dot;
 

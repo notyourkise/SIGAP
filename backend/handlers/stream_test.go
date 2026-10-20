@@ -26,11 +26,13 @@ import (
 // Parameter variadic `extras` (opsional) dapat berisi:
 //   - streamLive bool          → nilai kolom stream_live (default false)
 //   - streamCheckedAt interface{} → nilai kolom stream_checked_at (default nil)
+//   - streamState string       → nilai kolom stream_state (default "" untuk fallback data lama)
 //
-// Pemanggilan lama tanpa extras tetap kompatibel (default false/nil).
+// Pemanggilan lama tanpa extras tetap kompatibel (default false/nil/"").
 func streamCCTVRow(id uuid.UUID, streamEnabled bool, channelPort int, rtspPassword string, extras ...interface{}) *sqlmock.Rows {
 	streamLive := false
 	var streamCheckedAt interface{} = nil
+	streamState := ""
 	if len(extras) > 0 {
 		if v, ok := extras[0].(bool); ok {
 			streamLive = v
@@ -39,17 +41,22 @@ func streamCCTVRow(id uuid.UUID, streamEnabled bool, channelPort int, rtspPasswo
 	if len(extras) > 1 {
 		streamCheckedAt = extras[1]
 	}
+	if len(extras) > 2 {
+		if v, ok := extras[2].(string); ok {
+			streamState = v
+		}
+	}
 	return sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
 		"kode_cctv", "id_channel", "nama", "lokasi_area",
 		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
-		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_checked_at",
+		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_state", "stream_checked_at",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-STREAM", "CH-01", "Kamera Streaming", "Area Utama",
 		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
 		"192.168.1.10", "192.168.1.11", "Aman", "payload", 100, channelPort, rtspPassword, streamEnabled,
-		streamLive, streamCheckedAt)
+		streamLive, streamState, streamCheckedAt)
 }
 
 // encryptedTestPassword menghasilkan ciphertext AES-256 dari password polos

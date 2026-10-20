@@ -773,11 +773,34 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 		return
 	}
 
-	// Path tidak siap (isReady=false).
-	// Gunakan hasil probe RTSP (stream_live) sebagai sumber kebenaran bila
-	// tersedia. Nilai ini dimuat dari DB saat runStreamHealthOnce sehingga
-	// mencerminkan hasil probe terakhir dari RTSP Probe Engine (Task 14A.1).
+	// Path tidak siap (isReady=false). Bedakan idle on-demand dari outage:
+	// path yang terdaftar tetapi belum berjalan karena tidak ada penonton tidak
+	// boleh memicu countdown STREAM_DOWN.
+	streamState := cctv.StreamState
+	if streamState == models.StreamStateIdle {
+		if _, wasDown := streamDownSince[path]; wasDown {
+			delete(streamDownSince, path)
+			delete(streamDownNotified, path)
+			utils.Log.Debugf("🔵 Stream CCTV %s (%s) idle on-demand — countdown down direset", cctv.Nama, cctv.KodeCCTV)
+		}
+		return
+	}
+	if streamState == models.StreamStateUnknown {
+		// Status belum dapat disimpulkan (mis. MediaMTX tidak dapat dihubungi).
+		// Jangan mulai/naikkan countdown; tunggu probe berikutnya.
+		return
+	}
+
+	// Gunakan hasil probe RTSP (stream_live/stream_state) sebagai sumber
+	// kebenaran bila tersedia. Nilai ini dimuat dari DB saat
+	// runStreamHealthOnce sehingga mencerminkan hasil probe terakhir.
 	live := cctv.StreamLive
+	switch streamState {
+	case models.StreamStateLive:
+		live = true
+	case models.StreamStateOffline:
+		live = false
+	}
 	if !live {
 		// Kamera dianggap down oleh probe — mulai countdown tanpa perlu menunggu
 		// pernah ada viewer (memperbaiki bug kamera yang tidak pernah ditonton).
@@ -917,6 +940,7 @@ func streamHealthSnapshot(cctv models.CCTV, pathMap map[string]utils.PathInfo, n
 		"nama":                  cctv.Nama,
 		"kode_cctv":             cctv.KodeCCTV,
 		"stream_enabled":        cctv.StreamEnabled,
+		"stream_state":          cctv.StreamState,
 		"stream_active":         cctv.StreamEnabled && exists && ready,
 		"stream_ready":          ready,
 		"viewers":               viewers,

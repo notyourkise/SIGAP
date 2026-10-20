@@ -16,6 +16,7 @@
 4. `THD-15` memakai H.265 pada **main dan sub-stream**; `THD-06` memakai H.264 pada main dan H.265 pada sub.
 5. Web/ISAPI NVR mengarah ke port `5001`, tetapi port tersebut tidak terbuka dari host ini. Port `554` (RTSP) terbuka; port `443` hanya mengembalikan halaman redirect ke `5001`.
 6. Tidak ada perubahan encoding batch pada NVR. Aplikasi sekarang memakai sub-stream sebagai default; main stream tetap dapat dipilih eksplisit.
+7. Status probe on-demand diperbaiki: path yang terdaftar tetapi belum berjalan karena tidak ada penonton kini berstatus **idle/Siaga**, bukan `offline`.
 
 ## Bukti Teknis
 
@@ -52,6 +53,21 @@
 - `ReRegisterFailedStreams` memakai daftar **config path**, sehingga path on-demand yang idle tidak dianggap hilang.
 - Frontend mendeteksi respons codec tidak didukung, menghentikan retry tanpa akhir, dan menampilkan detail penyebab/tindakan.
 - Default kualitas diubah ke **sub/SD** setelah pilot THD-15 berhasil; pengguna tetap bisa memilih HD/main.
+- Migration `000025_stream_state` menambahkan status empat keadaan: `live`, `idle`, `offline`, `unknown`.
+- Probe GSM membedakan path on-demand yang belum berjalan (`idle`) dari kegagalan terkonfirmasi (`offline`); kegagalan MediaMTX tidak lagi memaksa semua kamera menjadi offline.
+- Stream health monitor tidak memulai countdown `STREAM_DOWN` untuk status `idle`/`unknown`, sehingga tidak ada alarm palsu setelah 15 menit.
+
+## Bukti Status Probe On-Demand
+
+Setelah deploy dan siklus probe pertama:
+
+```
+Probe cycle: 20 kamera dicek | online=0 idle=20 offline=0 unknown=0
+```
+
+Database: 20/20 kamera aktif memiliki `stream_state=idle`, `stream_live=false`, dan `stream_checked_at` terisi. Tidak ada log `STREAM_DOWN` palsu. Status idle berarti path on-demand terdaftar dan siap dibuka saat pengguna menonton, bukan kamera mati.
+
+Catatan data: seluruh 20 kamera aktif saat ini memiliki `ip_camera` kosong sehingga diklasifikasikan sebagai GSM dan mengikuti kebijakan probe pasif (zero data). Jika `ip_camera` Metro-E diisi, kamera akan diprobe langsung dan statusnya menjadi live/offline biner.
 
 ## Catatan Kompatibilitas
 
@@ -66,12 +82,12 @@ Tidak ada transcoding FFmpeg yang diaktifkan.
 
 - Rollout H.264 sub-stream ke 20 kamera aktif **tidak dilakukan** karena keputusan operasional saat ini adalah mempertahankan H.265.
 - Kompatibilitas perangkat pengguna (HP, Edge, Chrome tanpa HEVC extension) belum diuji menyeluruh.
-- Status probe on-demand masih dapat menampilkan `offline` saat sumber idle; ini isu status, bukan penyebab utama kegagalan playback.
 - Rotasi password NVR masih pending dan menunggu koordinasi agar seluruh URL tersimpan diperbarui.
+- Perlu pemantauan beberapa siklus untuk memastikan status idle tetap stabil dan tidak ada alarm palsu.
 
 ## Langkah Berikutnya
 
 1. Uji playback SD di perangkat yang benar-benar akan dipakai pengguna (minimal satu HP dan satu browser desktop selain mesin uji).
 2. Pantau laporan pengguna; bila ada perangkat tanpa HEVC, ubah sub-stream kamera terkait ke H.264 atau arahkan pengguna memilih HD/main yang kompatibel.
 3. Bila kompatibilitas luas menjadi prioritas, lanjutkan rollout H.264 sub-stream secara bertahap dan verifikasi tiap kamera.
-4. Selesaikan perbaikan status probe on-demand agar kamera idle tidak selalu ditampilkan `offline`.
+4. Pantau log probe/health monitor setelah beberapa siklus; pastikan kamera idle tetap berstatus Siaga dan tidak memicu `STREAM_DOWN`.

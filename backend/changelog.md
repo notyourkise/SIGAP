@@ -1,5 +1,35 @@
 # Changelog - Backend SIGAP
 
+## [0.64.14] - 2026-10-20
+
+### Status probe on-demand: idle bukan offline
+
+**Masalah**: Probe GSM hanya membaca path operasional MediaMTX. Path on-demand yang belum berjalan karena tidak ada penonton memiliki `ready=false`, lalu ditulis sebagai `stream_live=false` dan ditampilkan sebagai offline. Stream health monitor juga dapat memicu `STREAM_DOWN` palsu setelah 15 menit.
+
+**Perbaikan**:
+- Migration `000025_stream_state` menambahkan kolom `stream_state` (`live`, `idle`, `offline`, `unknown`); `stream_live` tetap dipertahankan untuk kompatibilitas.
+- Probe GSM membedakan path terdaftar yang idle dari kegagalan terkonfirmasi (ada penonton tetapi sumber tidak siap). Kegagalan MediaMTX tidak lagi memaksa semua kamera GSM menjadi offline.
+- `GetLiveStatus` mengembalikan `stream_state` dan ringkasan `idle`; status unknown dihitung terpisah dari offline.
+- Stream health monitor tidak memulai countdown `STREAM_DOWN` untuk status `idle`/`unknown`, dan mereset countdown lama saat stream kembali idle.
+- Test probe, status live, dan health monitor diperluas.
+
+timestamp: 2026-10-20 18:20 UTC+8
+kategori: Sedang, Backend (Streaming/Status)
+file yang diubah:
+- backend/migrations/000025_stream_state.up.sql
+- backend/migrations/000025_stream_state.down.sql
+- backend/models/cctv.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream.go
+- backend/handlers/stream_probe_test.go
+- backend/handlers/stream_test.go
+- backend/handlers/stream_health_test.go
+- backend/changelog.md
+
+alasan perubahan: Mencegah kamera on-demand yang hanya siaga ditampilkan offline dan mencegah alarm STREAM_DOWN palsu.
+
+---
+
 ## [0.64.13] - 2026-10-20
 
 ### Pilot THD-15 SD berhasil: sub-stream menjadi default
