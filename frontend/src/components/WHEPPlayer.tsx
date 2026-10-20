@@ -29,6 +29,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import {
+  isUnsupportedCodecResponse,
   nextWhepStatus,
   type ConnectionStatus,
 } from '@/lib/whep-status';
@@ -51,9 +52,18 @@ const MAX_RETRY_DELAY = 30_000;
 const BASE_RETRY_DELAY = 2_000;
 const FRAME_WAIT_TIMEOUT = 12_000;
 
+// Error codec tidak boleh memicu reconnect tanpa henti: selama encoding kamera
+// masih H.265/HEVC, WebRTC browser akan menolak SDP yang sama berulang kali.
+class UnsupportedCodecError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedCodecError';
+  }
+}
+
 export default function WHEPPlayer({
   streamPath,
-  quality = 'sub',
+  quality = 'main',
   onStatusChange,
   onError,
   className = '',
@@ -259,6 +269,17 @@ export default function WHEPPlayer({
       });
 
       if (!res.ok) {
+        let detail = '';
+        try {
+          detail = await res.text();
+        } catch {
+          // Abaikan kegagalan membaca body; status HTTP tetap dilaporkan.
+        }
+        if (isUnsupportedCodecResponse(res.status, detail)) {
+          throw new UnsupportedCodecError(
+            'Codec kamera H.265/HEVC tidak didukung browser. Ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
+          );
+        }
         throw new Error(`MediaMTX membalas dengan HTTP ${res.status}.`);
       }
 
@@ -267,6 +288,14 @@ export default function WHEPPlayer({
       setStatus((current) => nextWhepStatus(current, 'answer'));
     } catch (e) {
       if (unmountedRef.current || stoppedRef.current) return;
+      if (e instanceof UnsupportedCodecError) {
+        // Hentikan retry dan tampilkan penyebab yang bisa ditindaklanjuti.
+        stoppedRef.current = true;
+        cleanupPc();
+        setStatus('error');
+        emitError(e.message);
+        return;
+      }
       emitError(
         e instanceof Error ? e.message : 'Gagal membangun koneksi streaming.'
       );

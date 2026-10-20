@@ -25,6 +25,24 @@ func setStreamClient(c *utils.MediaMTXClient) {
 	streamClient = c
 }
 
+// ensureStreamPath mendaftarkan path ke MediaMTX. Bila path sudah ada,
+// konfigurasinya di-patch dengan sumber terbaru agar perubahan kualitas
+// main/sub tidak diabaikan karena respons "already exists".
+// Mengembalikan true bila path sebelumnya sudah terdaftar.
+func ensureStreamPath(path string, cfg utils.PathConfig) (bool, error) {
+	err := streamClient.AddPath(path, cfg)
+	if err == nil {
+		return false, nil
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		return false, err
+	}
+	if patchErr := streamClient.PatchPath(path, cfg); patchErr != nil {
+		return true, patchErr
+	}
+	return true, nil
+}
+
 // streamHealthMu melindungi akses ke streamLastReady, streamDownSince, dan
 // streamDownNotified agar aman dipakai lintas goroutine (monitor & handler).
 var (
@@ -162,10 +180,12 @@ func StartStream(c *fiber.Ctx) error {
 		}
 	}
 
-	// Tentukan tipe stream berdasarkan query ?quality= (default sub).
-	streamType := utils.SubStream
-	if c.Query("quality") == "main" {
-		streamType = utils.MainStream
+	// Tentukan tipe stream berdasarkan query ?quality=.
+	// Default main dipertahankan sampai rollout encoding H.264 sub-stream
+	// selesai; pengguna tetap dapat memilih SD secara eksplisit.
+	streamType := utils.MainStream
+	if c.Query("quality") == "sub" {
+		streamType = utils.SubStream
 	}
 
 	// Susun URL RTSP dan path MediaMTX.
@@ -179,20 +199,16 @@ func StartStream(c *fiber.Ctx) error {
 		SourceOnDemandCloseAfter: "30s",
 		RTSPTransport:            "tcp",
 	}
-	pathAlreadyRegistered := false
-	if err := streamClient.AddPath(path, pathCfg); err != nil {
-		// Path mungkin sudah terdaftar dari pemanggilan sebelumnya (restart modal
-		// atau auto-register). Bila sudah ada, anggap berhasil agar tidak 502.
-		if strings.Contains(err.Error(), "already exists") {
-			pathAlreadyRegistered = true
-			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
-		} else {
-			utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Gagal menghubungi server streaming",
-			})
-		}
+	pathAlreadyRegistered, err := ensureStreamPath(path, pathCfg)
+	if err != nil {
+		utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghubungi server streaming",
+		})
+	}
+	if pathAlreadyRegistered {
+		utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
 	}
 	sourceReady := false
 	if pathAlreadyRegistered {
@@ -214,7 +230,7 @@ func StartStream(c *fiber.Ctx) error {
 		"data": fiber.Map{
 			"whep_url":           "/stream/" + path + "/whep",
 			"path":               path,
-			"quality":            c.Query("quality", "sub"),
+			"quality":            c.Query("quality", "main"),
 			"mediamtx_reachable": true,
 			"path_registered":    true,
 			"source_ready":       sourceReady,
@@ -316,7 +332,9 @@ func StartAllStreams(c *fiber.Ctx) error {
 			}
 		}
 
-		rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
+		// Sementara gunakan main stream sampai encoding H.264 sub-stream
+		// tersedia di seluruh NVR; hindari batch switch sebelum pilot lolos.
+		rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.MainStream)
 		path := utils.BuildStreamPath(cctv.ID.String())
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,
@@ -324,16 +342,14 @@ func StartAllStreams(c *fiber.Ctx) error {
 			SourceOnDemandCloseAfter: "30s",
 			RTSPTransport:            "tcp",
 		}
-		if err := streamClient.AddPath(path, pathCfg); err != nil {
-			// Path mungkin sudah terdaftar dari auto-register atau panggilan
-			// sebelumnya; bila sudah ada, anggap berhasil.
-			if strings.Contains(err.Error(), "already exists") {
-				success++
-			} else {
-				utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-				failed++
-			}
+		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
+		if err != nil {
+			utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+			failed++
 			continue
+		}
+		if alreadyRegistered {
+			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
 		}
 		success++
 	}
@@ -607,7 +623,9 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 		}
 	}
 
-	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
+	// Sementara gunakan main stream sampai encoding H.264 sub-stream
+	// tersedia di seluruh NVR; hindari batch switch sebelum pilot lolos.
+	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.MainStream)
 	path := utils.BuildStreamPath(cctv.ID.String())
 	pathCfg := utils.PathConfig{
 		Source:                   rtspURL,
@@ -618,14 +636,13 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 
 	backoff := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
 	for attempt := 0; attempt < maxRetry; attempt++ {
-		err := streamClient.AddPath(path, pathCfg)
+		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
 		if err == nil {
-			utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
-			return nil
-		}
-		// Path sudah ada → dianggap berhasil.
-		if strings.Contains(err.Error(), "already exists") {
-			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
+			if alreadyRegistered {
+				utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
+			} else {
+				utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
+			}
 			return nil
 		}
 		utils.Log.Warnf("⚠️ Percobaan %d/%d register stream %s gagal: %v", attempt+1, maxRetry, path, err)
@@ -648,14 +665,16 @@ func ReRegisterFailedStreams(db *gorm.DB) {
 		return
 	}
 
-	// Bangun set path yang sudah ada di MediaMTX.
+	// Bangun set path config yang sudah terdaftar. Gunakan ListPathConfigs,
+	// bukan ListPaths: path on-demand tetap terdaftar walau sumbernya sedang
+	// idle, sehingga tidak perlu ditambahkan ulang setiap siklus.
 	existing := map[string]bool{}
-	if paths, err := streamClient.ListPaths(); err == nil {
+	if paths, err := streamClient.ListPathConfigs(); err == nil {
 		for _, p := range paths {
 			existing[p.Name] = true
 		}
 	} else {
-		utils.Log.Warnf("⚠️ Gagal mengambil daftar path MediaMTX untuk re-register: %v", err)
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar konfigurasi path MediaMTX untuk re-register: %v", err)
 		return
 	}
 

@@ -144,16 +144,68 @@ func BuildStreamPath(cctvID string) string {
 // ResolveRTSPURL menentukan URL RTSP final untuk sebuah CCTV.
 //
 // Bila `rtspURL` (field rtsp_url pada master CCTV) diisi — misalnya
-//   rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901
-// — URL tersebut dipakai langsung sebagai sumber stream MediaMTX.
+// rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901 — URL tersebut
+// dipakai sebagai sumber stream MediaMTX. Bila URL memakai pola Hikvision
+// /Streaming/channels/<channelID>, dua digit terakhir channelID disesuaikan
+// dengan streamType (01 = main, 02 = sub) agar tombol kualitas SD/HD benar-
+// benar memilih stream yang berbeda. URL dengan pola lain dikembalikan apa
+// adanya supaya konfigurasi vendor non-Hikvision tidak rusak.
 //
 // Jika kosong, URL disusun otomatis dari channel port + kredensial NVR global
 // melalui BuildRTSPURL (perilaku lama, hanya cocok untuk satu NVR bersama).
 func ResolveRTSPURL(rtspURL string, channelPort int, decryptedPassword string, streamType StreamType) string {
 	if rtspURL != "" {
-		return rtspURL
+		return applyStreamTypeToRTSPURL(rtspURL, streamType)
 	}
 	return BuildRTSPURL(channelPort, decryptedPassword, streamType)
+}
+
+// applyStreamTypeToRTSPURL mengganti suffix main/sub pada channel Hikvision.
+// Mengembalikan URL asli bila pola tidak dikenali atau suffix sudah sesuai,
+// sehingga encoding userinfo/query tetap dipertahankan.
+func applyStreamTypeToRTSPURL(raw string, streamType StreamType) string {
+	if streamType != MainStream && streamType != SubStream {
+		return raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return raw
+	}
+
+	segments := strings.Split(u.Path, "/")
+	idx := len(segments) - 1
+	for idx >= 0 && segments[idx] == "" {
+		idx--
+	}
+	if idx < 1 || !strings.EqualFold(segments[idx-1], "channels") {
+		return raw
+	}
+
+	channelID := segments[idx]
+	if len(channelID) < 3 {
+		return raw
+	}
+	prefix, suffix := channelID[:len(channelID)-2], channelID[len(channelID)-2:]
+	if suffix != "01" && suffix != "02" {
+		return raw
+	}
+	if _, err := strconv.Atoi(prefix); err != nil {
+		return raw
+	}
+
+	desiredSuffix := "01"
+	if streamType == SubStream {
+		desiredSuffix = "02"
+	}
+	if suffix == desiredSuffix {
+		return raw
+	}
+
+	segments[idx] = prefix + desiredSuffix
+	u.Path = strings.Join(segments, "/")
+	u.RawPath = ""
+	return u.String()
 }
 
 // GetRTSPHost membaca host NVR dari environment RTSP_NVR_HOST (fallback kosong — wajib dikonfigurasi).

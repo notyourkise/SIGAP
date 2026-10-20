@@ -119,6 +119,21 @@ func (c *MediaMTXClient) AddPath(name string, config PathConfig) error {
 	return err
 }
 
+// PatchPath memperbarui konfigurasi path yang sudah terdaftar. Dipakai saat
+// kualitas stream berubah (main/sub) atau sumber RTSP diperbarui; MediaMTX
+// akan me-restart source bila konfigurasi source berubah.
+func (c *MediaMTXClient) PatchPath(name string, config PathConfig) error {
+	jsonBody, err := json.Marshal(config)
+	if err != nil {
+		Log.Errorf("❌ Gagal encode konfigurasi patch path %s: %v", name, err)
+		return fmt.Errorf("gagal encode konfigurasi path: %w", err)
+	}
+
+	endpoint := "/v3/config/paths/patch/" + url.PathEscape(name)
+	_, _, err = c.doRequest(http.MethodPatch, endpoint, jsonBody)
+	return err
+}
+
 // RemovePath menghapus sebuah path dari MediaMTX. Mengembalikan error bila
 // status respon bukan 2xx atau bila client tidak valid.
 func (c *MediaMTXClient) RemovePath(name string) error {

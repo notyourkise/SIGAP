@@ -1,5 +1,34 @@
 # Changelog - Backend SIGAP
 
+## [0.64.12] - 2026-10-20
+
+### Streaming: pemilihan sub-stream dan update path MediaMTX
+
+**Masalah**: Saat `rtsp_url` penuh tersimpan, `ResolveRTSPURL` mengembalikan URL apa adanya sehingga parameter `quality=main/sub` tidak pernah mengubah stream. Path yang sudah terdaftar juga hanya dianggap sukses saat `AddPath` mengembalikan `already exists`, sehingga perubahan kualitas tidak diterapkan. `ReRegisterFailedStreams` memakai daftar path operasional, padahal path on-demand tetap terdaftar meski sumbernya sedang idle.
+
+**Perbaikan**:
+- `ResolveRTSPURL` menyesuaikan suffix channel Hikvision `01`/`02` pada URL penuh sesuai `quality`; URL non-Hikvision atau pola yang tidak dikenali dikembalikan tanpa perubahan.
+- Default kualitas tetap **main** sampai rollout encoding H.264 sub-stream selesai; ini mencegah seluruh kamera ikut pindah ke sub-stream H.265 sebelum pilot THD-15 lolos. Pengguna tetap dapat memilih SD secara eksplisit.
+- Ditambahkan `PatchPath` pada klien MediaMTX dan helper `ensureStreamPath`: path baru ditambahkan, path lama di-patch agar sumber/kualitas terbaru benar-benar dipakai.
+- `StartStream`, `StartAllStreams`, dan `registerStreamWithRetry` memakai helper tersebut.
+- `ReRegisterFailedStreams` memakai `ListPathConfigs` sehingga path on-demand yang idle tidak dianggap hilang.
+- Regression test untuk pemilihan main/sub, patch path, dan path yang sudah terdaftar.
+
+timestamp: 2026-10-20 17:05 UTC+8
+kategori: Kecil, Backend (Streaming)
+file yang diubah:
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- backend/utils/mediamtx.go
+- backend/utils/mediamtx_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/changelog.md
+
+alasan perubahan: Memastikan tombol SD/HD dan konfigurasi sub-stream benar-benar diterapkan, serta mengurangi false negative pada re-register path on-demand.
+
+---
+
 ## [0.64.11] - 2026-10-20
 
 ### Perbaikan keamanan P0: metrics, diagnostik, dan URL RTSP

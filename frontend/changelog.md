@@ -1,5 +1,31 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.8] - 2026-10-20
+
+### Pemutar CCTV: pesan jelas saat codec H.265 ditolak browser
+
+**Masalah**: MediaMTX membalas `400 codecs not supported by client` untuk sumber H.265/HEVC. Pemutar hanya menampilkan pesan HTTP generik dan terus mencoba reconnect, sehingga pengguna tidak tahu bahwa masalahnya ada di encoding kamera/NVR.
+
+**Perbaikan**:
+- Deteksi respons codec tidak didukung (`400`/`415` + body memuat `codec`) melalui helper `isUnsupportedCodecResponse`.
+- Pemutar berhenti mencoba reconnect untuk error codec dan menampilkan pesan yang bisa ditindaklanjuti.
+- Detail toast menyebut penyebab (H.265/HEVC), lokasi (encoding stream kamera main/sub di NVR), dan tindakan (ubah ke H.264 lalu mulai ulang stream).
+- Unit test untuk klasifikasi respons codec.
+- Default modal streaming dipertahankan **HD/main** sampai rollout H.264 sub-stream selesai; tombol SD tetap tersedia untuk uji pilot.
+
+timestamp: 2026-10-20 17:05 UTC+8
+kategori: Kecil, Frontend (Streaming)
+file yang diubah:
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamModal.tsx
+- frontend/src/lib/whep-status.ts
+- frontend/tests/whep-status.test.mts
+- frontend/changelog.md
+
+alasan perubahan: Mengubah kegagalan codec yang berulang menjadi pesan diagnostik yang jelas dan menghentikan retry yang tidak akan berhasil.
+
+---
+
 ## [1.55.7] - 2026-10-20
 
 ### Form CCTV: edit URL RTSP tanpa menerima kredensial mentah
