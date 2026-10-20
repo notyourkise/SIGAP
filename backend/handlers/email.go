@@ -46,10 +46,7 @@ func UpdateEmailPreferences(c *fiber.Ctx) error {
 
 	var req EmailPreferencesRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Harus ada minimal satu field yang dikirim.

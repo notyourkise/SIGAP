@@ -1,5 +1,33 @@
 # Changelog - Backend SIGAP
 
+## [0.64.8] - 2026-10-20
+
+### Peningkatan: Pesan error parsing body request
+
+**Masalah**: Saat `BodyParser` gagal, handler hanya mengembalikan pesan generik `"Format input tidak valid"` atau `"Payload tidak valid"`. Pengguna tidak tahu field mana yang salah dan apa penyebabnya, sehingga kasus seperti `zone_id: null` sangat membingungkan.
+
+**Perbaikan**: Utility baru `sendBodyParseError` di `backend/handlers/request_error.go`:
+- Mengidentifikasi nama field JSON yang bermasalah, termasuk error dari custom unmarshaler seperti `OptionalUUID` yang tidak membawa nama field.
+- Menjelaskan penyebabnya: tipe data tidak sesuai, UUID tidak valid, JSON rusak (dengan baris/kolom), atau body kosong.
+- Menyertakan nilai yang bermasalah pada pesan, tetapi meredaksi field sensitif seperti password/secret/token.
+- Mengembalikan detail terstruktur di properti `detail` (`field`, `reason`, `value`, `line`, `column`).
+- Menerjemahkan error `OptionalUUID` menjadi pesan yang bisa dipahami (`bukan UUID yang valid`, `harus berupa string UUID atau null`).
+
+Seluruh handler yang memakai `c.BodyParser` diganti memakai helper ini. Frontend tidak perlu diubah karena toast sudah menampilkan `message` dari backend.
+
+timestamp: 2026-10-20 10:20 UTC+8
+kategori: Kecil, Backend (Error Handling)
+file yang diubah:
+- backend/handlers/request_error.go (baru)
+- backend/handlers/request_error_test.go (baru)
+- backend/utils/optional_uuid.go
+- backend/utils/optional_uuid_test.go
+- backend/handlers/*.go (pemakaian sendBodyParseError)
+- backend/changelog.md
+alasan perubahan: Pesan error parsing harus menjelaskan field dan penyebabnya agar masalah input bisa langsung diperbaiki tanpa menebak-nebak.
+
+---
+
 ## [0.64.7] - 2026-10-20
 
 ### Fix: Form Tambah CCTV gagal saat Kawasan/Zona kosong

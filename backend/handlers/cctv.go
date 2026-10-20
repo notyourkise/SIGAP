@@ -187,10 +187,7 @@ func parseCoordinateCell(value string, rowNum int, field string) *float64 {
 func CreateCCTV(c *fiber.Ctx) error {
 	var req CreateCCTVRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Normalisasi status ke enum huruf kecil sebelum validasi & penyimpanan
@@ -537,10 +534,7 @@ func UpdateCCTV(c *fiber.Ctx) error {
 
 	var req UpdateCCTVRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Normalisasi status ke enum huruf kecil sebelum validasi & penyimpanan
@@ -756,10 +750,7 @@ func DeleteCCTV(c *fiber.Ctx) error {
 func ScanCCTV(c *fiber.Ctx) error {
 	var req ScanCCTVRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -1296,10 +1287,7 @@ type BulkDeleteRequest struct {
 func BulkDeleteCCTV(c *fiber.Ctx) error {
 	var req BulkDeleteRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	tx := config.DB.Begin()

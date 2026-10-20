@@ -184,10 +184,7 @@ func GetSiteByID(c *fiber.Ctx) error {
 func CreateSite(c *fiber.Ctx) error {
 	var req CreateSiteRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -277,10 +274,7 @@ func UpdateSite(c *fiber.Ctx) error {
 
 	var req UpdateSiteRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -430,10 +424,7 @@ func AssignUsersToSite(c *fiber.Ctx) error {
 
 	var req AssignSiteUsersRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Daftar user boleh kosong (berarti membersihkan seluruh penugasan site).

@@ -2,7 +2,8 @@ package utils
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -29,7 +30,10 @@ func (o *OptionalUUID) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	str := strings.Trim(string(data), `"`)
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return fmt.Errorf("harus berupa string UUID atau null")
+	}
 
 	// Handle empty string
 	if str == "" {
@@ -42,7 +46,7 @@ func (o *OptionalUUID) UnmarshalJSON(data []byte) error {
 	// Try to parse as UUID
 	id, err := uuid.Parse(str)
 	if err != nil {
-		return err
+		return fmt.Errorf("bukan UUID yang valid")
 	}
 
 	o.Value = &id

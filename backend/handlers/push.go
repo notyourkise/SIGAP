@@ -40,10 +40,7 @@ func SubscribePush(c *fiber.Ctx) error {
 
 	var req SubscribePushRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Payload tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if req.Endpoint == "" || req.KeyP256DH == "" || req.KeyAuth == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -121,7 +118,10 @@ func UnsubscribePush(c *fiber.Ctx) error {
 	var req struct {
 		Endpoint string `json:"endpoint"`
 	}
-	if err := c.BodyParser(&req); err != nil || req.Endpoint == "" {
+	if err := c.BodyParser(&req); err != nil {
+		return sendBodyParseError(c, &req, err)
+	}
+	if req.Endpoint == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "endpoint wajib diisi",

@@ -41,10 +41,7 @@ type CreateUserRequest struct {
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -146,10 +143,7 @@ func ChangePassword(c *fiber.Ctx) error {
 
 	var req ChangePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -372,10 +366,7 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 
 	var req UpdateMyProfileRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -454,10 +445,7 @@ func isSafeUploadPath(path string) bool {
 func CreateUser(c *fiber.Ctx) error {
 	var req CreateUserRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {

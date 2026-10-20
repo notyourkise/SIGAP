@@ -130,10 +130,7 @@ func GetAllChecklistTemplates(c *fiber.Ctx) error {
 func CreateChecklistTemplate(c *fiber.Ctx) error {
 	var req CreateChecklistTemplateRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -215,10 +212,7 @@ func UpdateChecklistTemplate(c *fiber.Ctx) error {
 
 	var req UpdateChecklistTemplateRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -334,10 +328,7 @@ func DeleteChecklistTemplate(c *fiber.Ctx) error {
 func ReorderChecklistTemplates(c *fiber.Ctx) error {
 	var req ReorderChecklistTemplatesRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {

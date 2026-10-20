@@ -131,10 +131,7 @@ type SaveReportTemplateRequest struct {
 func GenerateReport(c *fiber.Ctx) error {
 	var req GenerateReportRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -249,10 +246,7 @@ func ListReportTemplates(c *fiber.Ctx) error {
 func SaveReportTemplate(c *fiber.Ctx) error {
 	var req SaveReportTemplateRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
