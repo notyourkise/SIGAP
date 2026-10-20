@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -42,11 +43,57 @@ func normalizeCCTVStatus(s string) string {
 	}
 }
 
+// validateRTSPURL memastikan URL streaming memakai skema RTSP dan memiliki
+// host. Nilai kosong diperbolehkan karena data legacy dapat memakai fallback
+// channel_port + kredensial NVR global.
+func validateRTSPURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "rtsp" && u.Scheme != "rtsps") {
+		return "URL RTSP harus lengkap dengan skema rtsp:// atau rtsps:// dan host"
+	}
+	return ""
+}
+
+// sanitizeCCTVForResponse membuang kredensial dari model sebelum dikirim ke
+// klien. Nilai RTSPURL asli (plaintext legacy maupun ciphertext) tidak pernah
+// keluar dari backend; UI hanya menerima versi tersamarkan + flag configured.
+func sanitizeCCTVForResponse(cctv *models.CCTV) {
+	if cctv == nil {
+		return
+	}
+	configured := strings.TrimSpace(cctv.RTSPURL) != ""
+	if configured {
+		raw, err := utils.DecryptRTSPURL(cctv.RTSPURL)
+		if err != nil {
+			utils.Log.Warnf("⚠️ Gagal mendekripsi URL RTSP CCTV %s: %v", cctv.ID, err)
+		} else {
+			cctv.RTSPURLMasked = utils.MaskRTSPURL(raw)
+		}
+	}
+	cctv.RTSPURLConfigured = configured
+	cctv.RTSPURL = ""
+	cctv.RTSPPassword = ""
+}
+
+// broadcastCCTVUpdate hanya menyiarkan metadata aman. Jangan pernah mengirim
+// model CCTV utuh karena dapat memuat RTSPURL/kredensial atau hash password.
+func broadcastCCTVUpdate(cctv models.CCTV) {
+	utils.BroadcastEvent("CCTV_UPDATED", fiber.Map{
+		"id":        cctv.ID.String(),
+		"kode_cctv": cctv.KodeCCTV,
+		"nama":      cctv.Nama,
+	})
+}
+
 // Request body untuk pembuatan CCTV baru
 type CreateCCTVRequest struct {
-	KodeCCTV      string `json:"kode_cctv" validate:"required,min=3,max=50"`
-	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
-	Nama          string `json:"nama" validate:"required,min=3,max=100"`
+	KodeCCTV      string   `json:"kode_cctv" validate:"required,min=3,max=50"`
+	IDChannel     string   `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string   `json:"nama" validate:"required,min=3,max=100"`
 	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
 	Longitude     *float64 `json:"longitude"`
 	Latitude      *float64 `json:"latitude"`
@@ -71,9 +118,9 @@ type CreateCCTVRequest struct {
 
 // Request body untuk update data CCTV
 type UpdateCCTVRequest struct {
-	KodeCCTV      string `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
-	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
-	Nama          string `json:"nama" validate:"omitempty,min=3,max=100"`
+	KodeCCTV      string   `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
+	IDChannel     string   `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string   `json:"nama" validate:"omitempty,min=3,max=100"`
 	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
 	Longitude     *float64 `json:"longitude"`
 	Latitude      *float64 `json:"latitude"`
@@ -209,6 +256,14 @@ func CreateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// Validasi format URL RTSP yang dikirim form.
+	if msg := validateRTSPURL(req.RTSPURL); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
+		})
+	}
+
 	// Validasi range & keunikan ChannelPort (Task 13.4)
 	if msg := validateChannelPortForCreate(config.DB, req.ChannelPort); msg != "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -269,8 +324,17 @@ func CreateCCTV(c *fiber.Ctx) error {
 
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
-	cctv.RTSPURL = req.RTSPURL
-	
+	if rawURL := strings.TrimSpace(req.RTSPURL); rawURL != "" {
+		encryptedURL, err := utils.EncryptRTSPURL(rawURL)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengenkripsi URL RTSP",
+			})
+		}
+		cctv.RTSPURL = encryptedURL
+	}
+
 	// Set zone_id dan site_id hanya jika ada value (tidak null dan bukan zero)
 	if req.ZoneID.HasValue() {
 		cctv.ZoneID = req.ZoneID.Value
@@ -278,7 +342,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 	if req.SiteID.HasValue() {
 		cctv.SiteID = req.SiteID.Value
 	}
-	
+
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -298,10 +362,10 @@ func CreateCCTV(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "CREATE_CCTV", "CCTV", "Membuat data CCTV baru: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
-	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+	broadcastCCTVUpdate(cctv)
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
-	cctv.RTSPPassword = ""
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
+	sanitizeCCTVForResponse(&cctv)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -386,9 +450,9 @@ func GetAllCCTV(c *fiber.Ctx) error {
 		})
 	}
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
 	for i := range cctvs {
-		cctvs[i].RTSPPassword = ""
+		sanitizeCCTVForResponse(&cctvs[i])
 		// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
 		cctvs[i].SnapshotURL = snapshotURLFor(cctvs[i].ID.String())
 	}
@@ -433,8 +497,8 @@ func GetCCTVByID(c *fiber.Ctx) error {
 		})
 	}
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
-	cctv.RTSPPassword = ""
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
+	sanitizeCCTVForResponse(&cctv)
 	// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
 	cctv.SnapshotURL = snapshotURLFor(cctv.ID.String())
 
@@ -556,6 +620,16 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		})
 	}
 
+	// Validasi format URL RTSP bila field dikirim.
+	if req.RTSPURL != nil {
+		if msg := validateRTSPURL(*req.RTSPURL); msg != "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": msg,
+			})
+		}
+	}
+
 	// Validasi range & keunikan ChannelPort, mengecualikan CCTV ini (Task 13.4)
 	if msg := validateChannelPortForUpdate(config.DB, req.ChannelPort, id); msg != "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -636,9 +710,21 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		cctv.StreamEnabled = *req.StreamEnabled
 	}
 	if req.RTSPURL != nil {
-		cctv.RTSPURL = *req.RTSPURL
+		rawURL := strings.TrimSpace(*req.RTSPURL)
+		if rawURL == "" {
+			cctv.RTSPURL = ""
+		} else {
+			encryptedURL, err := utils.EncryptRTSPURL(rawURL)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Gagal mengenkripsi URL RTSP",
+				})
+			}
+			cctv.RTSPURL = encryptedURL
+		}
 	}
-	
+
 	// Zona & kawasan operasional — tiga keadaan: diisi (UUID valid), dikosongkan (null), atau tidak dikirim (biar asli)
 	if req.ZoneID.Present {
 		if req.ZoneID.Null {
@@ -648,7 +734,7 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		}
 		// else: zone_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
-	
+
 	if req.SiteID.Present {
 		if req.SiteID.Null {
 			cctv.SiteID = nil // Kosongkan kawasan (set to NULL di database)
@@ -666,7 +752,7 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "UPDATE_CCTV", "CCTV", "Memperbarui data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
-	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+	broadcastCCTVUpdate(cctv)
 
 	// Hook Task 10.1: bila status benar-benar berubah, ambil snapshot otomatis
 	// secara asinkron agar tidak memblokir respons API.
@@ -677,8 +763,8 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		}(cctv, reason)
 	}
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
-	cctv.RTSPPassword = ""
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
+	sanitizeCCTVForResponse(&cctv)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -726,7 +812,7 @@ func DeleteCCTV(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "DELETE_CCTV", "CCTV", "Menghapus data CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
-	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+	broadcastCCTVUpdate(cctv)
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
@@ -802,8 +888,8 @@ func ScanCCTV(c *fiber.Ctx) error {
 		})
 	}
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
-	cctv.RTSPPassword = ""
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
+	sanitizeCCTVForResponse(&cctv)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -1089,7 +1175,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 			HealthScore:   100,
 			// Site ID adalah opsi - tidak diisi jika kosong/null di Excel
 		}
-		
+
 		// Parse dan validasi Site ID (jika diisi)
 		// Jika kolom Site ID kosong/null di Excel, biarkan NULL (tidak set SiteID)
 		if trimmedSiteID := strings.TrimSpace(siteIDStr); trimmedSiteID != "" {
@@ -1101,7 +1187,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 					"message": fmt.Sprintf("Baris %d: Format Site ID tidak valid. Gunakan UUID format.", rowNum),
 				})
 			}
-			
+
 			// Validasi bahwa Site ID benar-benar ada di database
 			var site models.Site
 			if err := tx.First(&site, "id = ?", siteUUID).Error; err != nil {
@@ -1111,11 +1197,11 @@ func ImportCCTV(c *fiber.Ctx) error {
 					"message": fmt.Sprintf("Baris %d: Site ID '%s' tidak ditemukan di database. Pastikan Site ID valid atau biarkan kolom ini kosong untuk assign ke default site.", rowNum, siteIDStr),
 				})
 			}
-			
+
 			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
 		}
 		// Jika kolom Site ID kosong di Excel, SiteID tetap NULL (tidak diset)
-		
+
 		// Generate unique ID untuk CCTV
 		cctv.ID = newID
 
@@ -1252,10 +1338,10 @@ func RotateQRCode(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "ROTATE_QR_CODE", "CCTV",
 		"Merotasi QR Code CCTV: "+cctv.Nama+" ("+cctv.KodeCCTV+")", nil, "", "")
-	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+	broadcastCCTVUpdate(cctv)
 
-	// Password RTSP tidak boleh bocor ke klien pada respons.
-	cctv.RTSPPassword = ""
+	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
+	sanitizeCCTVForResponse(&cctv)
 	cctv.SnapshotURL = snapshotURLFor(cctv.ID.String())
 
 	return c.JSON(fiber.Map{

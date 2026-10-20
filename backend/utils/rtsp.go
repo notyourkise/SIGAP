@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // StreamType menunjukkan jenis aliran (stream) yang diminta dari NVR.
@@ -55,6 +56,83 @@ func BuildRTSPURL(channelPort int, decryptedPassword string, streamType StreamTy
 		port,
 		channelID,
 	)
+}
+
+// rtspURLEncryptionPrefix menandai nilai rtsp_url yang sudah dienkripsi.
+// Nilai lama tanpa prefix tetap dibaca sebagai plaintext agar data existing
+// tidak rusak, lalu akan dienkripsi saat migration/update berikutnya.
+const rtspURLEncryptionPrefix = "enc:v1:"
+
+// EncryptRTSPURL mengenkripsi URL RTSP penuh (termasuk kredensial userinfo)
+// sebelum disimpan ke database. String kosong dikembalikan apa adanya.
+func EncryptRTSPURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	encrypted, err := EncryptAES256(raw)
+	if err != nil {
+		return "", err
+	}
+	return rtspURLEncryptionPrefix + encrypted, nil
+}
+
+// DecryptRTSPURL mendekripsi nilai rtsp_url dari database. Nilai legacy yang
+// belum berprefix dianggap plaintext dan dikembalikan tanpa perubahan.
+func DecryptRTSPURL(stored string) (string, error) {
+	stored = strings.TrimSpace(stored)
+	if stored == "" {
+		return "", nil
+	}
+	if !strings.HasPrefix(stored, rtspURLEncryptionPrefix) {
+		return stored, nil
+	}
+	return DecryptAES256(strings.TrimPrefix(stored, rtspURLEncryptionPrefix))
+}
+
+// IsEncryptedRTSPURL memeriksa apakah nilai rtsp_url sudah memakai format
+// enkripsi saat ini. Dipakai migration data legacy agar idempoten.
+func IsEncryptedRTSPURL(stored string) bool {
+	return strings.HasPrefix(strings.TrimSpace(stored), rtspURLEncryptionPrefix)
+}
+
+// MaskRTSPURL menyamarkan password pada userinfo URL RTSP agar aman
+// ditampilkan di UI/log. Bila URL tidak dapat di-parse, fallback memask
+// bagian userinfo secara manual agar password tidak ikut bocor.
+func MaskRTSPURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "://") {
+		return redactUserInfoFallback(raw)
+	}
+	u, err := url.Parse(raw)
+	if err == nil {
+		return u.Redacted()
+	}
+	return redactUserInfoFallback(raw)
+}
+
+// redactUserInfoFallback mengganti password pada userinfo tanpa bergantung
+// pada parser URL. Dipakai hanya saat url.Parse gagal.
+func redactUserInfoFallback(raw string) string {
+	at := strings.LastIndex(raw, "@")
+	if at < 0 {
+		return raw
+	}
+	start := 0
+	if schemeEnd := strings.Index(raw, "://"); schemeEnd >= 0 {
+		start = schemeEnd + 3
+	}
+	if at <= start {
+		return raw
+	}
+	userinfo := raw[start:at]
+	if colon := strings.Index(userinfo, ":"); colon >= 0 {
+		userinfo = userinfo[:colon] + ":xxxxx"
+	}
+	return raw[:start] + userinfo + raw[at:]
 }
 
 // BuildStreamPath membangun path stream yang dipakai untuk mengidentifikasi

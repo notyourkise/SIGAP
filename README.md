@@ -90,10 +90,10 @@ graph TD
     MediaMTX[MediaMTX\nRTSP→WebRTC Relay\n:8554 RTSP · :8889 WebRTC]
     NVR[Hikvision NVR\n36.91.27.35:554\n35 Kamera CCTV]
 
-    Browser -- "HTTPS /api/*, /swagger/*, WS /api/ws" --> Nginx
+    Browser -- "HTTPS /api/*, WS /api/ws" --> Nginx
     Browser -- "HTTPS aplikasi web" --> Nginx
     Browser -- "WebRTC WHEP stream" --> Nginx
-    Nginx -- "proxy /api/*, /swagger/*" --> Backend
+    Nginx -- "proxy /api/* (kecuali diagnostik 404)" --> Backend
     Nginx -- "proxy / (halaman)" --> Frontend
     Nginx -- "proxy /whep/*, /webrtc/*" --> MediaMTX
     Frontend -- "REST API (rewrite /api)" --> Backend
@@ -473,7 +473,7 @@ erDiagram
 | GET | `/api/uploads/:filename` | Ambil foto (dilindungi JWT) | JWT | Semua |
 | GET | `/api/ws` | WebSocket real-time (maintenance, live status) | JWT | Semua |
 | GET | `/api/health` | Health check API & DB | Publik | - |
-| GET | `/swagger/*` | Dokumentasi API Swagger UI | Publik | non-prod |
+| GET | `/swagger/*` | Dokumentasi API Swagger UI | Development saja; diblokir Nginx | non-prod |
 
 ---
 
@@ -521,7 +521,9 @@ erDiagram
    | `https://localhost` | Aplikasi web (satu-satunya entrypoint) |
    | `https://localhost/sebaran-cctv` | Peta sebaran CCTV |
    | `https://localhost/monitor` | Monitor multi-kamera (Admin only) |
-   | `https://localhost/swagger/index.html` | API Docs (non-production) |
+
+   > Swagger UI dinonaktifkan di production dan diblokir oleh Nginx. Untuk
+   > development, akses langsung ke service `api:3000` dari dalam network Docker.
 
 8. **Login dengan akun default**
    - **Username**: `admin`

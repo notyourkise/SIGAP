@@ -197,7 +197,7 @@ func newBodyFieldDetail(field string, raw json.RawMessage, err error) *bodyParse
 
 func displayJSONValue(field string, raw json.RawMessage) string {
 	lowerField := strings.ToLower(field)
-	for _, secret := range []string{"password", "secret", "token", "api_key", "apikey", "authorization"} {
+	for _, secret := range []string{"password", "secret", "token", "api_key", "apikey", "authorization", "rtsp_url"} {
 		if strings.Contains(lowerField, secret) {
 			return "*** (disembunyikan)"
 		}

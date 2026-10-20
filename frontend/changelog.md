@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.7] - 2026-10-20
+
+### Form CCTV: edit URL RTSP tanpa menerima kredensial mentah
+
+**Masalah**: Form edit mengisi input dengan `rtsp_url` dari API, sehingga password NVR dapat terlihat di UI. Saat API mulai menyamarkan URL, form juga perlu tetap bisa mempertahankan URL lama tanpa meminta pengguna mengetik ulang.
+
+**Perbaikan**:
+- Form edit menampilkan **URL tersimpan** dalam bentuk tersamarkan (`user:xxxxx@host`), bukan URL mentah.
+- Input URL dikosongkan saat edit; membiarkannya kosong berarti mempertahankan URL lama dan payload tidak mengirim `rtsp_url`.
+- Mengetik URL baru akan menggantinya; tersedia opsi **Hapus URL RTSP tersimpan** dengan validasi bila streaming masih aktif.
+- Validasi streaming mempertimbangkan URL tersimpan, sehingga edit tidak memaksa isi ulang kredensial.
+- Interface CCTV menerima `rtsp_url_masked` dan `rtsp_url_configured` dari backend.
+
+timestamp: 2026-10-20 12:55 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Mencegah kredensial RTSP tampil di UI dan menjaga kompatibilitas edit data lama.
+
+---
+
 ## [1.55.6] - 2026-10-20
 
 ### Form CCTV: konfigurasi streaming hanya lewat URL RTSP

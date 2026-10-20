@@ -60,8 +60,8 @@ type Collector struct {
 	httpDuration map[histogramKey]*histogramData
 
 	// Gauge database connection pool (dari sql.DB.Stats()).
-	dbOpenConnections  float64
-	dbIdleConnections  float64
+	dbOpenConnections    float64
+	dbIdleConnections    float64
 	dbMaxOpenConnections float64
 
 	// Gauge WebSocket aktif (dari utils.Hub).
@@ -113,9 +113,17 @@ func (c *Collector) ObserveRequest(method, path string, status int, durationSeco
 
 	hk := histogramKey{method: method, path: path}
 	data, ok := c.httpDuration[hk]
-	if !ok {
-		data = &histogramData{buckets: make([]uint64, len(httpBucketBounds))}
+	if !ok || data == nil {
+		data = &histogramData{}
 		c.httpDuration[hk] = data
+	}
+	// Self-healing: entri lama/korup bisa saja tidak memiliki bucket lengkap.
+	// Normalisasi di sini mencegah panic index-out-of-range saat ObserveRequest
+	// maupun Render membaca data tersebut.
+	if len(data.buckets) != len(httpBucketBounds) {
+		buckets := make([]uint64, len(httpBucketBounds))
+		copy(buckets, data.buckets)
+		data.buckets = buckets
 	}
 	data.count++
 	data.sum += durationSeconds
@@ -204,18 +212,29 @@ func (c *Collector) Render() string {
 		})
 		for _, k := range keys {
 			data := c.httpDuration[k]
+			// Render tetap aman meskipun ada entri nil/korup (mis. sisa state
+			// lama atau bug lain). Entri seperti itu dirender sebagai nol,
+			// bukan memicu panic yang membuat seluruh endpoint 500.
+			count := uint64(0)
+			sum := 0.0
+			buckets := make([]uint64, len(httpBucketBounds))
+			if data != nil {
+				count = data.count
+				sum = data.sum
+				copy(buckets, data.buckets)
+			}
 			// Nama metrik tanpa suffix (bucket) + label method/path.
 			labels := fmt.Sprintf("{method=\"%s\",path=\"%s\"",
 				escapeLabel(k.method), escapeLabel(k.path))
 			for i, bound := range httpBucketBounds {
 				fmt.Fprintf(&b, "sigap_http_request_duration_seconds%s,le=\"%s\"} %d\n",
-					labels, formatFloat(bound), data.buckets[i])
+					labels, formatFloat(bound), buckets[i])
 			}
 			// Bucket +Inf
-			fmt.Fprintf(&b, "sigap_http_request_duration_seconds%s,le=\"+Inf\"} %d\n", labels, data.count)
+			fmt.Fprintf(&b, "sigap_http_request_duration_seconds%s,le=\"+Inf\"} %d\n", labels, count)
 			// Sum & count: suffix _sum/_count adalah bagian dari NAMA metrik.
-			fmt.Fprintf(&b, "sigap_http_request_duration_seconds_sum%s} %s\n", labels, formatFloat(data.sum))
-			fmt.Fprintf(&b, "sigap_http_request_duration_seconds_count%s} %d\n", labels, data.count)
+			fmt.Fprintf(&b, "sigap_http_request_duration_seconds_sum%s} %s\n", labels, formatFloat(sum))
+			fmt.Fprintf(&b, "sigap_http_request_duration_seconds_count%s} %d\n", labels, count)
 		}
 	} else {
 		for _, bound := range httpBucketBounds {

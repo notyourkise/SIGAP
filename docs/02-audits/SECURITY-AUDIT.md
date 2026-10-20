@@ -53,7 +53,7 @@ teridentifikasi dari dokumentasi dan inspeksi statis terbatas:
 | Severity | Temuan | Dampak | Tindak lanjut |
 |----------|--------|--------|---------------|
 | **Tinggi** | Contoh kredensial NVR nyata masih muncul di komentar backend dan placeholder form frontend. Dokumentasi telah memakai placeholder. | Siapa pun yang memperoleh source code atau UI dapat mengetahui kredensial perangkat. | Hapus nilai nyata dari source/UI, gunakan placeholder, rotasi kredensial NVR, dan perlakukan riwayat Git sebagai pernah terekspos. |
-| **Sedang** | Endpoint Prometheus `/api/metrics` didokumentasikan publik. | Detail traffic, error, koneksi, dan penggunaan storage dapat membantu reconnaissance bila terekspos internet. | Batasi melalui Nginx/IP allowlist atau autentikasi di production. |
+| **Sedang** | Endpoint Prometheus `/api/metrics` didokumentasikan publik. | Detail traffic, error, koneksi, dan penggunaan storage dapat membantu reconnaissance bila terekspos internet. | **Selesai 2026-10-20:** Nginx memblokir `/api/metrics` dari publik; Prometheus scrape langsung ke `api:3000`. |
 | **Sedang** | Backup default disimpan pada volume lokal dengan retensi 7 hari; enkripsi at-rest dan salinan off-site belum didokumentasikan. | Kegagalan host atau akses volume dapat menyebabkan kehilangan atau kebocoran backup. | Tambahkan backup terenkripsi, off-site, verifikasi restore berkala, serta kebijakan akses dan retensi produksi. |
 
 Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.

@@ -1,5 +1,54 @@
 # Changelog - Backend SIGAP
 
+## [0.64.11] - 2026-10-20
+
+### Perbaikan keamanan P0: metrics, diagnostik, dan URL RTSP
+
+**Masalah**: `/api/metrics` bisa panic (500) saat entri histogram nil/panjang bucket tidak sesuai. Swagger, `/api/test-panic`, dan metrics masih dapat dijangkau dari luar bila `APP_ENV` kosong. URL RTSP penuh—termasuk `user:password@host`—tersimpan plaintext, dikembalikan API, dan disiarkan lewat WebSocket.
+
+**Perbaikan**:
+- `ObserveRequest` menormalkan entri histogram yang nil/korup; `Render` membaca bucket secara defensif sehingga tidak panic dan tetap mengembalikan metrik.
+- Regression test untuk entri nil, bucket pendek, dan self-healing `ObserveRequest`.
+- `APP_ENV` default `production` di Compose; Swagger dan `/api/test-panic` nonaktif di API.
+- Nginx memblokir `GET /api/metrics`, `/api/test-panic`, dan seluruh `/swagger` dengan 404. Scraping internal Prometheus ke `api:3000` tetap berjalan.
+- URL RTSP disimpan terenkripsi AES-256-GCM dengan prefix `enc:v1:`; migration startup mengenkripsi data legacy secara idempoten tanpa menghapus data.
+- URL didekripsi hanya saat registrasi streaming; API hanya mengirim `rtsp_url_masked` + `rtsp_url_configured`, dan event WebSocket tidak lagi memuat model CCTV penuh.
+- Detail error parsing body menyamarkan field `rtsp_url` agar URL/kredensial tidak bocor lewat pesan validasi.
+- Histori kesehatan CCTV mendapat UUID otomatis lewat hook `BeforeCreate`; insert tidak lagi gagal `duplicate key` karena UUID nol.
+- Validasi format `rtsp://`/`rtsps://` pada create/update.
+- Port Prometheus/Grafana dibatasi ke `127.0.0.1`; password Grafana dibaca dari `GRAFANA_ADMIN_PASSWORD`, bukan `admin/admin`.
+
+timestamp: 2026-10-20 13:05 UTC+8
+kategori: Kecil, Backend (Security + Monitoring + CCTV)
+file yang diubah:
+- backend/monitoring/metrics.go
+- backend/monitoring/metrics_test.go
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- backend/models/cctv.go
+- backend/models/cctv_health_history.go
+- backend/models/cctv_health_history_test.go
+- backend/handlers/cctv.go
+- backend/handlers/cctv_security_test.go
+- backend/handlers/cctv_sync.go
+- backend/handlers/stream.go
+- backend/handlers/request_error.go
+- backend/handlers/request_error_test.go
+- backend/config/cctv_rtsp_migration.go
+- backend/main.go
+- nginx/nginx.conf
+- docker-compose.yml
+- docker-compose.override.yml
+- .env.example
+- README.md
+- docs/01-documentation/AGENTS.md
+- docs/02-audits/SECURITY-AUDIT.md
+- backend/changelog.md
+
+alasan perubahan: Menutup panic metrics, eksposur endpoint diagnostik, kebocoran kredensial RTSP, dan akses default monitoring.
+
+---
+
 ## [0.64.10] - 2026-10-20
 
 ### Perubahan: Form CCTV memakai URL RTSP saja

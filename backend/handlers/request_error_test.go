@@ -94,3 +94,17 @@ func TestBodyParseError_RedactsSensitiveValue(t *testing.T) {
 	assert.NotContains(t, message, "12345")
 	assert.Contains(t, message, "disembunyikan")
 }
+
+func TestBodyParseError_RedactsRTSPURL(t *testing.T) {
+	app := newTestApp()
+	app.Post("/cctv", CreateCCTV)
+
+	resp, payload := postJSON(t, app, "/cctv", `{"rtsp_url":{"raw":"rtsp://admin:secret@nvr.local:554/live"}}`)
+
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	message, _ := payload["message"].(string)
+	assert.Contains(t, message, `field "rtsp_url"`)
+	assert.NotContains(t, message, "secret")
+	assert.NotContains(t, message, "nvr.local")
+	assert.Contains(t, message, "disembunyikan")
+}

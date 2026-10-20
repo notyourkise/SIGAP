@@ -60,7 +60,11 @@ interface CCTV {
   created_at: string;
   channel_port: number;
   stream_enabled: boolean;
+  // Backend tidak lagi mengirim URL RTSP mentah. Field ini hanya dipertahankan
+  // untuk kompatibilitas respons lama; UI memakai versi tersamarkan di bawah.
   rtsp_url?: string;
+  rtsp_url_masked?: string;
+  rtsp_url_configured?: boolean;
   snapshot_url?: string;
   // Zona operasional & kawasan (site) Ã¢â‚¬â€ opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
@@ -195,6 +199,12 @@ export default function CCTVPage() {
 
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
+
+  // Info URL RTSP tersimpan. Backend hanya mengirim versi tersamarkan sehingga
+  // form edit tidak pernah menerima password RTSP mentah.
+  const [rtspUrlConfigured, setRtspUrlConfigured] = useState(false);
+  const [rtspUrlMasked, setRtspUrlMasked] = useState('');
+  const [clearRtspUrl, setClearRtspUrl] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -549,6 +559,10 @@ export default function CCTVPage() {
     setFormErrors([]);
     if (cctv) {
       setCurrentCCTV(cctv);
+      const hasStoredRtspUrl = !!cctv.rtsp_url_configured || !!cctv.rtsp_url;
+      setRtspUrlConfigured(hasStoredRtspUrl);
+      setRtspUrlMasked(cctv.rtsp_url_masked || (hasStoredRtspUrl ? 'URL tersimpan (tidak dapat ditampilkan)' : ''));
+      setClearRtspUrl(false);
       setFormData({
         kode_cctv: cctv.kode_cctv,
         id_channel: cctv.id_channel || '',
@@ -566,12 +580,17 @@ export default function CCTVPage() {
         ip_camera: cctv.ip_camera || '',
         keterangan: cctv.keterangan || '',
         stream_enabled: !!cctv.stream_enabled,
-        rtsp_url: cctv.rtsp_url || '',
+        // Jangan pernah mengisi input dengan URL mentah. Kosong berarti
+        // pertahankan URL tersimpan; isi hanya bila ingin menggantinya.
+        rtsp_url: '',
         zone_id: cctv.zone_id || '',
         site_id: cctv.site_id || ''
       });
     } else {
       setCurrentCCTV(null);
+      setRtspUrlConfigured(false);
+      setRtspUrlMasked('');
+      setClearRtspUrl(false);
       setFormData({
         kode_cctv: '',
         id_channel: '',
@@ -602,8 +621,17 @@ export default function CCTVPage() {
     setFormErrors([]);
 
     const rtspUrl = formData.rtsp_url.trim();
-    if (formData.stream_enabled && rtspUrl === '') {
-      setFormErrors(['URL RTSP wajib diisi jika "Aktifkan Streaming" dicentang.']);
+    // Edit dengan URL tersimpan boleh mengosongkan input: artinya URL lama
+    // dipertahankan. Tetapi bila pengguna memilih menghapus URL, streaming
+    // aktif tetap membutuhkan URL baru.
+    const preserveStoredRtspUrl =
+      !!currentCCTV && rtspUrlConfigured && !clearRtspUrl && rtspUrl === '';
+    if (formData.stream_enabled && rtspUrl === '' && !preserveStoredRtspUrl) {
+      setFormErrors([
+        clearRtspUrl && rtspUrlConfigured
+          ? 'Isi URL RTSP baru atau matikan "Aktifkan Streaming" sebelum menghapus URL tersimpan.'
+          : 'URL RTSP wajib diisi jika "Aktifkan Streaming" dicentang.',
+      ]);
       return;
     }
 
@@ -616,7 +644,9 @@ export default function CCTVPage() {
       // tipe data backend (double precision).
       const payload = {
         ...formData,
-        rtsp_url: rtspUrl,
+        // undefined dihilangkan JSON.stringify → backend mempertahankan URL
+        // yang sudah tersimpan. String kosong berarti hapus URL.
+        rtsp_url: preserveStoredRtspUrl ? undefined : (clearRtspUrl ? '' : rtspUrl),
         longitude: toCoordinateNumber(formData.longitude),
         latitude: toCoordinateNumber(formData.latitude),
         // Kirim null untuk zone_id dan site_id bila kosong, bukan string kosong
@@ -632,6 +662,7 @@ export default function CCTVPage() {
       if (response.status === 'success') {
         setIsFormModalOpen(false);
         setFormErrors([]);
+        setClearRtspUrl(false);
         toast.success(currentCCTV ? `Data CCTV "${formData.nama}" berhasil diperbarui.` : `CCTV "${formData.nama}" berhasil ditambahkan.`);
         fetchCCTVs();
       }
@@ -1691,22 +1722,63 @@ export default function CCTVPage() {
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-muted">
                           URL RTSP Kamera
-                          {formData.stream_enabled && <span className="ml-1 text-red-500">*</span>}
+                          {formData.stream_enabled && (!rtspUrlConfigured || clearRtspUrl) && (
+                            <span className="ml-1 text-red-500">*</span>
+                          )}
                         </label>
+                        {rtspUrlConfigured && (
+                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] text-muted">
+                            <p className="font-semibold text-foreground">URL tersimpan</p>
+                            <code className="mt-0.5 block break-all font-mono text-[11px] text-foreground">
+                              {rtspUrlMasked || 'Tidak dapat ditampilkan'}
+                            </code>
+                            <p className="mt-1">Biarkan kolom di bawah kosong untuk mempertahankan URL ini.</p>
+                          </div>
+                        )}
                         <input
                           type="text"
-                          value={formData.rtsp_url}
-                          onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
-                          placeholder="rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901"
+                          value={clearRtspUrl ? '' : formData.rtsp_url}
+                          onChange={(e) => {
+                            setClearRtspUrl(false);
+                            setFormData({ ...formData, rtsp_url: e.target.value });
+                          }}
+                          placeholder={
+                            rtspUrlConfigured
+                              ? 'Kosongkan untuk mempertahankan URL tersimpan'
+                              : 'rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901'
+                          }
                           autoComplete="off"
                           spellCheck={false}
-                          aria-required={formData.stream_enabled}
-                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          disabled={clearRtspUrl}
+                          aria-required={formData.stream_enabled && (!rtspUrlConfigured || clearRtspUrl)}
+                          className={`w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary ${clearRtspUrl ? 'cursor-not-allowed opacity-60' : ''}`}
                         />
+                        {rtspUrlConfigured && (
+                          <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-muted">
+                            <input
+                              type="checkbox"
+                              checked={clearRtspUrl}
+                              onChange={(e) => {
+                                setClearRtspUrl(e.target.checked);
+                                if (e.target.checked) {
+                                  setFormData({ ...formData, rtsp_url: '' });
+                                }
+                              }}
+                              className="h-3.5 w-3.5 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            Hapus URL RTSP tersimpan
+                          </label>
+                        )}
                         <p className="text-[11px] text-muted">
-                          Masukkan URL RTSP lengkap, termasuk host, port, dan kredensial jika diperlukan.
-                          URL ini dipakai langsung oleh MediaMTX.
+                          {rtspUrlConfigured
+                            ? 'URL lama tidak ditampilkan utuh. Isi URL baru hanya jika ingin menggantinya.'
+                            : 'Masukkan URL RTSP lengkap, termasuk host, port, dan kredensial jika diperlukan. URL ini dipakai langsung oleh MediaMTX.'}
                         </p>
+                        {clearRtspUrl && formData.stream_enabled && (
+                          <p className="text-[11px] font-medium text-red-500">
+                            Isi URL baru atau matikan streaming sebelum menghapus URL tersimpan.
+                          </p>
+                        )}
                       </div>
 
                       <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">

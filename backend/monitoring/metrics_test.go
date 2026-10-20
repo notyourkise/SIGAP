@@ -82,6 +82,54 @@ func TestRender_EmptyState(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, "# HELP"))
 }
 
+func TestRender_ToleratesNilAndShortHistogramEntries(t *testing.T) {
+	c := newTestCollector()
+
+	c.mu.Lock()
+	c.httpDuration[histogramKey{method: "GET", path: "/nil"}] = nil
+	c.httpDuration[histogramKey{method: "GET", path: "/short"}] = &histogramData{
+		buckets: []uint64{1},
+		count:   1,
+		sum:     0.01,
+	}
+	c.mu.Unlock()
+
+	var out string
+	assert.NotPanics(t, func() {
+		out = c.Render()
+	})
+
+	// Entri nil dirender sebagai nol; entri bucket pendek tidak boleh
+	// menyebabkan index-out-of-range.
+	assert.Contains(t, out, `sigap_http_request_duration_seconds{method="GET",path="/nil",le="0.005"} 0`)
+	assert.Contains(t, out, `sigap_http_request_duration_seconds{method="GET",path="/short",le="0.005"} 1`)
+	assert.Contains(t, out, `sigap_http_request_duration_seconds{method="GET",path="/short",le="10"} 0`)
+	assert.Contains(t, out, `sigap_http_request_duration_seconds_count{method="GET",path="/nil"} 0`)
+}
+
+func TestObserveRequest_RepairsMalformedHistogramEntry(t *testing.T) {
+	c := newTestCollector()
+	key := histogramKey{method: "POST", path: "/repair"}
+
+	c.mu.Lock()
+	c.httpDuration[key] = nil
+	c.mu.Unlock()
+
+	assert.NotPanics(t, func() {
+		c.ObserveRequest("POST", "/repair", 201, 0.02)
+	})
+
+	c.mu.RLock()
+	data := c.httpDuration[key]
+	c.mu.RUnlock()
+	assert.NotNil(t, data)
+	assert.Len(t, data.buckets, len(httpBucketBounds))
+	assert.Equal(t, uint64(1), data.count)
+
+	out := c.Render()
+	assert.Contains(t, out, `sigap_http_request_duration_seconds{method="POST",path="/repair",le="0.025"} 1`)
+}
+
 func TestReset_ClearsAll(t *testing.T) {
 	c := newTestCollector()
 	c.ObserveRequest("GET", "/x", 200, 0.1)

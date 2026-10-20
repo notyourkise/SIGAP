@@ -79,6 +79,10 @@ services:
     env_file:
       - ./backend/.env.docker
     environment:
+      # SECURITY: default production menonaktifkan Swagger & endpoint diagnostik,
+      # mengaktifkan Secure cookie, HSTS, dan CSP ketat. Set APP_ENV=development
+      # di root .env hanya bila memang sedang mengembangkan API.
+      - APP_ENV=${APP_ENV:-production}
       # Level log untuk Task 7.6 (logger terstruktur). Default: info.
       - LOG_LEVEL=${LOG_LEVEL:-info}
       # SECURITY: DB_PASSWORD TIDAK di-hardcode di sini. Nilai bersumber dari

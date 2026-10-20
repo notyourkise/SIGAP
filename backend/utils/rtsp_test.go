@@ -1,8 +1,60 @@
 package utils
 
 import (
+	"strings"
 	"testing"
 )
+
+func TestRTSPURLEncryptDecrypt_RoundTrip(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+
+	raw := "rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902"
+	encrypted, err := EncryptRTSPURL(raw)
+	if err != nil {
+		t.Fatalf("EncryptRTSPURL() error: %v", err)
+	}
+	if !IsEncryptedRTSPURL(encrypted) {
+		t.Fatalf("EncryptRTSPURL() = %q, want prefix %q", encrypted, rtspURLEncryptionPrefix)
+	}
+	if encrypted == raw || strings.Contains(encrypted, "secret123") {
+		t.Fatalf("EncryptRTSPURL() masih memuat plaintext: %q", encrypted)
+	}
+
+	decrypted, err := DecryptRTSPURL(encrypted)
+	if err != nil {
+		t.Fatalf("DecryptRTSPURL() error: %v", err)
+	}
+	if decrypted != raw {
+		t.Fatalf("DecryptRTSPURL() = %q, want %q", decrypted, raw)
+	}
+}
+
+func TestDecryptRTSPURL_LegacyPlaintext(t *testing.T) {
+	raw := "rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902"
+	got, err := DecryptRTSPURL(raw)
+	if err != nil {
+		t.Fatalf("DecryptRTSPURL() error: %v", err)
+	}
+	if got != raw {
+		t.Fatalf("DecryptRTSPURL(legacy) = %q, want %q", got, raw)
+	}
+}
+
+func TestMaskRTSPURL(t *testing.T) {
+	got := MaskRTSPURL("rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902")
+	if strings.Contains(got, "secret123") {
+		t.Fatalf("MaskRTSPURL() membocorkan password: %q", got)
+	}
+	if !strings.Contains(got, "admin:xxxxx@") {
+		t.Fatalf("MaskRTSPURL() = %q, want userinfo tersamarkan", got)
+	}
+	if got := MaskRTSPURL("rtsp://10.0.0.5:554/Streaming/channels/1902"); strings.Contains(got, "xxxxx") {
+		t.Fatalf("MaskRTSPURL() tanpa kredensial tidak boleh berubah: %q", got)
+	}
+	if got := MaskRTSPURL("admin:secret123@host"); strings.Contains(got, "secret123") {
+		t.Fatalf("MaskRTSPURL() fallback membocorkan password: %q", got)
+	}
+}
 
 func TestBuildRTSPURL_SubStream(t *testing.T) {
 	t.Setenv("RTSP_NVR_HOST", "10.0.0.5")

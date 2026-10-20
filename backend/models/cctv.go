@@ -9,22 +9,22 @@ import (
 // CCTV mewakili master data perangkat CCTV tanpa menyimpan kredensial
 type CCTV struct {
 	Base
-	KodeCCTV      string `gorm:"type:varchar(50);uniqueIndex;not null" json:"kode_cctv"`
-	IDChannel     string `gorm:"type:varchar(50)" json:"id_channel"`
-	Nama          string `gorm:"type:varchar(100);not null" json:"nama"`
+	KodeCCTV      string   `gorm:"type:varchar(50);uniqueIndex;not null" json:"kode_cctv"`
+	IDChannel     string   `gorm:"type:varchar(50)" json:"id_channel"`
+	Nama          string   `gorm:"type:varchar(100);not null" json:"nama"`
 	LokasiArea    string   `gorm:"type:varchar(255)" json:"lokasi_area"`
 	Longitude     *float64 `gorm:"type:double precision" json:"longitude"`
 	Latitude      *float64 `gorm:"type:double precision" json:"latitude"`
 	JenisCCTV     string   `gorm:"type:varchar(50)" json:"jenis_cctv"`
-	SumberListrik string `gorm:"type:varchar(50)" json:"sumber_listrik"`
-	TipeKoneksi   string `gorm:"type:varchar(50)" json:"tipe_koneksi"`
-	IndoorOutdoor string `gorm:"type:varchar(20)" json:"indoor_outdoor"`
-	Pemilik       string `gorm:"type:varchar(100)" json:"pemilik"`
-	Status        string `gorm:"type:varchar(20);not null" json:"status"`
-	IPNVR         string `gorm:"type:varchar(45)" json:"ip_nvr"`
-	IPCamera      string `gorm:"type:varchar(45)" json:"ip_camera"`
-	Keterangan    string `gorm:"type:text" json:"keterangan"`
-	QrPayload     string `gorm:"type:text;unique" json:"qr_payload"`
+	SumberListrik string   `gorm:"type:varchar(50)" json:"sumber_listrik"`
+	TipeKoneksi   string   `gorm:"type:varchar(50)" json:"tipe_koneksi"`
+	IndoorOutdoor string   `gorm:"type:varchar(20)" json:"indoor_outdoor"`
+	Pemilik       string   `gorm:"type:varchar(100)" json:"pemilik"`
+	Status        string   `gorm:"type:varchar(20);not null" json:"status"`
+	IPNVR         string   `gorm:"type:varchar(45)" json:"ip_nvr"`
+	IPCamera      string   `gorm:"type:varchar(45)" json:"ip_camera"`
+	Keterangan    string   `gorm:"type:text" json:"keterangan"`
+	QrPayload     string   `gorm:"type:text;unique" json:"qr_payload"`
 	// HealthScore menyimpan skor kesehatan terbaru dari kalkulator operasional.
 	// Nilai awal 100 dan dibatasi pada rentang 0 sampai 100 oleh kalkulator.
 	HealthScore int `gorm:"type:integer;not null;default:100" json:"health_score"`
@@ -37,7 +37,16 @@ type CCTV struct {
 	//   rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901
 	// Bila diisi, URL ini dipakai langsung oleh MediaMTX sebagai sumber stream,
 	// menggantikan penyusunan otomatis dari ChannelPort + kredensial NVR global.
-	RTSPURL string `gorm:"type:text" json:"rtsp_url"`
+	// Di database nilai ini disimpan terenkripsi (prefix enc:v1:); data legacy
+	// plaintext tetap dapat dibaca. Jangan pernah mengembalikan nilai mentah ke
+	// klien — gunakan RTSPURLMasked/RTSPURLConfigured pada response.
+	RTSPURL string `gorm:"type:text" json:"rtsp_url,omitempty"`
+	// RTSPURLMasked adalah URL tersamarkan (password diganti xxxxx) untuk UI.
+	// Field computed, tidak disimpan di database.
+	RTSPURLMasked string `gorm:"-" json:"rtsp_url_masked,omitempty"`
+	// RTSPURLConfigured menandai apakah CCTV sudah memiliki URL RTSP tersimpan.
+	// Frontend memakai flag ini agar tidak perlu menerima nilai rahasia saat edit.
+	RTSPURLConfigured bool `gorm:"-" json:"rtsp_url_configured,omitempty"`
 	// SnapshotURL adalah path URL snapshot terbaru (computed, tidak disimpan di DB).
 	// Diisi saat handler mengembalikan data CCTV agar frontend dapat langsung
 	// mengambil snapshot terbaru melalui endpoint /cctv/{id}/snapshot.
