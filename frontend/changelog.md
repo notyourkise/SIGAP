@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.9] - 2026-10-20
+
+### Default SD/sub dan pesan codec per-perangkat
+
+**Konteks**: Pilot THD-15 SD berhasil di browser pengguna, sehingga sub-stream dijadikan default. H.265 tetap dipakai; browser/perangkat tanpa dukungan HEVC akan menerima pesan yang menjelaskan pilihan yang tersedia.
+
+**Perubahan**:
+- `StreamModal` dan `WHEPPlayer` memakai kualitas `sub` sebagai default; tombol HD/main tetap tersedia.
+- Pesan error codec tidak lagi menyatakan H.265 "tidak didukung" secara mutlak, tetapi menjelaskan bahwa browser/perangkat saat ini tidak mendukung HEVC.
+- Detail toast menyebut penyebab (dukungan HEVC perangkat), lokasi (negosiasi WebRTC/WHEP), dan tindakan (gunakan browser HEVC atau ubah encoding ke H.264).
+
+timestamp: 2026-10-20 18:05 UTC+8
+kategori: Kecil, Frontend (Streaming)
+file yang diubah:
+- frontend/src/components/StreamModal.tsx
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menyesuaikan default dan pesan UI dengan hasil pilot THD-15 SD serta variasi dukungan HEVC antar perangkat.
+
+---
+
 ## [1.55.8] - 2026-10-20
 
 ### Pemutar CCTV: pesan jelas saat codec H.265 ditolak browser

@@ -178,7 +178,7 @@ func TestStartStream_Success(t *testing.T) {
 	data := result["data"].(map[string]interface{})
 	assert.Contains(t, data["whep_url"].(string), "/stream/cam-"+id.String()+"/whep")
 	assert.Equal(t, "cam-"+id.String(), data["path"])
-	assert.Equal(t, "main", data["quality"])
+	assert.Equal(t, "sub", data["quality"])
 	assert.Equal(t, true, data["mediamtx_reachable"])
 	assert.Equal(t, true, data["path_registered"])
 	assert.Equal(t, false, data["source_ready"])

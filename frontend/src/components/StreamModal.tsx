@@ -83,9 +83,9 @@ function statusBadge(status: string): {
 export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   const toast = useToast();
   const [streamPath, setStreamPath] = useState<string | null>(null);
-  // Default main sampai rollout H.264 sub-stream selesai; pengguna tetap
-  // dapat memilih SD secara eksplisit lewat tombol kualitas.
-  const [quality, setQuality] = useState<Quality>('main');
+  // Pilot THD-15 SD berhasil; sub-stream menjadi default. Pengguna tetap
+  // dapat memilih HD/main lewat tombol kualitas.
+  const [quality, setQuality] = useState<Quality>('sub');
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [live, setLive] = useState(false);
@@ -172,7 +172,7 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
       toast.error(message, {
         source: 'Pemutar video (WHEP)',
         reason: isCodecError
-          ? 'Penyebab: codec H.265/HEVC tidak didukung WebRTC browser. Lokasi: encoding stream kamera (main/sub) di NVR. Tindakan: ubah encoding ke H.264, lalu mulai ulang stream.'
+          ? 'Penyebab: browser/perangkat ini tidak mendukung codec H.265/HEVC. Lokasi: negosiasi codec WebRTC/WHEP. Tindakan: gunakan browser yang mendukung HEVC atau ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
           : 'Stream video gagal diputar atau koneksi WHEP terputus.',
       });
     },

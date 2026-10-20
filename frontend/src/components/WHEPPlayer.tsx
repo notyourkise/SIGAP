@@ -63,7 +63,7 @@ class UnsupportedCodecError extends Error {
 
 export default function WHEPPlayer({
   streamPath,
-  quality = 'main',
+  quality = 'sub',
   onStatusChange,
   onError,
   className = '',
@@ -277,7 +277,7 @@ export default function WHEPPlayer({
         }
         if (isUnsupportedCodecResponse(res.status, detail)) {
           throw new UnsupportedCodecError(
-            'Codec kamera H.265/HEVC tidak didukung browser. Ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
+            'Browser/perangkat ini tidak mendukung codec H.265/HEVC. Gunakan browser yang mendukung HEVC atau ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
           );
         }
         throw new Error(`MediaMTX membalas dengan HTTP ${res.status}.`);

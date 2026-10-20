@@ -180,12 +180,11 @@ func StartStream(c *fiber.Ctx) error {
 		}
 	}
 
-	// Tentukan tipe stream berdasarkan query ?quality=.
-	// Default main dipertahankan sampai rollout encoding H.264 sub-stream
-	// selesai; pengguna tetap dapat memilih SD secara eksplisit.
-	streamType := utils.MainStream
-	if c.Query("quality") == "sub" {
-		streamType = utils.SubStream
+	// Default sub-stream setelah pilot THD-15 SD berhasil. Main stream tetap
+	// dapat dipilih eksplisit lewat ?quality=main.
+	streamType := utils.SubStream
+	if c.Query("quality") == "main" {
+		streamType = utils.MainStream
 	}
 
 	// Susun URL RTSP dan path MediaMTX.
@@ -230,7 +229,7 @@ func StartStream(c *fiber.Ctx) error {
 		"data": fiber.Map{
 			"whep_url":           "/stream/" + path + "/whep",
 			"path":               path,
-			"quality":            c.Query("quality", "main"),
+			"quality":            c.Query("quality", "sub"),
 			"mediamtx_reachable": true,
 			"path_registered":    true,
 			"source_ready":       sourceReady,
@@ -332,9 +331,8 @@ func StartAllStreams(c *fiber.Ctx) error {
 			}
 		}
 
-		// Sementara gunakan main stream sampai encoding H.264 sub-stream
-		// tersedia di seluruh NVR; hindari batch switch sebelum pilot lolos.
-		rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.MainStream)
+		// Pilot THD-15 SD berhasil; gunakan sub-stream sebagai default.
+		rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 		path := utils.BuildStreamPath(cctv.ID.String())
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,
@@ -623,9 +621,8 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 		}
 	}
 
-	// Sementara gunakan main stream sampai encoding H.264 sub-stream
-	// tersedia di seluruh NVR; hindari batch switch sebelum pilot lolos.
-	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.MainStream)
+	// Pilot THD-15 SD berhasil; gunakan sub-stream sebagai default.
+	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 	path := utils.BuildStreamPath(cctv.ID.String())
 	pathCfg := utils.PathConfig{
 		Source:                   rtspURL,

@@ -1,5 +1,28 @@
 # Changelog - Backend SIGAP
 
+## [0.64.13] - 2026-10-20
+
+### Pilot THD-15 SD berhasil: sub-stream menjadi default
+
+**Konteks**: Pilot THD-15 SD berhasil tampil di browser pengguna. MediaMTX mencatat sesi WHEP membaca satu track H.265; uji headless tanpa dukungan HEVC tetap ditolak `400 codecs not supported by client`. Kompatibilitas H.265 bergantung pada browser/perangkat.
+
+**Perubahan**:
+- `StartStream` memakai sub-stream sebagai default; `?quality=main` tetap tersedia untuk memilih HD/main.
+- `StartAllStreams` dan `registerStreamWithRetry` memakai sub-stream sebagai default.
+- Respons start mengembalikan `quality=sub` bila parameter tidak diberikan.
+- Regression test default kualitas diperbarui.
+
+timestamp: 2026-10-20 18:05 UTC+8
+kategori: Kecil, Backend (Streaming)
+file yang diubah:
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/changelog.md
+
+alasan perubahan: Menindaklanjuti pilot THD-15 SD yang berhasil dan menjadikan sub-stream sebagai default operasional.
+
+---
+
 ## [0.64.12] - 2026-10-20
 
 ### Streaming: pemilihan sub-stream dan update path MediaMTX
