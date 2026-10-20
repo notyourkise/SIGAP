@@ -26,7 +26,6 @@ import {
   X, 
   AlertTriangle, 
   Eye, 
-  EyeOff,
   Printer,
   LoaderCircle,
   ClipboardCheck,
@@ -197,9 +196,6 @@ export default function CCTVPage() {
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
-  // State untuk toggle visibilitas password RTSP pada form streaming
-  const [showRtspPassword, setShowRtspPassword] = useState(false);
-
   // Form State
   const [formData, setFormData] = useState({
     kode_cctv: '',
@@ -217,8 +213,6 @@ export default function CCTVPage() {
     ip_nvr: '',
     ip_camera: '',
     keterangan: '',
-    channel_port: 0,
-    rtsp_password: '',
     stream_enabled: false,
     rtsp_url: '',
     zone_id: '',
@@ -571,9 +565,6 @@ export default function CCTVPage() {
         ip_nvr: cctv.ip_nvr || '',
         ip_camera: cctv.ip_camera || '',
         keterangan: cctv.keterangan || '',
-        // rtsp_password tidak pernah dikembalikan API Ã¢â‚¬â€ selalu dikosongkan; hanya terisi bila user mengetik ulang
-        channel_port: typeof cctv.channel_port === 'number' ? cctv.channel_port : 0,
-        rtsp_password: '',
         stream_enabled: !!cctv.stream_enabled,
         rtsp_url: cctv.rtsp_url || '',
         zone_id: cctv.zone_id || '',
@@ -597,8 +588,6 @@ export default function CCTVPage() {
         ip_nvr: '',
         ip_camera: '',
         keterangan: '',
-        channel_port: 0,
-        rtsp_password: '',
         stream_enabled: false,
         rtsp_url: '',
         zone_id: '',
@@ -610,6 +599,14 @@ export default function CCTVPage() {
 
   const handleSaveCCTV = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormErrors([]);
+
+    const rtspUrl = formData.rtsp_url.trim();
+    if (formData.stream_enabled && rtspUrl === '') {
+      setFormErrors(['URL RTSP wajib diisi jika "Aktifkan Streaming" dicentang.']);
+      return;
+    }
+
     setActionLoading('save');
     try {
       const endpoint = currentCCTV ? `/cctv/${currentCCTV.id}` : '/cctv';
@@ -619,6 +616,7 @@ export default function CCTVPage() {
       // tipe data backend (double precision).
       const payload = {
         ...formData,
+        rtsp_url: rtspUrl,
         longitude: toCoordinateNumber(formData.longitude),
         latitude: toCoordinateNumber(formData.latitude),
         // Kirim null untuk zone_id dan site_id bila kosong, bukan string kosong
@@ -1691,79 +1689,23 @@ export default function CCTVPage() {
                       <p className="text-sm font-bold text-foreground">Konfigurasi Streaming</p>
 
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted">URL RTSP Kamera</label>
-                          <input
-                            type="text"
-                            value={formData.rtsp_url}
-                            onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
-                            placeholder="rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/XXXX"
-                            className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                        <p className="text-[11px] text-muted">
-                          Isi URL RTSP penuh bila kamera punya sumber stream sendiri. Bila kosong, sistem akan menyusun
-                          URL otomatis dari Nomor Channel NVR + kredensial di bawah.
-                        </p>
-                      </div>
-
-                      <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-muted">
-                          Nomor Channel NVR <span className="font-normal text-muted">(opsional)</span>
+                          URL RTSP Kamera
+                          {formData.stream_enabled && <span className="ml-1 text-red-500">*</span>}
                         </label>
                         <input
-                          type="number"
-                          min={0}
-                          max={999}
-                          value={formData.channel_port || ''}
-                          onChange={(e) => setFormData({ ...formData, channel_port: e.target.value === '' ? 0 : Number(e.target.value) })}
-                          placeholder="Opsional, mis. 19"
-                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          type="text"
+                          value={formData.rtsp_url}
+                          onChange={(e) => setFormData({ ...formData, rtsp_url: e.target.value })}
+                          placeholder="rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901"
+                          autoComplete="off"
+                          spellCheck={false}
+                          aria-required={formData.stream_enabled}
+                          className="w-full rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                         <p className="text-[11px] text-muted">
-                          Opsional Ã¢â‚¬â€ cukup isi bila Anda <span className="font-semibold">tidak</span> memakai URL RTSP
-                          penuh di atas. Ini nomor channel kamera (bukan port TCP; port seperti{' '}
-                          <span className="font-mono">554</span> sudah ada di URL RTSP). Kosongkan bila sudah memakai URL
-                          RTSP penuh.
-                        </p>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted">Password RTSP</label>
-                        <div className="relative">
-                          <input
-                            type={showRtspPassword ? 'text' : 'password'}
-                            value={formData.rtsp_password}
-                            onChange={(e) => setFormData({ ...formData, rtsp_password: e.target.value })}
-                            placeholder="Password akses NVR"
-                            className="w-full rounded-lg border border-input-border bg-input px-3 py-2 pr-10 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowRtspPassword((v) => !v)}
-                            aria-label={showRtspPassword ? 'Sembunyikan password RTSP' : 'Tampilkan password RTSP'}
-                            title={showRtspPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted transition-colors hover:text-foreground"
-                          >
-                            {showRtspPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted">Preview URI</label>
-                        <p
-                          className="w-full truncate rounded-lg border border-input-border bg-input px-3 py-2 font-mono text-xs text-muted"
-                          title={
-                            formData.rtsp_url ||
-                            (formData.channel_port > 0
-                              ? `rtsp://USER:***@NVR_HOST:554/Streaming/channels/${formData.channel_port * 100 + 2}`
-                              : '')
-                          }
-                        >
-                          {formData.rtsp_url
-                            ? formData.rtsp_url
-                            : formData.channel_port > 0
-                              ? `rtsp://USER:***@NVR_HOST:554/Streaming/channels/${formData.channel_port * 100 + 2}`
-                              : 'Isi URL RTSP atau channel port untuk melihat URI stream (sub stream).'}
+                          Masukkan URL RTSP lengkap, termasuk host, port, dan kredensial jika diperlukan.
+                          URL ini dipakai langsung oleh MediaMTX.
                         </p>
                       </div>
 

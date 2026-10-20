@@ -1,5 +1,27 @@
 # Changelog - Backend SIGAP
 
+## [0.64.10] - 2026-10-20
+
+### Perubahan: Form CCTV memakai URL RTSP saja
+
+**Konteks**: Form frontend sebelumnya mengirim `channel_port`, `rtsp_password`, dan menampilkan preview URI. Alur operasional yang dipakai adalah URL RTSP penuh, sehingga tiga input itu duplikatif dan membingungkan.
+
+**Perubahan**:
+- Form tambah/edit CCTV hanya menampilkan satu input **URL RTSP Kamera**.
+- `channel_port` dan `rtsp_password` tidak lagi dikirim oleh form web.
+- URL wajib diisi saat streaming diaktifkan dan di-trim sebelum dikirim.
+- Backend tetap menerima field lama agar data/API existing tidak rusak; tidak ada perubahan skema atau penghapusan data.
+
+timestamp: 2026-10-20 12:08 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+- backend/changelog.md
+alasan perubahan: Menyelaraskan form dengan konfigurasi streaming berbasis URL RTSP penuh.
+
+---
+
 ## [0.64.9] - 2026-10-20
 
 ### Peningkatan: Tombol detail pada seluruh toast error frontend

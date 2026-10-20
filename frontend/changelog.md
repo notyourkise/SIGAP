@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.6] - 2026-10-20
+
+### Form CCTV: konfigurasi streaming hanya lewat URL RTSP
+
+**Masalah**: Form CCTV masih menampilkan tiga input terpisah untuk konfigurasi streaming: Nomor Channel NVR, Password RTSP, dan Preview URI. Ini membingungkan karena jalur yang dipakai sehari-hari adalah URL RTSP penuh; field channel/password juga membuat pengguna mengira kredensial harus diisi ulang.
+
+**Perbaikan**:
+- Input **Nomor Channel NVR**, **Password RTSP**, dan **Preview URI** dihapus dari form tambah/edit CCTV.
+- Konfigurasi streaming kini hanya memakai satu input **URL RTSP Kamera** yang berisi URL lengkap (host, port, dan kredensial bila diperlukan).
+- URL di-trim sebelum dikirim dan wajib diisi bila **Aktifkan Streaming** dicentang; validasi ditampilkan di daftar error form.
+- Payload frontend tidak lagi mengirim `channel_port` dan `rtsp_password`. Backend tetap menerima field lama untuk kompatibilitas data/API, tetapi form web tidak memakainya.
+- Data CCTV lama yang sudah tersimpan tidak diubah atau dihapus.
+
+timestamp: 2026-10-20 12:08 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Menyelaraskan UI dengan cara pakai sebenarnya: satu URL RTSP penuh, tanpa input channel/password/preview yang duplikatif.
+
+---
+
 ## [1.55.5] - 2026-10-18
 
 ### Service worker: API selalu network-only (hardening cache PWA)
