@@ -438,6 +438,32 @@ func TestUpdateCCTV_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestUpdateCCTV_NullSiteAndRTSP memastikan form edit dapat mengosongkan
+// kawasan/zona secara eksplisit sambil menyimpan URL RTSP (regresi Bug 21).
+func TestUpdateCCTV_NullSiteAndRTSP(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	rows, id := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Put("/cctv/:id", UpdateCCTV)
+	body := `{"site_id":null,"zone_id":null,"rtsp_url":"rtsp://127.0.0.1:8554/camera-01"}`
+	req := httptest.NewRequest("PUT", "/cctv/"+id.String(), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Nil(t, data["site_id"])
+	assert.Nil(t, data["zone_id"])
+	assert.Equal(t, "rtsp://127.0.0.1:8554/camera-01", data["rtsp_url"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDeleteCCTV_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	rows, id := cctvMockRow()

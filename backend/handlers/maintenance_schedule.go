@@ -156,6 +156,26 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 		})
 	}
 
+	// Jadwal yang langsung menunjuk teknisi harus segera muncul sebagai
+	// notifikasi penugasan. Jangan menunggu generator harian pertama berjalan.
+	if schedule.TechnicianID != nil {
+		if err := utils.NotifyUserSync(
+			config.DB,
+			*schedule.TechnicianID,
+			models.NotificationTypeScheduleAssigned,
+			"Jadwal pemeliharaan baru",
+			"Anda ditugaskan pada jadwal "+schedule.Frequency+": "+schedule.ActionTaken+".",
+			"maintenance-schedule",
+			&schedule.ID,
+		); err != nil {
+			utils.Log.Errorf("❌ Jadwal %s tersimpan tetapi notifikasi teknisi gagal: %v", schedule.ID, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Jadwal tersimpan, tetapi notifikasi teknisi gagal dikirim",
+			})
+		}
+	}
+
 	utils.LogAudit(config.DB, c, "CREATE_SCHEDULE", "MAINTENANCE",
 		"Membuat jadwal pemeliharaan berulang: "+schedule.ActionTaken+" (Frekuensi: "+schedule.Frequency+")", nil, "", "")
 
@@ -293,6 +313,7 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 			"message": "Jadwal pemeliharaan tidak ditemukan",
 		})
 	}
+	previousTechnicianID := schedule.TechnicianID
 
 	var req UpdateMaintenanceScheduleRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -379,6 +400,28 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Gagal memperbarui jadwal pemeliharaan",
 		})
+	}
+
+	// Kirim hanya saat teknisi baru ditambahkan atau diganti, bukan pada setiap
+	// perubahan deskripsi/frekuensi agar notifikasi tidak berulang tanpa alasan.
+	technicianChanged := schedule.TechnicianID != nil &&
+		(previousTechnicianID == nil || *previousTechnicianID != *schedule.TechnicianID)
+	if technicianChanged {
+		if err := utils.NotifyUserSync(
+			config.DB,
+			*schedule.TechnicianID,
+			models.NotificationTypeScheduleAssigned,
+			"Jadwal pemeliharaan diperbarui",
+			"Anda ditugaskan pada jadwal "+schedule.Frequency+": "+schedule.ActionTaken+".",
+			"maintenance-schedule",
+			&schedule.ID,
+		); err != nil {
+			utils.Log.Errorf("❌ Jadwal %s diperbarui tetapi notifikasi teknisi gagal: %v", schedule.ID, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Jadwal diperbarui, tetapi notifikasi teknisi gagal dikirim",
+			})
+		}
 	}
 
 	utils.LogAudit(config.DB, c, "UPDATE_SCHEDULE", "MAINTENANCE",

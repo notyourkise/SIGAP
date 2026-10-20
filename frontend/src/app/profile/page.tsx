@@ -47,6 +47,21 @@ export default function ProfilePage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AuthContext dimuat asinkron saat halaman dibuka langsung. Sinkronkan foto
+  // setelah profil tersedia agar avatar tidak kosong sampai halaman dimuat ulang.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setFullName(user.full_name);
+      setPhotoUrl(user.profile_photo_url ?? '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   // Preferensi notifikasi email (Task 11.3 + Task 13.7 granular)
   const [emailNotifications, setEmailNotifications] = useState<boolean>(
     user?.email_notifications ?? true
@@ -254,9 +269,9 @@ export default function ProfilePage() {
         {user && (
           <section aria-labelledby="profile-details-heading" className="overflow-hidden rounded-2xl border border-border bg-card">
             <div className="flex flex-wrap items-center gap-4 border-b border-border px-5 py-5">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-accent/20 text-[#775800] dark:text-accent">
+              <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-accent/20 text-[#775800] ring-1 ring-border dark:text-accent">
                 {photoUrl ? (
-                  <AuthenticatedImage imageUrl={photoUrl} alt={user.full_name} className="h-full w-full rounded-2xl object-cover" />
+                  <AuthenticatedImage imageUrl={photoUrl} alt={user.full_name} className="block h-full w-full object-cover object-center" />
                 ) : (
                   <UserRound className="h-8 w-8" />
                 )}
@@ -279,6 +294,9 @@ export default function ProfilePage() {
                   onChange={handlePhotoChange}
                   className="hidden"
                 />
+                <p className="max-w-44 text-[11px] leading-relaxed text-muted">
+                  Foto akan ditampilkan dalam bingkai persegi tanpa mengubah proporsi gambar.
+                </p>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}

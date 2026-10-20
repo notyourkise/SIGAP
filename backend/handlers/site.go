@@ -42,7 +42,7 @@ type AssignSiteUsersRequest struct {
 // SiteListRow adalah item daftar site dengan jumlah user.
 type SiteListRow struct {
 	models.Site
-	UserCount int64 `gorm:"-" json:"user_count"`
+	UserCount int64 `gorm:"column:user_count;->" json:"user_count"`
 }
 
 // GetAllSites mengambil daftar site terpaginasi (semua role login) beserta
@@ -63,39 +63,36 @@ type SiteListRow struct {
 // @Failure      500 {object} map[string]interface{} "Gagal mengambil daftar site"
 // @Router       /sites [get]
 func GetAllSites(c *fiber.Ctx) error {
-	var items []models.Site
-	query := config.DB.Model(&models.Site{})
+	var rows []SiteListRow
+	search := strings.TrimSpace(c.Query("search"))
+	countQuery := config.DB.Model(&models.Site{})
 
-	if search := strings.TrimSpace(c.Query("search")); search != "" {
-		query = query.Where("nama ILIKE ?", "%"+search+"%")
+	if search != "" {
+		like := "%" + search + "%"
+		countQuery = countQuery.Where("nama ILIKE ? OR kode ILIKE ?", like, like)
 	}
 
-	// Default urut nama ASC, tapi tetap hormati pagination parameter.
-	limit, page, _ := utils.GetPaginationParams(c, []string{"id", "nama", "kode", "created_at", "updated_at"})
-
 	var totalRows int64
-	if err := query.Count(&totalRows).Error; err != nil {
+	if err := countQuery.Count(&totalRows).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menghitung total site",
 		})
 	}
 
+	limit, page, sort := sitePaginationParams(c)
 	offset := (page - 1) * limit
-	// Ambil site dasar terpaginasi, urut nama ASC.
-	if err := query.Offset(offset).Limit(limit).Order("nama asc").Find(&items).Error; err != nil {
+	query := config.DB.Model(&models.Site{}).
+		Select(`sites.*, (SELECT COUNT(*) FROM user_sites WHERE user_sites.site_id = sites.id) AS user_count`)
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("sites.nama ILIKE ? OR sites.kode ILIKE ?", like, like)
+	}
+	if err := query.Offset(offset).Limit(limit).Order(sort).Scan(&rows).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar site",
 		})
-	}
-
-	// Bangun baris respons dengan jumlah user per site.
-	rows := make([]SiteListRow, 0, len(items))
-	for _, s := range items {
-		var userCount int64
-		config.DB.Table("user_sites").Where("site_id = ?", s.ID).Count(&userCount)
-		rows = append(rows, SiteListRow{Site: s, UserCount: userCount})
 	}
 
 	return c.JSON(fiber.Map{
@@ -105,6 +102,33 @@ func GetAllSites(c *fiber.Ctx) error {
 			"pagination": utils.CalculatePagination(totalRows, page, limit),
 		},
 	})
+}
+
+// sitePaginationParams memvalidasi sorting sebelum dipakai pada ORDER BY.
+// Alias user_count berasal dari subquery SELECT di GetAllSites.
+func sitePaginationParams(c *fiber.Ctx) (limit, page int, sort string) {
+	limit, page, _ = utils.GetPaginationParams(c, []string{"id", "nama", "kode", "alamat", "created_at", "updated_at"})
+	sortBy := c.Query("sort_by", "nama")
+	order := c.Query("order", "asc")
+	if order != "asc" && order != "desc" {
+		order = "asc"
+	}
+
+	columns := map[string]string{
+		"id":         "sites.id",
+		"nama":       "sites.nama",
+		"kode":       "sites.kode",
+		"alamat":     "sites.alamat",
+		"teknisi":    "user_count",
+		"user_count": "user_count",
+		"created_at": "sites.created_at",
+		"updated_at": "sites.updated_at",
+	}
+	column, ok := columns[sortBy]
+	if !ok {
+		column = "sites.nama"
+	}
+	return limit, page, column + " " + order
 }
 
 // GetAllSitesForSelect mengambil seluruh site tanpa paginasi untuk dropdown

@@ -9,7 +9,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
 
 export default function LoginPage() {
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const { login, isAuthenticated, loading: authLoading, user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -18,8 +18,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (isAuthenticated && !authLoading) router.push('/');
-  }, [isAuthenticated, authLoading, router]);
+    if (!isAuthenticated || authLoading || !user) return;
+    router.replace(user.must_change_password ? '/change-password' : '/dashboard');
+  }, [isAuthenticated, authLoading, router, user]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

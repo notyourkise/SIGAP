@@ -7,14 +7,16 @@ import (
 // Konstanta tipe notifikasi in-app (Fase 5.1). Nilai disimpan apa adanya di
 // kolom "type" sehingga mudah dipetakan ke ikon/label pada komponen frontend.
 const (
-	NotificationTypeAssigned    = "MAINTENANCE_ASSIGNED"
-	NotificationTypeReassigned  = "MAINTENANCE_REASSIGNED"
-	NotificationTypeUnassigned  = "MAINTENANCE_UNASSIGNED"
-	NotificationTypeCompleted   = "MAINTENANCE_COMPLETED"
-	NotificationTypeOverdue     = "MAINTENANCE_OVERDUE"
-	NotificationTypeOverdueCritical = "OVERDUE_CRITICAL"
-	NotificationTypeFieldCheck  = "FIELD_CHECK_ATTENTION"
-	NotificationTypeDailyDigest = "DAILY_DIGEST_AVAILABLE"
+	NotificationTypeAssigned         = "MAINTENANCE_ASSIGNED"
+	NotificationTypeReassigned       = "MAINTENANCE_REASSIGNED"
+	NotificationTypeUnassigned       = "MAINTENANCE_UNASSIGNED"
+	NotificationTypeCompleted        = "MAINTENANCE_COMPLETED"
+	NotificationTypeOverdue          = "MAINTENANCE_OVERDUE"
+	NotificationTypeOverdueCritical  = "OVERDUE_CRITICAL"
+	NotificationTypeFieldCheck       = "FIELD_CHECK_ATTENTION"
+	NotificationTypeDailyDigest      = "DAILY_DIGEST_AVAILABLE"
+	NotificationTypeZoneAssigned     = "ZONE_ASSIGNED"
+	NotificationTypeScheduleAssigned = "SCHEDULE_ASSIGNED"
 )
 
 // Notification adalah notifikasi in-app per-pengguna (bell icon). Satu notifikasi

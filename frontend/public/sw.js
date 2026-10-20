@@ -19,6 +19,7 @@
 // Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
 const CACHE_VERSION = 'sigap-shell-v3';
 const SHELL_CACHE = CACHE_VERSION;
+const IS_DEVELOPMENT = new URL(self.location.href).searchParams.has('dev');
 
 // Aset inti shell yang di-pre-cache saat install (diperbarui saat activate).
 const PRECACHE_URLS = [
@@ -35,6 +36,10 @@ const PRECACHE_URLS = [
 const NETWORK_TIMEOUT = 5000;
 
 self.addEventListener('install', (event) => {
+  if (IS_DEVELOPMENT) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   event.waitUntil(
     caches
       .open(SHELL_CACHE)
@@ -45,6 +50,14 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  if (IS_DEVELOPMENT) {
+    event.waitUntil(
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key.startsWith('sigap-shell-')).map((key) => caches.delete(key)))
+      ).then(() => self.clients.claim())
+    );
+    return;
+  }
   event.waitUntil(
     caches
       .keys()
@@ -159,6 +172,9 @@ function offlineApiResponse() {
 }
 
 self.addEventListener('fetch', (event) => {
+  // Development hanya membutuhkan registrasi untuk PushManager. Semua request
+  // dilepas langsung ke browser agar chunk Turbopack tidak pernah tercache.
+  if (IS_DEVELOPMENT) return;
   const { request } = event;
   const url = new URL(request.url);
 
@@ -256,5 +272,7 @@ function buildReferenceUrl(push) {
   if (type === 'maintenance-log' && refId) return '/maintenance';
   if (type === 'field-maintenance' && refId) return '/field-maintenance';
   if (type === 'daily-digest' && refId) return '/ringkasan';
+  if (type === 'zone' && refId) return '/sebaran-cctv';
+  if (type === 'maintenance-schedule' && refId) return '/dashboard';
   return '/dashboard';
 }

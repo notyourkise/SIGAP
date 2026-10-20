@@ -15,12 +15,17 @@ import { useEffect } from "react";
  */
 export default function ServiceWorkerRegister() {
   useEffect(() => {
-    // Hanya daftarkan bila didukung dan berada di secure context (https/localhost).
     if (!("serviceWorker" in navigator)) return;
 
     const register = async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        // Di development SW tetap didaftarkan agar PushManager dapat diuji,
+        // tetapi query `dev=1` membuat sw.js menonaktifkan seluruh caching.
+        const scriptUrl = process.env.NODE_ENV === "production" ? "/sw.js" : "/sw.js?dev=1";
+        await navigator.serviceWorker.register(scriptUrl, {
+          scope: "/",
+          updateViaCache: "none",
+        });
       } catch (err) {
         // Registrasi gagal tidak boleh merusak aplikasi — cukup catat di konsol.
         console.warn("Registrasi service worker gagal:", err);

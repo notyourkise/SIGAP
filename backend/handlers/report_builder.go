@@ -594,37 +594,29 @@ func servePDF(c *fiber.Ctx, entity string, labels []string, data [][]interface{}
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.SetMargins(10, 12, 10)
 	pdf.SetAutoPageBreak(true, 14)
+	pdf.SetFooterFunc(func() {
+		pdf.SetY(-10)
+		pdf.SetFont("Helvetica", "", 7)
+		pdf.SetTextColor(105, 105, 105)
+		pdf.CellFormat(277, 4, fmt.Sprintf("SIGAP - Laporan Kustom | Halaman %d", pdf.PageNo()), "", 0, "C", false, 0, "")
+	})
 	pdf.AddPage()
 
 	pdf.SetFont("Helvetica", "B", 13)
-	pdf.CellFormat(0, 8, "LAPORAN KUSTOM - "+strings.ToUpper(entity), "", 1, "C", false, 0, "")
+	entityLabel := strings.ToUpper(strings.ReplaceAll(entity, "_", " "))
+	pdf.CellFormat(0, 8, "LAPORAN KUSTOM - "+entityLabel, "", 1, "C", false, 0, "")
 	pdf.SetFont("Helvetica", "", 8)
 	pdf.SetTextColor(110, 110, 110)
 	pdf.CellFormat(0, 5, "Dihasilkan: "+time.Now().Format("2006-01-02 15:04:05"), "", 1, "C", false, 0, "")
 	pdf.SetTextColor(30, 30, 30)
 
 	pdf.Ln(2)
-	colCount := len(labels)
-	pageWidth := 297.0 - 20.0
-	colWidth := pageWidth / float64(colCount)
-
-	// Header
-	pdf.SetFont("Helvetica", "B", 7)
-	pdf.SetFillColor(64, 112, 56)
-	pdf.SetTextColor(255, 255, 255)
-	for _, label := range labels {
-		pdf.CellFormat(colWidth, 7, pdfSafe(label, 20), "1", 0, "C", true, 0, "")
-	}
-	pdf.Ln(-1)
-	pdf.SetTextColor(30, 30, 30)
+	columnWidths := reportPDFColumnWidths(pdf, labels, data)
+	drawReportPDFHeader(pdf, labels, columnWidths)
 
 	// Body
-	pdf.SetFont("Helvetica", "", 7)
 	for _, row := range data {
-		for _, cell := range row {
-			pdf.CellFormat(colWidth, 6, pdfSafe(cellString(cell), 28), "1", 0, "L", false, 0, "")
-		}
-		pdf.Ln(-1)
+		drawReportPDFRow(pdf, labels, columnWidths, row)
 	}
 
 	var buf bytes.Buffer
@@ -635,4 +627,111 @@ func servePDF(c *fiber.Ctx, entity string, labels []string, data [][]interface{}
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	return c.Send(buf.Bytes())
+}
+
+// reportPDFColumnWidths memberi setiap kolom ruang minimum, lalu membagikan
+// ruang tersisa berdasarkan panjang label dan data. Kolom Nama/IP tidak lagi
+// dipaksa selebar kolom angka pendek.
+func reportPDFColumnWidths(pdf *fpdf.Fpdf, labels []string, data [][]interface{}) []float64 {
+	const (
+		totalWidth = 277.0
+		minWidth   = 18.0
+	)
+	weights := make([]float64, len(labels))
+	weightTotal := 0.0
+	for i, label := range labels {
+		maxTextWidth := pdf.GetStringWidth(label)
+		for _, row := range data {
+			if i >= len(row) {
+				continue
+			}
+			if width := pdf.GetStringWidth(cellString(row[i])); width > maxTextWidth {
+				maxTextWidth = width
+			}
+		}
+		weight := maxTextWidth / 18
+		if weight < 1 {
+			weight = 1
+		}
+		if weight > 3 {
+			weight = 3
+		}
+		weights[i] = weight
+		weightTotal += weight
+	}
+
+	widths := make([]float64, len(labels))
+	remaining := totalWidth - minWidth*float64(len(labels))
+	if remaining < 0 {
+		remaining = 0
+	}
+	for i, weight := range weights {
+		widths[i] = minWidth
+		if weightTotal > 0 {
+			widths[i] += remaining * weight / weightTotal
+		}
+	}
+	return widths
+}
+
+func drawReportPDFHeader(pdf *fpdf.Fpdf, labels []string, widths []float64) {
+	pdf.SetFont("Helvetica", "B", 7)
+	const lineHeight = 4.0
+	headerHeight := 8.0
+	for i, label := range labels {
+		if lines := len(pdf.SplitLines([]byte(label), widths[i]-3)); float64(lines)*lineHeight+2 > headerHeight {
+			headerHeight = float64(lines)*lineHeight + 2
+		}
+	}
+
+	x, y := 10.0, pdf.GetY()
+	pdf.SetFillColor(64, 112, 56)
+	pdf.SetDrawColor(42, 78, 38)
+	pdf.SetTextColor(255, 255, 255)
+	for i, label := range labels {
+		pdf.Rect(x, y, widths[i], headerHeight, "DF")
+		pdf.SetXY(x+1.5, y+1)
+		pdf.MultiCell(widths[i]-3, lineHeight, label, "", "C", false)
+		x += widths[i]
+	}
+	pdf.SetY(y + headerHeight)
+	pdf.SetTextColor(30, 30, 30)
+}
+
+func drawReportPDFRow(pdf *fpdf.Fpdf, labels []string, widths []float64, row []interface{}) {
+	pdf.SetFont("Helvetica", "", 7)
+	values := make([]string, len(labels))
+	const lineHeight = 4.0
+	maxLines := 1
+	for i := range labels {
+		if i < len(row) {
+			values[i] = strings.TrimSpace(cellString(row[i]))
+		}
+		if values[i] == "" {
+			values[i] = "-"
+		}
+		if lines := len(pdf.SplitLines([]byte(values[i]), widths[i]-3)); lines > maxLines {
+			maxLines = lines
+		}
+	}
+	rowHeight := float64(maxLines)*lineHeight + 3
+	if rowHeight < 8 {
+		rowHeight = 8
+	}
+
+	if pdf.GetY()+rowHeight > 196 {
+		pdf.AddPage()
+		drawReportPDFHeader(pdf, labels, widths)
+		pdf.SetFont("Helvetica", "", 7)
+	}
+
+	x, y := 10.0, pdf.GetY()
+	pdf.SetDrawColor(205, 205, 205)
+	for i, value := range values {
+		pdf.Rect(x, y, widths[i], rowHeight, "D")
+		pdf.SetXY(x+1.5, y+1.5)
+		pdf.MultiCell(widths[i]-3, lineHeight, value, "", "L", false)
+		x += widths[i]
+	}
+	pdf.SetY(y + rowHeight)
 }

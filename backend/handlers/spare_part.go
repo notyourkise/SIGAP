@@ -20,26 +20,28 @@ const EventStockLow = "STOCK_LOW"
 
 // CreateSparePartRequest adalah body pembuatan suku cadang baru (Admin saja).
 type CreateSparePartRequest struct {
-	Nama         string  `json:"nama" validate:"required,min=2,max=100"`
-	SKU          string  `json:"sku" validate:"required,min=2,max=50"`
-	Kategori     string  `json:"kategori" validate:"omitempty,max=50"`
-	Stok         int     `json:"stok" validate:"gte=0"`
-	MinimumOrder int     `json:"minimum_order" validate:"gte=0"`
-	Satuan       string  `json:"satuan" validate:"omitempty,max=20"`
-	HargaSatuan  float64 `json:"harga_satuan" validate:"gte=0"`
-	Keterangan   string  `json:"keterangan" validate:"omitempty"`
+	SiteID       *uuid.UUID `json:"site_id" validate:"omitempty"`
+	Nama         string     `json:"nama" validate:"required,min=2,max=100"`
+	SKU          string     `json:"sku" validate:"required,min=2,max=50"`
+	Kategori     string     `json:"kategori" validate:"omitempty,max=50"`
+	Stok         int        `json:"stok" validate:"gte=0"`
+	MinimumOrder int        `json:"minimum_order" validate:"gte=0"`
+	Satuan       string     `json:"satuan" validate:"omitempty,max=20"`
+	HargaSatuan  float64    `json:"harga_satuan" validate:"gte=0"`
+	Keterangan   string     `json:"keterangan" validate:"omitempty"`
 }
 
 // UpdateSparePartRequest adalah body pembaruan suku cadang (Admin saja).
 type UpdateSparePartRequest struct {
-	Nama         string   `json:"nama" validate:"omitempty,min=2,max=100"`
-	SKU          string   `json:"sku" validate:"omitempty,min=2,max=50"`
-	Kategori     string   `json:"kategori" validate:"omitempty,max=50"`
-	Stok         *int     `json:"stok" validate:"omitempty,gte=0"`
-	MinimumOrder *int     `json:"minimum_order" validate:"omitempty,gte=0"`
-	Satuan       string   `json:"satuan" validate:"omitempty,max=20"`
-	HargaSatuan  *float64 `json:"harga_satuan" validate:"omitempty,gte=0"`
-	Keterangan   string   `json:"keterangan" validate:"omitempty"`
+	SiteID       *uuid.UUID `json:"site_id" validate:"omitempty"`
+	Nama         string     `json:"nama" validate:"omitempty,min=2,max=100"`
+	SKU          string     `json:"sku" validate:"omitempty,min=2,max=50"`
+	Kategori     string     `json:"kategori" validate:"omitempty,max=50"`
+	Stok         *int       `json:"stok" validate:"omitempty,gte=0"`
+	MinimumOrder *int       `json:"minimum_order" validate:"omitempty,gte=0"`
+	Satuan       string     `json:"satuan" validate:"omitempty,max=20"`
+	HargaSatuan  *float64   `json:"harga_satuan" validate:"omitempty,gte=0"`
+	Keterangan   string     `json:"keterangan" validate:"omitempty"`
 }
 
 // RecordSparePartUsageRequest adalah body pencatatan penggunaan suku cadang
@@ -51,7 +53,7 @@ type RecordSparePartUsageRequest struct {
 }
 
 // GetAllSpareParts mengambil daftar suku cadang terpaginasi dengan filter
-// kategori dan pencarian nama/SKU (Admin & Teknisi yang sudah login).
+// kategori, kawasan, dan pencarian nama/SKU (Admin & Teknisi yang sudah login).
 // @Summary      Ambil Semua Suku Cadang
 // @Description  Mendapatkan daftar suku cadang terpaginasi. Mendukung filter kategori (kategori), pencarian nama/SKU (search), dan sorting.
 // @Tags         Suku Cadang
@@ -59,6 +61,7 @@ type RecordSparePartUsageRequest struct {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        kategori query string false "Filter berdasarkan kategori (Kabel, Konektor, Power Supply, Lensa, Storage, Lainnya)"
+// @Param        site_id query string false "Filter berdasarkan UUID kawasan"
 // @Param        search query string false "Pencarian berdasarkan nama atau SKU"
 // @Param        page query integer false "Nomor Halaman (default: 1)"
 // @Param        limit query integer false "Jumlah data per halaman (default: 10)"
@@ -71,6 +74,17 @@ type RecordSparePartUsageRequest struct {
 func GetAllSpareParts(c *fiber.Ctx) error {
 	var items []models.SparePart
 	query := config.DB.Model(&models.SparePart{})
+
+	if rawSiteID := strings.TrimSpace(c.Query("site_id")); rawSiteID != "" {
+		siteID, err := uuid.Parse(rawSiteID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "ID kawasan tidak valid",
+			})
+		}
+		query = query.Where("site_id = ?", siteID)
+	}
 
 	// Filter kategori (opsional)
 	if kategori := strings.TrimSpace(c.Query("kategori")); kategori != "" {
@@ -95,7 +109,7 @@ func GetAllSpareParts(c *fiber.Ctx) error {
 	}
 
 	offset := (page - 1) * limit
-	if err := query.Offset(offset).Limit(limit).Order(sort).Find(&items).Error; err != nil {
+	if err := query.Preload("Site").Offset(offset).Limit(limit).Order(sort).Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar suku cadang",
@@ -178,6 +192,16 @@ func CreateSparePart(c *fiber.Ctx) error {
 		})
 	}
 
+	if req.SiteID != nil {
+		var siteCount int64
+		if err := config.DB.Model(&models.Site{}).Where("id = ?", *req.SiteID).Count(&siteCount).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal memvalidasi kawasan"})
+		}
+		if siteCount == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Kawasan tidak ditemukan"})
+		}
+	}
+
 	// Cek keunikan SKU (termasuk yang di-soft-delete).
 	var existing models.SparePart
 	if err := config.DB.Unscoped().Where("sku = ?", req.SKU).First(&existing).Error; err == nil {
@@ -203,6 +227,7 @@ func CreateSparePart(c *fiber.Ctx) error {
 	}
 
 	item := models.SparePart{
+		SiteID:       req.SiteID,
 		Nama:         req.Nama,
 		SKU:          req.SKU,
 		Kategori:     req.Kategori,
@@ -276,6 +301,17 @@ func UpdateSparePart(c *fiber.Ctx) error {
 			"message": "Validasi input gagal",
 			"errors":  errs,
 		})
+	}
+
+	if req.SiteID != nil {
+		var siteCount int64
+		if err := config.DB.Model(&models.Site{}).Where("id = ?", *req.SiteID).Count(&siteCount).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "Gagal memvalidasi kawasan"})
+		}
+		if siteCount == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Kawasan tidak ditemukan"})
+		}
+		item.SiteID = req.SiteID
 	}
 
 	// Jika SKU diubah, pastikan tidak bertabrakan dengan suku cadang lain

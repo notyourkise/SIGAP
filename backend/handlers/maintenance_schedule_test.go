@@ -38,11 +38,13 @@ func TestCreateMaintenanceSchedule_Success(t *testing.T) {
 		WillReturnRows(userRow(techID, "teknisi1", "teknisi"))
 	mock.ExpectExec(`^INSERT INTO "maintenance_schedules"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "notifications"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// Catatan: audit log (LogAudit) ditulis async di goroutine — tidak
 	// dimock di sini, mengikuti pola test handler lain.
 	newID := uuid.New()
-	reload := maintenanceScheduleRows(newID, cctvID, &techID, "weekly", true)
+	reload := maintenanceScheduleRows(newID, cctvID, &techID, "daily", true)
 	mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).WillReturnRows(reload)
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
@@ -53,7 +55,7 @@ func TestCreateMaintenanceSchedule_Success(t *testing.T) {
 	app.Post("/maintenance-schedules", withUserLocals(uuid.New().String(), "admin"), CreateMaintenanceSchedule)
 
 	body := `{"cctv_id":"` + cctvID.String() + `","technician_id":"` + techID.String() +
-		`","action_taken":"Periksa sambungan dan bersihkan debu kamera","frequency":"weekly"}`
+		`","action_taken":"Periksa sambungan dan bersihkan debu kamera","frequency":"daily"}`
 	req := httptest.NewRequest("POST", "/maintenance-schedules", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -65,7 +67,7 @@ func TestCreateMaintenanceSchedule_Success(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "success", result["status"])
 	data := result["data"].(map[string]interface{})
-	assert.Equal(t, "weekly", data["frequency"])
+	assert.Equal(t, "daily", data["frequency"])
 	assert.Equal(t, true, data["is_active"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

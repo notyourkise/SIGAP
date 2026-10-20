@@ -8,10 +8,41 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/SherClockHolmes/webpush-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestGetPushPublicKey_Success(t *testing.T) {
+	setupMockGORM(t)
+	privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+	assert.NoError(t, err)
+	t.Setenv("VAPID_PUBLIC_KEY", publicKey)
+	t.Setenv("VAPID_PRIVATE_KEY", privateKey)
+	t.Setenv("VAPID_EMAIL", "admin@sigap.local")
+
+	app := newTestApp()
+	app.Get("/push/public-key", withUserLocals(uuid.New().String(), "teknisi"), GetPushPublicKey)
+	resp, err := app.Test(httptest.NewRequest("GET", "/push/public-key", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, publicKey, result["data"].(map[string]interface{})["public_key"])
+}
+
+func TestGetPushPublicKey_InvalidConfiguration(t *testing.T) {
+	setupMockGORM(t)
+	t.Setenv("VAPID_PUBLIC_KEY", "invalid")
+
+	app := newTestApp()
+	app.Get("/push/public-key", withUserLocals(uuid.New().String(), "teknisi"), GetPushPublicKey)
+	resp, err := app.Test(httptest.NewRequest("GET", "/push/public-key", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+}
 
 func TestSubscribePush_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)

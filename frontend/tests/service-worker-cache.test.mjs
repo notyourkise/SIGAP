@@ -11,6 +11,7 @@ const serviceWorkerSource = await readFile(
 function loadServiceWorker(fetchImpl) {
   const listeners = new Map();
   const calls = { open: 0, match: 0, put: 0 };
+  const shownNotifications = [];
   const cache = {
     addAll: async () => undefined,
     match: async () => {
@@ -40,7 +41,7 @@ function loadServiceWorker(fetchImpl) {
       match: cache.match,
     },
     self: {
-      location: { origin: 'https://sigap.test' },
+      location: { origin: 'https://sigap.test', href: 'https://sigap.test/sw.js' },
       addEventListener: (type, handler) => listeners.set(type, handler),
       skipWaiting: async () => undefined,
       clients: {
@@ -48,12 +49,16 @@ function loadServiceWorker(fetchImpl) {
         matchAll: async () => [],
         openWindow: async () => undefined,
       },
-      registration: { showNotification: async () => undefined },
+      registration: {
+        showNotification: async (title, options) => {
+          shownNotifications.push({ title, options });
+        },
+      },
     },
   });
 
   vm.runInContext(serviceWorkerSource, context, { filename: 'public/sw.js' });
-  return { listeners, calls };
+  return { listeners, calls, shownNotifications };
 }
 
 async function dispatchFetch(handler, request) {
@@ -103,4 +108,50 @@ test('network-first does not store responses marked no-store', async () => {
   assert.equal(response.status, 200);
   assert.equal(calls.open, 1);
   assert.equal(calls.put, 0);
+});
+
+test('zone assignment push opens the CCTV distribution page', async () => {
+  const { listeners, shownNotifications } = loadServiceWorker(async () => new Response('{}'));
+  let notificationPromise;
+
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        title: 'Penugasan zona baru',
+        body: 'Anda ditugaskan ke Zona Utara.',
+        reference_type: 'zone',
+        reference_id: 'zone-1',
+      }),
+    },
+    waitUntil: (value) => {
+      notificationPromise = Promise.resolve(value);
+    },
+  });
+
+  await notificationPromise;
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(shownNotifications[0].options.data.url, '/sebaran-cctv');
+});
+
+test('schedule assignment push opens the technician dashboard', async () => {
+  const { listeners, shownNotifications } = loadServiceWorker(async () => new Response('{}'));
+  let notificationPromise;
+
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        title: 'Jadwal pemeliharaan baru',
+        body: 'Anda ditugaskan pada jadwal harian.',
+        reference_type: 'maintenance-schedule',
+        reference_id: 'schedule-1',
+      }),
+    },
+    waitUntil: (value) => {
+      notificationPromise = Promise.resolve(value);
+    },
+  });
+
+  await notificationPromise;
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(shownNotifications[0].options.data.url, '/dashboard');
 });

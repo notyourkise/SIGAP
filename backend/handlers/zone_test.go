@@ -231,6 +231,7 @@ func TestAssignCCTVToZone_Success(t *testing.T) {
 // TestAssignUsersToZone_Success menguji assign teknisi ke zona.
 func TestAssignUsersToZone_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
+	mock.MatchExpectationsInOrder(false)
 	zoneID, userID := uuid.New(), uuid.New()
 
 	// Muat zona.
@@ -239,6 +240,10 @@ func TestAssignUsersToZone_Success(t *testing.T) {
 	// Hitung jumlah user teknisi pada daftar.
 	mock.ExpectQuery(`^SELECT count\(\*\) FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	// Ambil penugasan lama agar notifikasi hanya dikirim ke teknisi baru.
+	mock.ExpectQuery(`^SELECT \* FROM "user_zones" WHERE zone_id = \$1`).
+		WithArgs(zoneID).
+		WillReturnRows(sqlmock.NewRows([]string{"zone_id", "user_id"}))
 	// Transaksi: hapus penugasan lama + sisipkan baru.
 	mock.ExpectBegin()
 	mock.ExpectExec(`^DELETE FROM "user_zones"`).
@@ -246,6 +251,9 @@ func TestAssignUsersToZone_Success(t *testing.T) {
 	mock.ExpectExec(`^INSERT INTO "user_zones"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
+	// Notifikasi in-app disimpan sinkron sebelum respons sukses dikirim.
+	mock.ExpectExec(`^INSERT INTO "notifications"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	app := newTestApp()
 	app.Post("/zones/:id/assign-users", withUserLocals(uuid.New().String(), "admin"), AssignUsersToZone)

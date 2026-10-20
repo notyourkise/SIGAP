@@ -8,15 +8,15 @@ import (
 )
 
 // SetupSparePartRoutes mendefinisikan rute modul inventaris suku cadang
-// (Task 11.1, Sprint 26). CRUD suku cadang khusus admin; daftar & penggunaan
-// dapat diakses admin/teknisi yang sudah login.
+// (Task 11.1, Sprint 26). Seluruh inventaris suku cadang khusus admin;
+// teknisi hanya dapat mencatat penggunaan melalui pekerjaan pemeliharaan.
 func SetupSparePartRoutes(router fiber.Router) {
 	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-19)
 	// Middleware ini membaca X-Site-ID header dan validasi site di database
 	siteMiddleware := middleware.SiteContext()
-	
-	// Rute suku cadang — daftar & detail untuk admin/teknisi, CRUD khusus admin.
-	spGroup := router.Group("/spare-parts", middleware.Protected())
+
+	// Rute inventaris suku cadang (daftar, detail, dan CRUD) khusus admin.
+	spGroup := router.Group("/spare-parts", middleware.Protected(), middleware.RequireRole("admin"))
 	spGroup.Use(siteMiddleware)
 
 	// Rute statis didaftarkan sebelum rute dinamis (gotcha Fiber route ordering):
@@ -24,9 +24,9 @@ func SetupSparePartRoutes(router fiber.Router) {
 	spGroup.Get("/", handlers.GetAllSpareParts)
 	spGroup.Get("/low-stock", handlers.GetLowStockSpareParts)
 	spGroup.Get("/:id", handlers.GetSparePartByID)
-	spGroup.Post("/", middleware.RequireRole("admin"), handlers.CreateSparePart)
-	spGroup.Put("/:id", middleware.RequireRole("admin"), handlers.UpdateSparePart)
-	spGroup.Delete("/:id", middleware.RequireRole("admin"), handlers.DeleteSparePart)
+	spGroup.Post("/", handlers.CreateSparePart)
+	spGroup.Put("/:id", handlers.UpdateSparePart)
+	spGroup.Delete("/:id", handlers.DeleteSparePart)
 
 	// Penggunaan suku cadang — terikat maintenance log (admin & teknisi).
 	mlGroup := router.Group("/maintenance-logs", middleware.Protected())

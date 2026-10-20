@@ -32,6 +32,8 @@ import {
   Play,
   Square,
   X,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 
 // WHEPPlayer dimuat dinamis (lazy) hanya di sisi klien agar aman untuk SSR,
@@ -60,6 +62,15 @@ interface PaginationPayload<T> {
   rows: T[];
   pagination: { total_rows: number };
 }
+
+interface StartAllStreamsResult {
+  total: number;
+  success: number;
+  failed: number;
+  mediamtx_reachable: boolean;
+}
+
+type StreamingServiceState = 'checking' | 'ready' | 'unavailable';
 
 // Preset ukuran grid: jumlah sel & kelas grid responsif.
 const LAYOUT_PRESETS: Record<'2x2' | '3x3' | '4x4', { cells: number; gridClass: string }> = {
@@ -127,6 +138,9 @@ export default function MonitorPage() {
   const [cctvs, setCctvs] = useState<CCTV[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
+  const [streamingServiceState, setStreamingServiceState] = useState<StreamingServiceState>('checking');
+  const [streamingServiceMessage, setStreamingServiceMessage] = useState('Memeriksa koneksi MediaMTX…');
 
   // Preset grid aktif (2×2 / 3×3 / 4×4).
   const [layout, setLayout] = useState<'2x2' | '3x3' | '4x4'>('3x3');
@@ -183,6 +197,31 @@ export default function MonitorPage() {
     const timer = setTimeout(loadCctvs, 0);
     return () => clearTimeout(timer);
   }, [loadCctvs]);
+
+  const loadStreamingReadiness = useCallback(async () => {
+    setStreamingServiceState('checking');
+    setStreamingServiceMessage('Memeriksa koneksi MediaMTX…');
+    try {
+      const response = await apiRequest<{ reachable: boolean }>('/streams/readiness');
+      if (response.data?.reachable) {
+        setStreamingServiceState('ready');
+        setStreamingServiceMessage('MediaMTX terhubung');
+      } else {
+        setStreamingServiceState('unavailable');
+        setStreamingServiceMessage('MediaMTX belum terhubung');
+        setIsPlaying(false);
+      }
+    } catch (e) {
+      setStreamingServiceState('unavailable');
+      setStreamingServiceMessage(e instanceof Error ? e.message : 'MediaMTX belum terhubung');
+      setIsPlaying(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(loadStreamingReadiness, 0);
+    return () => clearTimeout(timer);
+  }, [loadStreamingReadiness]);
 
   // Dengarkan perubahan fullscreen seluruh grid dari luar (mis. tekan Escape).
   useEffect(() => {
@@ -317,17 +356,29 @@ export default function MonitorPage() {
     if (acting) return;
     setActing(true);
     setError('');
+    setWarning('');
     try {
-      const res = await apiRequest('/streams/start-all', { method: 'POST' });
-      if (res.status === 'success') {
+      const res = await apiRequest<StartAllStreamsResult>('/streams/start-all', { method: 'POST' });
+      const result = res.data;
+      if (res.status === 'success' && result && result.success > 0) {
         setIsPlaying(true);
+        setStreamingServiceState('ready');
+        setStreamingServiceMessage('MediaMTX terhubung');
+        if (result.failed > 0) {
+          setWarning(`${result.success} stream berhasil dimulai, tetapi ${result.failed} CCTV belum dapat dihubungkan. Periksa konfigurasi RTSP CCTV tersebut.`);
+        }
         // Simpan konfigurasi grid; leftAt null = sedang berada di halaman (timer tak berjalan).
         saveMonitorState({ layout, selection, leftAt: null });
+      } else if (res.status === 'success' && result?.total === 0) {
+        setError('Belum ada CCTV dengan streaming aktif untuk dijalankan.');
       } else {
-        setError(res.message || 'Gagal menyalakan streaming.');
+        setIsPlaying(false);
+        setError(res.message || 'Tidak ada stream yang berhasil dimulai. Periksa konfigurasi MediaMTX dan RTSP CCTV.');
       }
     } catch (e) {
+      setIsPlaying(false);
       setError(e instanceof Error ? e.message : 'Gagal menyalakan streaming.');
+      await loadStreamingReadiness();
     } finally {
       setActing(false);
     }
@@ -338,6 +389,7 @@ export default function MonitorPage() {
     if (acting) return;
     setActing(true);
     setError('');
+    setWarning('');
     try {
       const res = await apiRequest('/streams/stop-all', { method: 'POST' });
       setIsPlaying(false);
@@ -385,6 +437,33 @@ export default function MonitorPage() {
               <MonitorPlay className="h-8 w-8 text-primary" />
               Monitor CCTV
             </h1>
+            <button
+              type="button"
+              onClick={loadStreamingReadiness}
+              disabled={streamingServiceState === 'checking'}
+              title={streamingServiceMessage}
+              className={`mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/45 disabled:cursor-wait ${
+                streamingServiceState === 'ready'
+                  ? 'bg-success/10 text-success'
+                  : streamingServiceState === 'unavailable'
+                    ? 'bg-error/10 text-error'
+                    : 'bg-background text-muted'
+              }`}
+              aria-live="polite"
+            >
+              {streamingServiceState === 'checking' ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : streamingServiceState === 'ready' ? (
+                <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <WifiOff className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              {streamingServiceState === 'checking'
+                ? 'Memeriksa MediaMTX…'
+                : streamingServiceState === 'ready'
+                  ? 'MediaMTX terhubung'
+                  : 'MediaMTX tidak terhubung · Periksa ulang'}
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -434,8 +513,23 @@ export default function MonitorPage() {
 
         {/* Pesan error */}
         {error && (
-          <div role="alert" className="rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
-            {error}
+          <div role="alert" className="flex flex-col gap-3 rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            {streamingServiceState === 'unavailable' && (
+              <button
+                type="button"
+                onClick={loadStreamingReadiness}
+                className="shrink-0 rounded-lg border border-error/30 px-3 py-1.5 text-xs font-bold transition-colors hover:bg-error/10 focus:outline-none focus:ring-2 focus:ring-error/30"
+              >
+                Periksa ulang
+              </button>
+            )}
+          </div>
+        )}
+
+        {warning && (
+          <div role="status" className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            {warning}
           </div>
         )}
 
