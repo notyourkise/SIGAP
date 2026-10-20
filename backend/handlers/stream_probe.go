@@ -96,7 +96,8 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		streamState := models.StreamStateUnknown
 		var latencyMs *int
 
-		if utils.IsMetroE(cctv) {
+		isMetroE := utils.IsMetroE(cctv)
+		if isMetroE && utils.MetroEDirectProbeEnabled() {
 			// Metro-E: jaringan dedicated — aman diprobe langsung tiap 2 menit.
 			ms, ok := utils.ProbeICMP(cctv.IPCamera, 3*time.Second)
 			if ok {
@@ -114,15 +115,20 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			}
 			utils.Log.Debugf("📡 Metro-E %s (%s) state=%s latency=%dms", cctv.Nama, cctv.KodeCCTV, streamState, ms)
 		} else {
-			// GSM: TIDAK pernah diprobe langsung (biaya kuota data seluler).
-			// Klasifikasi hanya dari state MediaMTX lokal VPS.
+			// GSM — atau Metro-E saat probe langsung dinonaktifkan karena host
+			// tidak punya rute ke 10.20.105.x. Klasifikasi memakai state MediaMTX
+			// lokal agar tidak menghasilkan offline palsu.
+			probeLabel := "GSM"
+			if isMetroE {
+				probeLabel = "Metro-E (pasif)"
+			}
 			switch {
 			case operational && pathInfo.SourceReady():
 				streamState = models.StreamStateLive
 			case operational && len(pathInfo.Readers) > 0:
 				// Ada penonton tetapi sumber tidak siap → kegagalan stream nyata.
 				streamState = models.StreamStateOffline
-				utils.Log.Warnf("⚠️ GSM %s (%s) path tidak siap dengan %d penonton → offline", cctv.Nama, cctv.KodeCCTV, len(pathInfo.Readers))
+				utils.Log.Warnf("⚠️ %s %s (%s) path tidak siap dengan %d penonton → offline", probeLabel, cctv.Nama, cctv.KodeCCTV, len(pathInfo.Readers))
 			case operational:
 				// Path instantiated tetapi belum ready dan tidak ada penonton:
 				// sumber on-demand sedang idle/menutup, bukan bukti kamera mati.
@@ -134,8 +140,8 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				// Tidak ada path operasional maupun config yang dapat dikonfirmasi.
 				streamState = models.StreamStateUnknown
 			}
-			utils.Log.Debugf("📡 GSM %s (%s) path=%s operational=%v ready=%v readers=%d registered=%v state=%s",
-				cctv.Nama, cctv.KodeCCTV, path, operational, pathInfo.SourceReady(), len(pathInfo.Readers), registered, streamState)
+			utils.Log.Debugf("📡 %s %s (%s) path=%s operational=%v ready=%v readers=%d registered=%v state=%s",
+				probeLabel, cctv.Nama, cctv.KodeCCTV, path, operational, pathInfo.SourceReady(), len(pathInfo.Readers), registered, streamState)
 		}
 
 		live := streamState == models.StreamStateLive

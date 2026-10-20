@@ -161,6 +161,7 @@ func injectStreamClient(t *testing.T, c *utils.MediaMTXClient) {
 }
 
 func TestRunProbeCycle_MetroE(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "true")
 	db, mock := setupMockGORM(t)
 
 	// ListPaths dipanggil SEKALI per siklus (sumber status kamera GSM) —
@@ -187,6 +188,31 @@ func TestRunProbeCycle_MetroE(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 	// ListPaths hanya dipanggil satu kali di level siklus (bukan per kamera).
 	assert.Equal(t, 1, *mtxCalls, "ListPaths dipanggil sekali per siklus probe")
+}
+
+// Saat probe langsung Metro-E dinonaktifkan (host tidak punya rute ke
+// 10.20.105.x), status harus memakai MediaMTX pasif dan tidak menjadi offline.
+func TestRunProbeCycle_MetroEPassiveUsesIdle(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "false")
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	client, closeSrv := startMTXStateServer(t, nil, []utils.PathConfig{{Name: path, Source: "rtsp://nvr/channel"}})
+	defer closeSrv()
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.20.105.62", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRunProbeCycle_GSM(t *testing.T) {

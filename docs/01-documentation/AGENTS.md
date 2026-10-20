@@ -485,6 +485,8 @@ func isMetroE(cctv models.CCTV) bool {
 > - Ã¢Å¡Âª Tidak diketahui Ã¢â‚¬â€ belum pernah dibuka atau > 24 jam
 > - Ã°Å¸â€Â´ Offline Ã¢â‚¬â€ stream pernah aktif tapi sekarang error/disconnected
 >
+> **Mode probe Metro-E (`CCTV_METRO_E_DIRECT_PROBE`):** probe langsung hanya boleh aktif jika host/container API benar-benar memiliki rute ke `10.20.105.x`. Deployment yang tidak memiliki rute wajib memakai `CCTV_METRO_E_DIRECT_PROBE=false`; status Metro-E kemudian diambil pasif dari MediaMTX (`live`/`idle`/`offline`/`unknown`) agar tidak muncul offline palsu. Compose SIGAP default `false`.
+>
 > **17 Metro-E IP Resmi:** D3:`10.20.105.62` D5:`10.20.105.66` D6:`10.20.105.59` D7:`10.20.105.53` D8:`10.20.105.52` D9:`10.20.105.54` D11:`10.20.105.55` D12:`10.20.105.58` D13:`10.20.105.67` D15:`10.20.105.61` D16:`10.20.105.56` D17:`10.20.105.63` D19:`10.20.105.60` D23:`10.20.105.65` D28:`10.20.105.70` D30:`10.20.105.68` D38:`10.20.105.57`
 >
 > **Latensi Metro-E:** `<50ms` Ã°Å¸Å¸Â¢ Good | `50Ã¢â‚¬â€œ100ms` Ã°Å¸Å¸Â¡ Lagging | `>100ms` Ã°Å¸â€Â´ Critical | Timeout Ã¢Å¡Â« Offline

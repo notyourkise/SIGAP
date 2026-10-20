@@ -83,6 +83,10 @@ services:
       # mengaktifkan Secure cookie, HSTS, dan CSP ketat. Set APP_ENV=development
       # di root .env hanya bila memang sedang mengembangkan API.
       - APP_ENV=${APP_ENV:-production}
+      # Probe langsung Metro-E hanya jika host benar-benar punya rute ke
+      # 10.20.105.x. Default false agar deployment lokal tidak menampilkan
+      # kamera Metro-E sebagai offline saat jaringan OIKN tidak terjangkau.
+      - CCTV_METRO_E_DIRECT_PROBE=${CCTV_METRO_E_DIRECT_PROBE:-false}
       # Level log untuk Task 7.6 (logger terstruktur). Default: info.
       - LOG_LEVEL=${LOG_LEVEL:-info}
       # SECURITY: DB_PASSWORD TIDAK di-hardcode di sini. Nilai bersumber dari

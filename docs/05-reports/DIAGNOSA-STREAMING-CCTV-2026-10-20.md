@@ -56,6 +56,10 @@
 - Migration `000025_stream_state` menambahkan status empat keadaan: `live`, `idle`, `offline`, `unknown`.
 - Probe GSM membedakan path on-demand yang belum berjalan (`idle`) dari kegagalan terkonfirmasi (`offline`); kegagalan MediaMTX tidak lagi memaksa semua kamera menjadi offline.
 - Stream health monitor tidak memulai countdown `STREAM_DOWN` untuk status `idle`/`unknown`, sehingga tidak ada alarm palsu setelah 15 menit.
+- Data master 35 CCTV THD disinkronkan dari daftar terbaru: nama/area, koordinat, `sumber_listrik` (PLTS/PLN), `tipe_koneksi` (GSM/Metro-E/Tidak Ada Layanan), `ip_camera`, status aktif/nonaktif, dan keterangan perangkat.
+- `ip_camera` kini terisi untuk seluruh 35 record; 17 record bertipe Metro-E (16 aktif, 1 nonaktif), 9 GSM, dan 9 Tidak Ada Layanan. Sebanyak 18 record memiliki IP `10.20.105.x` (termasuk THD-01 yang bertipe Tidak Ada Layanan).
+- Karena host/container API tidak memiliki rute ke `10.20.105.x`, probe langsung Metro-E dinonaktifkan melalui `CCTV_METRO_E_DIRECT_PROBE=false`. Status Metro-E memakai MediaMTX pasif (live/idle/offline/unknown) agar tidak menampilkan offline palsu.
+- `THD-01` kini memakai koordinat dari sumber data; estimasi tersisa 9 kamera dan tetap diberi label `Estimasi`.
 
 ## Bukti Status Probe On-Demand
 
@@ -67,7 +71,7 @@ Probe cycle: 20 kamera dicek | online=0 idle=20 offline=0 unknown=0
 
 Database: 20/20 kamera aktif memiliki `stream_state=idle`, `stream_live=false`, dan `stream_checked_at` terisi. Tidak ada log `STREAM_DOWN` palsu. Status idle berarti path on-demand terdaftar dan siap dibuka saat pengguna menonton, bukan kamera mati.
 
-Catatan data: seluruh 20 kamera aktif saat ini memiliki `ip_camera` kosong sehingga diklasifikasikan sebagai GSM dan mengikuti kebijakan probe pasif (zero data). Jika `ip_camera` Metro-E diisi, kamera akan diprobe langsung dan statusnya menjadi live/offline biner.
+Catatan data: 16 kamera aktif adalah Metro-E dan 4 adalah GSM. Seluruh IP sudah tersimpan, tetapi probe langsung Metro-E belum diaktifkan karena `10.20.105.x` timeout dari container API. Set `CCTV_METRO_E_DIRECT_PROBE=true` hanya setelah host benar-benar berada di jaringan OIKN; setelah itu status Metro-E menjadi live/offline biner.
 
 ## Catatan Kompatibilitas
 
@@ -83,6 +87,8 @@ Tidak ada transcoding FFmpeg yang diaktifkan.
 - Rollout H.264 sub-stream ke 20 kamera aktif **tidak dilakukan** karena keputusan operasional saat ini adalah mempertahankan H.265.
 - Kompatibilitas perangkat pengguna (HP, Edge, Chrome tanpa HEVC extension) belum diuji menyeluruh.
 - Rotasi password NVR masih pending dan menunggu koordinasi agar seluruh URL tersimpan diperbarui.
+- Probe langsung Metro-E belum bisa diaktifkan dari host ini karena `10.20.105.x` tidak terjangkau; status masih pasif.
+- Sembilan koordinat masih estimasi dan perlu verifikasi lapangan.
 - Perlu pemantauan beberapa siklus untuk memastikan status idle tetap stabil dan tidak ada alarm palsu.
 
 ## Langkah Berikutnya
@@ -91,3 +97,5 @@ Tidak ada transcoding FFmpeg yang diaktifkan.
 2. Pantau laporan pengguna; bila ada perangkat tanpa HEVC, ubah sub-stream kamera terkait ke H.264 atau arahkan pengguna memilih HD/main yang kompatibel.
 3. Bila kompatibilitas luas menjadi prioritas, lanjutkan rollout H.264 sub-stream secara bertahap dan verifikasi tiap kamera.
 4. Pantau log probe/health monitor setelah beberapa siklus; pastikan kamera idle tetap berstatus Siaga dan tidak memicu `STREAM_DOWN`.
+5. Set `CCTV_METRO_E_DIRECT_PROBE=true` setelah API ditempatkan di jaringan yang dapat menjangkau `10.20.105.x`, lalu verifikasi 16 kamera Metro-E aktif.
+6. Verifikasi lapangan untuk 9 koordinat estimasi: THD-18, THD-20, THD-25, THD-27, THD-29, THD-30, THD-31, THD-34, THD-35.

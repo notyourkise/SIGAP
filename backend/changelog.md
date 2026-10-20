@@ -1,5 +1,36 @@
 # Changelog - Backend SIGAP
 
+## [0.64.15] - 2026-10-20
+
+### Probe Metro-E pasif saat host tanpa rute OIKN
+
+**Konteks**: Data master terbaru mengisi `ip_camera` 17 kamera Metro-E. Container API tidak dapat menjangkau `10.20.105.x` (timeout), sehingga probe langsung akan menandai 16 kamera aktif sebagai offline meskipun streaming lewat NVR publik masih bekerja.
+
+**Perubahan**:
+- Menambahkan `utils.MetroEDirectProbeEnabled()` dengan env `CCTV_METRO_E_DIRECT_PROBE`.
+- `docker-compose.yml` default `false` untuk deployment ini; set `true` hanya jika host berada di jaringan OIKN.
+- Saat flag false, kamera Metro-E memakai klasifikasi MediaMTX pasif yang sama dengan GSM: `live` jika path ready, `idle` jika path terdaftar tetapi belum berjalan, `offline` hanya jika ada penonton tetapi sumber tidak siap, dan `unknown` jika tidak dapat disimpulkan.
+- `AddPath` tidak lagi mencetak ERROR untuk respons normal `path already exists`; `ensureStreamPath` tetap melakukan patch konfigurasi.
+- Menambahkan test untuk flag dan fallback pasif Metro-E.
+- Sinkronisasi data master 35 CCTV THD dilakukan terpisah di database (bukan migration): `sumber_listrik` PLTS/PLN, `tipe_koneksi` GSM/Metro-E/Tidak Ada Layanan, `ip_camera`, status, koordinat, dan keterangan.
+
+timestamp: 2026-10-20 16:45 UTC+8
+kategori: Sedang, Backend (Streaming/Probe)
+file yang diubah:
+- backend/utils/rtsp_probe.go
+- backend/utils/rtsp_probe_test.go
+- backend/utils/mediamtx.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- docker-compose.yml
+- docs/01-documentation/AGENTS.md
+- docs/05-reports/DIAGNOSA-STREAMING-CCTV-2026-10-20.md
+- backend/changelog.md
+
+alasan perubahan: Menyimpan IP Metro-E tanpa menimbulkan offline palsu pada deployment yang belum memiliki rute ke jaringan OIKN.
+
+---
+
 ## [0.64.14] - 2026-10-20
 
 ### Status probe on-demand: idle bukan offline
