@@ -3,10 +3,37 @@ package handlers
 import (
 	"sigap-backend/config"
 	"sigap-backend/models"
+	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// GetPushPublicKey memberikan public key VAPID yang sama dengan yang dipakai
+// backend saat mengirim push. Dengan demikian frontend tidak lagi bergantung
+// pada nilai NEXT_PUBLIC_* yang dapat berbeda saat build/deploy.
+func GetPushPublicKey(c *fiber.Ctx) error {
+	if err := utils.ValidateVAPIDConfiguration(); err != nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Notifikasi push belum dikonfigurasi oleh administrator sistem",
+		})
+	}
+	key, err := utils.VAPIDPublicKey()
+	if err != nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Notifikasi push belum dikonfigurasi oleh administrator sistem",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"public_key": key,
+		},
+	})
+}
 
 // SubscribePushRequest adalah payload untuk mendaftarkan langganan Web Push.
 type SubscribePushRequest struct {

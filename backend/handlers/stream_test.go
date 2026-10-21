@@ -229,6 +229,64 @@ func TestStartStream_NoChannelPort(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestGetMediaMTXReadiness(t *testing.T) {
+	t.Run("reachable", func(t *testing.T) {
+		injectMockMTX(t, mockMTXConfig{})
+
+		app := newTestApp()
+		app.Get("/streams/readiness", GetMediaMTXReadiness)
+
+		resp, err := app.Test(httptest.NewRequest("GET", "/streams/readiness", nil))
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		data := result["data"].(map[string]interface{})
+		assert.Equal(t, true, data["reachable"])
+	})
+
+	t.Run("unreachable", func(t *testing.T) {
+		injectMockMTX(t, mockMTXConfig{pingErr: errors.New("offline")})
+
+		app := newTestApp()
+		app.Get("/streams/readiness", GetMediaMTXReadiness)
+
+		resp, err := app.Test(httptest.NewRequest("GET", "/streams/readiness", nil))
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		assert.Equal(t, "error", result["status"])
+		assert.NotContains(t, result["message"], "127.0.0.1")
+	})
+}
+
+func TestStartAllStreams_MediaMTXUnreachable(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	injectMockMTX(t, mockMTXConfig{pingErr: errors.New("offline")})
+
+	id := uuid.New()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(streamCCTVRow(id, true, 19, "encrypted-rtsp"))
+
+	app := newTestApp()
+	app.Post("/streams/start-all", StartAllStreams)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/streams/start-all", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	data := result["data"].(map[string]interface{})
+	assert.Equal(t, false, data["mediamtx_reachable"])
+	assert.Equal(t, float64(0), data["success"])
+	assert.Equal(t, float64(1), data["failed"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestStopStream_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	injectMockMTX(t, mockMTXConfig{}) // RemovePath berhasil

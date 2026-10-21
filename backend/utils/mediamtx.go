@@ -44,11 +44,14 @@ func (p PathInfo) SourceReady() bool {
 	return p.Available || p.Ready
 }
 
-// defaultMediaMTXURL adalah URL default MediaMTX REST API bila env tidak di-set.
-const defaultMediaMTXURL = "http://mediamtx:9997"
+// defaultMediaMTXURL adalah URL default MediaMTX REST API untuk proses backend
+// yang dijalankan langsung di host (tanpa Docker). Deployment Docker selalu
+// mengirim MEDIAMTX_API_URL=http://mediamtx:9997 melalui compose.
+const defaultMediaMTXURL = "http://127.0.0.1:9997"
 
 // NewMediaMTXClient membuat MediaMTXClient baru dengan membaca URL API dari
-// env MEDIAMTX_API_URL. Bila env kosong, gunakan default http://mediamtx:9997.
+// env MEDIAMTX_API_URL. Bila env kosong, gunakan MediaMTX lokal pada
+// http://127.0.0.1:9997.
 // Trailing slash pada URL dibuang agar penyusunan endpoint konsisten. HTTP
 // client diberi timeout 10 detik agar panggilan tidak menggantung selamanya.
 func NewMediaMTXClient() *MediaMTXClient {

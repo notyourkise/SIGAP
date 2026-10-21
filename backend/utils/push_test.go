@@ -1,4 +1,4 @@
-﻿package utils
+package utils
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 
 	"sigap-backend/models"
 
-	"github.com/SherClockHolmes/webpush-go"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/SherClockHolmes/webpush-go"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/postgres"
@@ -49,19 +49,21 @@ func TestSendPushToSubscriptionCallsInjectedSender(t *testing.T) {
 
 	// Set VAPID env agar opsi terisi. t.Setenv otomatis membersihkan env var
 	// setelah test & mem-fail test bila pengaturan env gagal (hindari errcheck).
-	t.Setenv("VAPID_PUBLIC_KEY", "PUB")
+	_, publicKey, err := webpush.GenerateVAPIDKeys()
+	assert.NoError(t, err)
+	t.Setenv("VAPID_PUBLIC_KEY", publicKey)
 	t.Setenv("VAPID_PRIVATE_KEY", "PRIV")
 	t.Setenv("VAPID_EMAIL", "ops@sigap.id")
 
-	err := SendPushToSubscription(sub, raw)
+	err = SendPushToSubscription(sub, raw)
 	assert.NoError(t, err)
 
 	assert.Equal(t, sub.Endpoint, capturedSub.Endpoint)
 	assert.Equal(t, sub.KeyP256DH, capturedSub.Keys.P256dh)
 	assert.Equal(t, sub.KeyAuth, capturedSub.Keys.Auth)
-	assert.Equal(t, "PUB", capturedOptions.VAPIDPublicKey)
+	assert.Equal(t, publicKey, capturedOptions.VAPIDPublicKey)
 	assert.Equal(t, "PRIV", capturedOptions.VAPIDPrivateKey)
-	assert.Equal(t, "ops@sigap.id", capturedOptions.Subscriber)
+	assert.Equal(t, "mailto:ops@sigap.id", capturedOptions.Subscriber)
 	assert.Equal(t, raw, capturedMsg)
 }
 
@@ -82,8 +84,10 @@ func TestSendPushNoopWhenVapidMissing(t *testing.T) {
 // TestSendPushSendsToAllSubscriptions memverifikasi SendPush memuat subscription
 // user dan mengirim payload ke masing-masing (melalui sender mock).
 func TestSendPushSendsToAllSubscriptions(t *testing.T) {
-	t.Setenv("VAPID_PUBLIC_KEY", "PUB")
-	t.Setenv("VAPID_PRIVATE_KEY", "PRIV")
+	privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+	assert.NoError(t, err)
+	t.Setenv("VAPID_PUBLIC_KEY", publicKey)
+	t.Setenv("VAPID_PRIVATE_KEY", privateKey)
 	t.Setenv("VAPID_EMAIL", "ops@sigap.id")
 
 	db, mock := newPushTestDB(t)
@@ -118,6 +122,12 @@ func TestSendPushSendsToAllSubscriptions(t *testing.T) {
 	}
 	assert.Equal(t, 2, calls)
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVAPIDPublicKeyRejectsInvalidP256Key(t *testing.T) {
+	t.Setenv("VAPID_PUBLIC_KEY", "_s8bFU0w3QkyhfaKa8fnhyqI0qPMatxYsiz_emqwvlA")
+	_, err := VAPIDPublicKey()
+	assert.Error(t, err)
 }
 
 // TestSendPushPayloadFormat memverifikasi payload JSON yang dikirim berisi field

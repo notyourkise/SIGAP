@@ -44,9 +44,9 @@ func normalizeCCTVStatus(s string) string {
 
 // Request body untuk pembuatan CCTV baru
 type CreateCCTVRequest struct {
-	KodeCCTV      string `json:"kode_cctv" validate:"required,min=3,max=50"`
-	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
-	Nama          string `json:"nama" validate:"required,min=3,max=100"`
+	KodeCCTV      string   `json:"kode_cctv" validate:"required,min=3,max=50"`
+	IDChannel     string   `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string   `json:"nama" validate:"required,min=3,max=100"`
 	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
 	Longitude     *float64 `json:"longitude"`
 	Latitude      *float64 `json:"latitude"`
@@ -71,9 +71,9 @@ type CreateCCTVRequest struct {
 
 // Request body untuk update data CCTV
 type UpdateCCTVRequest struct {
-	KodeCCTV      string `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
-	IDChannel     string `json:"id_channel" validate:"omitempty,max=50"`
-	Nama          string `json:"nama" validate:"omitempty,min=3,max=100"`
+	KodeCCTV      string   `json:"kode_cctv" validate:"omitempty,min=3,max=50"`
+	IDChannel     string   `json:"id_channel" validate:"omitempty,max=50"`
+	Nama          string   `json:"nama" validate:"omitempty,min=3,max=100"`
 	LokasiArea    string   `json:"lokasi_area" validate:"omitempty,max=255"`
 	Longitude     *float64 `json:"longitude"`
 	Latitude      *float64 `json:"latitude"`
@@ -273,7 +273,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
 	cctv.RTSPURL = req.RTSPURL
-	
+
 	// Set zone_id dan site_id hanya jika ada value (tidak null dan bukan zero)
 	if req.ZoneID.HasValue() {
 		cctv.ZoneID = req.ZoneID.Value
@@ -281,7 +281,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 	if req.SiteID.HasValue() {
 		cctv.SiteID = req.SiteID.Value
 	}
-	
+
 	if req.RTSPPassword != "" {
 		encrypted, err := utils.EncryptAES256(req.RTSPPassword)
 		if err != nil {
@@ -323,6 +323,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 // @Param        jenis_cctv query string false "Filter berdasarkan jenis CCTV"
 // @Param        indoor_outdoor query string false "Filter berdasarkan indoor/outdoor"
 // @Param        zone_id query string false "Filter berdasarkan zona operasional (UUID zona)"
+// @Param        site_id query string false "Filter berdasarkan kawasan operasional (UUID kawasan)"
 // @Param        search query string false "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area"
 // @Param        page query integer false "Nomor Halaman (default: 1)"
 // @Param        limit query integer false "Jumlah data per halaman (default: 10)"
@@ -333,23 +334,23 @@ func CreateCCTV(c *fiber.Ctx) error {
 // @Router       /cctv [get]
 func GetAllCCTV(c *fiber.Ctx) error {
 	var cctvs []models.CCTV
-	query := config.DB.Model(&models.CCTV{})
+	query := config.DB.Model(&models.CCTV{}).Preload("Site")
 
 	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
 	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
 	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		query = query.Where("site_id = ?", siteID)
+		query = query.Where("cctvs.site_id = ?", siteID)
 	}
 
 	// Filter
 	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
+		query = query.Where("cctvs.status = ?", status)
 	}
 	if jenis := c.Query("jenis_cctv"); jenis != "" {
-		query = query.Where("jenis_cctv = ?", jenis)
+		query = query.Where("cctvs.jenis_cctv = ?", jenis)
 	}
 	if io := c.Query("indoor_outdoor"); io != "" {
-		query = query.Where("indoor_outdoor = ?", io)
+		query = query.Where("cctvs.indoor_outdoor = ?", io)
 	}
 	// Filter zona operasional (Task 11.4, Sprint 28): ?zone_id=<uuid>.
 	// Opsional — bila diisi hanya CCTV milik zona tersebut yang dikembalikan.
@@ -361,17 +362,24 @@ func GetAllCCTV(c *fiber.Ctx) error {
 				"message": "Filter zone_id tidak valid",
 			})
 		}
-		query = query.Where("zone_id = ?", zid)
+		query = query.Where("cctvs.zone_id = ?", zid)
 	}
 
 	// Pencarian
 	if search := c.Query("search"); search != "" {
-		query = query.Where("nama ILIKE ? OR kode_cctv ILIKE ? OR id_channel ILIKE ? OR lokasi_area ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+		query = query.Where("cctvs.nama ILIKE ? OR cctvs.kode_cctv ILIKE ? OR cctvs.id_channel ILIKE ? OR cctvs.lokasi_area ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
 	// Paginasi & Sorting
-	allowedSort := []string{"id", "kode_cctv", "nama", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
+	allowedSort := []string{"id", "kode_cctv", "nama", "site_name", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
+	if strings.HasPrefix(sort, "site_name ") {
+		order := strings.TrimPrefix(sort, "site_name ")
+		query = query.Joins("LEFT JOIN sites ON sites.id = cctvs.site_id AND sites.deleted_at IS NULL")
+		sort = "sites.nama " + order + " NULLS LAST, cctvs.nama ASC"
+	} else {
+		sort = "cctvs." + sort
+	}
 
 	var totalRows int64
 	if err := query.Count(&totalRows).Error; err != nil {
@@ -644,7 +652,7 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	if req.RTSPURL != nil {
 		cctv.RTSPURL = *req.RTSPURL
 	}
-	
+
 	// Zona & kawasan operasional — tiga keadaan: diisi (UUID valid), dikosongkan (null), atau tidak dikirim (biar asli)
 	if req.ZoneID.Present {
 		if req.ZoneID.Null {
@@ -654,7 +662,7 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		}
 		// else: zone_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
 	}
-	
+
 	if req.SiteID.Present {
 		if req.SiteID.Null {
 			cctv.SiteID = nil // Kosongkan kawasan (set to NULL di database)
@@ -1098,7 +1106,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 			HealthScore:   100,
 			// Site ID adalah opsi - tidak diisi jika kosong/null di Excel
 		}
-		
+
 		// Parse dan validasi Site ID (jika diisi)
 		// Jika kolom Site ID kosong/null di Excel, biarkan NULL (tidak set SiteID)
 		if trimmedSiteID := strings.TrimSpace(siteIDStr); trimmedSiteID != "" {
@@ -1110,7 +1118,7 @@ func ImportCCTV(c *fiber.Ctx) error {
 					"message": fmt.Sprintf("Baris %d: Format Site ID tidak valid. Gunakan UUID format.", rowNum),
 				})
 			}
-			
+
 			// Validasi bahwa Site ID benar-benar ada di database
 			var site models.Site
 			if err := tx.First(&site, "id = ?", siteUUID).Error; err != nil {
@@ -1120,11 +1128,11 @@ func ImportCCTV(c *fiber.Ctx) error {
 					"message": fmt.Sprintf("Baris %d: Site ID '%s' tidak ditemukan di database. Pastikan Site ID valid atau biarkan kolom ini kosong untuk assign ke default site.", rowNum, siteIDStr),
 				})
 			}
-			
+
 			cctv.SiteID = &siteUUID // Set Site ID hanya bila valid
 		}
 		// Jika kolom Site ID kosong di Excel, SiteID tetap NULL (tidak diset)
-		
+
 		// Generate unique ID untuk CCTV
 		cctv.ID = newID
 

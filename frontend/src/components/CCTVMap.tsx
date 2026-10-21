@@ -9,6 +9,7 @@ import { MapPin, Maximize, Minimize, ShieldCheck, AlertTriangle } from 'lucide-r
 
 export interface CCTVMapItem {
   id: string;
+  zone_id?: string | null;
   kode_cctv: string;
   nama: string;
   lokasi_area?: string;

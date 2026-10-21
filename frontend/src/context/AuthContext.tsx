@@ -116,12 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (newUser: User) => {
     setUser(newUser);
-    // Akun baru / password di-reset → wajib ganti password dulu.
-    if (newUser.must_change_password) {
-      navigateAfterAuth('/change-password');
-    } else {
-      navigateAfterAuth('/dashboard');
-    }
   };
 
   const updateUser = (updatedUser: User) => {

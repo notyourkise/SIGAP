@@ -12,7 +12,12 @@ rtspTransports: [tcp]
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
-webrtcLocalTCPAddress: ""
+# TCP memakai port yang sama sebagai fallback untuk jaringan kantor/seluler
+# yang memblokir UDP. Media tetap WebRTC relay tanpa transcoding.
+webrtcLocalTCPAddress: :8189
+# Jangan iklankan alamat bridge Docker (172.28.x.x) kepada browser; kandidat
+# yang sah harus datang dari MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS atau STUN.
+webrtcIPsFromInterfaces: false
 webrtcAdditionalHosts: []
 webrtcTrustedProxies: [172.28.0.0/16]
 webrtcICEServers2:

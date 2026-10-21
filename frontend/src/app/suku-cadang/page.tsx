@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useCallback, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { apiRequest, getAllSitesForSelect } from '@/lib/api';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { useAuth } from '@/context/AuthContext';
 import {
   Plus,
   Trash2,
@@ -26,6 +28,8 @@ const KATEGORI = ['Kabel', 'Konektor', 'Power Supply', 'Lensa', 'Storage', 'Lain
 
 interface SparePart {
   id: string;
+  site_id?: string | null;
+  site?: { id: string; nama: string } | null;
   nama: string;
   sku: string;
   kategori: string;
@@ -35,7 +39,6 @@ interface SparePart {
   harga_satuan: number;
   keterangan: string;
   created_at: string;
-  site_nama?: string;
 }
 
 interface SparePartsResponse {
@@ -72,6 +75,8 @@ function stockBadge(item: SparePart): { label: string; className: string } {
 export default function SparePartsPage() {
   const toast = useToast();
   const confirm = useConfirm();
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
 
   const [items, setItems] = useState<SparePart[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +104,7 @@ export default function SparePartsPage() {
 
   // Form State
   const [formData, setFormData] = useState({
+    site_id: '',
     nama: '',
     sku: '',
     kategori: '',
@@ -134,6 +140,7 @@ export default function SparePartsPage() {
   });
 
   const fetchSpareParts = useCallback(async () => {
+    if (user?.role !== 'admin') return;
     setLoading(true);
     setError('');
     try {
@@ -157,9 +164,16 @@ export default function SparePartsPage() {
     } finally {
       setLoading(false);
     }
-  }, [kategoriFilter, page, search]);
+  }, [kategoriFilter, page, search, siteFilter, user?.role]);
+
+  // Pertahanan berlapis: proxy dan API menolak teknisi, sedangkan guard klien
+  // mencegah isi inventaris sempat terlihat saat navigasi sisi klien.
+  useEffect(() => {
+    if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
+  }, [authLoading, router, user?.role]);
 
   useEffect(() => {
+    if (user?.role !== 'admin') return;
     let cancelled = false;
     const load = async () => {
       await Promise.resolve();
@@ -169,19 +183,21 @@ export default function SparePartsPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchSpareParts]);
+  }, [fetchSpareParts, user?.role]);
 
   // Muat ulang saat stok berubah (mis. event STOCK_LOW dari pencatatan penggunaan).
   const { subscribe } = useWebSocket();
   useEffect(() => {
+    if (user?.role !== 'admin') return;
     const unsub = subscribe('STOCK_LOW', () => fetchSpareParts());
     return () => {
       unsub();
     };
-  }, [subscribe, fetchSpareParts]);
+  }, [subscribe, fetchSpareParts, user?.role]);
 
   // Load sites untuk dropdown filter kawasan
   useEffect(() => {
+    if (user?.role !== 'admin') return;
     let cancelled = false;
     const loadSites = async () => {
       try {
@@ -197,7 +213,7 @@ export default function SparePartsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -218,6 +234,7 @@ export default function SparePartsPage() {
     if (item) {
       setCurrentItem(item);
       setFormData({
+        site_id: item.site_id || '',
         nama: item.nama,
         sku: item.sku,
         kategori: item.kategori || '',
@@ -230,6 +247,7 @@ export default function SparePartsPage() {
     } else {
       setCurrentItem(null);
       setFormData({
+        site_id: siteFilter || '',
         nama: '',
         sku: '',
         kategori: '',
@@ -258,6 +276,10 @@ export default function SparePartsPage() {
       toast.error('SKU wajib diisi.');
       return;
     }
+    if (!formData.site_id) {
+      toast.error('Kawasan penyimpanan wajib dipilih.');
+      return;
+    }
 
     setActionLoading('save');
     try {
@@ -267,6 +289,7 @@ export default function SparePartsPage() {
       const response = await apiRequest<SparePart>(endpoint, {
         method,
         body: JSON.stringify({
+          site_id: formData.site_id,
           nama: formData.nama,
           sku: formData.sku,
           kategori: formData.kategori,
@@ -320,6 +343,19 @@ export default function SparePartsPage() {
       maximumFractionDigits: 0,
     }).format(value || 0);
   };
+
+  if (authLoading || user?.role !== 'admin') {
+    return (
+      <DashboardLayout>
+        <div className="flex min-h-[45vh] items-center justify-center" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 text-sm font-medium text-muted">
+            <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
+            Memeriksa izin akses admin…
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -421,11 +457,11 @@ export default function SparePartsPage() {
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
               <Package className="h-10 w-10 text-muted/45" />
               <h3 className="mt-3 text-base font-semibold">
-                {search || kategoriFilter ? 'Tidak ada suku cadang yang cocok' : 'Belum ada suku cadang'}
+                {search || kategoriFilter || siteFilter ? 'Tidak ada suku cadang yang cocok' : 'Belum ada suku cadang'}
               </h3>
               <p className="mt-1 max-w-sm text-xs text-muted">
-                {search || kategoriFilter
-                  ? 'Ubah kata kunci atau filter kategori untuk melihat suku cadang lain.'
+                {search || kategoriFilter || siteFilter
+                  ? 'Ubah kata kunci, kategori, atau kawasan untuk melihat suku cadang lain.'
                   : 'Gunakan "Tambah Suku Cadang" untuk mencatat stok komponen.'}
               </p>
             </div>
@@ -463,10 +499,10 @@ export default function SparePartsPage() {
                           <td className="px-5 py-4 text-muted">{item.kategori || '-'}</td>
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2">
-                              {item.site_nama ? (
+                              {item.site?.nama ? (
                                 <>
                                   <Building2 className="h-4 w-4 text-primary" />
-                                  <span className="text-sm">{item.site_nama}</span>
+                                  <span className="text-sm">{item.site.nama}</span>
                                 </>
                               ) : (
                                 <span className="text-sm italic text-muted">Belum ditentukan</span>
@@ -595,6 +631,23 @@ export default function SparePartsPage() {
                       <option key={k} value={k}>{k}</option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label htmlFor="spare-site" className="mb-1.5 block text-xs font-semibold text-muted">Kawasan Penyimpanan *</label>
+                  <select
+                    id="spare-site"
+                    value={formData.site_id}
+                    onChange={(e) => setFormData({ ...formData, site_id: e.target.value })}
+                    className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/45"
+                    required
+                  >
+                    <option value="">Pilih kawasan</option>
+                    {sites.map((site) => (
+                      <option key={site.id} value={site.id}>{site.nama}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 text-xs text-muted">Stok ini akan muncul saat daftar difilter berdasarkan kawasan tersebut.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

@@ -66,7 +66,7 @@ interface CCTV {
   // Zona operasional & kawasan (site) Ã¢â‚¬â€ opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
   site_id?: string | null;
-  site_nama?: string; // Added for Multi-Site Isolation (Fix BB-04)
+  site?: { id: string; nama: string; kode?: string } | null;
 }
 
 interface QRPrintItem {
@@ -147,6 +147,12 @@ export default function CCTVPage() {
   const [ioFilter, setIoFilter] = useState('');
   // Site filter untuk Multi-Site Isolation (Fix BB-04)
   const [siteFilter, setSiteFilter] = useState('');
+  // Jangan kirim header kosong: apiRequest akan memakai cookie site aktif
+  // (sigap_site_id) bila header tidak diberikan. Header kosong akan mematikan
+  // isolasi kawasan global untuk pengguna non-admin.
+  const siteRequestOptions = siteFilter
+    ? { headers: { 'X-Site-ID': siteFilter } }
+    : undefined;
   // Sort State — default urut A-Z berdasarkan nama (perubahan Sprint 40)
   const [sortBy, setSortBy] = useState('nama');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -157,12 +163,12 @@ export default function CCTVPage() {
   const [draftSortOrder, setDraftSortOrder] = useState<'asc' | 'desc'>('asc');
   const [draftStatusFilter, setDraftStatusFilter] = useState('');
   const [draftIoFilter, setDraftIoFilter] = useState('');
-
   const [draftSiteFilter, setDraftSiteFilter] = useState('');
   // Jumlah filter/sortir aktif Ã¢â‚¬â€ dipakai untuk badge pada tombol Sortir
   const activeFilterCount =
     (statusFilter ? 1 : 0) +
     (ioFilter ? 1 : 0) +
+    (siteFilter ? 1 : 0) +
     (sortBy !== 'nama' || sortOrder !== 'asc' ? 1 : 0);
 
   // Modals state
@@ -197,6 +203,23 @@ export default function CCTVPage() {
   // Error validasi per field dari backend (ditampilkan di dalam modal form)
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
+  // Akses cepat dari dashboard teknisi: buka pemindai tanpa membutuhkan klik
+  // kedua, lalu bersihkan query agar refresh berikutnya tidak membuka ulang modal.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('scan') !== '1') return;
+      setIsScanModalOpen(true);
+      url.searchParams.delete('scan');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // State untuk toggle visibilitas password RTSP pada form streaming
   const [showRtspPassword, setShowRtspPassword] = useState(false);
 
@@ -228,6 +251,10 @@ export default function CCTVPage() {
   // Daftar zona operasional & kawasan (site) untuk dropdown form CCTV.
   const [zones, setZones] = useState<Array<{ id: string; nama: string }>>([]);
   const [sites, setSites] = useState<Array<{ id: string; nama: string }>>([]);
+  const siteNamesById = React.useMemo(
+    () => new Map(sites.map((site) => [site.id, site.nama])),
+    [sites],
+  );
 
   // Scanner State
   const scannerRef = React.useRef<any>(null);
@@ -347,10 +374,11 @@ export default function CCTVPage() {
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+      if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
       if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
       if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
       
-      const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`);
+      const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
       
       if (response.status === 'success' && response.data) {
         setCctvs(response.data.rows || []);
@@ -370,21 +398,27 @@ export default function CCTVPage() {
 
   useEffect(() => {
     fetchCCTVs();
-  }, [page, search, statusFilter, ioFilter, sortBy, sortOrder]);
+  }, [page, search, statusFilter, ioFilter, siteFilter, sortBy, sortOrder]);
 
   // Muat daftar zona & kawasan (site) untuk dropdown form CCTV (Task 11.4/12.2).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [zoneRes, siteRes] = await Promise.all([
+        const [zoneResult, siteResult] = await Promise.allSettled([
           apiRequest<Array<{ id: string; nama: string }>>('/zones/all'),
           getAllSitesForSelect(),
         ]);
         if (!cancelled) {
-          if (zoneRes.status === 'success' && zoneRes.data) setZones(zoneRes.data);
-          if (siteRes.status === 'success' && siteRes.data) {
-            setSites(siteRes.data.map((s) => ({ id: s.id, nama: s.nama })));
+          if (zoneResult.status === 'fulfilled') {
+            const zoneRes = zoneResult.value;
+            if (zoneRes.status === 'success' && zoneRes.data) setZones(zoneRes.data);
+          }
+          if (siteResult.status === 'fulfilled') {
+            const siteRes = siteResult.value;
+            if (siteRes.status === 'success' && siteRes.data) {
+              setSites(siteRes.data.map((s) => ({ id: s.id, nama: s.nama })));
+            }
           }
         }
       } catch {
@@ -722,8 +756,9 @@ export default function CCTVPage() {
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+      if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
 
-      const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`);
+      const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
       setSelectedIDs(response.data?.rows.map((cctv) => cctv.id) ?? []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
@@ -944,7 +979,12 @@ export default function CCTVPage() {
 
       if (itemsToPrint.length < targetIDs.length) {
         try {
-          const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?page=1&limit=${Math.max(pagination.total_rows, 1000)}`);
+          const queryParams = [`page=1`, `limit=${Math.max(pagination.total_rows, 1000)}`];
+          if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+          if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
+          if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+          if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
+          const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
           if (response.status === 'success' && response.data) {
             itemsToPrint = response.data.rows.filter((cctv) => targetIDs.includes(cctv.id));
           }
@@ -954,7 +994,12 @@ export default function CCTVPage() {
       }
     } else {
       try {
-        const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?page=1&limit=100`);
+        const queryParams = ['page=1', 'limit=100'];
+        if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+        if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
+        if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
+        if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
+        const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
         if (response.status === 'success' && response.data) {
           itemsToPrint = response.data.rows;
         } else {
@@ -974,6 +1019,7 @@ export default function CCTVPage() {
     setDraftSortOrder(sortOrder);
     setDraftStatusFilter(statusFilter);
     setDraftIoFilter(ioFilter);
+    setDraftSiteFilter(siteFilter);
     setIsSortModalOpen(true);
   };
 
@@ -983,15 +1029,17 @@ export default function CCTVPage() {
     if (draftSortOrder !== sortOrder) { setSortOrder(draftSortOrder); changed = true; }
     if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; }
     if (draftIoFilter !== ioFilter) { setIoFilter(draftIoFilter); changed = true; }
+    if (draftSiteFilter !== siteFilter) { setSiteFilter(draftSiteFilter); changed = true; }
     if (changed) setPage(1);
     setIsSortModalOpen(false);
   };
 
   const resetSortFilter = () => {
-    setSortBy('created_at');
-    setSortOrder('desc');
+    setSortBy('nama');
+    setSortOrder('asc');
     setStatusFilter('');
     setIoFilter('');
+    setSiteFilter('');
     setPage(1);
     setIsSortModalOpen(false);
   };
@@ -1203,9 +1251,9 @@ export default function CCTVPage() {
         ) : cctvs.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <Camera className="mb-3 h-10 w-10 text-muted/45" />
-            <h3 className="text-base font-semibold">{search || statusFilter || ioFilter ? 'Tidak ada CCTV yang cocok' : 'Belum ada data CCTV'}</h3>
+            <h3 className="text-base font-semibold">{search || statusFilter || ioFilter || siteFilter ? 'Tidak ada CCTV yang cocok' : 'Belum ada data CCTV'}</h3>
             <p className="mt-1 max-w-sm text-xs text-muted">
-              {search || statusFilter || ioFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol Ã¢â‚¬Å“Tambah CCTVÃ¢â‚¬Â atau Ã¢â‚¬Å“Impor ExcelÃ¢â‚¬Â untuk menambahkan data.'}
+              {search || statusFilter || ioFilter || siteFilter ? 'Ubah kata kunci atau filter untuk melihat CCTV lain.' : 'Gunakan tombol Ã¢â‚¬Å“Tambah CCTVÃ¢â‚¬Â atau Ã¢â‚¬Å“Impor ExcelÃ¢â‚¬Â untuk menambahkan data.'}
             </p>
           </div>
         ) : (
@@ -1248,11 +1296,11 @@ export default function CCTVPage() {
                     {/* Kolom Kawasan / Site Ã¢â‚¬â€ Added for Multi-Site Isolation (Fix BB-04) */}
                     <th
                       className="px-5 py-3.5"
-                      aria-sort={sortBy === 'site_id' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      aria-sort={sortBy === 'site_name' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                     >
                       <SortableHeader
                         label="Kawasan"
-                        sortKey="site_id"
+                        sortKey="site_name"
                         activeKey={sortBy}
                         direction={sortOrder}
                         onSort={handleHeaderSort}
@@ -1334,6 +1382,16 @@ export default function CCTVPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4">
+                        {cctv.site_id ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            <Building2 className="h-3 w-3" aria-hidden="true" />
+                            <span>{cctv.site?.nama || siteNamesById.get(cctv.site_id) || 'Nama kawasan belum termuat'}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted italic">Belum ditentukan</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
                         <div className="flex items-start gap-1.5">
                           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
                           <div>
@@ -1341,17 +1399,6 @@ export default function CCTVPage() {
                             <p className="mt-0.5 text-xs capitalize text-muted">{cctv.indoor_outdoor || '-'}</p>
                           </div>
                         </div>
-                      </td>
-                      {/* Kolom Kawasan / Site Ã¢â‚¬â€ Added for Multi-Site Isolation (Fix BB-04) */}
-                      <td className="px-5 py-4">
-                        {cctv.site_id ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                            <Building2 className="h-3 w-3" aria-hidden="true" />
-                            <span>{cctv.site_nama || 'Kawasan'}</span>
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted italic">Belum ditentukan</span>
-                        )}
                       </td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
@@ -1520,6 +1567,7 @@ export default function CCTVPage() {
                     <option value="kode_cctv">Kode CCTV</option>
                     <option value="status">Status</option>
                     <option value="health_score">Skor kesehatan</option>
+                    <option value="site_name">Kawasan</option>
                     <option value="lokasi_area">Lokasi area</option>
                   </select>
                 </div>
@@ -1532,13 +1580,27 @@ export default function CCTVPage() {
                     onChange={(e) => setDraftSortOrder(e.target.value as 'asc' | 'desc')}
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                   >
-                    <option value="desc">Terbaru ke terlama</option>
-                    <option value="asc">Terlama ke terbaru</option>
+                    <option value="asc">Naik (A–Z / terkecil / terlama)</option>
+                    <option value="desc">Turun (Z–A / terbesar / terbaru)</option>
                   </select>
                 </div>
 
                 <div className="space-y-4 border-t border-border pt-4">
                   <p className="text-xs font-semibold text-muted">Filter</p>
+                  <div>
+                    <label htmlFor="cctv-sort-site-filter" className="mb-1.5 block text-xs font-semibold text-muted">Kawasan</label>
+                    <select
+                      id="cctv-sort-site-filter"
+                      value={draftSiteFilter}
+                      onChange={(e) => setDraftSiteFilter(e.target.value)}
+                      className="w-full rounded-xl border border-input-border bg-input px-4 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/45"
+                    >
+                      <option value="">Semua kawasan</option>
+                      {sites.map((site) => (
+                        <option key={site.id} value={site.id}>{site.nama}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label htmlFor="cctv-sort-status-filter" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
                     <select

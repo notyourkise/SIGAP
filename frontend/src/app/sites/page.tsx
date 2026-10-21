@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import SortableHeader from '@/components/SortableHeader';
-import { useSortableRows } from '@/hooks/useSortableRows';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
 import {
@@ -79,6 +78,8 @@ export default function SitesPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total_rows: 0, total_pages: 1 });
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'nama' | 'kode' | 'alamat' | 'user_count'>('nama');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modal form tambah/edit site
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -91,23 +92,12 @@ export default function SitesPage() {
   const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
-  // Sortir kolom (client-side) — hanya mengurutkan baris yang sudah ada di state
-  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows<Site>(sites, {
-    getValue: (row, key) => {
-      switch (key) {
-        case 'nama':
-          return row.nama;
-        case 'kode':
-          return row.kode;
-        case 'alamat':
-          return row.alamat ?? '';
-        case 'teknisi':
-          return row.user_count ?? 0;
-        default:
-          return '';
-      }
-    },
-  });
+  const handleSort = (key: string) => {
+    const nextKey = key as 'nama' | 'kode' | 'alamat' | 'user_count';
+    setSortOrder((current) => (sortBy === nextKey ? (current === 'asc' ? 'desc' : 'asc') : nextKey === 'user_count' ? 'desc' : 'asc'));
+    setSortBy(nextKey);
+    setPage(1);
+  };
 
   // Auth guard (admin only)
   useEffect(() => {
@@ -118,7 +108,7 @@ export default function SitesPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await getSites({ page, limit: 10, search: search || undefined });
+      const response = await getSites({ page, limit: 10, search: search || undefined, sort_by: sortBy, order: sortOrder });
       if (response.status === 'success' && response.data) {
         setSites(response.data.rows || []);
         setPagination(response.data.pagination || { page: 1, limit: 10, total_rows: 0, total_pages: 1 });
@@ -128,7 +118,7 @@ export default function SitesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, sortBy, sortOrder]);
 
   useEffect(() => {
     if (user?.role !== 'admin') return;
@@ -345,24 +335,24 @@ export default function SitesPage() {
                   <thead>
                     <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
                       <th className="px-5 py-3.5">
-                        <SortableHeader label="Nama" sortKey="nama" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        <SortableHeader label="Nama" sortKey="nama" activeKey={sortBy} direction={sortOrder} onSort={handleSort} />
                       </th>
                       <th className="px-5 py-3.5">
-                        <SortableHeader label="Kode" sortKey="kode" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        <SortableHeader label="Kode" sortKey="kode" activeKey={sortBy} direction={sortOrder} onSort={handleSort} />
                       </th>
                       <th className="px-5 py-3.5">
-                        <SortableHeader label="Alamat" sortKey="alamat" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        <SortableHeader label="Alamat" sortKey="alamat" activeKey={sortBy} direction={sortOrder} onSort={handleSort} />
                       </th>
                       <th className="px-5 py-3.5">Koordinat</th>
                       <th className="px-5 py-3.5">Default</th>
                       <th className="px-5 py-3.5">
-                        <SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+                        <SortableHeader label="Teknisi" sortKey="user_count" activeKey={sortBy} direction={sortOrder} onSort={handleSort} />
                       </th>
                       <th className="px-5 py-3.5 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
-                    {sortedRows.map((site) => (
+                    {sites.map((site) => (
                       <tr key={site.id} className="transition-colors hover:bg-background/40">
                         <td className="px-5 py-4">
                           <p className="font-semibold">{site.nama}</p>

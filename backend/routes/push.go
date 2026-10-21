@@ -12,6 +12,8 @@ import (
 func SetupPushRoutes(router fiber.Router) {
 	pushGroup := router.Group("/push", middleware.Protected())
 
+	// Sumber tunggal public key VAPID untuk browser yang sedang login.
+	pushGroup.Get("/public-key", handlers.GetPushPublicKey)
 	// Daftarkan langganan Web Push untuk user yang login.
 	pushGroup.Post("/subscribe", handlers.SubscribePush)
 	// Hapus langganan (opt-out) berdasarkan endpoint.

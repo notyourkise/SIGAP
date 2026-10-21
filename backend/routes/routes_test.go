@@ -1,13 +1,19 @@
 package routes
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"sigap-backend/config"
 	"sigap-backend/middleware"
+	"sigap-backend/utils"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func TestCCTVRoutesRequireAuthentication(t *testing.T) {
@@ -35,6 +41,58 @@ func TestFieldMaintenanceRoutesRequireAuthentication(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+"00000000-0000-0000-0000-000000000000"+"/report-pdf", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestReportRoutesRejectTechnician(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
+	assert.NoError(t, err)
+	config.DB = gormDB
+
+	userID := "technician-report-test"
+	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+		WithArgs(userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+	token, err := utils.GenerateToken(userID, "teknisi", 1)
+	assert.NoError(t, err)
+
+	app := fiber.New()
+	SetupReportRoutes(app)
+	req := httptest.NewRequest("POST", "/reports/generate", nil)
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSparePartInventoryRoutesRejectTechnician(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
+	assert.NoError(t, err)
+	config.DB = gormDB
+
+	userID := "technician-spare-part-test"
+	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+		WithArgs(userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+	token, err := utils.GenerateToken(userID, "teknisi", 1)
+	assert.NoError(t, err)
+
+	app := fiber.New()
+	SetupSparePartRoutes(app)
+	req := httptest.NewRequest("GET", "/spare-parts/", nil)
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestDashboardDigestRouteRequiresAuthentication(t *testing.T) {

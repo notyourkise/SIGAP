@@ -193,23 +193,13 @@ export default function SLAPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-[-0.025em]">SLA Compliance</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              Pantau kepatuhan target waktu layanan (Service Level Agreement) terhadap penyelesaian tugas pemeliharaan.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={fetchSLA}
-            disabled={loading}
-            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-semibold transition-colors hover:border-primary disabled:cursor-wait disabled:opacity-60"
-          >
-            {loading ? 'Memuat…' : 'Muat ulang'}
-          </button>
-        </div>
+      <div className="space-y-6 text-foreground">
+        <header>
+          <h1 className="text-3xl font-bold tracking-[-0.025em]">SLA Compliance</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Pantau kepatuhan target waktu layanan (Service Level Agreement) terhadap penyelesaian tugas pemeliharaan.
+          </p>
+        </header>
 
         {error && (
           <div role="alert" className="rounded-xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>
@@ -262,17 +252,29 @@ export default function SLAPage() {
                 <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 10, right: 16, left: -12, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="var(--muted)" />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} stroke="var(--muted)" unit="%" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12, fill: 'var(--muted-color)' }}
+                        stroke="var(--border-color)"
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        tick={{ fontSize: 12, fill: 'var(--muted-color)' }}
+                        stroke="var(--border-color)"
+                        unit="%"
+                      />
                       <Tooltip
                         formatter={(value) => [`${value ?? 0}%`, 'Kepatuhan']}
                         labelFormatter={(label) => `Bulan: ${label}`}
                         contentStyle={{
                           borderRadius: 12,
-                          border: '1px solid var(--border)',
-                          background: 'var(--card)',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--card-bg)',
+                          color: 'var(--foreground)',
                         }}
+                        labelStyle={{ color: 'var(--foreground)' }}
+                        itemStyle={{ color: 'var(--foreground)' }}
                       />
                       <Bar dataKey="compliance" radius={[8, 8, 0, 0]}>
                         {chartData.map((entry, index) => (
@@ -368,7 +370,7 @@ export default function SLAPage() {
                                 ? 'border-success/25 bg-success/10 text-success'
                                 : v.status === 'ongoing'
                                   ? 'border-warning/25 bg-warning/10 text-warning'
-                                  : 'border-blue-500/25 bg-blue-500/10 text-blue-600'
+                                  : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300'
                             }`}>
                               {STATUS_LABELS[v.status] || v.status}
                             </span>

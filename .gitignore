@@ -1,5 +1,6 @@
 # AI Agent working artifacts (jangan pernah di-commit)
 /.opencode/
+/.codex/
 
 # Dokumen presentasi (bukan aset repo)
 SIGAP_Introduksi.pptx
@@ -38,6 +39,12 @@ yarn-error.log
 # OS Generated Files
 .DS_Store
 Thumbs.db
+
+# Output & scratch runtime (hasil debug, cache kompilasi lokal)
+/output/
+/tmp/
+/backend/.runtime-go-cache/
+/backend/.runtime-go-tmp/
 
 # Logs
 /backend/logs/

@@ -115,6 +115,29 @@ func TestGetAllSpareParts_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestGetAllSpareParts_FilterSite memastikan filter kawasan diterapkan pada
+// query count dan daftar sehingga pagination serta baris selalu konsisten.
+func TestGetAllSpareParts_FilterSite(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	itemID, siteID := uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "spare_parts" WHERE site_id = \$1`).
+		WithArgs(siteID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`^SELECT \* FROM "spare_parts" WHERE site_id = \$1`).
+		WithArgs(siteID, 10).
+		WillReturnRows(sparePartRows(itemID, "Kabel Zona", "KBL-ZONA", "Kabel", 5, 2))
+
+	app := newTestApp()
+	app.Get("/spare-parts", withUserLocals(uuid.New().String(), "admin"), GetAllSpareParts)
+
+	req := httptest.NewRequest("GET", "/spare-parts?page=1&limit=10&site_id="+siteID.String(), nil)
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestGetSparePartByID_Success menguji pengambilan detail suku cadang.
 func TestGetSparePartByID_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)

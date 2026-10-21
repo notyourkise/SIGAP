@@ -7,7 +7,7 @@ import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest, getAllSitesForSelect, getCookie } from '@/lib/api';
 import type { Site } from '@/lib/api';
 import type { CCTVMapItem } from '@/components/CCTVMap';
-import { LayoutGrid, Map as MapIcon } from 'lucide-react';
+import { LayoutGrid, Map as MapIcon, MapPinned } from 'lucide-react';
 
 const CCTVMap = dynamic(() => import('@/components/CCTVMap'), {
   ssr: false,
@@ -43,6 +43,11 @@ interface PaginationPayload<T> {
   pagination: {
     total_rows: number;
   };
+}
+
+interface ZoneOption {
+  id: string;
+  nama: string;
 }
 
 // Respons endpoint GET /api/streams/live-status (admin-only). Endpoint ini
@@ -84,6 +89,9 @@ export default function SebaranCCTVPage() {
   const [error, setError] = useState('');
   const [selectedCctv, setSelectedCctv] = useState<CCTVMapItem | null>(null);
   const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
+  const [zones, setZones] = useState<ZoneOption[]>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [zonesLoading, setZonesLoading] = useState(true);
 
   // Pusat peta — diarahkan ke koordinat site aktif bila tersedia (multi-site).
   const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
@@ -118,12 +126,35 @@ export default function SebaranCCTVPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadZones = async () => {
+      try {
+        const response = await apiRequest<ZoneOption[]>('/zones/all');
+        if (!cancelled && response.status === 'success') {
+          setZones(response.data ?? []);
+        }
+      } catch {
+        // Filter zona bersifat tambahan; kegagalan memuat opsi tidak menghalangi peta.
+      } finally {
+        if (!cancelled) setZonesLoading(false);
+      }
+    };
+
+    void loadZones();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadMap = useCallback(async () => {
     setLoading(true);
     setError('');
     setHealth('Memeriksa');
     try {
-      const cctvQuery = `/cctv?page=1&limit=1000&sort_by=nama&order=asc`;
+      const zoneQuery = selectedZoneId ? `&zone_id=${encodeURIComponent(selectedZoneId)}` : '';
+      const cctvQuery = `/cctv?page=1&limit=1000&sort_by=nama&order=asc${zoneQuery}`;
       const [cctvResult, healthResult, liveResult] = await Promise.allSettled([
         apiRequest<PaginationPayload<CCTVMapItem>>(cctvQuery),
         apiRequest<Record<string, unknown>>('/health'),
@@ -174,7 +205,7 @@ export default function SebaranCCTVPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedZoneId]);
 
   useEffect(() => {
     const timer = setTimeout(loadMap, 0);
@@ -223,6 +254,7 @@ export default function SebaranCCTVPage() {
   const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
   const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
   const maintenance = cctvs.filter((item) => isMaintenanceCCTV(item.status)).length;
+  const selectedZoneName = zones.find((zone) => zone.id === selectedZoneId)?.nama;
 
   return (
     <DashboardLayout>
@@ -234,11 +266,30 @@ export default function SebaranCCTVPage() {
               Visualisasi lokasi pemasangan CCTV di kawasan IKN Nusantara beserta status perangkat.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
               <span>{health === 'Terhubung' ? 'Layanan normal' : health}</span>
             </div>
+            <label className="flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+              <MapPinned className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <span className="text-xs font-semibold text-muted">Zona</span>
+              <select
+                value={selectedZoneId}
+                onChange={(event) => {
+                  setSelectedZoneId(event.target.value);
+                  setSelectedCctv(null);
+                }}
+                disabled={zonesLoading}
+                aria-label="Filter CCTV berdasarkan zona"
+                className="max-w-44 bg-transparent text-sm font-semibold text-foreground outline-none disabled:cursor-wait disabled:opacity-60"
+              >
+                <option value="">{zonesLoading ? 'Memuat zona…' : 'Semua zona'}</option>
+                {zones.map((zone) => (
+                  <option key={zone.id} value={zone.id}>{zone.nama}</option>
+                ))}
+              </select>
+            </label>
             {/* Toggle tampilan Peta / Grid */}
             <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
               <button
@@ -271,6 +322,11 @@ export default function SebaranCCTVPage() {
         {!loading && health === 'Tidak terhubung' && (
           <div role="alert" className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
             Layanan SIGAP tidak dapat dijangkau. Periksa koneksi atau hubungi pengelola sistem.
+          </div>
+        )}
+        {!loading && !error && selectedZoneId && cctvs.length === 0 && (
+          <div role="status" className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">
+            Belum ada CCTV pada zona <span className="font-semibold text-foreground">{selectedZoneName ?? 'yang dipilih'}</span>.
           </div>
         )}
 

@@ -40,11 +40,11 @@ test('halaman /change-password tidak loop & mode forced tampil', async ({ page }
 
   const meCalls = apiResponses.filter((r) => r.includes('/api/auth/me'));
   const bannerVisible = await page
-    .getByText('You must change your password before continuing')
+    .getByText('Anda wajib mengganti kata sandi sebelum melanjutkan.')
     .isVisible()
     .catch(() => false);
   const exitButtonVisible = await page
-    .getByRole('button', { name: /Exit \/ Back to Login/i })
+    .getByRole('button', { name: /Kembali ke halaman masuk/i })
     .isVisible()
     .catch(() => false);
   const finalUrl = page.url();
@@ -68,8 +68,8 @@ test('halaman /change-password tidak loop & mode forced tampil', async ({ page }
 
   // Anti-loop: /auth/me hanya boleh dipanggil segelintir kali, bukan ratusan.
   expect(meCalls.length, 'Terlalu banyak panggilan /auth/me (indikasi loop reload)').toBeLessThanOrEqual(5);
-  expect(bannerVisible, 'Banner "You must change your password..." tidak tampil').toBeTruthy();
-  expect(exitButtonVisible, 'Tombol Exit / Back to Login tidak tampil').toBeTruthy();
+  expect(bannerVisible, 'Banner wajib ganti kata sandi tidak tampil').toBeTruthy();
+  expect(exitButtonVisible, 'Tombol kembali ke halaman masuk tidak tampil').toBeTruthy();
   expect(finalUrl).toContain('/change-password');
 });
 

@@ -477,7 +477,18 @@ export default function MaintenanceSchedulesPage() {
                         <p className="line-clamp-1 font-medium" title={schedule.action_taken}>{schedule.action_taken}</p>
                       </td>
 
-                      <td className="px-5 py-4 text-muted">{schedule.technician?.full_name || 'Langsung oleh admin'}</td>
+                      <td className="px-5 py-4">
+                        {schedule.technician?.full_name ? (
+                          <span className="text-muted">{schedule.technician.full_name}</span>
+                        ) : (
+                          <div>
+                            <span className="inline-flex rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
+                              Belum ditugaskan
+                            </span>
+                            <p className="mt-1 text-[11px] text-muted">Menunggu admin memilih teknisi</p>
+                          </div>
+                        )}
+                      </td>
 
                       <td className="px-5 py-4 text-muted">{FREQUENCY_LABELS[schedule.frequency]}</td>
 
@@ -635,12 +646,14 @@ export default function MaintenanceSchedulesPage() {
                     onChange={(e) => setFormData({...formData, technician_id: e.target.value})}
                     className="w-full px-4 py-2.5 rounded-xl border border-input-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary transition-all"
                   >
-                    <option value=""></option>
+                    <option value="">Belum ditugaskan</option>
                     {technicians.map((tech) => (
                       <option key={tech.id} value={tech.id}>{tech.full_name}</option>
                     ))}
                   </select>
-                  <p className="mt-1.5 text-[11px] text-muted">Kosongkan agar sistem menugaskan oleh admin; teknisi akan menerima notifikasi.</p>
+                  <p className="mt-1.5 text-[11px] text-muted">
+                    Jika belum dipilih, tugas dibuat berstatus Terjadwal dan menunggu admin menetapkan teknisi. Admin tidak otomatis menjadi pelaksana.
+                  </p>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">

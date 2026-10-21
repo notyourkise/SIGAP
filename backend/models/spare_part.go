@@ -20,6 +20,9 @@ const (
 // otomatis ketika teknisi mencatat penggunaan suku cadang pada maintenance log.
 type SparePart struct {
 	Base
+	// SiteID menunjukkan kawasan tempat stok suku cadang dikelola.
+	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
+	Site   *Site      `gorm:"foreignKey:SiteID" json:"site,omitempty"`
 	// Nama adalah nama suku cadang / komponen (mis. "Kabel UTP Cat6 5m").
 	Nama string `gorm:"type:varchar(100);not null" json:"nama"`
 	// SKU adalah kode unik inventaris (Stock Keeping Unit).

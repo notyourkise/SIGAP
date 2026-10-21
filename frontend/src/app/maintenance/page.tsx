@@ -246,6 +246,14 @@ export default function MaintenanceLogsPage() {
     },
   });
 
+  // Saat mengalihkan tugas, teknisi yang sedang mengerjakan tidak boleh
+  // ditawarkan kembali sebagai tujuan. Backend tetap menjadi guard terakhir.
+  const currentAssignedTechnicianId = assignLog?.technician_id || assignLog?.technician?.id;
+  const eligibleTechnicians =
+    assignLog?.status === 'ongoing' && currentAssignedTechnicianId
+      ? technicians.filter((technician) => technician.id !== currentAssignedTechnicianId)
+      : technicians;
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -571,6 +579,10 @@ export default function MaintenanceLogsPage() {
       toast.error('Pilih teknisi tujuan terlebih dahulu.');
       return;
     }
+    if (assignLog.status === 'ongoing' && assignTechnicianId === currentAssignedTechnicianId) {
+      toast.error('Pilih teknisi lain untuk menerima pengalihan tugas.');
+      return;
+    }
     setActionLoading(`assign-${assignLog.id}`);
     try {
       const response = await apiRequest<MaintenanceLog>(`/maintenance-logs/${assignLog.id}/assign`, {
@@ -599,6 +611,7 @@ export default function MaintenanceLogsPage() {
     if (cctvFilter) params.set('cctv_id', cctvFilter);
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
+    if (siteFilter) params.set('site_id', siteFilter);
     setActionLoading('export');
     try {
       await downloadApiFile(`/maintenance-logs/export?${params}`, 'log-pemeliharaan.csv');
@@ -615,6 +628,7 @@ export default function MaintenanceLogsPage() {
     if (statusFilter) params.set('status', statusFilter);
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
+    if (siteFilter) params.set('site_id', siteFilter);
     setActionLoading('pdf');
     try {
       await downloadApiFile(`/maintenance-logs/report-pdf?${params}`, 'laporan-pemeliharaan.pdf');
@@ -1595,12 +1609,16 @@ export default function MaintenanceLogsPage() {
                     required
                   >
                     <option value="" disabled>Pilih teknisi</option>
-                    {technicians.map((tech) => (
+                    {eligibleTechnicians.map((tech) => (
                       <option key={tech.id} value={tech.id}>{tech.full_name}</option>
                     ))}
                   </select>
-                  {technicians.length === 0 && (
-                    <p className="mt-1.5 text-[11px] text-red-500">Belum ada akun berperan teknisi. Buat akun teknisi di halaman Pengguna.</p>
+                  {eligibleTechnicians.length === 0 && (
+                    <p className="mt-1.5 text-[11px] text-error">
+                      {assignLog.status === 'ongoing'
+                        ? 'Tidak ada teknisi lain yang tersedia untuk menerima pengalihan.'
+                        : 'Belum ada akun berperan teknisi. Buat akun teknisi di halaman Pengguna.'}
+                    </p>
                   )}
                 </div>
 
@@ -1616,7 +1634,7 @@ export default function MaintenanceLogsPage() {
                   <button
                     type="button"
                     onClick={handleAssignLog}
-                    disabled={actionLoading === `assign-${assignLog.id}` || !assignTechnicianId}
+                    disabled={actionLoading === `assign-${assignLog.id}` || !assignTechnicianId || eligibleTechnicians.length === 0}
                     className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(15,118,74,0.16)] transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {actionLoading === `assign-${assignLog.id}` && <LoaderCircle className="h-4 w-4 animate-spin" />}

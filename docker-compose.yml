@@ -81,6 +81,9 @@ services:
     environment:
       # Level log untuk Task 7.6 (logger terstruktur). Default: info.
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Alamat internal API MediaMTX di network Docker. Mode native-local
+      # memakai default 127.0.0.1:9997 dari backend.
+      - MEDIAMTX_API_URL=http://mediamtx:9997
       # SECURITY: DB_PASSWORD TIDAK di-hardcode di sini. Nilai bersumber dari
       # env_file (./backend/.env.docker) dengan prioritas Docker secret
       # (/run/secrets/db_password, dibaca backend/utils/secrets.go).
@@ -149,6 +152,9 @@ services:
       # URL backend internal untuk Next.js rewrites (fallback; di produksi
       # reverse proxy Nginx yang menangani /api langsung ke service api).
       - INTERNAL_BACKEND_URL=http://api:3000
+      # Dipakai bila frontend diakses langsung di dalam network; trafik publik
+      # /stream tetap dipotong lebih dahulu oleh Nginx.
+      - INTERNAL_MEDIAMTX_WEBRTC_URL=http://mediamtx:8889
     # SECURITY & SAME-ORIGIN: Port 3001 tidak dipublish agar seluruh trafik
     # dipaksa melalui Reverse Proxy Nginx (https://localhost). Ini menjamin
     # cookie sesi httpOnly dikirim dengan konsisten tanpa masalah cross-origin.
@@ -250,10 +256,11 @@ services:
       - ./mediamtx.yml:/mediamtx.yml:ro
     ports:
       - "8189:8189/udp"
+      - "8189:8189/tcp"
     environment:
       # Kandidat ICE harus berupa host/IP yang benar-benar dapat dijangkau
       # browser. Isi IP publik atau DNS deployment pada root .env.
-      - MTX_WEBRTCADDITIONALHOSTS=${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:-}
+      - MTX_WEBRTCADDITIONALHOSTS=${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:?MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS wajib diisi dengan domain atau IP yang dapat dijangkau browser}
     depends_on:
       api:
         condition: service_healthy
