@@ -87,6 +87,86 @@ func TestChangePassword_WrongOldPassword(t *testing.T) {
 	assert.Equal(t, "Password lama tidak sesuai", result["message"])
 }
 
+func TestChangePassword_EmptyOldPasswordRejected(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	uid, row := validUserRow()
+
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WithArgs(uid.String(), 1).
+		WillReturnRows(newUserMockRows([]modelsUserRow{row}))
+
+	app := newTestApp()
+	app.Post("/auth/change-password", withUserLocals(uid.String(), "admin"), ChangePassword)
+
+	payload := `{"new_password":"NewPass456@"}`
+	req := httptest.NewRequest("POST", "/auth/change-password", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "Password lama wajib diisi", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChangePassword_ForcedEmptyOldPasswordAllowed(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	_, mock := setupMockGORM(t)
+	uid, row := validUserRow()
+	row.MustChg = true
+
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WithArgs(uid.String(), 1).
+		WillReturnRows(newUserMockRows([]modelsUserRow{row}))
+	mock.ExpectExec(`^UPDATE "users" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	app := newTestApp()
+	app.Post("/auth/change-password", withUserLocals(uid.String(), "admin"), ChangePassword)
+
+	payload := `{"new_password":"NewPass456@"}`
+	req := httptest.NewRequest("POST", "/auth/change-password", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "success", result["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChangePassword_ForcedSamePasswordRejected(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	uid, row := validUserRow()
+	row.MustChg = true
+
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WithArgs(uid.String(), 1).
+		WillReturnRows(newUserMockRows([]modelsUserRow{row}))
+
+	app := newTestApp()
+	app.Post("/auth/change-password", withUserLocals(uid.String(), "admin"), ChangePassword)
+
+	payload := `{"new_password":"AdminPass123!"}`
+	req := httptest.NewRequest("POST", "/auth/change-password", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "Password baru harus berbeda dari password lama", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestChangePassword_ValidationError(t *testing.T) {
 	app := newTestApp()
 	app.Post("/auth/change-password", withUserLocals(uuid.New().String(), "admin"), ChangePassword)

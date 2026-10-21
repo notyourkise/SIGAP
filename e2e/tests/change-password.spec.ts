@@ -101,6 +101,7 @@ test('alur ganti sandi berfungsi normal (forced & non-forced)', async ({ page },
   await page.goto('/change-password', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
   await expect(page).toHaveURL(/\/change-password$/); // guard salah sudah dihapus -> tidak diblok ke /dashboard
+  await page.fill('#old_password', TEMP_PASSWORD);
   await page.fill('#new_password', PASSWORD);
   await page.fill('#confirm_password', PASSWORD);
   await page.click('button[type="submit"]');
