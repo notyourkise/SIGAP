@@ -115,7 +115,7 @@ func formatJSONSyntaxOrTypeError(err error, body []byte) (string, *bodyParseDeta
 // nama field dari encoding/json.
 func findBodyFieldError(dst interface{}, raw map[string]json.RawMessage) *bodyParseDetail {
 	v := reflect.ValueOf(dst)
-	if !v.IsValid() || v.Kind() != reflect.Ptr || v.IsNil() {
+	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
 		return nil
 	}
 	elem := v.Elem()

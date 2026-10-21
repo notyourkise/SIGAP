@@ -116,7 +116,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		pathInfo, operational := operationalPaths[path]
 		registered := registeredPaths[path]
 
-		streamState := models.StreamStateUnknown
+		var streamState string
 		var latencyMs *int
 
 		isMetroE := utils.IsMetroE(cctv)
