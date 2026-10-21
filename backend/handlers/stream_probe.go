@@ -14,25 +14,48 @@ import (
 // rtspProbeInterval adalah interval antar siklus probe status live RTSP.
 const rtspProbeInterval = 2 * time.Minute
 
+// mediaMTXStartupTimeout memberi waktu MediaMTX untuk siap sebelum probe awal.
+// Saat restart host, API dapat hidup lebih dulu daripada MediaMTX; probe yang
+// berjalan terlalu cepat akan melihat tidak ada path dan menulis status
+// "unknown" padahal path on-demand hanya belum terdaftar.
+const mediaMTXStartupTimeout = 2 * time.Minute
+
 // RunRTSPProber menjalankan engine probe status live RTSP (Task 14A.1,
-// Sprint 37-PATCH: strategi Metro-E vs GSM). Berjalan sekali segera saat
-// startup lalu berulang setiap 2 menit. Setiap siklus memeriksa ketersediaan
-// kamera sesuai kebijakan jaringan (Metro-E diprobe langsung, GSM hanya
-// melalui status path MediaMTX lokal — TIDAK menyentuh kamera), lalu
-// memperbarui kolom stream_live, stream_state, stream_checked_at,
-// ping_latency_ms & stream_last_active_at.
+// Sprint 37-PATCH: strategi Metro-E vs GSM). Probe pertama menunggu MediaMTX
+// siap dan re-register path aktif terlebih dahulu; selanjutnya berulang setiap
+// 2 menit. Setiap siklus memeriksa ketersediaan kamera sesuai kebijakan
+// jaringan (Metro-E diprobe langsung, GSM hanya melalui status path MediaMTX
+// lokal — TIDAK menyentuh kamera), lalu memperbarui kolom stream_live,
+// stream_state, stream_checked_at, ping_latency_ms & stream_last_active_at.
 func RunRTSPProber(db *gorm.DB) {
 	if db == nil {
 		return
 	}
 
-	runRTSPProbeCycle(db)
+	runInitialProbe(db, mediaMTXStartupTimeout)
 
 	ticker := time.NewTicker(rtspProbeInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		runRTSPProbeCycle(db)
 	}
+}
+
+// runInitialProbe menunggu MediaMTX, memastikan path kamera aktif terdaftar,
+// lalu menjalankan probe pertama. Bila MediaMTX tidak siap, probe dilewati agar
+// status terakhir di database tidak berubah menjadi unknown hanya karena race
+// startup. Parameter timeout memudahkan pengujian tanpa menunggu 2 menit.
+func runInitialProbe(db *gorm.DB, timeout time.Duration) {
+	if !waitForMediaMTX(timeout) {
+		utils.Log.Warnf("⚠️ MediaMTX belum siap setelah %s; probe awal dilewati", timeout)
+		return
+	}
+
+	// Re-register path aktif yang belum ada, lalu baru probe. Ini menutup race
+	// startup: RegisterActiveStreams dan RunRTSPProber sama-sama berjalan sebagai
+	// goroutine, sehingga probe tidak boleh mendahului registrasi path.
+	ReRegisterFailedStreams(db)
+	runRTSPProbeCycle(db)
 }
 
 // networkType mengembalikan tipe jaringan kamera: "metro-e" untuk kamera pada

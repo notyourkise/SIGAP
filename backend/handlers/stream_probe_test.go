@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,6 +212,86 @@ func TestRunProbeCycle_MetroEPassiveUsesIdle(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRunInitialProbe_WaitsForMediaMTXAndRegistersPaths memastikan probe awal
+// tidak berjalan sebelum MediaMTX siap dan path aktif terdaftar. Ini mencegah
+// status unknown palsu saat restart host/container.
+func TestRunInitialProbe_WaitsForMediaMTXAndRegistersPaths(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	var mu sync.Mutex
+	var calls []string
+	srv := newMockMediaMTXServer(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.URL.Path)
+		mu.Unlock()
+
+		switch {
+		case strings.Contains(r.URL.Path, "/v3/config/global/get"):
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(r.URL.Path, "/v3/config/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"items": []utils.PathConfig{{Name: path, Source: "rtsp://nvr/channel"}},
+			})
+		case strings.Contains(r.URL.Path, "/v3/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": []utils.PathInfo{}})
+		default:
+			http.Error(w, "endpoint tidak dikenal", http.StatusNotFound)
+		}
+	})
+	defer srv.Close()
+
+	client := &utils.MediaMTXClient{BaseURL: srv.URL, HTTPClient: srv.Client()}
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "", false, nil, nil, nil, models.StreamStateUnknown))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "", false, nil, nil, nil, models.StreamStateUnknown))
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runInitialProbe(db, time.Second)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+
+	mu.Lock()
+	defer mu.Unlock()
+	configIdx, pathsIdx := -1, -1
+	for i, call := range calls {
+		if configIdx == -1 && strings.Contains(call, "/v3/config/paths/list") {
+			configIdx = i
+		}
+		if pathsIdx == -1 && strings.Contains(call, "/v3/paths/list") {
+			pathsIdx = i
+		}
+	}
+	assert.GreaterOrEqual(t, configIdx, 0, "config path harus dibaca")
+	assert.GreaterOrEqual(t, pathsIdx, 0, "daftar path operasional harus dibaca")
+	assert.Less(t, configIdx, pathsIdx, "registrasi path harus selesai sebelum probe")
+}
+
+// TestRunInitialProbe_SkipsWhenMediaMTXNotReady memastikan probe awal tidak
+// menulis status unknown ketika MediaMTX belum siap; status terakhir di DB
+// dibiarkan utuh sampai siklus berikutnya.
+func TestRunInitialProbe_SkipsWhenMediaMTXNotReady(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	srv := newMockMediaMTXServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "belum siap", http.StatusServiceUnavailable)
+	})
+	defer srv.Close()
+	injectStreamClient(t, &utils.MediaMTXClient{BaseURL: srv.URL, HTTPClient: srv.Client()})
+
+	runInitialProbe(db, 0)
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

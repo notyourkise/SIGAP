@@ -17,6 +17,7 @@
 5. Web/ISAPI NVR mengarah ke port `5001`, tetapi port tersebut tidak terbuka dari host ini. Port `554` (RTSP) terbuka; port `443` hanya mengembalikan halaman redirect ke `5001`.
 6. Tidak ada perubahan encoding batch pada NVR. Aplikasi sekarang memakai sub-stream sebagai default; main stream tetap dapat dipilih eksplisit.
 7. Status probe on-demand diperbaiki: path yang terdaftar tetapi belum berjalan karena tidak ada penonton kini berstatus **idle/Siaga**, bukan `offline`.
+8. Probe awal setelah restart distabilkan: probe menunggu MediaMTX siap dan path aktif terdaftar sebelum menulis status, sehingga tidak muncul `unknown=20` sementara.
 
 ## Bukti Teknis
 
@@ -73,6 +74,28 @@ Database: 20/20 kamera aktif memiliki `stream_state=idle`, `stream_live=false`, 
 
 Catatan data: 16 kamera aktif adalah Metro-E dan 4 adalah GSM. Seluruh IP sudah tersimpan, tetapi probe langsung Metro-E belum diaktifkan karena `10.20.105.x` timeout dari container API. Set `CCTV_METRO_E_DIRECT_PROBE=true` hanya setelah host benar-benar berada di jaringan OIKN; setelah itu status Metro-E menjadi live/offline biner.
 
+## Stabilisasi Probe Awal Setelah Restart
+
+Sebelum perbaikan, API bisa healthy lebih dulu daripada MediaMTX. Probe pertama langsung berjalan, tidak menemukan path on-demand, lalu menulis `unknown` untuk semua kamera aktif sampai siklus 2 menit berikutnya.
+
+Perbaikan di `RunRTSPProber`:
+- menunggu MediaMTX siap maksimal 2 menit sebelum probe pertama;
+- menjalankan `ReRegisterFailedStreams` agar path kamera aktif terdaftar lebih dulu;
+- melewati probe awal bila MediaMTX belum siap, sehingga status terakhir di database tidak ditimpa `unknown`.
+
+Bukti uji restart terkontrol:
+
+| Waktu | Peristiwa |
+|---|---|
+| 20:05:31 | Container API mulai |
+| 20:05:37 | Container MediaMTX mulai |
+| 20:05:39 | MediaMTX belum dapat di-resolve; tidak ada probe yang menulis status |
+| 20:05:42 | Registrasi 20 path selesai; probe pertama: `online=0 idle=20 offline=0 unknown=0` |
+
+Hasil database setelah probe pertama: `idle|20`, tanpa `unknown`. Path MediaMTX berjumlah 21 setelah path `dawda` dipulihkan secara runtime.
+
+Catatan: `dawda` adalah baris soft-deleted non-THD dengan `stream_enabled=true`. Path ini tidak ikut auto-register karena barisnya soft-deleted; setelah MediaMTX restart path tersebut hilang dan dipulihkan manual dari URL terenkripsi tanpa menampilkan kredensial. Keputusan apakah path ini perlu dipersistenkan masih pending.
+
 ## Catatan Kompatibilitas
 
 H.265/HEVC tidak dijamin tersedia di semua browser/perangkat. Klien tanpa dukungan HEVC akan menerima HTTP `400` dari MediaMTX. Untuk klien seperti itu:
@@ -90,6 +113,7 @@ Tidak ada transcoding FFmpeg yang diaktifkan.
 - Probe langsung Metro-E belum bisa diaktifkan dari host ini karena `10.20.105.x` tidak terjangkau; status masih pasif.
 - Sembilan koordinat masih estimasi dan perlu verifikasi lapangan.
 - Perlu pemantauan beberapa siklus untuk memastikan status idle tetap stabil dan tidak ada alarm palsu.
+- Path `dawda` (soft-deleted non-THD) hanya ada secara runtime dan hilang saat MediaMTX restart; perlu diputuskan apakah akan dipersistenkan atau dihentikan.
 
 ## Langkah Berikutnya
 

@@ -1,5 +1,30 @@
 # Changelog - Backend SIGAP
 
+## [0.64.16] - 2026-10-21
+
+### Stabilkan probe awal setelah restart
+
+**Masalah**: Saat restart host/container, API healthy lebih dulu daripada MediaMTX. Probe pertama langsung berjalan sebelum path on-demand terdaftar, sehingga 20 kamera aktif sementara ditulis sebagai `unknown`. Siklus berikutnya baru mengembalikannya ke `idle`.
+
+**Perbaikan**:
+- `RunRTSPProber` memakai `runInitialProbe`: menunggu MediaMTX siap (maksimal 2 menit) sebelum probe pertama.
+- Setelah MediaMTX siap, `ReRegisterFailedStreams` dijalankan lebih dulu agar path kamera aktif terdaftar, baru probe dijalankan.
+- Bila MediaMTX belum siap sampai timeout, probe awal dilewati. Status terakhir di database tidak ditimpa `unknown` hanya karena race startup.
+- Menambahkan test urutan registrasi-sebelum-probe dan test probe awal dilewati saat MediaMTX tidak siap.
+- Uji restart terkontrol: API mulai 20:05:31, MediaMTX mulai 20:05:37, probe pertama 20:05:42 menghasilkan `idle=20 unknown=0` (sebelumnya sempat `unknown=20`).
+
+timestamp: 2026-10-21 20:10 UTC+8
+kategori: Sedang, Backend (Streaming/Probe)
+file yang diubah:
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- backend/changelog.md
+- docs/05-reports/DIAGNOSA-STREAMING-CCTV-2026-10-20.md
+
+alasan perubahan: Menghilangkan status `unknown` palsu pada probe pertama setelah restart dan memastikan path aktif sudah terdaftar sebelum status dievaluasi.
+
+---
+
 ## [0.64.15] - 2026-10-20
 
 ### Probe Metro-E pasif saat host tanpa rute OIKN
