@@ -109,6 +109,10 @@ func main() {
 	// Migrasi data legacy: maintenance_logs.asset_id → cctv_id (Fase 3.6)
 	config.MigrateMaintenanceToCCTV(config.DB)
 
+	// Enkripsi at-rest URL RTSP legacy yang masih plaintext. Idempoten dan
+	// tidak menghapus data; nilai baru sudah dienkripsi di handler.
+	config.EncryptLegacyRTSPURLs(config.DB)
+
 	// Jalankan Seeder untuk Admin Default pertama kali
 	models.SeedAdmin(config.DB)
 

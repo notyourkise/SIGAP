@@ -65,10 +65,7 @@ type CompleteMaintenanceLogRequest struct {
 func CreateMaintenanceLog(c *fiber.Ctx) error {
 	var req CreateMaintenanceLogRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -339,10 +336,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 
 	var req UpdateMaintenanceLogRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -461,10 +455,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 	var req AssignMaintenanceLogRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -654,10 +645,7 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 
 	var req CompleteMaintenanceLogRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {

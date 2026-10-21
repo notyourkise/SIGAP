@@ -59,6 +59,44 @@ func TestDashboardTasks_Admin(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestDashboardSummary_SiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	siteID := uuid.New()
+
+	// Seluruh query dashboard wajib membawa filter site aktif.
+	mock.ExpectQuery(`^SELECT status, count\(\*\) as count FROM "cctvs" WHERE site_id = \$[0-9]+`).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "count"}).AddRow("aktif", 1))
+	mock.ExpectQuery(`^SELECT status, created_at FROM "maintenance_logs" WHERE created_at >= \$[0-9]+ AND \(EXISTS`).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "created_at"}))
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE .*EXISTS .*site_id = \$[0-9]+`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "cctv_id", "technician_id", "action_taken", "status", "scheduled_date"}))
+
+	app := newTestApp()
+	app.Get("/dashboard/summary", withUserSiteLocals(uuid.New().String(), "teknisi", siteID.String()), DashboardSummary)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/dashboard/summary", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDashboardTasks_SiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	techID := uuid.New()
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE .*EXISTS .*technician_id = \$[0-9]+`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "cctv_id", "technician_id", "action_taken", "status"}))
+
+	app := newTestApp()
+	app.Get("/dashboard/tasks", withUserSiteLocals(techID.String(), "teknisi", siteID.String()), DashboardTasks)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/dashboard/tasks", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDashboardSummary_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 

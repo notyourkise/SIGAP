@@ -45,10 +45,32 @@ type SiteListRow struct {
 	UserCount int64 `gorm:"column:user_count;->" json:"user_count"`
 }
 
+// applySiteMembershipScope membatasi daftar site non-admin ke site yang
+// ditugaskan kepadanya. Admin tetap melihat seluruh site. Scope ini berbeda
+// dari site aktif: daftar ini dipakai SiteSwitcher agar user multi-site tetap
+// dapat berpindah kawasan.
+func applySiteMembershipScope(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
+	role, _ := c.Locals("role").(string)
+	if role == "" || role == "admin" {
+		return query
+	}
+
+	userIDStr, _ := c.Locals("user_id").(string)
+	uid, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return query.Where("1 = 0")
+	}
+
+	return query.Where(
+		"EXISTS (SELECT 1 FROM user_sites WHERE user_sites.site_id = sites.id AND user_sites.user_id = ?)",
+		uid,
+	)
+}
+
 // GetAllSites mengambil daftar site terpaginasi (semua role login) beserta
-// jumlah user per site.
+// jumlah user per site. Non-admin hanya menerima site yang ditugaskan.
 // @Summary      Ambil Semua Site
-// @Description  Mendapatkan daftar kawasan operasional (site) terpaginasi dengan pencarian nama dan jumlah user per site.
+// @Description  Mendapatkan daftar kawasan operasional (site) terpaginasi dengan pencarian nama dan jumlah user per site. Non-admin hanya melihat site yang ditugaskan kepadanya.
 // @Tags         Site
 // @Accept       json
 // @Produce      json
@@ -60,12 +82,13 @@ type SiteListRow struct {
 // @Param        order query string false "Arah pengurutan: asc, desc (default: desc)"
 // @Success      200 {object} map[string]interface{} "Daftar site terpaginasi"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: belum ditugaskan ke site"
 // @Failure      500 {object} map[string]interface{} "Gagal mengambil daftar site"
 // @Router       /sites [get]
 func GetAllSites(c *fiber.Ctx) error {
 	var rows []SiteListRow
 	search := strings.TrimSpace(c.Query("search"))
-	countQuery := config.DB.Model(&models.Site{})
+	countQuery := applySiteMembershipScope(c, config.DB.Model(&models.Site{}))
 
 	if search != "" {
 		like := "%" + search + "%"
@@ -82,7 +105,7 @@ func GetAllSites(c *fiber.Ctx) error {
 
 	limit, page, sort := sitePaginationParams(c)
 	offset := (page - 1) * limit
-	query := config.DB.Model(&models.Site{}).
+	query := applySiteMembershipScope(c, config.DB.Model(&models.Site{})).
 		Select(`sites.*, (SELECT COUNT(*) FROM user_sites WHERE user_sites.site_id = sites.id) AS user_count`)
 	if search != "" {
 		like := "%" + search + "%"
@@ -131,20 +154,22 @@ func sitePaginationParams(c *fiber.Ctx) (limit, page int, sort string) {
 	return limit, page, column + " " + order
 }
 
-// GetAllSitesForSelect mengambil seluruh site tanpa paginasi untuk dropdown
-// filter. Dapat diakses semua role.
+// GetAllSitesForSelect mengambil site tanpa paginasi untuk dropdown filter.
+// Dapat diakses semua role; non-admin hanya menerima site yang ditugaskan.
 // @Summary      Ambil Semua Site (Select)
-// @Description  Mendapatkan seluruh site (id + nama + kode) tanpa paginasi untuk keperluan dropdown/filter.
+// @Description  Mendapatkan site (id + nama + kode) tanpa paginasi untuk keperluan dropdown/filter. Non-admin hanya melihat site yang ditugaskan kepadanya.
 // @Tags         Site
 // @Produce      json
 // @Security     BearerAuth
 // @Success      200 {object} map[string]interface{} "Daftar site (tanpa paginasi)"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: belum ditugaskan ke site"
 // @Failure      500 {object} map[string]interface{} "Gagal mengambil daftar site"
 // @Router       /sites/all [get]
 func GetAllSitesForSelect(c *fiber.Ctx) error {
 	var items []models.Site
-	if err := config.DB.Order("nama asc").Find(&items).Error; err != nil {
+	query := applySiteMembershipScope(c, config.DB.Model(&models.Site{}))
+	if err := query.Order("nama asc").Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar site",
@@ -156,9 +181,10 @@ func GetAllSitesForSelect(c *fiber.Ctx) error {
 	})
 }
 
-// GetSiteByID mengambil detail satu site.
+// GetSiteByID mengambil detail satu site. Non-admin hanya dapat membuka site
+// yang ditugaskan; site lain diperlakukan sebagai tidak ditemukan.
 // @Summary      Ambil Site Detail
-// @Description  Mendapatkan detail satu site beserta user yang ditugaskan.
+// @Description  Mendapatkan detail satu site beserta user yang ditugaskan. Non-admin hanya dapat membuka site yang ditugaskan kepadanya.
 // @Tags         Site
 // @Produce      json
 // @Security     BearerAuth
@@ -166,7 +192,7 @@ func GetAllSitesForSelect(c *fiber.Ctx) error {
 // @Success      200 {object} map[string]interface{} "Data site ditemukan"
 // @Failure      400 {object} map[string]interface{} "UUID tidak valid"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
-// @Failure      404 {object} map[string]interface{} "Site tidak ditemukan"
+// @Failure      404 {object} map[string]interface{} "Site tidak ditemukan atau bukan penugasan pengguna"
 // @Router       /sites/{id} [get]
 func GetSiteByID(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
@@ -178,7 +204,8 @@ func GetSiteByID(c *fiber.Ctx) error {
 	}
 
 	var item models.Site
-	if err := config.DB.Preload("Users").First(&item, "id = ?", id).Error; err != nil {
+	query := applySiteMembershipScope(c, config.DB.Preload("Users").Where("id = ?", id))
+	if err := query.First(&item).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Site tidak ditemukan",
@@ -208,10 +235,7 @@ func GetSiteByID(c *fiber.Ctx) error {
 func CreateSite(c *fiber.Ctx) error {
 	var req CreateSiteRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -301,10 +325,7 @@ func UpdateSite(c *fiber.Ctx) error {
 
 	var req UpdateSiteRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -454,10 +475,7 @@ func AssignUsersToSite(c *fiber.Ctx) error {
 
 	var req AssignSiteUsersRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Daftar user boleh kosong (berarti membersihkan seluruh penugasan site).

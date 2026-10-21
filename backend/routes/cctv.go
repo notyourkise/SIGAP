@@ -12,30 +12,33 @@ import (
 func SetupCCTVRoutes(router fiber.Router) {
 	cctvGroup := router.Group("/cctv")
 
-	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-04)
-	// Middleware ini membaca X-Site-ID header dan validasi site di database
+	// SiteContext WAJIB dipasang agar filter kawasan berfungsi (Fix BB-04).
+	// Middleware ini membaca X-Site-ID header, fallback cookie/query, dan
+	// memberi scope default untuk non-admin. Pemasangannya harus SETELAH
+	// autentikasi agar identitas pengguna tersedia saat membership dicek.
 	siteMiddleware := middleware.SiteContext()
 
 	// Rute list dapat diakses via sesi JWT (web) ATAU API key integrasi eksternal
 	// (Task 12.1, Sprint 29) dengan scope cctv:read.
-	cctvGroup.Use(siteMiddleware)
-	cctvGroup.Get("/", middleware.APIKeyOrProtected(models.ScopeCCTVRead), handlers.GetAllCCTV)
+	cctvGroup.Get("/", middleware.APIKeyOrProtected(models.ScopeCCTVRead), siteMiddleware, handlers.GetAllCCTV)
 
-	// Rute yang dapat diakses oleh Admin & Teknisi (via sesi JWT)
-	cctvGroup.Get("/template", middleware.Protected(), handlers.DownloadTemplateCCTV)
-	cctvGroup.Post("/scan", middleware.Protected(), handlers.ScanCCTV)
-	cctvGroup.Get("/:id/qrcode", middleware.Protected(), handlers.GetCCTVQRCode)
-	cctvGroup.Get("/:id/health-score", middleware.Protected(), handlers.GetCCTVHealthScore)
-	cctvGroup.Get("/:id/snapshot", middleware.Protected(), handlers.GetCCTVSnapshot)
-	cctvGroup.Get("/:id/timeline", middleware.Protected(), handlers.GetCCTVTimeline)
-	cctvGroup.Get("/:id/health-history", middleware.Protected(), handlers.GetCCTVHealthHistory)
-	cctvGroup.Get("/:id", middleware.Protected(), handlers.GetCCTVByID)
+	// Rute yang dapat diakses oleh Admin & Teknisi (via sesi JWT).
+	protectedCCTV := cctvGroup.Group("", middleware.Protected(), siteMiddleware)
+	protectedCCTV.Get("/template", handlers.DownloadTemplateCCTV)
+	protectedCCTV.Post("/scan", handlers.ScanCCTV)
+	protectedCCTV.Get("/:id/qrcode", handlers.GetCCTVQRCode)
+	protectedCCTV.Get("/:id/health-score", handlers.GetCCTVHealthScore)
+	protectedCCTV.Get("/:id/snapshot", handlers.GetCCTVSnapshot)
+	protectedCCTV.Get("/:id/timeline", handlers.GetCCTVTimeline)
+	protectedCCTV.Get("/:id/health-history", handlers.GetCCTVHealthHistory)
+	protectedCCTV.Get("/:id", handlers.GetCCTVByID)
 
-	// Rute yang hanya dapat diakses oleh Admin
-	cctvGroup.Post("/", middleware.Protected(), middleware.RequireRole("admin"), handlers.CreateCCTV)
-	cctvGroup.Post("/import", middleware.Protected(), middleware.RequireRole("admin"), handlers.ImportCCTV)
-	cctvGroup.Post("/bulk-delete", middleware.Protected(), middleware.RequireRole("admin"), handlers.BulkDeleteCCTV)
-	cctvGroup.Post("/:id/rotate-qr", middleware.Protected(), middleware.RequireRole("admin"), handlers.RotateQRCode)
-	cctvGroup.Put("/:id", middleware.Protected(), middleware.RequireRole("admin"), handlers.UpdateCCTV)
-	cctvGroup.Delete("/:id", middleware.Protected(), middleware.RequireRole("admin"), handlers.DeleteCCTV)
+	// Rute yang hanya dapat diakses oleh Admin.
+	adminCCTV := protectedCCTV.Group("", middleware.RequireRole("admin"))
+	adminCCTV.Post("/", handlers.CreateCCTV)
+	adminCCTV.Post("/import", handlers.ImportCCTV)
+	adminCCTV.Post("/bulk-delete", handlers.BulkDeleteCCTV)
+	adminCCTV.Post("/:id/rotate-qr", handlers.RotateQRCode)
+	adminCCTV.Put("/:id", handlers.UpdateCCTV)
+	adminCCTV.Delete("/:id", handlers.DeleteCCTV)
 }

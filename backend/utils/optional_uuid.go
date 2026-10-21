@@ -2,7 +2,8 @@ package utils
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -19,11 +20,23 @@ type OptionalUUID struct {
 
 // UnmarshalJSON implements json.Unmarshaler interface
 func (o *OptionalUUID) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimSpace(data)
-	str := strings.Trim(string(data), `"`)
+	// JSON null berarti field dikirim secara eksplisit untuk dikosongkan.
+	// Jangan mencoba uuid.Parse("null") karena itu menyebabkan BodyParser gagal
+	// dan handler mengembalikan "Format input tidak valid".
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		o.Value = nil
+		o.Null = true
+		o.Present = true
+		return nil
+	}
 
-	// Handle null or empty string
-	if str == "" || bytes.Equal(data, []byte("null")) {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return fmt.Errorf("harus berupa string UUID atau null")
+	}
+
+	// Handle empty string
+	if str == "" {
 		o.Value = nil
 		o.Null = true
 		o.Present = true
@@ -33,12 +46,12 @@ func (o *OptionalUUID) UnmarshalJSON(data []byte) error {
 	// Try to parse as UUID
 	id, err := uuid.Parse(str)
 	if err != nil {
-		return err
+		return fmt.Errorf("bukan UUID yang valid")
 	}
 
 	o.Value = &id
-	o.Present = true
 	o.Null = false
+	o.Present = true
 	return nil
 }
 

@@ -291,7 +291,7 @@ export default function MaintenanceSchedulesPage() {
         fetchSchedules();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Jadwal pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Jadwal pemeliharaan belum dapat disimpan. Periksa isian lalu coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -317,7 +317,7 @@ export default function MaintenanceSchedulesPage() {
         fetchSchedules();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Status jadwal belum dapat diubah. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Status jadwal belum dapat diubah. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -340,7 +340,7 @@ export default function MaintenanceSchedulesPage() {
         fetchSchedules();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Jadwal pemeliharaan belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Jadwal pemeliharaan belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

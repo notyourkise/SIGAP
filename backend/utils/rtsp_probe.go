@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +52,21 @@ func ProbeRTSPChannel(host string, port int, channelID int) bool {
 // Referensi: docs/AGENTS.md § 11.2
 func IsMetroE(cctv models.CCTV) bool {
 	return strings.HasPrefix(cctv.IPCamera, "10.20.105.")
+}
+
+// MetroEDirectProbeEnabled menentukan apakah probe langsung ke IP Metro-E
+// diaktifkan. Default true agar perilaku dokumentasi tetap berlaku; set
+// CCTV_METRO_E_DIRECT_PROBE=false pada deployment yang tidak memiliki rute ke
+// jaringan 10.20.105.x. Saat false, status Metro-E memakai state MediaMTX
+// (live/idle/offline/unknown) dan tidak menghasilkan offline palsu.
+func MetroEDirectProbeEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("CCTV_METRO_E_DIRECT_PROBE")))
+	switch value {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
 }
 
 // ProbeICMP mengirim probe konektivitas ke IP target dan mengukur latensi.

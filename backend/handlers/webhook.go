@@ -254,10 +254,7 @@ func CreateWebhookEndpoint(c *fiber.Ctx) error {
 
 	var req CreateWebhookRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -573,10 +570,7 @@ func UpdateWebhookEndpoint(c *fiber.Ctx) error {
 
 	var req UpdateWebhookRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

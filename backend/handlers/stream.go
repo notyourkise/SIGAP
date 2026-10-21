@@ -25,6 +25,24 @@ func setStreamClient(c *utils.MediaMTXClient) {
 	streamClient = c
 }
 
+// ensureStreamPath mendaftarkan path ke MediaMTX. Bila path sudah ada,
+// konfigurasinya di-patch dengan sumber terbaru agar perubahan kualitas
+// main/sub tidak diabaikan karena respons "already exists".
+// Mengembalikan true bila path sebelumnya sudah terdaftar.
+func ensureStreamPath(path string, cfg utils.PathConfig) (bool, error) {
+	err := streamClient.AddPath(path, cfg)
+	if err == nil {
+		return false, nil
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		return false, err
+	}
+	if patchErr := streamClient.PatchPath(path, cfg); patchErr != nil {
+		return true, patchErr
+	}
+	return true, nil
+}
+
 // streamHealthMu melindungi akses ke streamLastReady, streamDownSince, dan
 // streamDownNotified agar aman dipakai lintas goroutine (monitor & handler).
 var (
@@ -116,9 +134,20 @@ func StartStream(c *fiber.Ctx) error {
 		})
 	}
 
+	// Dekripsi URL RTSP per-CCTV. Data legacy plaintext tetap didukung oleh
+	// DecryptRTSPURL, sedangkan data baru tersimpan sebagai enc:v1:<ciphertext>.
+	storedRTSPURL, err := utils.DecryptRTSPURL(cctv.RTSPURL)
+	if err != nil {
+		utils.Log.Errorf("❌ Gagal mendekripsi URL RTSP untuk CCTV %s: %v", cctv.ID, err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal mendekripsi URL RTSP",
+		})
+	}
+
 	// Validasi konfigurasi sumber stream.
 	// Bila rtsp_url penuh tersedia, tidak wajib channel port / password.
-	if cctv.RTSPURL == "" {
+	if storedRTSPURL == "" {
 		// Validasi: channel port wajib dikonfigurasi.
 		if cctv.ChannelPort <= 0 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -139,7 +168,7 @@ func StartStream(c *fiber.Ctx) error {
 	// Dekripsi password RTSP AES-256 (tidak diperlukan bila rtsp_url penuh
 	// sudah memuat kredensial).
 	decrypted := ""
-	if cctv.RTSPURL == "" {
+	if storedRTSPURL == "" {
 		var err error
 		decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
 		if err != nil {
@@ -151,14 +180,15 @@ func StartStream(c *fiber.Ctx) error {
 		}
 	}
 
-	// Tentukan tipe stream berdasarkan query ?quality= (default sub).
+	// Default sub-stream setelah pilot THD-15 SD berhasil. Main stream tetap
+	// dapat dipilih eksplisit lewat ?quality=main.
 	streamType := utils.SubStream
 	if c.Query("quality") == "main" {
 		streamType = utils.MainStream
 	}
 
 	// Susun URL RTSP dan path MediaMTX.
-	rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, streamType)
+	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, streamType)
 	path := utils.BuildStreamPath(cctv.ID.String())
 
 	// Daftarkan path ke MediaMTX (on-demand, ditutup otomatis setelah 30 detik).
@@ -168,20 +198,16 @@ func StartStream(c *fiber.Ctx) error {
 		SourceOnDemandCloseAfter: "30s",
 		RTSPTransport:            "tcp",
 	}
-	pathAlreadyRegistered := false
-	if err := streamClient.AddPath(path, pathCfg); err != nil {
-		// Path mungkin sudah terdaftar dari pemanggilan sebelumnya (restart modal
-		// atau auto-register). Bila sudah ada, anggap berhasil agar tidak 502.
-		if strings.Contains(err.Error(), "already exists") {
-			pathAlreadyRegistered = true
-			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
-		} else {
-			utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Gagal menghubungi server streaming",
-			})
-		}
+	pathAlreadyRegistered, err := ensureStreamPath(path, pathCfg)
+	if err != nil {
+		utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghubungi server streaming",
+		})
+	}
+	if pathAlreadyRegistered {
+		utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
 	}
 	sourceReady := false
 	if pathAlreadyRegistered {
@@ -295,10 +321,17 @@ func StartAllStreams(c *fiber.Ctx) error {
 	}
 
 	for _, cctv := range cctvs {
+		storedRTSPURL, err := utils.DecryptRTSPURL(cctv.RTSPURL)
+		if err != nil {
+			utils.Log.Warnf("⚠️ Gagal mendekripsi URL RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+			failed++
+			continue
+		}
+
 		decrypted := ""
-		if cctv.RTSPURL == "" {
+		if storedRTSPURL == "" {
 			if cctv.ChannelPort <= 0 {
-				utils.Log.Warnf("⚠️ CCTV %s (%s) channel port belum dikonfigurasi — dilewati", cctv.Nama, cctv.KodeCCTV)
+				utils.Log.Warnf("CCTV %s (%s) channel port belum dikonfigurasi - dilewati", cctv.Nama, cctv.KodeCCTV)
 				failed++
 				continue
 			}
@@ -308,7 +341,6 @@ func StartAllStreams(c *fiber.Ctx) error {
 				failed++
 				continue
 			}
-			var err error
 			decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
 			if err != nil {
 				utils.Log.Warnf("⚠️ Gagal mendekripsi password RTSP CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
@@ -317,7 +349,8 @@ func StartAllStreams(c *fiber.Ctx) error {
 			}
 		}
 
-		rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
+		// Pilot THD-15 SD berhasil; gunakan sub-stream sebagai default.
+		rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 		path := utils.BuildStreamPath(cctv.ID.String())
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,
@@ -325,16 +358,14 @@ func StartAllStreams(c *fiber.Ctx) error {
 			SourceOnDemandCloseAfter: "30s",
 			RTSPTransport:            "tcp",
 		}
-		if err := streamClient.AddPath(path, pathCfg); err != nil {
-			// Path mungkin sudah terdaftar dari auto-register atau panggilan
-			// sebelumnya; bila sudah ada, anggap berhasil.
-			if strings.Contains(err.Error(), "already exists") {
-				success++
-			} else {
-				utils.Log.Errorf("❌ Gagal menambahkan path streaming %s: %v", path, err)
-				failed++
-			}
+		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
+		if err != nil {
+			utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+			failed++
 			continue
+		}
+		if alreadyRegistered {
+			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
 		}
 		success++
 	}
@@ -623,19 +654,24 @@ func waitForMediaMTX(maxWait time.Duration) bool {
 // registerStreamWithRetry mendaftarkan stream satu CCTV ke MediaMTX dengan
 // exponential backoff (2s, 4s, 8s, 16s, 30s) hingga maxRetry percobaan.
 func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
+	storedRTSPURL, err := utils.DecryptRTSPURL(cctv.RTSPURL)
+	if err != nil {
+		return fmt.Errorf("gagal mendekripsi URL RTSP: %w", err)
+	}
+
 	decrypted := ""
-	if cctv.RTSPURL == "" {
+	if storedRTSPURL == "" {
 		if cctv.RTSPPassword == "" {
 			return fmt.Errorf("password RTSP kosong")
 		}
-		var err error
 		decrypted, err = utils.DecryptAES256(cctv.RTSPPassword)
 		if err != nil {
 			return fmt.Errorf("gagal mendekripsi password RTSP: %w", err)
 		}
 	}
 
-	rtspURL := utils.ResolveRTSPURL(cctv.RTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
+	// Pilot THD-15 SD berhasil; gunakan sub-stream sebagai default.
+	rtspURL := utils.ResolveRTSPURL(storedRTSPURL, cctv.ChannelPort, decrypted, utils.SubStream)
 	path := utils.BuildStreamPath(cctv.ID.String())
 	pathCfg := utils.PathConfig{
 		Source:                   rtspURL,
@@ -646,14 +682,13 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 
 	backoff := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
 	for attempt := 0; attempt < maxRetry; attempt++ {
-		err := streamClient.AddPath(path, pathCfg)
+		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
 		if err == nil {
-			utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
-			return nil
-		}
-		// Path sudah ada → dianggap berhasil.
-		if strings.Contains(err.Error(), "already exists") {
-			utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — dianggap berhasil", path)
+			if alreadyRegistered {
+				utils.Log.Infof("ℹ️ Path streaming %s sudah terdaftar — konfigurasi diperbarui", path)
+			} else {
+				utils.Log.Infof("✅ Stream CCTV %s (%s) terdaftar ke MediaMTX pada path %s", cctv.Nama, cctv.KodeCCTV, path)
+			}
 			return nil
 		}
 		utils.Log.Warnf("⚠️ Percobaan %d/%d register stream %s gagal: %v", attempt+1, maxRetry, path, err)
@@ -676,14 +711,16 @@ func ReRegisterFailedStreams(db *gorm.DB) {
 		return
 	}
 
-	// Bangun set path yang sudah ada di MediaMTX.
+	// Bangun set path config yang sudah terdaftar. Gunakan ListPathConfigs,
+	// bukan ListPaths: path on-demand tetap terdaftar walau sumbernya sedang
+	// idle, sehingga tidak perlu ditambahkan ulang setiap siklus.
 	existing := map[string]bool{}
-	if paths, err := streamClient.ListPaths(); err == nil {
+	if paths, err := streamClient.ListPathConfigs(); err == nil {
 		for _, p := range paths {
 			existing[p.Name] = true
 		}
 	} else {
-		utils.Log.Warnf("⚠️ Gagal mengambil daftar path MediaMTX untuk re-register: %v", err)
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar konfigurasi path MediaMTX untuk re-register: %v", err)
 		return
 	}
 
@@ -785,11 +822,34 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 		return
 	}
 
-	// Path tidak siap (isReady=false).
-	// Gunakan hasil probe RTSP (stream_live) sebagai sumber kebenaran bila
-	// tersedia. Nilai ini dimuat dari DB saat runStreamHealthOnce sehingga
-	// mencerminkan hasil probe terakhir dari RTSP Probe Engine (Task 14A.1).
+	// Path tidak siap (isReady=false). Bedakan idle on-demand dari outage:
+	// path yang terdaftar tetapi belum berjalan karena tidak ada penonton tidak
+	// boleh memicu countdown STREAM_DOWN.
+	streamState := cctv.StreamState
+	if streamState == models.StreamStateIdle {
+		if _, wasDown := streamDownSince[path]; wasDown {
+			delete(streamDownSince, path)
+			delete(streamDownNotified, path)
+			utils.Log.Debugf("🔵 Stream CCTV %s (%s) idle on-demand — countdown down direset", cctv.Nama, cctv.KodeCCTV)
+		}
+		return
+	}
+	if streamState == models.StreamStateUnknown {
+		// Status belum dapat disimpulkan (mis. MediaMTX tidak dapat dihubungi).
+		// Jangan mulai/naikkan countdown; tunggu probe berikutnya.
+		return
+	}
+
+	// Gunakan hasil probe RTSP (stream_live/stream_state) sebagai sumber
+	// kebenaran bila tersedia. Nilai ini dimuat dari DB saat
+	// runStreamHealthOnce sehingga mencerminkan hasil probe terakhir.
 	live := cctv.StreamLive
+	switch streamState {
+	case models.StreamStateLive:
+		live = true
+	case models.StreamStateOffline:
+		live = false
+	}
 	if !live {
 		// Kamera dianggap down oleh probe — mulai countdown tanpa perlu menunggu
 		// pernah ada viewer (memperbaiki bug kamera yang tidak pernah ditonton).
@@ -929,6 +989,7 @@ func streamHealthSnapshot(cctv models.CCTV, pathMap map[string]utils.PathInfo, n
 		"nama":                  cctv.Nama,
 		"kode_cctv":             cctv.KodeCCTV,
 		"stream_enabled":        cctv.StreamEnabled,
+		"stream_state":          cctv.StreamState,
 		"stream_active":         cctv.StreamEnabled && exists && ready,
 		"stream_ready":          ready,
 		"viewers":               viewers,

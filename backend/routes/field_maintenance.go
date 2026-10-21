@@ -12,6 +12,10 @@ import (
 func SetupFieldMaintenanceRoutes(router fiber.Router) {
 	group := router.Group("/field-maintenance", middleware.Protected())
 
+	// SiteContext dipasang setelah Protected agar non-admin otomatis dibatasi
+	// ke site penugasannya. Admin tanpa site tetap melihat data global.
+	group.Use(middleware.SiteContext())
+
 	// Rute yang dapat diakses oleh Admin & Teknisi
 	group.Get("/", handlers.GetAllFieldMaintenances)
 	// Rute statis report-pdf didaftarkan sebelum rute detail dinamis.

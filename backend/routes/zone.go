@@ -12,6 +12,9 @@ import (
 // admin/teknisi yang sudah login.
 func SetupZoneRoutes(router fiber.Router) {
 	zoneGroup := router.Group("/zones", middleware.Protected())
+	// SiteContext dipasang setelah Protected agar scope default non-admin
+	// dapat ditentukan dari identitas pengguna.
+	zoneGroup.Use(middleware.SiteContext())
 
 	// Rute statis didaftarkan sebelum rute dinamis (gotcha Fiber route ordering):
 	// /all harus sebelum /:id.

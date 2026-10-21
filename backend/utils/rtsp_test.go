@@ -1,8 +1,60 @@
 package utils
 
 import (
+	"strings"
 	"testing"
 )
+
+func TestRTSPURLEncryptDecrypt_RoundTrip(t *testing.T) {
+	t.Setenv("AES_SECRET_KEY", "sigap_aes_test_secret_2026")
+
+	raw := "rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902"
+	encrypted, err := EncryptRTSPURL(raw)
+	if err != nil {
+		t.Fatalf("EncryptRTSPURL() error: %v", err)
+	}
+	if !IsEncryptedRTSPURL(encrypted) {
+		t.Fatalf("EncryptRTSPURL() = %q, want prefix %q", encrypted, rtspURLEncryptionPrefix)
+	}
+	if encrypted == raw || strings.Contains(encrypted, "secret123") {
+		t.Fatalf("EncryptRTSPURL() masih memuat plaintext: %q", encrypted)
+	}
+
+	decrypted, err := DecryptRTSPURL(encrypted)
+	if err != nil {
+		t.Fatalf("DecryptRTSPURL() error: %v", err)
+	}
+	if decrypted != raw {
+		t.Fatalf("DecryptRTSPURL() = %q, want %q", decrypted, raw)
+	}
+}
+
+func TestDecryptRTSPURL_LegacyPlaintext(t *testing.T) {
+	raw := "rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902"
+	got, err := DecryptRTSPURL(raw)
+	if err != nil {
+		t.Fatalf("DecryptRTSPURL() error: %v", err)
+	}
+	if got != raw {
+		t.Fatalf("DecryptRTSPURL(legacy) = %q, want %q", got, raw)
+	}
+}
+
+func TestMaskRTSPURL(t *testing.T) {
+	got := MaskRTSPURL("rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1902")
+	if strings.Contains(got, "secret123") {
+		t.Fatalf("MaskRTSPURL() membocorkan password: %q", got)
+	}
+	if !strings.Contains(got, "admin:xxxxx@") {
+		t.Fatalf("MaskRTSPURL() = %q, want userinfo tersamarkan", got)
+	}
+	if got := MaskRTSPURL("rtsp://10.0.0.5:554/Streaming/channels/1902"); strings.Contains(got, "xxxxx") {
+		t.Fatalf("MaskRTSPURL() tanpa kredensial tidak boleh berubah: %q", got)
+	}
+	if got := MaskRTSPURL("admin:secret123@host"); strings.Contains(got, "secret123") {
+		t.Fatalf("MaskRTSPURL() fallback membocorkan password: %q", got)
+	}
+}
 
 func TestBuildRTSPURL_SubStream(t *testing.T) {
 	t.Setenv("RTSP_NVR_HOST", "10.0.0.5")
@@ -104,5 +156,83 @@ func TestGetRTSPPort_Invalid(t *testing.T) {
 	t.Setenv("RTSP_NVR_PORT", "not-a-number")
 	if got := GetRTSPPort(); got != 554 {
 		t.Fatalf("GetRTSPPort() invalid = %d, want 554", got)
+	}
+}
+
+func TestResolveRTSPURL_SelectsHikvisionStreamType(t *testing.T) {
+	cases := []struct {
+		name       string
+		raw        string
+		streamType StreamType
+		want       string
+	}{
+		{
+			name:       "main URL to sub",
+			raw:        "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/1501",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/1502",
+		},
+		{
+			name:       "sub URL to main",
+			raw:        "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/602",
+			streamType: MainStream,
+			want:       "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/601",
+		},
+		{
+			name:       "suffix already matches",
+			raw:        "rtsp://admin:secret@host:554/Streaming/channels/1902",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@host:554/Streaming/channels/1902",
+		},
+		{
+			name:       "case insensitive channels segment",
+			raw:        "rtsp://admin:secret@host:554/Streaming/Channels/301",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@host:554/Streaming/Channels/302",
+		},
+		{
+			name:       "query is preserved",
+			raw:        "rtsp://admin:secret@host:554/Streaming/channels/1501?transportmode=unicast",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@host:554/Streaming/channels/1502?transportmode=unicast",
+		},
+		{
+			name:       "non hikvision path is unchanged",
+			raw:        "rtsp://admin:secret@host:554/live/ch0",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@host:554/live/ch0",
+		},
+		{
+			name:       "invalid channel suffix is unchanged",
+			raw:        "rtsp://admin:secret@host:554/Streaming/channels/1503",
+			streamType: SubStream,
+			want:       "rtsp://admin:secret@host:554/Streaming/channels/1503",
+		},
+		{
+			name:       "invalid stream type is unchanged",
+			raw:        "rtsp://admin:secret@host:554/Streaming/channels/1501",
+			streamType: StreamType(0),
+			want:       "rtsp://admin:secret@host:554/Streaming/channels/1501",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveRTSPURL(tc.raw, 15, "unused", tc.streamType); got != tc.want {
+				t.Fatalf("ResolveRTSPURL(%q, %v) = %q, want %q", tc.raw, tc.streamType, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveRTSPURL_EmptyUsesBuildFallback(t *testing.T) {
+	t.Setenv("RTSP_NVR_HOST", "10.0.0.5")
+	t.Setenv("RTSP_NVR_PORT", "554")
+	t.Setenv("RTSP_NVR_USER", "admin")
+
+	got := ResolveRTSPURL("", 15, "secret123", SubStream)
+	want := "rtsp://admin:secret123@10.0.0.5:554/Streaming/channels/1502"
+	if got != want {
+		t.Fatalf("ResolveRTSPURL(empty) = %q, want %q", got, want)
 	}
 }

@@ -169,7 +169,7 @@ export default function APIKeysPage() {
         fetchKeys();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'API key belum dapat dibuat.');
+      toast.error(err instanceof Error ? err.message : 'API key belum dapat dibuat.', err);
     } finally {
       setActionLoading(null);
     }
@@ -190,7 +190,7 @@ export default function APIKeysPage() {
         fetchKeys();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'API key belum dapat dicabut.');
+      toast.error(err instanceof Error ? err.message : 'API key belum dapat dicabut.', err);
     } finally {
       setActionLoading(null);
     }
@@ -217,7 +217,7 @@ export default function APIKeysPage() {
         fetchKeys();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'API key belum dapat diregenerasi.');
+      toast.error(err instanceof Error ? err.message : 'API key belum dapat diregenerasi.', err);
     } finally {
       setActionLoading(null);
     }

@@ -29,6 +29,31 @@ const maxFieldChecks = 30
 // maxFieldImages membatasi jumlah foto bukti per catatan pengecekan.
 const maxFieldImages = 5
 
+// applyFieldMaintenanceSiteScope membatasi query pengecekan lapangan
+// berdasarkan relasi CCTV -> site. FieldMaintenance tidak menyimpan site_id
+// sendiri, sehingga scope ditegakkan lewat EXISTS ke tabel cctvs.
+func applyFieldMaintenanceSiteScope(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return query
+	}
+
+	return query.Where(
+		`EXISTS (SELECT 1 FROM cctvs WHERE cctvs.id = field_maintenances.cctv_id AND cctvs.site_id = ? AND cctvs.deleted_at IS NULL)`,
+		siteID,
+	)
+}
+
+// cctvMatchesActiveSite memastikan CCTV yang diakses berada pada site aktif.
+// Bila tidak ada site aktif (mis. admin global), akses tidak dibatasi.
+func cctvMatchesActiveSite(c *fiber.Ctx, cctv models.CCTV) bool {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return true
+	}
+	return cctv.SiteID != nil && cctv.SiteID.String() == siteID
+}
+
 type FieldCheckItem struct {
 	Name   string `json:"name" validate:"required,min=3,max=150"`
 	Result string `json:"result" validate:"required,oneof=ok not_ok"`
@@ -99,14 +124,12 @@ func validateCoordinates(lat, lng string) error {
 // @Success      201 {object} map[string]interface{} "Catatan berhasil dibuat"
 // @Failure      400 {object} map[string]interface{} "Format tidak valid, aset tidak ditemukan, data tidak lengkap"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: CCTV berada di site lain"
 // @Router       /field-maintenance [post]
 func CreateFieldMaintenance(c *fiber.Ctx) error {
 	var req CreateFieldMaintenanceRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Batasan struktural tambahan (maks item & foto) di luar validator struct
@@ -153,6 +176,12 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
@@ -294,11 +323,13 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 // @Param        order query string false "Arah pengurutan: asc, desc (default: desc)"
 // @Success      200 {object} map[string]interface{} "Daftar pengecekan terpaginasi"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: belum ditugaskan ke site"
 // @Router       /field-maintenance [get]
 func GetAllFieldMaintenances(c *fiber.Ctx) error {
 	var entries []models.FieldMaintenance
 	query := config.DB.Model(&models.FieldMaintenance{}).
 		Preload("CCTV").Preload("User").Preload("Checks").Preload("Images")
+	query = applyFieldMaintenanceSiteScope(c, query)
 
 	// Role scope: teknisi hanya melihat catatan miliknya sendiri
 	userRole, _ := c.Locals("role").(string)
@@ -377,6 +408,7 @@ func GetAllFieldMaintenances(c *fiber.Ctx) error {
 // @Success      200 {object} map[string]interface{} "Data catatan ditemukan"
 // @Failure      400 {object} map[string]interface{} "UUID tidak valid"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: catatan berada di site lain"
 // @Failure      404 {object} map[string]interface{} "Catatan tidak ditemukan"
 // @Router       /field-maintenance/{id} [get]
 func GetFieldMaintenanceByID(c *fiber.Ctx) error {
@@ -395,6 +427,12 @@ func GetFieldMaintenanceByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Catatan pengecekan lapangan tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, entry.CCTV) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: catatan pengecekan berada di site lain",
 		})
 	}
 
@@ -453,6 +491,12 @@ func GenerateFieldMaintenanceReportPDF(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil data laporan pengecekan lapangan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, entry.CCTV) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: laporan pengecekan berada di site lain",
 		})
 	}
 

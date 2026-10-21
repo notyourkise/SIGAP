@@ -1,5 +1,364 @@
 # Changelog - Backend SIGAP
 
+## [0.64.26] - 2026-10-21
+
+### Isolasi site dashboard, field maintenance, dan daftar site
+
+**Masalah**: `GET /dashboard/summary`, `GET /dashboard/tasks`, seluruh grup `/field-maintenance`, dan daftar `/sites` belum menegakkan site aktif. Non-admin masih dapat melihat agregat/tugas/catatan dari site lain, membuat pengecekan untuk CCTV di site lain, serta melihat seluruh daftar site.
+
+**Perbaikan**:
+- `SiteContext` dipasang setelah autentikasi pada route dashboard summary/tasks dan seluruh grup field-maintenance; non-admin tanpa penugasan ditolak `403`.
+- Distribusi status CCTV, tren pemeliharaan 6 bulan, pekerjaan overdue, dan daftar tugas dashboard difilter berdasarkan site aktif. Teknisi tetap dibatasi `technician_id`.
+- Daftar, detail, laporan PDF, dan pembuatan field maintenance memakai scope site lewat relasi CCTV. Pembuatan untuk CCTV di site lain ditolak `403`.
+- `/sites`, `/sites/all`, dan `/sites/{id}` memakai scope keanggotaan `user_sites`: non-admin hanya melihat site yang ditugaskan, admin tetap global. `/sites/all` sengaja tetap memuat seluruh site penugasan agar `SiteSwitcher` multi-site tidak rusak.
+- Event WebSocket `AUDIT_LOG_ADDED` dibatasi ke koneksi admin; non-admin tidak lagi menerima metadata audit (IP, user-agent, deskripsi aktivitas).
+- Test regresi ditambahkan untuk dashboard site scope, field maintenance list/create mismatch, daftar site non-admin, detail lintas site, dan route non-admin tanpa penugasan.
+- Swagger diregenerasi dengan respons `403` dan deskripsi scope site.
+
+timestamp: 2026-10-21 23:20 UTC+8
+kategori: Sedang, Backend (Keamanan/Multi-site)
+file yang diubah:
+- backend/handlers/dashboard.go
+- backend/handlers/dashboard_test.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/field_maintenance_test.go
+- backend/handlers/helpers_test.go
+- backend/handlers/site.go
+- backend/handlers/site_test.go
+- backend/routes/dashboard.go
+- backend/routes/field_maintenance.go
+- backend/routes/routes_test.go
+- backend/routes/websocket.go
+- backend/utils/audit.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docs/01-documentation/AGENTS.md
+- docs/02-audits/SECURITY-AUDIT.md
+- docs/04-manual-tests/manual-test-security-p0-hardening.md
+
+alasan perubahan: Menutup sisa kebocoran data lintas site pada dashboard, pengecekan lapangan, dan daftar site tanpa mengubah fitur atau alur kerja yang sudah ada.
+
+---
+
+## [0.64.25] - 2026-10-21
+
+### Scope site default non-admin dan validasi sandi lama
+
+**Masalah**: `SiteContext` membiarkan `site_id` kosong bila header `X-Site-ID`/cookie `sigap_site_id` tidak ada, sehingga non-admin dapat menerima data seluruh site. Pada modul CCTV, middleware site juga berjalan sebelum autentikasi sehingga pemeriksaan keanggotaan site tidak pernah dievaluasi. Selain itu, endpoint ganti sandi menerima `old_password` kosong untuk perubahan mandiri biasa.
+
+**Perbaikan**:
+- `SiteContext` memilih site penugasan default non-admin (site `is_default`, lalu nama site) saat konteks site tidak dikirim; akun tanpa penugasan ditolak `403` (fail closed).
+- Urutan middleware CCTV diubah: autentikasi lebih dulu, baru `SiteContext`, sehingga membership site benar-benar diperiksa. Rute admin tetap memakai `RequireRole("admin")`.
+- `SiteContext` dipasang pada grup `/zones`; daftar zona untuk dropdown ikut difilter berdasarkan site aktif.
+- `ChangePassword` mewajibkan `old_password` kecuali pengguna dalam mode `must_change_password`; sandi baru juga ditolak bila sama dengan sandi sementara saat ini.
+- Test middleware site (default scope, cookie fallback, tanpa penugasan, admin global) dan test ganti sandi (old password kosong, forced mode, sandi sama) ditambahkan, termasuk test registrasi rute CCTV setelah perubahan urutan middleware.
+- Swagger diregenerasi; deskripsi change-password, filter `site_id`, dan endpoint readiness MediaMTX yang tertunda ikut tersinkron.
+
+timestamp: 2026-10-21 21:35 UTC+8
+kategori: Sedang, Backend (Keamanan/Multi-site)
+file yang diubah:
+- backend/middleware/site.go
+- backend/middleware/site_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
+- backend/routes/zone.go
+- backend/handlers/zone.go
+- backend/handlers/auth.go
+- backend/handlers/auth_extra_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docs/01-documentation/AGENTS.md
+- docs/04-manual-tests/manual-test-security-p0-hardening.md
+
+alasan perubahan: Menutup kebocoran data lintas site saat cookie site belum ada dan mencegah pengambilalihan sesi mengganti sandi tanpa mengetahui sandi lama.
+
+---
+
+## [0.64.24] - 2026-10-21
+
+### Stabilkan probe awal setelah restart
+
+**Masalah**: Saat restart host/container, API healthy lebih dulu daripada MediaMTX. Probe pertama langsung berjalan sebelum path on-demand terdaftar, sehingga 20 kamera aktif sementara ditulis sebagai `unknown`. Siklus berikutnya baru mengembalikannya ke `idle`.
+
+**Perbaikan**:
+- `RunRTSPProber` memakai `runInitialProbe`: menunggu MediaMTX siap (maksimal 2 menit) sebelum probe pertama.
+- Setelah MediaMTX siap, `ReRegisterFailedStreams` dijalankan lebih dulu agar path kamera aktif terdaftar, baru probe dijalankan.
+- Bila MediaMTX belum siap sampai timeout, probe awal dilewati. Status terakhir di database tidak ditimpa `unknown` hanya karena race startup.
+- Menambahkan test urutan registrasi-sebelum-probe dan test probe awal dilewati saat MediaMTX tidak siap.
+- Uji restart terkontrol: API mulai 20:05:31, MediaMTX mulai 20:05:37, probe pertama 20:05:42 menghasilkan `idle=20 unknown=0` (sebelumnya sempat `unknown=20`).
+
+timestamp: 2026-10-21 20:10 UTC+8
+kategori: Sedang, Backend (Streaming/Probe)
+file yang diubah:
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- backend/changelog.md
+- docs/05-reports/DIAGNOSA-STREAMING-CCTV-2026-10-20.md
+
+alasan perubahan: Menghilangkan status `unknown` palsu pada probe pertama setelah restart dan memastikan path aktif sudah terdaftar sebelum status dievaluasi.
+
+---
+
+## [0.64.23] - 2026-10-20
+
+### Probe Metro-E pasif saat host tanpa rute OIKN
+
+**Konteks**: Data master terbaru mengisi `ip_camera` 17 kamera Metro-E. Container API tidak dapat menjangkau `10.20.105.x` (timeout), sehingga probe langsung akan menandai 16 kamera aktif sebagai offline meskipun streaming lewat NVR publik masih bekerja.
+
+**Perubahan**:
+- Menambahkan `utils.MetroEDirectProbeEnabled()` dengan env `CCTV_METRO_E_DIRECT_PROBE`.
+- `docker-compose.yml` default `false` untuk deployment ini; set `true` hanya jika host berada di jaringan OIKN.
+- Saat flag false, kamera Metro-E memakai klasifikasi MediaMTX pasif yang sama dengan GSM: `live` jika path ready, `idle` jika path terdaftar tetapi belum berjalan, `offline` hanya jika ada penonton tetapi sumber tidak siap, dan `unknown` jika tidak dapat disimpulkan.
+- `AddPath` tidak lagi mencetak ERROR untuk respons normal `path already exists`; `ensureStreamPath` tetap melakukan patch konfigurasi.
+- Menambahkan test untuk flag dan fallback pasif Metro-E.
+- Sinkronisasi data master 35 CCTV THD dilakukan terpisah di database (bukan migration): `sumber_listrik` PLTS/PLN, `tipe_koneksi` GSM/Metro-E/Tidak Ada Layanan, `ip_camera`, status, koordinat, dan keterangan.
+
+timestamp: 2026-10-20 16:45 UTC+8
+kategori: Sedang, Backend (Streaming/Probe)
+file yang diubah:
+- backend/utils/rtsp_probe.go
+- backend/utils/rtsp_probe_test.go
+- backend/utils/mediamtx.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- docker-compose.yml
+- docs/01-documentation/AGENTS.md
+- docs/05-reports/DIAGNOSA-STREAMING-CCTV-2026-10-20.md
+- backend/changelog.md
+
+alasan perubahan: Menyimpan IP Metro-E tanpa menimbulkan offline palsu pada deployment yang belum memiliki rute ke jaringan OIKN.
+
+---
+
+## [0.64.22] - 2026-10-20
+
+### Status probe on-demand: idle bukan offline
+
+**Masalah**: Probe GSM hanya membaca path operasional MediaMTX. Path on-demand yang belum berjalan karena tidak ada penonton memiliki `ready=false`, lalu ditulis sebagai `stream_live=false` dan ditampilkan sebagai offline. Stream health monitor juga dapat memicu `STREAM_DOWN` palsu setelah 15 menit.
+
+**Perbaikan**:
+- Migration `000025_stream_state` menambahkan kolom `stream_state` (`live`, `idle`, `offline`, `unknown`); `stream_live` tetap dipertahankan untuk kompatibilitas.
+- Probe GSM membedakan path terdaftar yang idle dari kegagalan terkonfirmasi (ada penonton tetapi sumber tidak siap). Kegagalan MediaMTX tidak lagi memaksa semua kamera GSM menjadi offline.
+- `GetLiveStatus` mengembalikan `stream_state` dan ringkasan `idle`; status unknown dihitung terpisah dari offline.
+- Stream health monitor tidak memulai countdown `STREAM_DOWN` untuk status `idle`/`unknown`, dan mereset countdown lama saat stream kembali idle.
+- Test probe, status live, dan health monitor diperluas.
+
+timestamp: 2026-10-20 18:20 UTC+8
+kategori: Sedang, Backend (Streaming/Status)
+file yang diubah:
+- backend/migrations/000025_stream_state.up.sql
+- backend/migrations/000025_stream_state.down.sql
+- backend/models/cctv.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream.go
+- backend/handlers/stream_probe_test.go
+- backend/handlers/stream_test.go
+- backend/handlers/stream_health_test.go
+- backend/changelog.md
+
+alasan perubahan: Mencegah kamera on-demand yang hanya siaga ditampilkan offline dan mencegah alarm STREAM_DOWN palsu.
+
+---
+
+## [0.64.21] - 2026-10-20
+
+### Pilot THD-15 SD berhasil: sub-stream menjadi default
+
+**Konteks**: Pilot THD-15 SD berhasil tampil di browser pengguna. MediaMTX mencatat sesi WHEP membaca satu track H.265; uji headless tanpa dukungan HEVC tetap ditolak `400 codecs not supported by client`. Kompatibilitas H.265 bergantung pada browser/perangkat.
+
+**Perubahan**:
+- `StartStream` memakai sub-stream sebagai default; `?quality=main` tetap tersedia untuk memilih HD/main.
+- `StartAllStreams` dan `registerStreamWithRetry` memakai sub-stream sebagai default.
+- Respons start mengembalikan `quality=sub` bila parameter tidak diberikan.
+- Regression test default kualitas diperbarui.
+
+timestamp: 2026-10-20 18:05 UTC+8
+kategori: Kecil, Backend (Streaming)
+file yang diubah:
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/changelog.md
+
+alasan perubahan: Menindaklanjuti pilot THD-15 SD yang berhasil dan menjadikan sub-stream sebagai default operasional.
+
+---
+
+## [0.64.20] - 2026-10-20
+
+### Streaming: pemilihan sub-stream dan update path MediaMTX
+
+**Masalah**: Saat `rtsp_url` penuh tersimpan, `ResolveRTSPURL` mengembalikan URL apa adanya sehingga parameter `quality=main/sub` tidak pernah mengubah stream. Path yang sudah terdaftar juga hanya dianggap sukses saat `AddPath` mengembalikan `already exists`, sehingga perubahan kualitas tidak diterapkan. `ReRegisterFailedStreams` memakai daftar path operasional, padahal path on-demand tetap terdaftar meski sumbernya sedang idle.
+
+**Perbaikan**:
+- `ResolveRTSPURL` menyesuaikan suffix channel Hikvision `01`/`02` pada URL penuh sesuai `quality`; URL non-Hikvision atau pola yang tidak dikenali dikembalikan tanpa perubahan.
+- Default kualitas tetap **main** sampai rollout encoding H.264 sub-stream selesai; ini mencegah seluruh kamera ikut pindah ke sub-stream H.265 sebelum pilot THD-15 lolos. Pengguna tetap dapat memilih SD secara eksplisit.
+- Ditambahkan `PatchPath` pada klien MediaMTX dan helper `ensureStreamPath`: path baru ditambahkan, path lama di-patch agar sumber/kualitas terbaru benar-benar dipakai.
+- `StartStream`, `StartAllStreams`, dan `registerStreamWithRetry` memakai helper tersebut.
+- `ReRegisterFailedStreams` memakai `ListPathConfigs` sehingga path on-demand yang idle tidak dianggap hilang.
+- Regression test untuk pemilihan main/sub, patch path, dan path yang sudah terdaftar.
+
+timestamp: 2026-10-20 17:05 UTC+8
+kategori: Kecil, Backend (Streaming)
+file yang diubah:
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- backend/utils/mediamtx.go
+- backend/utils/mediamtx_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/changelog.md
+
+alasan perubahan: Memastikan tombol SD/HD dan konfigurasi sub-stream benar-benar diterapkan, serta mengurangi false negative pada re-register path on-demand.
+
+---
+
+## [0.64.19] - 2026-10-20
+
+### Perbaikan keamanan P0: metrics, diagnostik, dan URL RTSP
+
+**Masalah**: `/api/metrics` bisa panic (500) saat entri histogram nil/panjang bucket tidak sesuai. Swagger, `/api/test-panic`, dan metrics masih dapat dijangkau dari luar bila `APP_ENV` kosong. URL RTSP penuh—termasuk `user:password@host`—tersimpan plaintext, dikembalikan API, dan disiarkan lewat WebSocket.
+
+**Perbaikan**:
+- `ObserveRequest` menormalkan entri histogram yang nil/korup; `Render` membaca bucket secara defensif sehingga tidak panic dan tetap mengembalikan metrik.
+- Regression test untuk entri nil, bucket pendek, dan self-healing `ObserveRequest`.
+- `APP_ENV` default `production` di Compose; Swagger dan `/api/test-panic` nonaktif di API.
+- Nginx memblokir `GET /api/metrics`, `/api/test-panic`, dan seluruh `/swagger` dengan 404. Scraping internal Prometheus ke `api:3000` tetap berjalan.
+- URL RTSP disimpan terenkripsi AES-256-GCM dengan prefix `enc:v1:`; migration startup mengenkripsi data legacy secara idempoten tanpa menghapus data.
+- URL didekripsi hanya saat registrasi streaming; API hanya mengirim `rtsp_url_masked` + `rtsp_url_configured`, dan event WebSocket tidak lagi memuat model CCTV penuh.
+- Detail error parsing body menyamarkan field `rtsp_url` agar URL/kredensial tidak bocor lewat pesan validasi.
+- Histori kesehatan CCTV mendapat UUID otomatis lewat hook `BeforeCreate`; insert tidak lagi gagal `duplicate key` karena UUID nol.
+- Validasi format `rtsp://`/`rtsps://` pada create/update.
+- Port Prometheus/Grafana dibatasi ke `127.0.0.1`; password Grafana dibaca dari `GRAFANA_ADMIN_PASSWORD`, bukan `admin/admin`.
+
+timestamp: 2026-10-20 13:05 UTC+8
+kategori: Kecil, Backend (Security + Monitoring + CCTV)
+file yang diubah:
+- backend/monitoring/metrics.go
+- backend/monitoring/metrics_test.go
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- backend/models/cctv.go
+- backend/models/cctv_health_history.go
+- backend/models/cctv_health_history_test.go
+- backend/handlers/cctv.go
+- backend/handlers/cctv_security_test.go
+- backend/handlers/cctv_sync.go
+- backend/handlers/stream.go
+- backend/handlers/request_error.go
+- backend/handlers/request_error_test.go
+- backend/config/cctv_rtsp_migration.go
+- backend/main.go
+- nginx/nginx.conf
+- docker-compose.yml
+- docker-compose.override.yml
+- .env.example
+- README.md
+- docs/01-documentation/AGENTS.md
+- docs/02-audits/SECURITY-AUDIT.md
+- backend/changelog.md
+
+alasan perubahan: Menutup panic metrics, eksposur endpoint diagnostik, kebocoran kredensial RTSP, dan akses default monitoring.
+
+---
+
+## [0.64.18] - 2026-10-20
+
+### Perubahan: Form CCTV memakai URL RTSP saja
+
+**Konteks**: Form frontend sebelumnya mengirim `channel_port`, `rtsp_password`, dan menampilkan preview URI. Alur operasional yang dipakai adalah URL RTSP penuh, sehingga tiga input itu duplikatif dan membingungkan.
+
+**Perubahan**:
+- Form tambah/edit CCTV hanya menampilkan satu input **URL RTSP Kamera**.
+- `channel_port` dan `rtsp_password` tidak lagi dikirim oleh form web.
+- URL wajib diisi saat streaming diaktifkan dan di-trim sebelum dikirim.
+- Backend tetap menerima field lama agar data/API existing tidak rusak; tidak ada perubahan skema atau penghapusan data.
+
+timestamp: 2026-10-20 12:08 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+- backend/changelog.md
+alasan perubahan: Menyelaraskan form dengan konfigurasi streaming berbasis URL RTSP penuh.
+
+---
+
+## [0.64.17] - 2026-10-20
+
+### Peningkatan: Tombol detail pada seluruh toast error frontend
+
+**Masalah**: Toast error di frontend hanya menampilkan satu kalimat. Saat backend mengembalikan field, penyebab, atau status HTTP, pengguna tidak bisa melihat konteksnya tanpa membuka DevTools.
+
+**Perbaikan**:
+- Toast error kini selalu memiliki tombol **Detail error**, termasuk error validasi yang dibuat langsung di halaman.
+- Modal detail menampilkan pesan, field, penyebab, nilai, baris/kolom JSON, status HTTP, endpoint, request ID (bila ada), halaman, dan waktu.
+- `ApiError` di frontend membawa metadata `status`, `endpoint`, `method`, `requestId`, `detail`, dan `errors` dari respons backend.
+- Semua pemanggil `toast.error` yang sudah memiliki objek error meneruskan error tersebut sebagai argumen kedua; error validasi halaman tetap mendapat konteks halaman dan waktu.
+- Toast error bertahan 9 detik dan ditutup saat modal detail dibuka agar tidak menutupi modal.
+- Modal bisa ditutup dengan Escape/klik overlay, dan detail bisa disalin sebagai JSON.
+
+timestamp: 2026-10-20 10:58 UTC+8
+kategori: Sedang, Frontend (Error UX)
+file yang diubah:
+- frontend/src/components/Toast.tsx
+- frontend/src/lib/api.ts
+- frontend/src/app/{api-keys,cctv,field-maintenance,laporan-kustom,maintenance,pemberitahuan,schedules,sites,suku-cadang,users,webhooks,zona}/page.tsx
+- frontend/src/components/{ChecklistTemplateManager,FieldMaintenanceModal,NotificationBell,StreamModal}.tsx
+- backend/changelog.md
+alasan perubahan: Setiap error harus bisa dijelaskan lokasi dan penyebabnya langsung dari toast, tanpa membuka DevTools.
+
+---
+
+## [0.64.16] - 2026-10-20
+
+### Peningkatan: Pesan error parsing body request
+
+**Masalah**: Saat `BodyParser` gagal, handler hanya mengembalikan pesan generik `"Format input tidak valid"` atau `"Payload tidak valid"`. Pengguna tidak tahu field mana yang salah dan apa penyebabnya, sehingga kasus seperti `zone_id: null` sangat membingungkan.
+
+**Perbaikan**: Utility baru `sendBodyParseError` di `backend/handlers/request_error.go`:
+- Mengidentifikasi nama field JSON yang bermasalah, termasuk error dari custom unmarshaler seperti `OptionalUUID` yang tidak membawa nama field.
+- Menjelaskan penyebabnya: tipe data tidak sesuai, UUID tidak valid, JSON rusak (dengan baris/kolom), atau body kosong.
+- Menyertakan nilai yang bermasalah pada pesan, tetapi meredaksi field sensitif seperti password/secret/token.
+- Mengembalikan detail terstruktur di properti `detail` (`field`, `reason`, `value`, `line`, `column`).
+- Menerjemahkan error `OptionalUUID` menjadi pesan yang bisa dipahami (`bukan UUID yang valid`, `harus berupa string UUID atau null`).
+
+Seluruh handler yang memakai `c.BodyParser` diganti memakai helper ini. Frontend tidak perlu diubah karena toast sudah menampilkan `message` dari backend.
+
+timestamp: 2026-10-20 10:20 UTC+8
+kategori: Kecil, Backend (Error Handling)
+file yang diubah:
+- backend/handlers/request_error.go (baru)
+- backend/handlers/request_error_test.go (baru)
+- backend/utils/optional_uuid.go
+- backend/utils/optional_uuid_test.go
+- backend/handlers/*.go (pemakaian sendBodyParseError)
+- backend/changelog.md
+alasan perubahan: Pesan error parsing harus menjelaskan field dan penyebabnya agar masalah input bisa langsung diperbaiki tanpa menebak-nebak.
+
+---
+
+## [0.64.15] - 2026-10-20
+
+### Fix: Form Tambah CCTV gagal saat Kawasan/Zona kosong
+
+**Masalah**: Frontend mengirim `zone_id` dan `site_id` bernilai `null` ketika dropdown Kawasan/Zona dikosongkan. `OptionalUUID.UnmarshalJSON` tidak menangani JSON `null` (hanya string kosong), sehingga `uuid.Parse("null")` gagal dan `BodyParser` mengembalikan 400 "Format input tidak valid". Akibatnya pembuatan CCTV tidak bisa dilakukan selama belum ada zona yang dipilih.
+
+**Perbaikan**: `OptionalUUID.UnmarshalJSON` kini mendeteksi JSON `null` secara eksplisit, mengosongkan `Value`, menandai `Null=true`, dan tetap `Present=true`. Ditambahkan unit test untuk `null`, string kosong, UUID valid, UUID invalid, field tidak dikirim, dan reset nilai lama.
+
+timestamp: 2026-10-20 10:05 UTC+8
+kategori: Kecil, Backend (Bug Fix)
+file yang diubah:
+- backend/utils/optional_uuid.go
+- backend/utils/optional_uuid_test.go (baru)
+- backend/changelog.md
+alasan perubahan: Field Kawasan/Zona bersifat opsional; nilai `null` harus diterima dan tidak boleh menggagalkan parsing seluruh request CCTV.
+
+---
+
 ## [0.64.14] - 2026-10-18
 
 ### Hardening Keamanan P0 (Tindak Lanjut Audit)

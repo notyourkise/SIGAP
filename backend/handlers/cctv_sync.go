@@ -54,17 +54,17 @@ func syncCCTVStatus(tx *gorm.DB, c *fiber.Ctx, cctvID uuid.UUID, newStatus strin
 	// Audit log dengan keterangan otomatis (actor diambil dari konteks request)
 	desc := fmt.Sprintf("Status CCTV diubah otomatis dari '%s' ke '%s' karena %s", oldStatus, newStatus, reason)
 	utils.LogAudit(config.DB, c, "UPDATE_CCTV", "CCTV", desc, nil, "", "")
-	utils.BroadcastEvent("CCTV_UPDATED", cctv)
+	broadcastCCTVUpdate(cctv)
 
 	// Task 12.3: dispatch event webhook cctv.status_changed.
 	DispatchWebhook(config.DB, models.EventWebhookCCTVStatusChanged, fiber.Map{
-		"cctv_id":     cctv.ID.String(),
-		"kode_cctv":   cctv.KodeCCTV,
-		"nama":        cctv.Nama,
-		"old_status":  oldStatus,
-		"new_status":  newStatus,
-		"reason":      reason,
-		"timestamp":   time.Now().Format(time.RFC3339),
+		"cctv_id":    cctv.ID.String(),
+		"kode_cctv":  cctv.KodeCCTV,
+		"nama":       cctv.Nama,
+		"old_status": oldStatus,
+		"new_status": newStatus,
+		"reason":     reason,
+		"timestamp":  time.Now().Format(time.RFC3339),
 	})
 	return nil
 }

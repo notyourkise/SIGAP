@@ -25,6 +25,23 @@ func TestIsMetroE_Empty(t *testing.T) {
 	assert.False(t, IsMetroE(cctv))
 }
 
+func TestMetroEDirectProbeEnabled_Default(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "")
+	assert.True(t, MetroEDirectProbeEnabled())
+}
+
+func TestMetroEDirectProbeEnabled_False(t *testing.T) {
+	for _, value := range []string{"false", "0", "no", "off", "FALSE"} {
+		t.Setenv("CCTV_METRO_E_DIRECT_PROBE", value)
+		assert.False(t, MetroEDirectProbeEnabled(), "nilai %q harus menonaktifkan probe langsung", value)
+	}
+}
+
+func TestMetroEDirectProbeEnabled_True(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "true")
+	assert.True(t, MetroEDirectProbeEnabled())
+}
+
 func TestProbeICMP_Success(t *testing.T) {
 	// Buka listener TCP lokal pada 127.0.0.1:0 — ProbeICMP mencoba port 554
 	// lalu fallback 80, sehingga listener port 80 harus tersedia (atau kita

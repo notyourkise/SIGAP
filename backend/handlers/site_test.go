@@ -128,6 +128,63 @@ func TestGetAllSites_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestGetAllSites_NonAdminSiteScoped memastikan daftar site non-admin hanya
+// berisi site yang ditugaskan kepadanya.
+func TestGetAllSites_NonAdminSiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "sites" WHERE \(EXISTS .*user_sites.user_id = \$1`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`SELECT sites\.\*, \(SELECT COUNT\(\*\) FROM user_sites.*WHERE \(EXISTS .*user_sites.user_id = \$1.*ORDER BY sites\.nama asc`).
+		WillReturnRows(siteListRows(siteID, "Kawasan OIKN", "OIKN", true, 2))
+
+	app := newTestApp()
+	app.Get("/sites", withUserSiteLocals(uuid.New().String(), "teknisi", siteID.String()), GetAllSites)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/sites?page=1&limit=10", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetAllSitesForSelect_NonAdminSiteScoped memastikan dropdown site
+// non-admin juga dibatasi ke site penugasannya.
+func TestGetAllSitesForSelect_NonAdminSiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "sites" WHERE \(EXISTS .*user_sites.user_id = \$1`).
+		WillReturnRows(siteRows(siteID, "Kawasan OIKN", "OIKN", true))
+
+	app := newTestApp()
+	app.Get("/sites/all", withUserSiteLocals(uuid.New().String(), "teknisi", siteID.String()), GetAllSitesForSelect)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/sites/all", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetSiteByID_CrossSiteDenied memastikan non-admin tidak dapat membuka
+// detail site lain lewat path parameter.
+func TestGetSiteByID_CrossSiteDenied(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	siteID := uuid.New()
+
+	// Scope keanggotaan membuat site yang tidak ditugaskan seolah tidak ada.
+	mock.ExpectQuery(`^SELECT \* FROM "sites" WHERE id = \$1 AND \(EXISTS`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	app := newTestApp()
+	app.Get("/sites/:id", withUserSiteLocals(uuid.New().String(), "teknisi", siteID.String()), GetSiteByID)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/sites/"+uuid.New().String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestGetAllSites_ServerSideSort memastikan sortir berlaku untuk seluruh data,
 // bukan hanya sepuluh baris yang sedang terlihat di browser.
 func TestGetAllSites_ServerSideSort(t *testing.T) {

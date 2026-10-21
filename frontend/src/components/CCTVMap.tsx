@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Link from 'next/link';
 import { MapPin, Maximize, Minimize, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { getLiveBadge, type StreamState } from '@/lib/live-status';
 
 export interface CCTVMapItem {
   id: string;
@@ -25,6 +26,8 @@ export interface CCTVMapItem {
   // Status live streaming (RTSP) dari endpoint /streams/live-status (admin) atau event
   // WebSocket CCTV_LIVE_STATUS_UPDATED. `null` berarti belum dicek / non-admin.
   stream_live?: boolean | null;
+  // Status empat keadaan: live, idle (on-demand tanpa penonton), offline, unknown.
+  stream_state?: StreamState | null;
   // Waktu terakhir status live dicek oleh backend (string ISO). Opsional.
   stream_checked_at?: string | null;
   // Jenis jaringan koneksi kamera (Sprint 37-PATCH): 'metro-e' (serat optik — di-probe
@@ -96,63 +99,17 @@ export const formatLatency = (ms?: number | null): string => {
   return `Ping: ${ms}ms 🔴`;
 };
 
-// Badge status live sesuai strategi probe jaringan (Sprint 37-PATCH):
-//   Metro-E → di-probe ICMP tiap 2 menit, status BINARY (online/offline):
-//     stream_live=true  → 🟢 Online (Live)
-//     stream_live=false → 🔴 Offline
-//     stream_live=null  → ⚪ Tidak diketahui
-//   GSM → TIDAK pernah di-probe; hanya state lokal MediaMTX + riwayat aktif:
-//     stream_live=true  → 🟢 Online (Live)
-//     stream_live=false && stream_last_active_at < 24 jam → 🟡 "Pernah aktif hari ini"
-//     stream_live=false && ada stream_last_active_at (≥ 24 jam) → 🔴 Offline
-//     stream_live=false && tidak ada stream_last_active_at → ⚪ Tidak diketahui
-//     stream_live=null  → ⚪ Tidak diketahui
-//   Tanpa network_type (data lama / non-admin) → perilaku lama berbasis stream_live.
-// Mengembalikan { color (hex untuk marker), label (teks), dot (emoji) }.
-export const getLiveBadge = (cctv: Pick<CCTVMapItem, 'stream_live' | 'stream_last_active_at' | 'network_type'>): {
-  color: string;
-  label: string;
-  dot: string;
-} => {
-  const { stream_live, stream_last_active_at, network_type } = cctv;
-
-  // Metro-E: status binary hasil probe ICMP — abaikan stream_last_active_at.
-  if (network_type === 'metro-e') {
-    if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
-    if (stream_live === false) return { color: '#EF4444', label: 'Offline', dot: '🔴' };
-    return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
-  }
-
-  // GSM: 4-state — live, pernah aktif hari ini (<24 jam), offline (punya riwayat), tidak diketahui.
-  if (network_type === 'gsm') {
-    if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
-    if (stream_live === false && stream_last_active_at) {
-      const lastActive = new Date(stream_last_active_at);
-      if (!Number.isNaN(lastActive.getTime())) {
-        const hoursAgo = (Date.now() - lastActive.getTime()) / 3_600_000;
-        if (hoursAgo >= 0 && hoursAgo < 24) {
-          return { color: '#EAB308', label: 'Pernah aktif hari ini', dot: '🟡' };
-        }
-      }
-      return { color: '#EF4444', label: 'Offline', dot: '🔴' };
-    }
-    return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
-  }
-
-  // Fallback perilaku lama (data lama / non-admin): hanya berdasar stream_live.
-  if (stream_live === true) return { color: '#22C55E', label: 'Online (Live)', dot: '🟢' };
-  if (stream_live === false) return { color: '#EF4444', label: 'Offline', dot: '🔴' };
-  return { color: '#9CA3AF', label: 'Tidak diketahui', dot: '⚪' };
-};
+// Badge status live memakai getLiveBadge dari lib/live-status agar logika
+// idle/offline/unknown konsisten di peta dan grid.
 
 // Fungsi pembentuk custom SVG Icon untuk Leaflet berdasarkan skor kesehatan.
 // Param tambahan `isStreaming` menambah cincin hijau ganda (double-pulse) sebagai penanda kamera yang sedang streaming.
 // Param `cctv` dipakai untuk badge bulat kecil di pojok kanan-atas marker — warnanya
-// mengikuti getLiveBadge(cctv) sesuai strategi probe jaringan (Metro-E binary / GSM 4-state).
+// mengikuti getLiveBadge(cctv) sesuai status live/idle/offline/unknown.
 const createCustomMarkerIcon = (
   healthScore?: number,
   isStreaming?: boolean,
-  cctv?: Pick<CCTVMapItem, 'stream_live' | 'stream_last_active_at' | 'network_type'>
+  cctv?: Pick<CCTVMapItem, 'stream_live' | 'stream_state' | 'stream_last_active_at' | 'network_type'>
 ) => {
   const color = healthScoreColor(healthScore);
   const shadowColor = `${color}66`;
@@ -324,10 +281,18 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
   );
 
   // Statistik status live streaming (RTSP) dari seluruh CCTV.
-  // stream_live === true → online, false → offline, null/undefined → belum dicek.
-  const onlineCount = cctvs.filter((c) => c.stream_live === true).length;
-  const offlineCount = cctvs.filter((c) => c.stream_live === false).length;
-  const uncheckedCount = cctvs.filter((c) => c.stream_live == null).length;
+  // stream_state tersedia → hitung live/idle/offline/unknown secara eksplisit;
+  // data lama tanpa stream_state → fallback ke stream_live.
+  const onlineCount = cctvs.filter((c) =>
+    c.stream_state ? c.stream_state === 'live' : c.stream_live === true
+  ).length;
+  const idleCount = cctvs.filter((c) => c.stream_state === 'idle').length;
+  const offlineCount = cctvs.filter((c) =>
+    c.stream_state ? c.stream_state === 'offline' : c.stream_live === false
+  ).length;
+  const uncheckedCount = cctvs.filter((c) =>
+    c.stream_state ? c.stream_state === 'unknown' : c.stream_live == null
+  ).length;
 
   // Pusat peta: gunakan prop `center` bila tersedia, fallback ke pusat IKN.
   // `mapCenterKey` dipakai sebagai key MapContainer agar peta di-reinit bila
@@ -507,11 +472,15 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
       </div>
     )}
 
-    {/* Status bar live streaming (RTSP): online / offline / belum dicek */}
+    {/* Status bar live streaming (RTSP): online / idle / offline / unknown */}
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold">
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
         <span className="text-emerald-600">{onlineCount} Online</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+        <span className="text-blue-600">{idleCount} Siaga</span>
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
@@ -519,7 +488,7 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
-        <span className="text-gray-500">{uncheckedCount} Belum dicek</span>
+        <span className="text-gray-500">{uncheckedCount} Tidak diketahui</span>
       </span>
     </div>
     </>

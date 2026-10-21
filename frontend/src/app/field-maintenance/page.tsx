@@ -209,7 +209,7 @@ export default function FieldMaintenancePage() {
         setIsDetailOpen(true);
       }
     } catch (err: any) {
-      toast.error(err.message || 'Detail pengecekan belum dapat dimuat. Coba lagi.');
+      toast.error(err.message || 'Detail pengecekan belum dapat dimuat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -231,7 +231,7 @@ export default function FieldMaintenancePage() {
         fetchEntries();
       }
     } catch (err: any) {
-      toast.error(err.message || 'Catatan belum dapat dihapus. Coba lagi.');
+      toast.error(err.message || 'Catatan belum dapat dihapus. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }
@@ -246,7 +246,7 @@ export default function FieldMaintenancePage() {
       );
       toast.success('Laporan pengecekan berhasil diunduh.');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Laporan belum dapat diunduh. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Laporan belum dapat diunduh. Coba lagi.', err);
     } finally {
       setActionLoading(null);
     }

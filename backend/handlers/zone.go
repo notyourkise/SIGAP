@@ -126,7 +126,11 @@ func GetAllZones(c *fiber.Ctx) error {
 // @Router       /zones/all [get]
 func GetAllZonesForSelect(c *fiber.Ctx) error {
 	var items []models.Zone
-	if err := config.DB.Order("nama asc").Find(&items).Error; err != nil {
+	query := config.DB.Model(&models.Zone{})
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		query = query.Where("site_id = ?", siteID)
+	}
+	if err := query.Order("nama asc").Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar zona",
@@ -191,10 +195,7 @@ func GetZoneByID(c *fiber.Ctx) error {
 func CreateZone(c *fiber.Ctx) error {
 	var req CreateZoneRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -261,10 +262,7 @@ func UpdateZone(c *fiber.Ctx) error {
 
 	var req UpdateZoneRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -387,10 +385,7 @@ func AssignCCTVToZone(c *fiber.Ctx) error {
 
 	var req AssignCCTVRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 || len(req.CCTVIDs) == 0 {
@@ -489,10 +484,7 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 
 	var req AssignUsersRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	// Daftar user boleh kosong (berarti membersihkan seluruh penugasan zona).

@@ -26,11 +26,13 @@ import (
 // Parameter variadic `extras` (opsional) dapat berisi:
 //   - streamLive bool          → nilai kolom stream_live (default false)
 //   - streamCheckedAt interface{} → nilai kolom stream_checked_at (default nil)
+//   - streamState string       → nilai kolom stream_state (default "" untuk fallback data lama)
 //
-// Pemanggilan lama tanpa extras tetap kompatibel (default false/nil).
+// Pemanggilan lama tanpa extras tetap kompatibel (default false/nil/"").
 func streamCCTVRow(id uuid.UUID, streamEnabled bool, channelPort int, rtspPassword string, extras ...interface{}) *sqlmock.Rows {
 	streamLive := false
 	var streamCheckedAt interface{} = nil
+	streamState := ""
 	if len(extras) > 0 {
 		if v, ok := extras[0].(bool); ok {
 			streamLive = v
@@ -39,17 +41,22 @@ func streamCCTVRow(id uuid.UUID, streamEnabled bool, channelPort int, rtspPasswo
 	if len(extras) > 1 {
 		streamCheckedAt = extras[1]
 	}
+	if len(extras) > 2 {
+		if v, ok := extras[2].(string); ok {
+			streamState = v
+		}
+	}
 	return sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
 		"kode_cctv", "id_channel", "nama", "lokasi_area",
 		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
-		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_checked_at",
+		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_state", "stream_checked_at",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-STREAM", "CH-01", "Kamera Streaming", "Area Utama",
 		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
 		"192.168.1.10", "192.168.1.11", "Aman", "payload", 100, channelPort, rtspPassword, streamEnabled,
-		streamLive, streamCheckedAt)
+		streamLive, streamState, streamCheckedAt)
 }
 
 // encryptedTestPassword menghasilkan ciphertext AES-256 dari password polos
@@ -65,6 +72,7 @@ func encryptedTestPassword(t *testing.T, plaintext string) string {
 // mockMTXConfig mengendalikan perilaku server MediaMTX tiruan.
 type mockMTXConfig struct {
 	addErr               error
+	patchErr             error
 	removeErr            error
 	getErr               error
 	listErr              error
@@ -73,6 +81,8 @@ type mockMTXConfig struct {
 	listPaths            []utils.PathInfo
 	listConfigs          []utils.PathConfig
 	addFailBeforeSuccess int
+	addAlreadyExists     bool
+	onPatch              func()
 }
 
 // newMockMediaMTXClient membuat klien MediaMTX yang menunjuk ke server tiruan
@@ -85,8 +95,21 @@ func newMockMediaMTXClient(t *testing.T, cfg mockMTXConfig) (*utils.MediaMTXClie
 		switch {
 		case strings.Contains(r.URL.Path, "/config/paths/add/"):
 			addAttempts++
+			if cfg.addAlreadyExists {
+				http.Error(w, `{"error":"path already exists"}`, http.StatusBadRequest)
+				return
+			}
 			if cfg.addErr != nil || (cfg.addFailBeforeSuccess > 0 && addAttempts <= cfg.addFailBeforeSuccess) {
 				http.Error(w, "gagal menambah path", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(r.URL.Path, "/config/paths/patch/") && r.Method == http.MethodPatch:
+			if cfg.onPatch != nil {
+				cfg.onPatch()
+			}
+			if cfg.patchErr != nil {
+				http.Error(w, "gagal patch path", http.StatusInternalServerError)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -167,6 +190,30 @@ func TestStartStream_Success(t *testing.T) {
 	assert.Equal(t, true, data["path_registered"])
 	assert.Equal(t, false, data["source_ready"])
 	assert.NotContains(t, data, "source", "respons start tidak boleh membocorkan URL/kredensial RTSP")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestStartStream_AlreadyRegistered_PatchesPath(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	patched := false
+	injectMockMTX(t, mockMTXConfig{
+		addAlreadyExists: true,
+		getInfo:          &utils.PathInfo{Name: "cam-ready", Available: true},
+		onPatch:          func() { patched = true },
+	})
+
+	id := uuid.New()
+	encPwd := encryptedTestPassword(t, "rtsp-secret")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(streamCCTVRow(id, true, 15, encPwd))
+
+	app := newTestApp()
+	app.Post("/streams/:id/start", StartStream)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/streams/"+id.String()+"/start?quality=main", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.True(t, patched, "path yang sudah ada harus di-patch agar kualitas main/sub benar-benar berubah")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

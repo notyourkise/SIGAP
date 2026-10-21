@@ -1,5 +1,174 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.25] - 2026-10-21
+
+### Patch keamanan dependency Next.js
+
+**Masalah**: `npm audit` melaporkan 12 kerentanan, termasuk 1 kritis pada Next.js 16.2.11 (RCE/SSRF/cache poisoning) serta kerentanan `sharp`/`postcss`.
+
+**Perubahan**:
+- `next` dan `eslint-config-next` dinaikkan dari `16.2.11` ke `16.4.2` (versi exact).
+- `npm audit fix` memperbarui dependency transitif yang aman; `npm audit --omit=dev` kini **0 kerentanan**.
+- `tsconfig.json` mengaktifkan `allowImportingTsExtensions` agar file test `.mts` yang mengimpor `.ts` tetap lolos type-check pada build Next 16.4.2.
+- Sisa 5 temuan high hanya di rantai dev `eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces`; belum ada rilis `braces` yang dipatch. Tidak dijalankan `npm audit fix --force` karena akan menurunkan `eslint-config-next` ke 14.2.35.
+- Dicatat di `docs/02-audits/SECURITY-AUDIT.md`.
+
+timestamp: 2026-10-21 22:05 UTC+8
+kategori: Sedang, Frontend (Keamanan/Dependency)
+file yang diubah:
+- frontend/package.json
+- frontend/package-lock.json
+- frontend/tsconfig.json
+- frontend/changelog.md
+- docs/02-audits/SECURITY-AUDIT.md
+
+alasan perubahan: Menutup kerentanan kritis runtime Next.js dan memisahkan sisa risiko dev-only yang belum memiliki patch upstream.
+
+---
+
+## [1.55.24] - 2026-10-21
+
+### Kata sandi saat ini wajib pada perubahan sandi mandiri
+
+**Masalah**: Halaman `/change-password` selalu mengirim `old_password` kosong. Backend kini mewajibkan verifikasi sandi lama untuk perubahan mandiri, sehingga form harus menyediakan field tersebut tanpa mengganggu alur wajib ganti sandi.
+
+**Perubahan**:
+- Field **Kata sandi saat ini** muncul pada perubahan sandi mandiri; field disembunyikan pada mode `must_change_password`.
+- Request hanya mengirim `old_password` untuk mode mandiri; validasi klien mencegah submit bila field kosong.
+- `PasswordField` mendukung `autoComplete` (`current-password`/`new-password`) dan fokus awal yang berbeda sesuai mode.
+- E2E perubahan sandi non-forced mengisi kata sandi lama sebelum menyimpan sandi baru.
+
+timestamp: 2026-10-21 21:35 UTC+8
+kategori: Kecil, Frontend (Autentikasi/Keamanan)
+file yang diubah:
+- frontend/src/app/change-password/page.tsx
+- e2e/tests/change-password.spec.ts
+- frontend/changelog.md
+
+alasan perubahan: Menyelaraskan form dengan validasi backend dan tetap mempertahankan alur forced password change setelah reset admin.
+
+---
+
+## [1.55.23] - 2026-10-20
+
+### Badge status Siaga untuk stream on-demand
+
+**Konteks**: Kamera GSM dengan path on-demand yang belum berjalan tidak lagi dilaporkan offline oleh backend. UI perlu menampilkan status `idle` secara terpisah dari `offline`.
+
+**Perubahan**:
+- Logika badge dipindahkan ke `src/lib/live-status.ts` agar dapat diuji tanpa React/DOM.
+- Badge `idle` menjadi **🔵 Siaga (on-demand)**; `offline` tetap merah; `unknown` abu-abu dan memakai riwayat “Pernah aktif hari ini” bila relevan.
+- Peta dan grid memakai logika badge yang sama; status bar peta menambahkan hitungan **Siaga**.
+- `sebaran-cctv` membawa `stream_state` dari API dan event WebSocket tanpa menimpa nilai lama saat payload belum memuat field tersebut.
+- Test unit baru untuk klasifikasi live/idle/offline/unknown dan fallback data lama.
+
+timestamp: 2026-10-20 18:20 UTC+8
+kategori: Kecil, Frontend (Streaming/Status)
+file yang diubah:
+- frontend/src/lib/live-status.ts
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/tests/live-status.test.mts
+- frontend/package.json
+- frontend/changelog.md
+
+alasan perubahan: Menampilkan status siaga on-demand secara akurat dan menghindari label offline palsu.
+
+---
+
+## [1.55.22] - 2026-10-20
+
+### Default SD/sub dan pesan codec per-perangkat
+
+**Konteks**: Pilot THD-15 SD berhasil di browser pengguna, sehingga sub-stream dijadikan default. H.265 tetap dipakai; browser/perangkat tanpa dukungan HEVC akan menerima pesan yang menjelaskan pilihan yang tersedia.
+
+**Perubahan**:
+- `StreamModal` dan `WHEPPlayer` memakai kualitas `sub` sebagai default; tombol HD/main tetap tersedia.
+- Pesan error codec tidak lagi menyatakan H.265 "tidak didukung" secara mutlak, tetapi menjelaskan bahwa browser/perangkat saat ini tidak mendukung HEVC.
+- Detail toast menyebut penyebab (dukungan HEVC perangkat), lokasi (negosiasi WebRTC/WHEP), dan tindakan (gunakan browser HEVC atau ubah encoding ke H.264).
+
+timestamp: 2026-10-20 18:05 UTC+8
+kategori: Kecil, Frontend (Streaming)
+file yang diubah:
+- frontend/src/components/StreamModal.tsx
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menyesuaikan default dan pesan UI dengan hasil pilot THD-15 SD serta variasi dukungan HEVC antar perangkat.
+
+---
+
+## [1.55.21] - 2026-10-20
+
+### Pemutar CCTV: pesan jelas saat codec H.265 ditolak browser
+
+**Masalah**: MediaMTX membalas `400 codecs not supported by client` untuk sumber H.265/HEVC. Pemutar hanya menampilkan pesan HTTP generik dan terus mencoba reconnect, sehingga pengguna tidak tahu bahwa masalahnya ada di encoding kamera/NVR.
+
+**Perbaikan**:
+- Deteksi respons codec tidak didukung (`400`/`415` + body memuat `codec`) melalui helper `isUnsupportedCodecResponse`.
+- Pemutar berhenti mencoba reconnect untuk error codec dan menampilkan pesan yang bisa ditindaklanjuti.
+- Detail toast menyebut penyebab (H.265/HEVC), lokasi (encoding stream kamera main/sub di NVR), dan tindakan (ubah ke H.264 lalu mulai ulang stream).
+- Unit test untuk klasifikasi respons codec.
+- Default modal streaming dipertahankan **HD/main** sampai rollout H.264 sub-stream selesai; tombol SD tetap tersedia untuk uji pilot.
+
+timestamp: 2026-10-20 17:05 UTC+8
+kategori: Kecil, Frontend (Streaming)
+file yang diubah:
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamModal.tsx
+- frontend/src/lib/whep-status.ts
+- frontend/tests/whep-status.test.mts
+- frontend/changelog.md
+
+alasan perubahan: Mengubah kegagalan codec yang berulang menjadi pesan diagnostik yang jelas dan menghentikan retry yang tidak akan berhasil.
+
+---
+
+## [1.55.20] - 2026-10-20
+
+### Form CCTV: edit URL RTSP tanpa menerima kredensial mentah
+
+**Masalah**: Form edit mengisi input dengan `rtsp_url` dari API, sehingga password NVR dapat terlihat di UI. Saat API mulai menyamarkan URL, form juga perlu tetap bisa mempertahankan URL lama tanpa meminta pengguna mengetik ulang.
+
+**Perbaikan**:
+- Form edit menampilkan **URL tersimpan** dalam bentuk tersamarkan (`user:xxxxx@host`), bukan URL mentah.
+- Input URL dikosongkan saat edit; membiarkannya kosong berarti mempertahankan URL lama dan payload tidak mengirim `rtsp_url`.
+- Mengetik URL baru akan menggantinya; tersedia opsi **Hapus URL RTSP tersimpan** dengan validasi bila streaming masih aktif.
+- Validasi streaming mempertimbangkan URL tersimpan, sehingga edit tidak memaksa isi ulang kredensial.
+- Interface CCTV menerima `rtsp_url_masked` dan `rtsp_url_configured` dari backend.
+
+timestamp: 2026-10-20 12:55 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Mencegah kredensial RTSP tampil di UI dan menjaga kompatibilitas edit data lama.
+
+---
+
+## [1.55.19] - 2026-10-20
+
+### Form CCTV: konfigurasi streaming hanya lewat URL RTSP
+
+**Masalah**: Form CCTV masih menampilkan tiga input terpisah untuk konfigurasi streaming: Nomor Channel NVR, Password RTSP, dan Preview URI. Ini membingungkan karena jalur yang dipakai sehari-hari adalah URL RTSP penuh; field channel/password juga membuat pengguna mengira kredensial harus diisi ulang.
+
+**Perbaikan**:
+- Input **Nomor Channel NVR**, **Password RTSP**, dan **Preview URI** dihapus dari form tambah/edit CCTV.
+- Konfigurasi streaming kini hanya memakai satu input **URL RTSP Kamera** yang berisi URL lengkap (host, port, dan kredensial bila diperlukan).
+- URL di-trim sebelum dikirim dan wajib diisi bila **Aktifkan Streaming** dicentang; validasi ditampilkan di daftar error form.
+- Payload frontend tidak lagi mengirim `channel_port` dan `rtsp_password`. Backend tetap menerima field lama untuk kompatibilitas data/API, tetapi form web tidak memakainya.
+- Data CCTV lama yang sudah tersimpan tidak diubah atau dihapus.
+
+timestamp: 2026-10-20 12:08 UTC+8
+kategori: Kecil, Frontend (Form CCTV + Streaming)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+alasan perubahan: Menyelaraskan UI dengan cara pakai sebenarnya: satu URL RTSP penuh, tanpa input channel/password/preview yang duplikatif.
+
+---
+
 ## [1.55.18] - 2026-10-18
 
 ### Service worker: API selalu network-only (hardening cache PWA)

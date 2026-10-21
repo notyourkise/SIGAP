@@ -51,14 +51,20 @@ type DashboardOverdueItem struct {
 // @Security     BearerAuth
 // @Success      200 {object} map[string]interface{} "Ringkasan analitik dashboard"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: belum ditugaskan ke site"
 // @Failure      500 {object} map[string]interface{} "Gagal memuat data dashboard"
 // @Router       /dashboard/summary [get]
 func DashboardSummary(c *fiber.Ctx) error {
 	now := time.Now()
+	siteID, _ := c.Locals("site_id").(string)
 
 	// 1. Distribusi status CCTV
 	var statusCounts []DashboardStatusCount
-	if err := config.DB.Model(&models.CCTV{}).
+	statusQuery := config.DB.Model(&models.CCTV{})
+	if siteID != "" {
+		statusQuery = statusQuery.Where("site_id = ?", siteID)
+	}
+	if err := statusQuery.
 		Select("status, count(*) as count").
 		Group("status").
 		Order("count desc").
@@ -70,12 +76,14 @@ func DashboardSummary(c *fiber.Ctx) error {
 	}
 
 	// 2. Tren pemeliharaan 6 bulan terakhir (dari bulan 5 bulan lalu s/d bulan ini)
-	trendSlice := maintenanceTrend(config.DB, now)
+	trendSlice := maintenanceTrend(config.DB, now, siteID)
 
 	// 3. Pekerjaan pemeliharaan yang melewati jadwal (overdue)
 	var overdueLogs []models.MaintenanceLog
-	if err := config.DB.Preload("CCTV").
-		Where("status IN ? AND scheduled_date IS NOT NULL AND scheduled_date < ?", []string{"scheduled", "ongoing"}, now).
+	overdueQuery := config.DB.Preload("CCTV").
+		Where("status IN ? AND scheduled_date IS NOT NULL AND scheduled_date < ?", []string{"scheduled", "ongoing"}, now)
+	overdueQuery = applyMaintenanceSiteScope(c, overdueQuery)
+	if err := overdueQuery.
 		Order("scheduled_date asc").
 		Limit(10).
 		Find(&overdueLogs).Error; err != nil {
@@ -137,6 +145,7 @@ type DashboardTaskItem struct {
 // @Security     BearerAuth
 // @Success      200 {object} map[string]interface{} "Daftar tugas aktif + ringkasan"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: belum ditugaskan ke site"
 // @Failure      500 {object} map[string]interface{} "Gagal memuat tugas"
 // @Router       /dashboard/tasks [get]
 func DashboardTasks(c *fiber.Ctx) error {
@@ -159,6 +168,7 @@ func DashboardTasks(c *fiber.Ctx) error {
 	now := time.Now()
 	query := config.DB.Preload("CCTV").
 		Where("status IN ?", []string{"scheduled", "ongoing"})
+	query = applyMaintenanceSiteScope(c, query)
 	if role != "admin" {
 		// Teknisi hanya melihat tugas yang ditugaskan kepadanya.
 		query = query.Where("technician_id = ?", uid)
@@ -452,7 +462,7 @@ func roundDashboardMetric(value float64) float64 {
 
 // maintenanceTrend menghitung jumlah log pemeliharaan per status untuk 6 bulan
 // terakhir (bulan berjalan + 5 bulan sebelumnya), diurutkan dari bulan tertua.
-func maintenanceTrend(db *gorm.DB, now time.Time) []DashboardTrendPoint {
+func maintenanceTrend(db *gorm.DB, now time.Time, siteID string) []DashboardTrendPoint {
 	start := time.Date(now.Year(), now.Month()-5, 1, 0, 0, 0, 0, now.Location())
 
 	// Inisialisasi 6 slot bulan secara berurutan (order stabil).
@@ -470,10 +480,16 @@ func maintenanceTrend(db *gorm.DB, now time.Time) []DashboardTrendPoint {
 		Status    string
 		CreatedAt time.Time
 	}
-	if err := db.Model(&models.MaintenanceLog{}).
+	query := db.Model(&models.MaintenanceLog{}).
 		Select("status, created_at").
-		Where("created_at >= ?", start).
-		Find(&logs).Error; err != nil {
+		Where("created_at >= ?", start)
+	if siteID != "" {
+		query = query.Where(
+			`EXISTS (SELECT 1 FROM cctvs WHERE cctvs.id = maintenance_logs.cctv_id AND cctvs.site_id = ? AND cctvs.deleted_at IS NULL)`,
+			siteID,
+		)
+	}
+	if err := query.Find(&logs).Error; err != nil {
 		return []DashboardTrendPoint{}
 	}
 

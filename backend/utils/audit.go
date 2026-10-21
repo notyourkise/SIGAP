@@ -86,7 +86,9 @@ func LogAudit(db *gorm.DB, c *fiber.Ctx, action string, module string, descripti
 			return
 		}
 
-		BroadcastEvent("AUDIT_LOG_ADDED", logData)
+		// Audit log memuat IP, user-agent, dan deskripsi aktivitas. Siarkan
+		// hanya ke koneksi admin; non-admin tidak boleh menerima event ini.
+		BroadcastToRole("admin", "AUDIT_LOG_ADDED", logData)
 	}(audit, db)
 }
 

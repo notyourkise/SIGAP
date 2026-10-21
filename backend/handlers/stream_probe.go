@@ -14,25 +14,48 @@ import (
 // rtspProbeInterval adalah interval antar siklus probe status live RTSP.
 const rtspProbeInterval = 2 * time.Minute
 
+// mediaMTXStartupTimeout memberi waktu MediaMTX untuk siap sebelum probe awal.
+// Saat restart host, API dapat hidup lebih dulu daripada MediaMTX; probe yang
+// berjalan terlalu cepat akan melihat tidak ada path dan menulis status
+// "unknown" padahal path on-demand hanya belum terdaftar.
+const mediaMTXStartupTimeout = 2 * time.Minute
+
 // RunRTSPProber menjalankan engine probe status live RTSP (Task 14A.1,
-// Sprint 37-PATCH: strategi Metro-E vs GSM). Berjalan sekali segera saat
-// startup lalu berulang setiap 2 menit. Setiap siklus memeriksa ketersediaan
-// kamera sesuai kebijakan jaringan (Metro-E diprobe langsung, GSM hanya
-// melalui status path MediaMTX lokal — TIDAK menyentuh kamera), lalu
-// memperbarui kolom stream_live, stream_checked_at, ping_latency_ms &
-// stream_last_active_at.
+// Sprint 37-PATCH: strategi Metro-E vs GSM). Probe pertama menunggu MediaMTX
+// siap dan re-register path aktif terlebih dahulu; selanjutnya berulang setiap
+// 2 menit. Setiap siklus memeriksa ketersediaan kamera sesuai kebijakan
+// jaringan (Metro-E diprobe langsung, GSM hanya melalui status path MediaMTX
+// lokal — TIDAK menyentuh kamera), lalu memperbarui kolom stream_live,
+// stream_state, stream_checked_at, ping_latency_ms & stream_last_active_at.
 func RunRTSPProber(db *gorm.DB) {
 	if db == nil {
 		return
 	}
 
-	runRTSPProbeCycle(db)
+	runInitialProbe(db, mediaMTXStartupTimeout)
 
 	ticker := time.NewTicker(rtspProbeInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		runRTSPProbeCycle(db)
 	}
+}
+
+// runInitialProbe menunggu MediaMTX, memastikan path kamera aktif terdaftar,
+// lalu menjalankan probe pertama. Bila MediaMTX tidak siap, probe dilewati agar
+// status terakhir di database tidak berubah menjadi unknown hanya karena race
+// startup. Parameter timeout memudahkan pengujian tanpa menunggu 2 menit.
+func runInitialProbe(db *gorm.DB, timeout time.Duration) {
+	if !waitForMediaMTX(timeout) {
+		utils.Log.Warnf("⚠️ MediaMTX belum siap setelah %s; probe awal dilewati", timeout)
+		return
+	}
+
+	// Re-register path aktif yang belum ada, lalu baru probe. Ini menutup race
+	// startup: RegisterActiveStreams dan RunRTSPProber sama-sama berjalan sebagai
+	// goroutine, sehingga probe tidak boleh mendahului registrasi path.
+	ReRegisterFailedStreams(db)
+	runRTSPProbeCycle(db)
 }
 
 // networkType mengembalikan tipe jaringan kamera: "metro-e" untuk kamera pada
@@ -48,12 +71,13 @@ func networkType(cctv models.CCTV) string {
 // runRTSPProbeCycle menjalankan satu siklus probe status live terhadap seluruh
 // CCTV dengan stream_enabled=true, dengan strategi berbeda per tipe jaringan:
 //   - Metro-E: probe langsung ke IP kamera (TCP dial port 554/80, ukur latensi)
-//     → update stream_live & ping_latency_ms.
-//   - GSM: TIDAK menyentuh kamera sama sekali. Status diambil pasif dari daftar
-//     path MediaMTX (lokal VPS): Ready=true → live + update stream_last_active_at.
+//     → status live/offline.
+//   - GSM: TIDAK menyentuh kamera sama sekali. Status diambil pasif dari
+//     MediaMTX: path ready → live; path terdaftar tetapi idle karena on-demand
+//     → idle (bukan offline); path tidak dapat disimpulkan → unknown.
 //
-// Meng-update kolom stream_live/stream_checked_at (dan kolom spesifik tipe)
-// serta mempublikasikan event bila status berubah.
+// Kolom stream_live tetap dipertahankan untuk kompatibilitas, sedangkan
+// stream_state menyimpan status empat keadaan yang lebih akurat.
 func runRTSPProbeCycle(db *gorm.DB) {
 	var cctvs []models.CCTV
 	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
@@ -61,57 +85,95 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		return
 	}
 
-	// Baca status path MediaMTX sekali per siklus (sumber status kamera GSM).
-	// Bila gagal, lanjutkan dengan peta kosong — kamera GSM dianggap offline
-	// pada siklus ini (tidak pernah menyentuh kamera secara langsung).
-	mediamtxPaths := map[string]bool{}
+	// Baca path operasional (instantiated) dan path terdaftar (config) sekali
+	// per siklus. Path on-demand yang belum ada pembaca hanya ada di config,
+	// bukan di daftar operasional — kondisi itu berarti idle, bukan offline.
+	operationalPaths := map[string]utils.PathInfo{}
 	if paths, err := streamClient.ListPaths(); err != nil {
-		utils.Log.Warnf("⚠️ Gagal mengambil daftar path MediaMTX: %v — kamera GSM dianggap offline", err)
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar path operasional MediaMTX: %v — status GSM yang tidak dapat disimpulkan akan menjadi unknown", err)
 	} else {
 		for _, p := range paths {
-			mediamtxPaths[p.Name] = p.SourceReady()
+			operationalPaths[p.Name] = p
+		}
+	}
+
+	registeredPaths := map[string]bool{}
+	configAvailable := true
+	if configs, err := streamClient.ListPathConfigs(); err != nil {
+		configAvailable = false
+		utils.Log.Warnf("⚠️ Gagal mengambil daftar path terdaftar MediaMTX: %v — path on-demand idle tidak dapat dikonfirmasi", err)
+	} else {
+		for _, p := range configs {
+			registeredPaths[p.Name] = true
 		}
 	}
 
 	now := time.Now()
-	online, offline, unchecked := 0, 0, 0
+	online, idle, offline, unchecked := 0, 0, 0, 0
 
 	for _, cctv := range cctvs {
-		live := false
+		path := utils.BuildStreamPath(cctv.ID.String())
+		pathInfo, operational := operationalPaths[path]
+		registered := registeredPaths[path]
+
+		var streamState string
 		var latencyMs *int
 
-		if utils.IsMetroE(cctv) {
+		isMetroE := utils.IsMetroE(cctv)
+		if isMetroE && utils.MetroEDirectProbeEnabled() {
 			// Metro-E: jaringan dedicated — aman diprobe langsung tiap 2 menit.
 			ms, ok := utils.ProbeICMP(cctv.IPCamera, 3*time.Second)
-			live = ok
 			if ok {
 				msInt := int(ms)
 				latencyMs = &msInt
+				streamState = models.StreamStateLive
+			} else if operational && pathInfo.SourceReady() {
+				// Probe TCP gagal — tetapi stream aktif di MediaMTX (mis. sedang
+				// ditonton atau AI pull) → tetap live.
+				streamState = models.StreamStateLive
+				utils.Log.Debugf("📡 Metro-E %s (%s) probe gagal tetapi path MediaMTX ready → live", cctv.Nama, cctv.KodeCCTV)
 			} else {
-				// Probe TCP gagal — tapi kamera bisa saja tetap ONLINE karena
-				// stream-nya aktif di MediaMTX (mis. sedang ditonton di /monitor
-				// atau AI pull). Cek path MediaMTX sebagai sumber kebenaran kedua
-				// agar status tidak salah "offline" saat stream benar-benar jalan.
-				path := utils.BuildStreamPath(cctv.ID.String())
-				if ready, exists := mediamtxPaths[path]; exists && ready {
-					live = true
-					utils.Log.Debugf("📡 Metro-E %s (%s) probe gagal tetapi path MediaMTX ready → live", cctv.Nama, cctv.KodeCCTV)
-				}
+				// Probe langsung gagal dan tidak ada path ready → offline terkonfirmasi.
+				streamState = models.StreamStateOffline
 			}
-			utils.Log.Debugf("📡 Metro-E %s (%s) probe=%v latency=%dms", cctv.Nama, cctv.KodeCCTV, live, ms)
+			utils.Log.Debugf("📡 Metro-E %s (%s) state=%s latency=%dms", cctv.Nama, cctv.KodeCCTV, streamState, ms)
 		} else {
-			// GSM: TIDAK pernah diprobe langsung (biaya kuota data seluler).
-			// Status hanya dari path MediaMTX lokal VPS.
-			path := utils.BuildStreamPath(cctv.ID.String())
-			ready, exists := mediamtxPaths[path]
-			live = exists && ready
-			utils.Log.Debugf("📡 GSM %s (%s) path=%s exists=%v ready=%v", cctv.Nama, cctv.KodeCCTV, path, exists, ready)
+			// GSM — atau Metro-E saat probe langsung dinonaktifkan karena host
+			// tidak punya rute ke 10.20.105.x. Klasifikasi memakai state MediaMTX
+			// lokal agar tidak menghasilkan offline palsu.
+			probeLabel := "GSM"
+			if isMetroE {
+				probeLabel = "Metro-E (pasif)"
+			}
+			switch {
+			case operational && pathInfo.SourceReady():
+				streamState = models.StreamStateLive
+			case operational && len(pathInfo.Readers) > 0:
+				// Ada penonton tetapi sumber tidak siap → kegagalan stream nyata.
+				streamState = models.StreamStateOffline
+				utils.Log.Warnf("⚠️ %s %s (%s) path tidak siap dengan %d penonton → offline", probeLabel, cctv.Nama, cctv.KodeCCTV, len(pathInfo.Readers))
+			case operational:
+				// Path instantiated tetapi belum ready dan tidak ada penonton:
+				// sumber on-demand sedang idle/menutup, bukan bukti kamera mati.
+				streamState = models.StreamStateIdle
+			case configAvailable && registered:
+				// Path terdaftar di config tetapi belum dijalankan → idle on-demand.
+				streamState = models.StreamStateIdle
+			default:
+				// Tidak ada path operasional maupun config yang dapat dikonfirmasi.
+				streamState = models.StreamStateUnknown
+			}
+			utils.Log.Debugf("📡 %s %s (%s) path=%s operational=%v ready=%v readers=%d registered=%v state=%s",
+				probeLabel, cctv.Nama, cctv.KodeCCTV, path, operational, pathInfo.SourceReady(), len(pathInfo.Readers), registered, streamState)
 		}
 
-		// Siapkan peta update: stream_checked_at & stream_live selalu diset.
+		live := streamState == models.StreamStateLive
+
+		// Siapkan peta update: status dan waktu pemeriksaan selalu diset.
 		updates := map[string]interface{}{
 			"stream_checked_at": now,
 			"stream_live":       live,
+			"stream_state":      streamState,
 		}
 		if latencyMs != nil {
 			updates["ping_latency_ms"] = *latencyMs
@@ -120,7 +182,10 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			updates["stream_last_active_at"] = now
 		}
 
-		if live != cctv.StreamLive {
+		stateChanged := streamState != cctv.StreamState
+		liveChanged := live != cctv.StreamLive
+
+		if liveChanged || stateChanged {
 			// Status berubah → simpan perubahan + broadcast event + log.
 			if err := db.Model(&models.CCTV{}).Where("id = ?", cctv.ID).
 				Updates(updates).Error; err != nil {
@@ -130,6 +195,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			payload := fiber.Map{
 				"cctv_id":           cctv.ID.String(),
 				"stream_live":       live,
+				"stream_state":      streamState,
 				"stream_checked_at": now.Format(time.RFC3339),
 				"network_type":      networkType(cctv),
 				"nama":              cctv.Nama,
@@ -142,10 +208,15 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				payload["stream_last_active_at"] = now.Format(time.RFC3339)
 			}
 			utils.BroadcastEvent("CCTV_LIVE_STATUS_UPDATED", payload)
-			if live {
+			switch streamState {
+			case models.StreamStateLive:
 				utils.Log.Infof("🟢 CCTV %s (%s) kini live [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
-			} else {
+			case models.StreamStateIdle:
+				utils.Log.Infof("🔵 CCTV %s (%s) siaga on-demand (tidak ada penonton) [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
+			case models.StreamStateOffline:
 				utils.Log.Warnf("🔴 CCTV %s (%s) kini offline [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
+			default:
+				utils.Log.Warnf("⚪ CCTV %s (%s) status stream tidak diketahui [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			}
 		} else if live {
 			// Status tetap live → tetap update (menyegarkan stream_last_active_at
@@ -155,31 +226,34 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				utils.Log.Errorf("❌ Gagal memperbarui status live CCTV %s: %v", cctv.ID.String(), err)
 			}
 		} else {
-			// Status tetap offline → cukup perbarui waktu pemeriksaan.
+			// Status tetap offline/idle/unknown → cukup perbarui waktu pemeriksaan.
 			if err := db.Model(&models.CCTV{}).Where("id = ?", cctv.ID).
 				Update("stream_checked_at", now).Error; err != nil {
 				utils.Log.Errorf("❌ Gagal memperbarui stream_checked_at CCTV %s: %v", cctv.ID.String(), err)
 			}
 		}
 
-		// Hitung ringkasan.
-		if cctv.StreamCheckedAt == nil {
-			unchecked++
-		} else if live {
+		// Hitung ringkasan berdasarkan state saat ini.
+		switch streamState {
+		case models.StreamStateLive:
 			online++
-		} else {
+		case models.StreamStateIdle:
+			idle++
+		case models.StreamStateOffline:
 			offline++
+		default:
+			unchecked++
 		}
 	}
 
-	utils.Log.Infof("✅ Probe cycle: %d kamera dicek | online=%d offline=%d unchecked=%d",
-		len(cctvs), online, offline, unchecked)
+	utils.Log.Infof("✅ Probe cycle: %d kamera dicek | online=%d idle=%d offline=%d unknown=%d",
+		len(cctvs), online, idle, offline, unchecked)
 }
 
 // GetLiveStatus menampilkan status live stream seluruh CCTV berdasarkan hasil
 // probe RTSP terakhir.
 // @Summary      Status Live Stream CCTV
-// @Description  Menampilkan ringkasan status live (online/offline/unchecked) seluruh CCTV berdasarkan hasil probe RTSP terakhir.
+// @Description  Menampilkan ringkasan status live (online/idle/offline/unchecked) seluruh CCTV berdasarkan hasil probe RTSP terakhir. Idle berarti path on-demand terdaftar tetapi tidak ada penonton, bukan offline.
 // @Tags         Streaming
 // @Accept       json
 // @Produce      json
@@ -205,17 +279,31 @@ func GetLiveStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	online, offline, unchecked := 0, 0, 0
+	online, idle, offline, unchecked := 0, 0, 0, 0
 	data := make([]fiber.Map, 0, len(cctvs))
 	for _, cctv := range cctvs {
-		checked := cctv.StreamCheckedAt != nil
-		switch {
-		case !checked:
-			unchecked++
-		case cctv.StreamLive:
+		streamState := cctv.StreamState
+		if streamState == "" {
+			// Fallback data lama sebelum migrasi 000025.
+			switch {
+			case cctv.StreamLive:
+				streamState = models.StreamStateLive
+			case cctv.StreamCheckedAt != nil:
+				streamState = models.StreamStateOffline
+			default:
+				streamState = models.StreamStateUnknown
+			}
+		}
+
+		switch streamState {
+		case models.StreamStateLive:
 			online++
-		default:
+		case models.StreamStateIdle:
+			idle++
+		case models.StreamStateOffline:
 			offline++
+		default:
+			unchecked++
 		}
 		data = append(data, fiber.Map{
 			"cctv_id":               cctv.ID.String(),
@@ -223,6 +311,7 @@ func GetLiveStatus(c *fiber.Ctx) error {
 			"kode_cctv":             cctv.KodeCCTV,
 			"stream_enabled":        cctv.StreamEnabled,
 			"stream_live":           cctv.StreamLive,
+			"stream_state":          streamState,
 			"stream_checked_at":     cctv.StreamCheckedAt,
 			"stream_last_active_at": cctv.StreamLastActiveAt,
 			"ping_latency_ms":       cctv.PingLatencyMs,
@@ -234,6 +323,7 @@ func GetLiveStatus(c *fiber.Ctx) error {
 		"status": "success",
 		"summary": fiber.Map{
 			"online":    online,
+			"idle":      idle,
 			"offline":   offline,
 			"unchecked": unchecked,
 		},

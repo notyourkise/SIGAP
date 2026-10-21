@@ -460,7 +460,11 @@ func TestUpdateCCTV_NullSiteAndRTSP(t *testing.T) {
 	data := result["data"].(map[string]interface{})
 	assert.Nil(t, data["site_id"])
 	assert.Nil(t, data["zone_id"])
-	assert.Equal(t, "rtsp://127.0.0.1:8554/camera-01", data["rtsp_url"])
+	// Respons tidak boleh memuat URL RTSP mentah; UI hanya menerima versi
+	// tersamarkan dan flag configured.
+	assert.Nil(t, data["rtsp_url"])
+	assert.Equal(t, true, data["rtsp_url_configured"])
+	assert.Equal(t, "rtsp://127.0.0.1:8554/camera-01", data["rtsp_url_masked"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

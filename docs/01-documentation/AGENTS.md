@@ -287,7 +287,7 @@ Pastikan Anda mengikuti konvensi berikut saat memodifikasi atau membuat API baru
 - **API Key** (Task 12.1): `/api/api-keys` Ã¢â‚¬â€ admin-only (generate, list, revoke). Konsumen eksternal memanggil endpoint dengan header `X-API-Key: <key>`. Middleware `APIKeyAuth`/`APIKeyOrProtected` memvalidasi hash bcrypt, cek revoked/expired/scope, rate limit 100 req/menit per key. `GET /api/cctv` dapat diakses via API key scope `cctv:read`; `GET /api/health` publik (juga via scope `health:read`).
 - **Webhook** (Task 12.3): `/api/webhooks` Ã¢â‚¬â€ admin-only CRUD, `POST /api/webhooks/:id/test`, `GET /api/webhooks/:id/deliveries`. Event yang didukung: `cctv.status_changed`, `maintenance.completed`, `maintenance.overdue`, `health_score.changed`, `stream.down`. Pengiriman asinkron via antrean channel + worker `StartWebhookWorker` (dipanggil di `main.go`); header `X-Signature-256` (HMAC-SHA256 dari secret), retry 3Ãƒâ€” exponential backoff (1s/5s/25s).
 - **Streaming CCTV** (Fase 9, Task 9.3): seluruh endpoint streaming **admin-only** (`Protected()` + `RequireRole("admin")`) di bawah grup `/api/streams` Ã¢â‚¬â€ `POST /api/streams/:id/start` (decrypt `rtsp_password` Ã¢â€ â€™ build URL RTSP Ã¢â€ â€™ register path MediaMTX Ã¢â€ â€™ return WHEP URL), `POST /api/streams/:id/stop`, `GET /api/streams/status` (gabung data DB + info path MediaMTX), `GET /api/streams/:id/url` (WHEP + HLS), `POST /api/streams/start-all`, `POST /api/streams/stop-all`. `rtsp_password` disimpan terenkripsi (AES-256) dan **tidak pernah** dikembalikan di respons.
-- **Metrik Prometheus** (Task 7.4): `GET /api/metrics` **publik** mengembalikan metrik dalam format text exposition Prometheus (`text/plain; version=0.0.4`) Ã¢â‚¬â€ counter `sigap_http_requests_total`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Implementasi di `monitoring/` (tanpa library pihak ketiga); jangan menambah library prometheus kecuali disetujui.
+- **Metrik Prometheus** (Task 7.4): `GET /api/metrics` **internal** (diblokir Nginx dari publik; Prometheus scrape langsung ke `api:3000`) mengembalikan metrik dalam format text exposition Prometheus (`text/plain; version=0.0.4`) Ã¢â‚¬â€ counter `sigap_http_requests_total`, histogram `sigap_http_request_duration_seconds`, gauge `sigap_db_pool_open/idle_connections`, `sigap_ws_active_connections`, `sigap_upload_storage_bytes`. Implementasi di `monitoring/` (tanpa library pihak ketiga); jangan menambah library prometheus kecuali disetujui.
 - **Soft Delete**: Semua proses penghapusan data secara standar menggunakan mekanisme _soft delete_ dari GORM yang akan mengisi kolom `deleted_at`.
 
 ## 6. Gotchas & Catatan Teknis Penting
@@ -485,6 +485,8 @@ func isMetroE(cctv models.CCTV) bool {
 > - Ã¢Å¡Âª Tidak diketahui Ã¢â‚¬â€ belum pernah dibuka atau > 24 jam
 > - Ã°Å¸â€Â´ Offline Ã¢â‚¬â€ stream pernah aktif tapi sekarang error/disconnected
 >
+> **Mode probe Metro-E (`CCTV_METRO_E_DIRECT_PROBE`):** probe langsung hanya boleh aktif jika host/container API benar-benar memiliki rute ke `10.20.105.x`. Deployment yang tidak memiliki rute wajib memakai `CCTV_METRO_E_DIRECT_PROBE=false`; status Metro-E kemudian diambil pasif dari MediaMTX (`live`/`idle`/`offline`/`unknown`) agar tidak muncul offline palsu. Compose SIGAP default `false`.
+>
 > **17 Metro-E IP Resmi:** D3:`10.20.105.62` D5:`10.20.105.66` D6:`10.20.105.59` D7:`10.20.105.53` D8:`10.20.105.52` D9:`10.20.105.54` D11:`10.20.105.55` D12:`10.20.105.58` D13:`10.20.105.67` D15:`10.20.105.61` D16:`10.20.105.56` D17:`10.20.105.63` D19:`10.20.105.60` D23:`10.20.105.65` D28:`10.20.105.70` D30:`10.20.105.68` D38:`10.20.105.57`
 >
 > **Latensi Metro-E:** `<50ms` Ã°Å¸Å¸Â¢ Good | `50Ã¢â‚¬â€œ100ms` Ã°Å¸Å¸Â¡ Lagging | `>100ms` Ã°Å¸â€Â´ Critical | Timeout Ã¢Å¡Â« Offline
@@ -612,23 +614,30 @@ Sejak Task 12.2 (Sprint 30), setiap request dapat menyertakan header `X-Site-ID`
 
 **Middleware Flow**:
 ```
-Client Request Ã¢â€ â€™ X-Site-ID header sent
-    Ã¢â€ â€œ
+Client Request -> X-Site-ID header, cookie sigap_site_id, atau ?site_id=
+    |
 SiteContext() middleware
-    Ã¢â€Å“Ã¢â€â‚¬ Valid UUID format + site exists Ã¢â€ â€™ c.Locals("site_id", <uuid>)
-    Ã¢â€Å“Ã¢â€â‚¬ Invalid UUID Ã¢â€ â€™ HTTP 401 Unauthorized
-    Ã¢â€â€Ã¢â€â‚¬ Missing header Ã¢â€ â€™ Query param ?site_id=<uuid> fallback
-    Ã¢â€ â€œ
+    |- Format UUID valid + site ada -> c.Locals("site_id", <uuid>)
+    |- Format UUID tidak valid / site tidak ada -> HTTP 400
+    |- Non-admin memilih site di luar user_sites -> HTTP 403
+    |- Non-admin tanpa konteks site -> site penugasan default
+    |- Non-admin tanpa penugasan -> HTTP 403 (fail closed)
+    |- Admin tanpa konteks site -> tanpa filter (semua site)
+    |
 Handler execution with filtered queries
-    Ã¢â€Å“Ã¢â€â‚¬ CCTV list: WHERE cctvs.site_id = current_site_id OR cctvs.site_id IS NULL
-    Ã¢â€Å“Ã¢â€â‚¬ Maintenance logs: JOIN maintenance_logs ON ... AND site_id matches
-    Ã¢â€â€Ã¢â€â‚¬ Zones: Filtered by current context
+    |- CCTV list: WHERE cctvs.site_id = current_site_id
+    |- Maintenance logs: JOIN maintenance_logs ON ... AND site_id matches
+    |- Zones: Filtered by current context
+    |- Dashboard summary/tasks: status, tren, overdue, dan tugas difilter site aktif
+    |- Field maintenance: EXISTS cctvs.site_id = current_site_id; create/detail lintas site -> 403
+    |- Sites list/select/detail: non-admin dibatasi keanggotaan user_sites (bukan site aktif)
+    |- WebSocket AUDIT_LOG_ADDED: hanya dikirim ke koneksi admin
 ```
 
 **API Usage**:
-- Admin write operations: POST `X-Site-ID` header required
-- Client read operations: Optional header/query parameter for scoped results
-- Global operations: Omit `X-Site-ID` to get all data (admin-only)
+- Admin write operations: `X-Site-ID` opsional; admin dapat mengakses semua site
+- Client read non-admin: header/cookie opsional; default ke site penugasan
+- Global operations: hanya admin yang boleh menghilangkan `X-Site-ID`
 
 **Security Note**: Site filtering ensures data isolation between different operational areas (kawasan/zona). Never trust client-provided site_id without validation in middleware layer.
 
@@ -638,6 +647,6 @@ Handler execution with filtered queries
 ---
 _Dokumen ini adalah referensi sentral untuk AI. Patuhi segala aturan, instruksi arsitektural, dan gotchas teknis yang tercantum di atas.
 
-> **Last Update**: 2026-08-20 UTC+8 — Multi-Site Isolation (Task 12.2), Security Hardening Fixes (#1-3), Environment Variables documentation updated, Manual Test V2 governance implemented.
+> **Last Update**: 2026-10-21 UTC+8 — SiteContext default scoping + cookie fallback untuk non-admin, serta scope dashboard, field maintenance, dan daftar site; sebelumnya Multi-Site Isolation (Task 12.2), Security Hardening Fixes (#1-3), Environment Variables documentation updated, Manual Test V2 governance implemented.
 > 
 > **Status Roadmap**: Semua Fase (1-15) selesai ✅ — Production Ready.

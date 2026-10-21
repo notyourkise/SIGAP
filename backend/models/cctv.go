@@ -6,6 +6,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// Nilai StreamState. Status idle berarti path on-demand terdaftar tetapi
+// sumber belum berjalan karena tidak ada penonton; ini bukan bukti offline.
+const (
+	StreamStateLive    = "live"
+	StreamStateIdle    = "idle"
+	StreamStateOffline = "offline"
+	StreamStateUnknown = "unknown"
+)
+
 // CCTV mewakili master data perangkat CCTV tanpa menyimpan kredensial
 type CCTV struct {
 	Base
@@ -37,7 +46,16 @@ type CCTV struct {
 	//   rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901
 	// Bila diisi, URL ini dipakai langsung oleh MediaMTX sebagai sumber stream,
 	// menggantikan penyusunan otomatis dari ChannelPort + kredensial NVR global.
-	RTSPURL string `gorm:"type:text" json:"rtsp_url"`
+	// Di database nilai ini disimpan terenkripsi (prefix enc:v1:); data legacy
+	// plaintext tetap dapat dibaca. Jangan pernah mengembalikan nilai mentah ke
+	// klien — gunakan RTSPURLMasked/RTSPURLConfigured pada response.
+	RTSPURL string `gorm:"type:text" json:"rtsp_url,omitempty"`
+	// RTSPURLMasked adalah URL tersamarkan (password diganti xxxxx) untuk UI.
+	// Field computed, tidak disimpan di database.
+	RTSPURLMasked string `gorm:"-" json:"rtsp_url_masked,omitempty"`
+	// RTSPURLConfigured menandai apakah CCTV sudah memiliki URL RTSP tersimpan.
+	// Frontend memakai flag ini agar tidak perlu menerima nilai rahasia saat edit.
+	RTSPURLConfigured bool `gorm:"-" json:"rtsp_url_configured,omitempty"`
 	// SnapshotURL adalah path URL snapshot terbaru (computed, tidak disimpan di DB).
 	// Diisi saat handler mengembalikan data CCTV agar frontend dapat langsung
 	// mengambil snapshot terbaru melalui endpoint /cctv/{id}/snapshot.
@@ -57,7 +75,13 @@ type CCTV struct {
 	// === Field Status Live Stream (Task 14A.1, Sprint 37) ===
 	// StreamLive mencerminkan hasil probe RTSP terakhir: true bila kamera
 	// merespons probe (dianggap live), false bila down/belum pernah diperiksa.
+	// Dipertahankan untuk kompatibilitas; gunakan StreamState untuk status
+	// yang lebih tepat (idle/offline/unknown).
 	StreamLive bool `gorm:"column:stream_live;default:false" json:"stream_live"`
+	// StreamState membedakan status stream: live, idle (path on-demand terdaftar
+	// tetapi tidak ada penonton/sumber belum siap), offline (kegagalan terkonfirmasi),
+	// atau unknown (belum dapat disimpulkan). Nilai default unknown.
+	StreamState string `gorm:"column:stream_state;type:varchar(20);not null;default:'unknown'" json:"stream_state"`
 	// StreamCheckedAt mencatat waktu pemeriksaan (probe) terakhir. Nilai nil
 	// berarti CCTV belum pernah diperiksa oleh probe engine.
 	StreamCheckedAt *time.Time `gorm:"column:stream_checked_at" json:"stream_checked_at,omitempty"`

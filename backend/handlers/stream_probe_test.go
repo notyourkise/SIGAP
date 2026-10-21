@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -92,19 +93,19 @@ func TestProbeRTSPChannel_Unreachable(t *testing.T) {
 // seluruh kolom tabel cctvs (termasuk field baru ping_latency_ms &
 // stream_last_active_at). Parameter ipCamera, streamLive, streamCheckedAt
 // dikendalikan agar mudah menguji skenario Metro-E vs GSM.
-func probeCCTVRow(id uuid.UUID, ipCamera string, streamLive bool, streamCheckedAt interface{}, pingLatencyMs interface{}, streamLastActiveAt interface{}) *sqlmock.Rows {
+func probeCCTVRow(id uuid.UUID, ipCamera string, streamLive bool, streamCheckedAt interface{}, pingLatencyMs interface{}, streamLastActiveAt interface{}, streamState string) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "created_at", "updated_at", "deleted_at",
 		"kode_cctv", "id_channel", "nama", "lokasi_area",
 		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
 		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
 		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
-		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_checked_at",
+		"channel_port", "rtsp_password", "stream_enabled", "stream_live", "stream_state", "stream_checked_at",
 		"ping_latency_ms", "stream_last_active_at",
 	}).AddRow(id, time.Now(), time.Now(), nil, "CCTV-PROBE", "CH-01", "Kamera Probe", "Area Utama",
 		117.1, -0.5, "Dome", "PLN", "Fiber", "outdoor", "Pemkot", "aktif",
 		"192.168.1.10", ipCamera, "Aman", "payload", 100, 19, "encrypted-rtsp", true,
-		streamLive, streamCheckedAt, pingLatencyMs, streamLastActiveAt)
+		streamLive, streamState, streamCheckedAt, pingLatencyMs, streamLastActiveAt)
 }
 
 // startMTXListCounter membuat server MediaMTX tiruan yang hanya melayani
@@ -132,6 +133,26 @@ func newMockMediaMTXServer(t *testing.T, handler http.HandlerFunc) *httptest.Ser
 	return httptest.NewServer(handler)
 }
 
+// startMTXStateServer membuat server MediaMTX tiruan yang membedakan daftar
+// path operasional (instantiated) dari daftar path terdaftar (config). Ini
+// diperlukan untuk menguji klasifikasi idle on-demand: path bisa terdaftar di
+// config tetapi tidak muncul di daftar operasional.
+func startMTXStateServer(t *testing.T, listPaths []utils.PathInfo, listConfigs []utils.PathConfig) (*utils.MediaMTXClient, func()) {
+	t.Helper()
+	srv := newMockMediaMTXServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/v3/config/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": listConfigs})
+		case strings.Contains(r.URL.Path, "/v3/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": listPaths})
+		default:
+			http.Error(w, "endpoint tidak dikenal", http.StatusNotFound)
+		}
+	})
+	client := &utils.MediaMTXClient{BaseURL: srv.URL, HTTPClient: srv.Client()}
+	return client, srv.Close
+}
+
 // injectStreamClient menyuntikkan klien MediaMTX ke streamClient global dan
 // menjamin restore ke klien baru setelah pengujian selesai.
 func injectStreamClient(t *testing.T, c *utils.MediaMTXClient) {
@@ -141,6 +162,7 @@ func injectStreamClient(t *testing.T, c *utils.MediaMTXClient) {
 }
 
 func TestRunProbeCycle_MetroE(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "true")
 	db, mock := setupMockGORM(t)
 
 	// ListPaths dipanggil SEKALI per siklus (sumber status kamera GSM) —
@@ -155,7 +177,7 @@ func TestRunProbeCycle_MetroE(t *testing.T) {
 	id := uuid.New()
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "10.20.105.62", false, nil, nil, nil))
+		WillReturnRows(probeCCTVRow(id, "10.20.105.62", false, nil, nil, nil, models.StreamStateOffline))
 
 	// Status tetap offline (false) → hanya UPDATE stream_checked_at.
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"updated_at"=\$2 WHERE id = \$3 AND "cctvs"."deleted_at" IS NULL$`).
@@ -167,6 +189,111 @@ func TestRunProbeCycle_MetroE(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 	// ListPaths hanya dipanggil satu kali di level siklus (bukan per kamera).
 	assert.Equal(t, 1, *mtxCalls, "ListPaths dipanggil sekali per siklus probe")
+}
+
+// Saat probe langsung Metro-E dinonaktifkan (host tidak punya rute ke
+// 10.20.105.x), status harus memakai MediaMTX pasif dan tidak menjadi offline.
+func TestRunProbeCycle_MetroEPassiveUsesIdle(t *testing.T) {
+	t.Setenv("CCTV_METRO_E_DIRECT_PROBE", "false")
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	client, closeSrv := startMTXStateServer(t, nil, []utils.PathConfig{{Name: path, Source: "rtsp://nvr/channel"}})
+	defer closeSrv()
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.20.105.62", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRunInitialProbe_WaitsForMediaMTXAndRegistersPaths memastikan probe awal
+// tidak berjalan sebelum MediaMTX siap dan path aktif terdaftar. Ini mencegah
+// status unknown palsu saat restart host/container.
+func TestRunInitialProbe_WaitsForMediaMTXAndRegistersPaths(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	var mu sync.Mutex
+	var calls []string
+	srv := newMockMediaMTXServer(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.URL.Path)
+		mu.Unlock()
+
+		switch {
+		case strings.Contains(r.URL.Path, "/v3/config/global/get"):
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(r.URL.Path, "/v3/config/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"items": []utils.PathConfig{{Name: path, Source: "rtsp://nvr/channel"}},
+			})
+		case strings.Contains(r.URL.Path, "/v3/paths/list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": []utils.PathInfo{}})
+		default:
+			http.Error(w, "endpoint tidak dikenal", http.StatusNotFound)
+		}
+	})
+	defer srv.Close()
+
+	client := &utils.MediaMTXClient{BaseURL: srv.URL, HTTPClient: srv.Client()}
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "", false, nil, nil, nil, models.StreamStateUnknown))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "", false, nil, nil, nil, models.StreamStateUnknown))
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runInitialProbe(db, time.Second)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+
+	mu.Lock()
+	defer mu.Unlock()
+	configIdx, pathsIdx := -1, -1
+	for i, call := range calls {
+		if configIdx == -1 && strings.Contains(call, "/v3/config/paths/list") {
+			configIdx = i
+		}
+		if pathsIdx == -1 && strings.Contains(call, "/v3/paths/list") {
+			pathsIdx = i
+		}
+	}
+	assert.GreaterOrEqual(t, configIdx, 0, "config path harus dibaca")
+	assert.GreaterOrEqual(t, pathsIdx, 0, "daftar path operasional harus dibaca")
+	assert.Less(t, configIdx, pathsIdx, "registrasi path harus selesai sebelum probe")
+}
+
+// TestRunInitialProbe_SkipsWhenMediaMTXNotReady memastikan probe awal tidak
+// menulis status unknown ketika MediaMTX belum siap; status terakhir di DB
+// dibiarkan utuh sampai siklus berikutnya.
+func TestRunInitialProbe_SkipsWhenMediaMTXNotReady(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	srv := newMockMediaMTXServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "belum siap", http.StatusServiceUnavailable)
+	})
+	defer srv.Close()
+	injectStreamClient(t, &utils.MediaMTXClient{BaseURL: srv.URL, HTTPClient: srv.Client()})
+
+	runInitialProbe(db, 0)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRunProbeCycle_GSM(t *testing.T) {
@@ -183,11 +310,11 @@ func TestRunProbeCycle_GSM(t *testing.T) {
 	// GSM: kamera tidak pernah diprobe langsung; status dari path MediaMTX.
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateUnknown))
 
-	// Status berubah false → true → UPDATE stream_live=true + last_active + checked.
-	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, sqlmock.AnyArg(), id.String()).
+	// Status berubah unknown → live → UPDATE stream_live=true + state=live + last_active + checked.
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"stream_state"=\$4,"updated_at"=\$5 WHERE id = \$6 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, models.StreamStateLive, sqlmock.AnyArg(), id.String()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	runRTSPProbeCycle(db)
@@ -208,9 +335,9 @@ func TestRunProbeCycle_GSMNotReady(t *testing.T) {
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateIdle))
 
-	// Status tetap offline → hanya UPDATE stream_checked_at.
+	// Status tetap idle (on-demand tanpa penonton) → hanya UPDATE stream_checked_at.
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"updated_at"=\$2 WHERE id = \$3 AND "cctvs"."deleted_at" IS NULL$`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), id.String()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -235,14 +362,143 @@ func TestRunProbeCycle_GSMReadyKeepsLive(t *testing.T) {
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WithArgs(true).
-		WillReturnRows(probeCCTVRow(id, "10.99.99.99", true, past, nil, past))
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", true, past, nil, past, models.StreamStateLive))
 
-	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, sqlmock.AnyArg(), id.String()).
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"stream_state"=\$4,"updated_at"=\$5 WHERE id = \$6 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, models.StreamStateLive, sqlmock.AnyArg(), id.String()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	runRTSPProbeCycle(db)
 
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Path on-demand yang hanya terdaftar di config (belum dijalankan karena tidak
+// ada penonton) harus diklasifikasikan idle, bukan offline.
+func TestRunProbeCycle_GSMRegisteredPathIsIdle(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	client, closeSrv := startMTXStateServer(t, nil, []utils.PathConfig{{Name: path, Source: "rtsp://nvr/channel"}})
+	defer closeSrv()
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Path operasional yang instantiated tetapi belum ready tanpa penonton juga
+// berarti idle (sumber on-demand sedang menutup), bukan offline.
+func TestRunProbeCycle_GSMOperationalIdle(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	client, closeSrv := startMTXStateServer(t, []utils.PathInfo{{Name: path, Ready: false}}, nil)
+	defer closeSrv()
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateIdle, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Jika ada penonton tetapi sumber tidak ready, kegagalan stream terkonfirmasi
+// dan status harus offline.
+func TestRunProbeCycle_GSMReadyFalseWithReadersIsOffline(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	path := utils.BuildStreamPath(id.String())
+	client, closeSrv := startMTXStateServer(t, []utils.PathInfo{{
+		Name:    path,
+		Ready:   false,
+		Readers: []interface{}{"viewer-1"},
+	}}, nil)
+	defer closeSrv()
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), false, models.StreamStateOffline, sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Saat MediaMTX tidak dapat dihubungi, status GSM tidak boleh dipaksa offline.
+func TestRunProbeCycle_MediaMTXUnavailableDoesNotMarkGSMOffline(t *testing.T) {
+	db, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	client, closeSrv := startMTXStateServer(t, nil, nil)
+	closeSrv() // matikan server agar ListPaths/ListPathConfigs gagal
+	injectStreamClient(t, client)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WithArgs(true).
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, nil, nil, nil, models.StreamStateUnknown))
+
+	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"updated_at"=\$2 WHERE id = \$3 AND "cctvs"."deleted_at" IS NULL$`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), id.String()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	runRTSPProbeCycle(db)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// GetLiveStatus harus melaporkan idle terpisah dari offline.
+func TestGetLiveStatus_IdleSummary(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	id := uuid.New()
+	past := time.Now().Add(-10 * time.Minute)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(probeCCTVRow(id, "10.99.99.99", false, past, nil, past, models.StreamStateIdle))
+
+	app := newTestApp()
+	app.Get("/streams/live-status", GetLiveStatus)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/streams/live-status", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "success", result["status"])
+
+	summary := result["summary"].(map[string]interface{})
+	assert.Equal(t, float64(1), summary["idle"])
+	assert.Equal(t, float64(0), summary["offline"])
+
+	items := result["data"].([]interface{})
+	item := items[0].(map[string]interface{})
+	assert.Equal(t, models.StreamStateIdle, item["stream_state"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -263,7 +519,7 @@ func TestGetLiveStatus_NetworkFields(t *testing.T) {
 	latency := 42
 
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
-		WillReturnRows(probeCCTVRow(id, "10.20.105.62", true, past, latency, past))
+		WillReturnRows(probeCCTVRow(id, "10.20.105.62", true, past, latency, past, models.StreamStateLive))
 
 	app := newTestApp()
 	app.Get("/streams/live-status", GetLiveStatus)
@@ -280,6 +536,7 @@ func TestGetLiveStatus_NetworkFields(t *testing.T) {
 	assert.Len(t, items, 1)
 	item := items[0].(map[string]interface{})
 	assert.Equal(t, "metro-e", item["network_type"])
+	assert.Equal(t, models.StreamStateLive, item["stream_state"])
 	assert.Equal(t, float64(42), item["ping_latency_ms"])
 	assert.NotNil(t, item["stream_last_active_at"])
 	assert.NoError(t, mock.ExpectationsWereMet())

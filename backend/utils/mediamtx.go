@@ -68,6 +68,15 @@ func NewMediaMTXClient() *MediaMTXClient {
 // error. Error non-2xx diterjemahkan menjadi pesan deskriptif yang memuat
 // status code.
 func (c *MediaMTXClient) doRequest(method, endpoint string, body []byte) (int, []byte, error) {
+	return c.doRequestWithLog(method, endpoint, body, true)
+}
+
+// doRequestWithLog menjalankan request seperti doRequest, tetapi dapat
+// menonaktifkan log error untuk respons non-2xx yang memang diharapkan.
+// Dipakai AddPath: respons "path already exists" adalah jalur normal saat
+// ensureStreamPath akan melakukan patch, bukan kegagalan yang perlu dicetak
+// sebagai ERROR.
+func (c *MediaMTXClient) doRequestWithLog(method, endpoint string, body []byte, logError bool) (int, []byte, error) {
 	if c == nil {
 		return 0, nil, fmt.Errorf("MediaMTXClient nil")
 	}
@@ -100,7 +109,9 @@ func (c *MediaMTXClient) doRequest(method, endpoint string, body []byte) (int, [
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		Log.Errorf("❌ MediaMTX %s %s mengembalikan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
+		if logError {
+			Log.Errorf("❌ MediaMTX %s %s mengembalikan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
+		}
 		return resp.StatusCode, respBody, fmt.Errorf("MediaMTX %s %s gagal dengan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
 	}
 
@@ -118,7 +129,22 @@ func (c *MediaMTXClient) AddPath(name string, config PathConfig) error {
 	}
 
 	endpoint := "/v3/config/paths/add/" + url.PathEscape(name)
-	_, _, err = c.doRequest(http.MethodPost, endpoint, jsonBody)
+	_, _, err = c.doRequestWithLog(http.MethodPost, endpoint, jsonBody, false)
+	return err
+}
+
+// PatchPath memperbarui konfigurasi path yang sudah terdaftar. Dipakai saat
+// kualitas stream berubah (main/sub) atau sumber RTSP diperbarui; MediaMTX
+// akan me-restart source bila konfigurasi source berubah.
+func (c *MediaMTXClient) PatchPath(name string, config PathConfig) error {
+	jsonBody, err := json.Marshal(config)
+	if err != nil {
+		Log.Errorf("❌ Gagal encode konfigurasi patch path %s: %v", name, err)
+		return fmt.Errorf("gagal encode konfigurasi path: %w", err)
+	}
+
+	endpoint := "/v3/config/paths/patch/" + url.PathEscape(name)
+	_, _, err = c.doRequest(http.MethodPatch, endpoint, jsonBody)
 	return err
 }
 

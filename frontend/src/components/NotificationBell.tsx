@@ -167,7 +167,7 @@ export default function NotificationBell() {
       setNotifications((list) => list.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gagal menandai semua notifikasi');
+      toast.error(err instanceof Error ? err.message : 'Gagal menandai semua notifikasi', err);
     } finally {
       setIsMarkingAll(false);
     }

@@ -75,6 +75,53 @@ func TestAddPath(t *testing.T) {
 	}
 }
 
+// TestPatchPath memverifikasi bahwa PatchPath mengirim PATCH ke endpoint yang
+// benar dengan body JSON konfigurasi yang diperbarui.
+func TestPatchPath(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotBody   []byte
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		gotBody = body
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestMediaMTXClient(server)
+	config := PathConfig{
+		Source:                   "rtsp://admin:pw@host:554/Streaming/channels/1502",
+		SourceOnDemand:           true,
+		SourceOnDemandCloseAfter: "30s",
+		RTSPTransport:            "tcp",
+	}
+	if err := client.PatchPath("cam-123", config); err != nil {
+		t.Fatalf("PatchPath() unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodPatch {
+		t.Errorf("PatchPath() method = %q, want %q", gotMethod, http.MethodPatch)
+	}
+	if want := "/v3/config/paths/patch/cam-123"; gotPath != want {
+		t.Errorf("PatchPath() path = %q, want %q", gotPath, want)
+	}
+	var decoded PathConfig
+	if err := json.Unmarshal(gotBody, &decoded); err != nil {
+		t.Fatalf("PatchPath() body bukan JSON valid: %v (body=%s)", err, gotBody)
+	}
+	if decoded.Source != config.Source {
+		t.Errorf("PatchPath() body Source = %q, want %q", decoded.Source, config.Source)
+	}
+	if decoded.SourceOnDemand != config.SourceOnDemand {
+		t.Errorf("PatchPath() body SourceOnDemand = %v, want %v", decoded.SourceOnDemand, config.SourceOnDemand)
+	}
+}
+
 // TestAddPathStatusNoContent memverifikasi bahwa server yang membalas 200
 // (bukan 204) juga tidak menghasilkan error.
 func TestAddPathStatusNoContent(t *testing.T) {

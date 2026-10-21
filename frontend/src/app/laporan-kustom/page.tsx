@@ -219,7 +219,7 @@ export default function ReportBuilderPage() {
       toast.success('Laporan berhasil diunduh.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Laporan belum dapat dibuat. Coba lagi.');
-      toast.error(err instanceof Error ? err.message : 'Laporan belum dapat dibuat. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Laporan belum dapat dibuat. Coba lagi.', err);
     } finally {
       setDownloading(false);
     }
@@ -258,7 +258,7 @@ export default function ReportBuilderPage() {
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Template belum dapat disimpan. Coba lagi.');
-      toast.error(err instanceof Error ? err.message : 'Template belum dapat disimpan. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Template belum dapat disimpan. Coba lagi.', err);
     } finally {
       setSavingTemplate(false);
     }
@@ -299,7 +299,7 @@ export default function ReportBuilderPage() {
         void fetchTemplates();
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Template belum dapat dihapus. Coba lagi.');
+      toast.error(err instanceof Error ? err.message : 'Template belum dapat dihapus. Coba lagi.', err);
     }
   };
 

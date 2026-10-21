@@ -16,6 +16,7 @@ interface ChangePasswordResponse {
 export default function ChangePasswordPage() {
   const router = useRouter();
   const { user, loading: authLoading, logout, updateUser } = useAuth();
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,6 +39,10 @@ export default function ChangePasswordPage() {
     event.preventDefault();
     setError('');
 
+    if (!forced && oldPassword.length === 0) {
+      setError('Kata sandi saat ini wajib diisi.');
+      return;
+    }
     if (!passwordIsStrong) {
       setError('Gunakan minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol.');
       return;
@@ -51,7 +56,10 @@ export default function ChangePasswordPage() {
     try {
       const response = await apiRequest<ChangePasswordResponse>('/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify({ old_password: '', new_password: newPassword }),
+        body: JSON.stringify({
+          ...(forced ? {} : { old_password: oldPassword }),
+          new_password: newPassword,
+        }),
       });
 
       if (response.status !== 'success' || !response.data?.user) {
@@ -88,7 +96,11 @@ export default function ChangePasswordPage() {
           <h1 id="change-password-heading" className="mt-2 text-2xl font-bold tracking-[-0.025em] text-foreground">
             Atur ulang kata sandi
           </h1>
-          <p className="mt-2 text-sm text-muted">Buat kata sandi baru untuk melanjutkan.</p>
+          <p className="mt-2 text-sm text-muted">
+            {forced
+              ? 'Buat kata sandi baru untuk melanjutkan.'
+              : 'Masukkan kata sandi saat ini, lalu buat kata sandi baru.'}
+          </p>
         </header>
 
         {forced && (
@@ -104,6 +116,20 @@ export default function ChangePasswordPage() {
         )}
 
         <form onSubmit={handleSubmit} className="mt-7 space-y-5">
+          {!forced && (
+            <PasswordField
+              id="old_password"
+              label="Kata sandi saat ini"
+              value={oldPassword}
+              onChange={setOldPassword}
+              visible={showPassword}
+              onToggleVisibility={() => setShowPassword((visible) => !visible)}
+              disabled={submitting}
+              autoFocus
+              autoComplete="current-password"
+            />
+          )}
+
           <PasswordField
             id="new_password"
             label="Kata sandi baru"
@@ -112,7 +138,7 @@ export default function ChangePasswordPage() {
             visible={showPassword}
             onToggleVisibility={() => setShowPassword((visible) => !visible)}
             disabled={submitting}
-            autoFocus
+            autoFocus={forced}
             hint="Minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol."
           />
 
@@ -159,6 +185,7 @@ function PasswordField({
   onToggleVisibility,
   disabled,
   autoFocus,
+  autoComplete,
   hint,
   error,
 }: {
@@ -170,6 +197,7 @@ function PasswordField({
   onToggleVisibility: () => void;
   disabled: boolean;
   autoFocus?: boolean;
+  autoComplete?: string;
   hint?: string;
   error?: string;
 }) {
@@ -183,7 +211,7 @@ function PasswordField({
           type={visible ? 'text' : 'password'}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          autoComplete="new-password"
+          autoComplete={autoComplete ?? 'new-password'}
           disabled={disabled}
           autoFocus={autoFocus}
           aria-describedby={descriptionId}

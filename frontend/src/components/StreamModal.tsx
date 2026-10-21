@@ -83,6 +83,8 @@ function statusBadge(status: string): {
 export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   const toast = useToast();
   const [streamPath, setStreamPath] = useState<string | null>(null);
+  // Pilot THD-15 SD berhasil; sub-stream menjadi default. Pengguna tetap
+  // dapat memilih HD/main lewat tombol kualitas.
   const [quality, setQuality] = useState<Quality>('sub');
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -120,7 +122,8 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
         }
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : 'Stream tidak dapat dimulai.'
+          err instanceof Error ? err.message : 'Stream tidak dapat dimulai.',
+          err
         );
       } finally {
         setStarting(false);
@@ -139,7 +142,8 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
       toast.info(`Streaming "${cctv.nama}" dihentikan.`);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Stream tidak dapat dihentikan.'
+        err instanceof Error ? err.message : 'Stream tidak dapat dihentikan.',
+        err
       );
     } finally {
       setStopping(false);
@@ -164,7 +168,13 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   // Laporkan error dari WHEPPlayer ke toast.
   const handlePlayerError = useCallback(
     (message: string) => {
-      toast.error(message);
+      const isCodecError = /h\.?265|hevc|codec/i.test(message);
+      toast.error(message, {
+        source: 'Pemutar video (WHEP)',
+        reason: isCodecError
+          ? 'Penyebab: browser/perangkat ini tidak mendukung codec H.265/HEVC. Lokasi: negosiasi codec WebRTC/WHEP. Tindakan: gunakan browser yang mendukung HEVC atau ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
+          : 'Stream video gagal diputar atau koneksi WHEP terputus.',
+      });
     },
     [toast]
   );

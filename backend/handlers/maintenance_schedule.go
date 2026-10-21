@@ -72,10 +72,7 @@ func isValidFrequency(freq string) bool {
 func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 	var req CreateMaintenanceScheduleRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -317,10 +314,7 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 
 	var req UpdateMaintenanceScheduleRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {

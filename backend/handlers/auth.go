@@ -41,10 +41,7 @@ type CreateUserRequest struct {
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -114,6 +111,8 @@ func Login(c *fiber.Ctx) error {
 }
 
 // ChangePasswordRequest adalah body untuk mengganti password sendiri (self-service).
+// OldPassword wajib diisi, kecuali pengguna sedang dalam mode wajib ganti sandi
+// (must_change_password) setelah reset oleh admin.
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" validate:"omitempty"`
 	NewPassword string `json:"new_password" validate:"required,min=8,max=100,strongpassword"`
@@ -121,7 +120,7 @@ type ChangePasswordRequest struct {
 
 // ChangePassword mengubah password pengguna yang sedang login (self-service).
 // @Summary      Ganti Password Sendiri
-// @Description  Mengganti password akun sendiri (self-service). Wajib menyertakan password lama.
+// @Description  Mengganti password akun sendiri (self-service). Wajib menyertakan password lama, kecuali dalam mode must_change_password setelah reset admin.
 //
 //	Setelah sukses, seluruh sesi lama dicabut dan sesi saat ini dilanjutkan dengan token baru.
 //
@@ -129,7 +128,7 @@ type ChangePasswordRequest struct {
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        request body ChangePasswordRequest true "Password lama & baru"
+// @Param        request body ChangePasswordRequest true "Password lama (wajib kecuali forced) & baru"
 // @Success      200 {object} map[string]interface{} "Password berhasil diubah, sesi baru diterbitkan"
 // @Failure      400 {object} map[string]interface{} "Validasi input gagal / password lama salah / password baru sama"
 // @Failure      401 {object} map[string]interface{} "Sesi tidak valid"
@@ -146,10 +145,7 @@ func ChangePassword(c *fiber.Ctx) error {
 
 	var req ChangePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
@@ -168,9 +164,26 @@ func ChangePassword(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verifikasi password lama bila disertakan. Jika kosong (mode tanpa password
-	// lama), verifikasi dilewati.
-	if req.OldPassword != "" {
+	// Verifikasi password lama. Mode tanpa password lama HANYA diizinkan bila
+	// pengguna memang sedang dipaksa mengganti sandi (mis. setelah reset admin).
+	// Untuk perubahan mandiri biasa, old_password wajib diisi agar sesi yang
+	// dibajak tidak bisa langsung mengganti sandi korban.
+	if req.OldPassword == "" {
+		if !user.MustChangePassword {
+			utils.LogAudit(config.DB, c, "CHANGE_PASSWORD_FAILED", "AUTH", "Gagal mengganti password: password lama kosong (username: "+user.Username+")", &user.ID, user.Username, user.Role)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Password lama wajib diisi",
+			})
+		}
+		// Mode forced: tolak bila sandi baru sama dengan sandi sementara saat ini.
+		if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.NewPassword)) == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Password baru harus berbeda dari password lama",
+			})
+		}
+	} else {
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
 			utils.LogAudit(config.DB, c, "CHANGE_PASSWORD_FAILED", "AUTH", "Gagal mengganti password: password lama salah (username: "+user.Username+")", &user.ID, user.Username, user.Role)
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -178,14 +191,12 @@ func ChangePassword(c *fiber.Ctx) error {
 				"message": "Password lama tidak sesuai",
 			})
 		}
-	}
-
-	// Cegah memakai password yang sama dengan sebelumnya (bila password lama disertakan)
-	if req.OldPassword != "" && req.OldPassword == req.NewPassword {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Password baru harus berbeda dari password lama",
-		})
+		if req.OldPassword == req.NewPassword {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Password baru harus berbeda dari password lama",
+			})
+		}
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
@@ -372,10 +383,7 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 
 	var req UpdateMyProfileRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -454,10 +462,7 @@ func isSafeUploadPath(path string) bool {
 func CreateUser(c *fiber.Ctx) error {
 	var req CreateUserRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Format input tidak valid",
-		})
+		return sendBodyParseError(c, &req, err)
 	}
 
 	if errs := utils.ValidateStruct(&req); len(errs) > 0 {

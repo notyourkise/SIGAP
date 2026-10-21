@@ -8,6 +8,8 @@
 | **Versi Frontend** | 1.55.5 (setelah fix) |
 | **Tanggal** | 2026-10-18 |
 
+> Tambahan 2026-10-21: Test Case 7 mencakup isolasi site pada dashboard, field maintenance, dan daftar site.
+
 ---
 
 ## 1. Prasyarat
@@ -112,8 +114,27 @@ npm run build             # Production build harus sukses
 | 2 | Request `GET /api/cctv` dengan header `X-Site-ID: <site A>` | 200 OK, data site A | ✅ / ❌ |
 | 3 | Request `GET /api/cctv` dengan header `X-Site-ID: <site B>` | 403 "Akses ditolak: Anda tidak ditugaskan ke site ini" | ✅ / ❌ |
 | 4 | Login admin, request site B yang sama | 200 OK (admin akses semua site) | ✅ / ❌ |
+| 5 | Hapus cookie `sigap_site_id`, request `GET /api/cctv` sebagai teknisi yang ditugaskan | 200 OK, hanya data site penugasan default (bukan seluruh site) | ✅ / ❌ |
+| 6 | Request `GET /api/cctv` sebagai non-admin tanpa penugasan site | 403 "Anda belum ditugaskan ke site mana pun" | ✅ / ❌ |
 
-**Kriteria Lulus:** Non-admin hanya bisa mengakses site yang ditugaskan; admin bebas.
+**Kriteria Lulus:** Non-admin hanya bisa mengakses site yang ditugaskan; tanpa cookie tetap mendapat scope site default; tanpa penugasan ditolak (fail closed); admin bebas.
+
+---
+
+### **Test Case 7: Scope site dashboard, field maintenance, dan daftar site**
+
+| Step | Langkah | Hasil Yang Diharapkan | Hasil Nyata |
+|------|---------|---------------------|-------------|
+| 1 | Login teknisi site A, buka `GET /api/dashboard/summary` | 200; distribusi status, tren, dan overdue hanya menghitung CCTV/log site A | ✅ / ❌ |
+| 2 | Buka `GET /api/dashboard/tasks` | 200; hanya tugas site A milik teknisi tersebut | ✅ / ❌ |
+| 3 | Buka `GET /api/field-maintenance` | 200; hanya catatan yang CCTV-nya berada di site A | ✅ / ❌ |
+| 4 | `POST /api/field-maintenance` dengan `cctv_id` milik site B | 403 "Akses ditolak: CCTV berada di site lain" | ✅ / ❌ |
+| 5 | Buka `GET /api/sites` dan `GET /api/sites/all` | 200; hanya site yang ditugaskan (site A), bukan seluruh site | ✅ / ❌ |
+| 6 | Buka `GET /api/sites/<site B>` dengan konteks site A | 404 (site di luar penugasan tidak dapat dibuka); 403 bila memaksa header `X-Site-ID: <site B>` | ✅ / ❌ |
+| 7 | Login admin tanpa site aktif, ulangi langkah 1 dan 3 | 200; data global seluruh site | ✅ / ❌ |
+| 8 | Buka WebSocket sebagai teknisi, lalu lakukan aksi yang menulis audit log | Tidak menerima event `AUDIT_LOG_ADDED`; koneksi admin tetap menerima | ✅ / ❌ |
+
+**Kriteria Lulus:** Dashboard, field maintenance, dan daftar site mengikuti site aktif/penugasan; pembuatan lintas site ditolak; admin tetap global; event audit tidak bocor ke non-admin.
 
 ---
 
@@ -124,7 +145,7 @@ npm run build             # Production build harus sukses
 - File sensitif tidak masuk image/build context
 - Service worker tidak menyimpan respons API/HTML terautentikasi
 - URL webhook internal/non-http ditolak
-- Non-admin tidak bisa mengakses site di luar penugasannya
+- Non-admin tidak bisa mengakses site di luar penugasannya, termasuk dashboard, field maintenance, dan daftar site
 - `go test ./...` dan `npm run build` hijau; tidak ada error di log backend
 
 ❌ **FAIL** jika:

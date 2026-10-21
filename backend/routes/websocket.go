@@ -11,7 +11,7 @@ import (
 
 // SetupWebSocketRoutes mendaftarkan rute WebSocket real-time broadcast
 // @Summary      Koneksi Real-time WebSocket Broadcast
-// @Description  Membuka koneksi bi-directional WebSocket real-time untuk menerima siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED, AUDIT_LOG_ADDED). Autentikasi wajib: sertakan token JWT sebagai query parameter `token`.
+// @Description  Membuka koneksi bi-directional WebSocket real-time untuk menerima siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED, AUDIT_LOG_ADDED). Event AUDIT_LOG_ADDED hanya dikirim ke koneksi admin. Autentikasi wajib: sertakan token JWT sebagai query parameter `token`.
 // @Tags         WebSocket
 // @Produce      json
 // @Param        token query string true "Token JWT (Bearer) untuk autentikasi"
