@@ -1,5 +1,43 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.18] - 2026-10-18
+
+### Service worker: API selalu network-only (hardening cache PWA)
+
+**Konteks**: Temuan keamanan P0 — service worker lama menyimpan respons API/HTML terautentikasi di Cache Storage, berpotensi membocorkan data antar sesi pengguna pada perangkat bersama dan menyajikan data usang setelah logout.
+
+**Perbaikan**: `public/sw.js` ditulis ulang (`CACHE_VERSION = 'sigap-shell-v4'`): request `/api/` selalu network-only (fallback JSON 503 saat offline), navigasi selalu network (fallback HTML offline generik), HTML terautentikasi tidak di-cache; pre-cache dibatasi pada manifest & ikon shell. Cache lama dibersihkan saat event `activate`.
+
+timestamp: 2026-10-18 10:00 UTC+8
+kategori: Sedang, Frontend (Security Hardening PWA)
+file yang diubah:
+- frontend/public/sw.js (network-only API + bersihkan cache lama)
+- frontend/tests/service-worker-cache.test.mjs (kontrak API network-only)
+- frontend/changelog.md
+alasan perubahan: Mencegah kebocoran data via Cache Storage PWA dan penyajian data usang pasca logout.
+
+---
+
+## [1.55.17] - 2026-10-18
+
+### Perbaikan loop redirect halaman ganti sandi (alur wajib ganti sandi)
+
+**Bug**: Halaman `/change-password` mengalami reload tanpa henti saat pengguna wajib mengganti sandi (akun baru / hasil reset). `AuthContext` memanggil `window.location.replace('/change-password')` tanpa memeriksa path aktif, sehingga provider ter-mount ulang terus-menerus. Akibatnya `/auth/me` dipanggil ratusan kali sampai kena rate limit (429); state pengguna gagal dimuat dan elemen mode wajib (banner peringatan + tombol "Exit / Back to Login") tidak muncul.
+
+**Perbaikan**: Pengalihan dipusatkan ke satu effect idempoten yang hanya menavigasi bila path saat ini berbeda dari tujuan, memakai navigasi halus `router.replace` (provider tidak ter-mount ulang). Guard keliru di halaman `/change-password` yang membuang pengguna non-wajib ke `/dashboard` dihapus sehingga ganti sandi mandiri dari halaman Profil berfungsi kembali; `handleSuccess` memakai `updateUser` agar tujuan navigasi tepat (wajib -> `/dashboard`, mandiri -> `/profile`).
+
+timestamp: 2026-10-18 02:12 UTC+8
+kategori: Tinggi, Frontend (Bug Fix - Autentikasi)
+file yang diubah:
+- frontend/src/context/AuthContext.tsx (redirect wajib ganti sandi idempoten)
+- frontend/src/app/change-password/page.tsx (hapus guard salah + handleSuccess)
+- e2e/tests/change-password.spec.ts (regression test Playwright)
+- e2e/playwright.config.ts, e2e/package.json (setup Playwright)
+- frontend/changelog.md
+alasan perubahan: Mencegah loop reload tanpa henti + rate limit pada alur wajib ganti sandi, sekaligus memulihkan fungsi ganti sandi mandiri.
+
+---
+
 ## [1.55.16] - 2026-09-28
 
 ### Kejelasan penugasan jadwal dan proteksi inventaris

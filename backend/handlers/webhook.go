@@ -154,7 +154,8 @@ func dispatchWebhookSync(db *gorm.DB, event string, payload interface{}) {
 // deliverWebhook mengirim payload ke URL endpoint dengan retry exponential
 // backoff dan mencatat hasil ke WebhookDelivery.
 func deliverWebhook(db *gorm.DB, deliveryID uuid.UUID, endpoint models.WebhookEndpoint, event string, payload []byte) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	// Client dengan proteksi SSRF (tolak alamat internal + validasi redirect).
+	client := utils.NewSafeHTTPClient(10 * time.Second)
 
 	attempts := len(WebhookRetryDelays)
 	for attempt := 1; attempt <= attempts; attempt++ {
@@ -273,6 +274,14 @@ func CreateWebhookEndpoint(c *fiber.Ctx) error {
 				"message": "Event tidak valid. Gunakan: cctv.status_changed, maintenance.completed, maintenance.overdue, health_score.changed, stream.down",
 			})
 		}
+	}
+
+	// Mitigasi SSRF: tolak URL yang menunjuk ke alamat internal/privat.
+	if err := utils.ValidateExternalURL(req.URL); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "URL webhook tidak diizinkan: " + err.Error(),
+		})
 	}
 
 	item := models.WebhookEndpoint{
@@ -581,6 +590,13 @@ func UpdateWebhookEndpoint(c *fiber.Ctx) error {
 		item.Name = *req.Name
 	}
 	if req.URL != nil {
+		// Mitigasi SSRF: tolak URL yang menunjuk ke alamat internal/privat.
+		if err := utils.ValidateExternalURL(*req.URL); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "URL webhook tidak diizinkan: " + err.Error(),
+			})
+		}
 		item.URL = *req.URL
 	}
 	if req.Events != nil {
@@ -708,7 +724,7 @@ func TestWebhook(c *fiber.Ctx) error {
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := utils.NewSafeHTTPClient(10 * time.Second)
 	start := time.Now()
 	code, body, err := sendWebhookRequest(client, item.URL, payloadBytes, item.Secret)
 	latency := time.Since(start)

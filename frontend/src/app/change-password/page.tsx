@@ -91,6 +91,12 @@ export default function ChangePasswordPage() {
           <p className="mt-2 text-sm text-muted">Buat kata sandi baru untuk melanjutkan.</p>
         </header>
 
+        {forced && (
+          <p role="status" className="mt-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            Anda wajib mengganti kata sandi sebelum melanjutkan.
+          </p>
+        )}
+
         {error && (
           <div role="alert" aria-live="assertive" className="mt-6 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
             {error}

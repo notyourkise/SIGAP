@@ -147,6 +147,12 @@ export default function CCTVPage() {
   const [ioFilter, setIoFilter] = useState('');
   // Site filter untuk Multi-Site Isolation (Fix BB-04)
   const [siteFilter, setSiteFilter] = useState('');
+  // Jangan kirim header kosong: apiRequest akan memakai cookie site aktif
+  // (sigap_site_id) bila header tidak diberikan. Header kosong akan mematikan
+  // isolasi kawasan global untuk pengguna non-admin.
+  const siteRequestOptions = siteFilter
+    ? { headers: { 'X-Site-ID': siteFilter } }
+    : undefined;
   // Sort State — default urut A-Z berdasarkan nama (perubahan Sprint 40)
   const [sortBy, setSortBy] = useState('nama');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -372,9 +378,7 @@ export default function CCTVPage() {
       if (sortBy) queryParams.push(`sort_by=${encodeURIComponent(sortBy)}`);
       if (sortOrder) queryParams.push(`order=${encodeURIComponent(sortOrder)}`);
       
-      const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`, {
-        headers: { 'X-Site-ID': siteFilter },
-      });
+      const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
       
       if (response.status === 'success' && response.data) {
         setCctvs(response.data.rows || []);
@@ -754,9 +758,7 @@ export default function CCTVPage() {
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
       if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
 
-      const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, {
-        headers: { 'X-Site-ID': siteFilter },
-      });
+      const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
       setSelectedIDs(response.data?.rows.map((cctv) => cctv.id) ?? []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Seluruh CCTV belum dapat dipilih. Coba lagi.');
@@ -982,9 +984,7 @@ export default function CCTVPage() {
           if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
           if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
           if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
-          const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, {
-            headers: { 'X-Site-ID': siteFilter },
-          });
+          const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
           if (response.status === 'success' && response.data) {
             itemsToPrint = response.data.rows.filter((cctv) => targetIDs.includes(cctv.id));
           }
@@ -999,9 +999,7 @@ export default function CCTVPage() {
         if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
         if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
         if (siteFilter) queryParams.push(`site_id=${encodeURIComponent(siteFilter)}`);
-        const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, {
-          headers: { 'X-Site-ID': siteFilter },
-        });
+        const response = await apiRequest<{ rows: CCTV[] }>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
         if (response.status === 'success' && response.data) {
           itemsToPrint = response.data.rows;
         } else {

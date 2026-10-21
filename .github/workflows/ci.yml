@@ -6,12 +6,14 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'e2e/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'e2e/**'
       - '.github/workflows/ci.yml'
 
 permissions:
@@ -26,6 +28,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -39,6 +42,8 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
+            e2e:
+              - 'e2e/**'
 
   # Job untuk validasi dan pengujian Backend Go
   backend-ci:
@@ -143,3 +148,110 @@ jobs:
       - name: Run Lint
         run: npm run lint
         working-directory: ./frontend
+
+  # Job untuk end-to-end test UI memakai Playwright (Chromium).
+  #
+  # Menguji regresi halaman /change-password: alur wajib ganti sandi tidak
+  # boleh mengalami loop reload (/auth/me harus dipanggil sedikit kali) dan
+  # elemen mode wajib (banner + tombol kembali ke halaman masuk) harus tampil.
+  #
+  # Seluruh stack dinyalakan lewat Docker Compose (sama seperti produksi lokal):
+  # Nginx TLS + frontend + api + postgres + redis. Sertifikat TLS self-signed
+  # dibuat on-the-fly dan Playwright memakai ignoreHTTPSErrors.
+  e2e-playwright:
+    name: E2E Playwright (Change Password)
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.e2e == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Siapkan file runtime (root .env, .env.docker, secrets, TLS cert)
+        # File-file ini aslinya di-.gitignore (berisi rahasia). Di CI dibuat
+        # dengan nilai khusus pengujian. Catatan: service api membaca password
+        # dari Docker secret (file menang atas env), jadi secrets/db_password
+        # WAJIB sama dengan POSTGRES_PASSWORD.
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=sigap_user
+          POSTGRES_PASSWORD=sigap_ci_password
+          POSTGRES_DB=sigap_db
+          MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS=localhost
+          EOF
+          cat > backend/.env.docker <<'EOF'
+          DB_HOST=db
+          DB_PORT=5432
+          DB_USER=sigap_user
+          DB_PASSWORD=sigap_ci_password
+          DB_NAME=sigap_db
+          JWT_SECRET=ci_jwt_secret_for_e2e_only
+          AES_SECRET_KEY=0123456789abcdef0123456789abcdef
+          ADMIN_DEFAULT_PASSWORD=AdminPass123!
+          APP_ENV=development
+          DB_MAX_OPEN_CONNS=50
+          DB_MAX_IDLE_CONNS=10
+          DB_CONN_MAX_LIFETIME=30
+          DB_CONN_MAX_IDLE_TIME=10
+          CORS_ALLOWED_ORIGINS=http://localhost:3001,http://localhost,https://localhost
+          TRUSTED_PROXY_IPS=172.28.0.10
+          EOF
+          mkdir -p secrets
+          printf '%s' 'sigap_ci_password' > secrets/db_password
+          printf '%s' 'ci_jwt_secret_for_e2e_only' > secrets/jwt_secret
+          printf '%s' '0123456789abcdef0123456789abcdef' > secrets/aes_secret_key
+          mkdir -p nginx/certs
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout nginx/certs/sigap.key -out nginx/certs/sigap.crt \
+            -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+      - name: Build & jalankan stack
+        run: docker compose up -d --build db redis api frontend nginx
+
+      - name: Tunggu stack sehat
+        run: |
+          for i in $(seq 1 60); do
+            if curl -skf https://localhost/api/health >/dev/null; then
+              echo "Stack sehat setelah ${i} percobaan."
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Stack tidak sehat. Log:"
+          docker compose ps
+          docker compose logs --tail=120
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'e2e/package-lock.json'
+
+      - name: Install dependency e2e
+        run: npm ci
+        working-directory: ./e2e
+
+      - name: Install browser Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+        working-directory: ./e2e
+
+      - name: Jalankan e2e Playwright
+        run: npx playwright test
+        working-directory: ./e2e
+
+      - name: Unggah artefak hasil test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/test-results
+            e2e/playwright-report
+          retention-days: 7
+
+      - name: Bersihkan stack
+        if: always()
+        run: docker compose down -v

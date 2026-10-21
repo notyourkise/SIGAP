@@ -1,0 +1,29 @@
+# ==========================================
+# SIGAP — Root .dockerignore
+# ==========================================
+# Build context root (`.`) dipakai oleh service `backup` (backup/Dockerfile).
+# Jangan pernah mengirim secret / kredensial ke daemon Docker saat build.
+secrets/
+**/.env
+**/.env.*
+.env
+.env.*
+nginx/certs/
+**/*.key
+**/*.pem
+
+# VCS & artefak lokal
+.git/
+.gitignore
+.gitattributes
+.opencode/
+__pycache__/
+**/node_modules/
+node_modules/
+
+# Data runtime (jangan ikut ke image)
+backend/uploads/
+backups/
+
+# Dokumentasi tidak dibutuhkan saat build
+*.md

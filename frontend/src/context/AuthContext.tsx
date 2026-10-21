@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { apiRequest, clearAuthCookies } from '@/lib/api';
 
 export interface User {
@@ -42,6 +43,8 @@ function navigateAfterAuth(path: string) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Sesi disimpan dalam cookie httpOnly (tidak dapat dibaca JavaScript).
   // Saat aplikasi dimuat, profil pengguna diambil dari endpoint /auth/me.
@@ -70,6 +73,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // Satu sumber kebenaran untuk pengalihan pasca-autentikasi.
+  //
+  // Pengguna yang wajib mengganti sandi diarahkan ke /change-password.
+  // Kunci anti-loop: navigasi HANYA dilakukan bila path saat ini berbeda dari
+  // tujuan. Versi lama selalu memanggil window.location.replace('/change-password')
+  // setiap kali provider ter-mount ulang — dan karena /change-password adalah
+  // halaman penuh, reload tanpa henti pun terjadi (ratusan /auth/me sampai 429).
+  useEffect(() => {
+    if (loading || !user) return;
+    if (user.must_change_password && pathname !== '/change-password') {
+      // Navigasi halus (tanpa reload penuh) agar provider tidak ter-mount ulang.
+      router.replace('/change-password');
+    }
+  }, [loading, user, pathname, router]);
 
   // Sesi berakhir di sisi server (401) — bersihkan state user.
   useEffect(() => {

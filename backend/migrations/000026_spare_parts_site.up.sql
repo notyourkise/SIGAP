@@ -1,4 +1,7 @@
--- Migration 000025: kaitkan inventaris suku cadang dengan kawasan operasional.
+-- Migration 000026: kaitkan inventaris suku cadang dengan kawasan operasional.
+-- Nomor 000025 sudah dipakai oleh migrasi stream_state pada branch pekerjaan
+-- streaming; gunakan nomor berikutnya agar tidak bentrok saat kedua branch
+-- di-merge.
 ALTER TABLE spare_parts
   ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(id) ON DELETE SET NULL;
 
