@@ -502,6 +502,20 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 		}
 	}
 
+	// Simpan daftar lama agar notifikasi hanya dikirim kepada teknisi yang baru
+	// ditambahkan, bukan berulang kepada teknisi yang tetap berada di zona.
+	var previousAssignments []models.UserZone
+	if err := config.DB.Where("zone_id = ?", zoneID).Find(&previousAssignments).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal membaca penugasan zona sebelumnya",
+		})
+	}
+	previousUserIDs := make(map[uuid.UUID]struct{}, len(previousAssignments))
+	for _, assignment := range previousAssignments {
+		previousUserIDs[assignment.UserID] = struct{}{}
+	}
+
 	// Timpa penugasan zona: hapus semua lalu sisipkan daftar baru.
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("zone_id = ?", zoneID).Delete(&models.UserZone{}).Error; err != nil {
@@ -524,6 +538,23 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "ASSIGN_USER_ZONE", "ZONE",
 		fmt.Sprintf("Menetapkan %d teknisi ke zona %s", len(req.UserIDs), zone.Nama), &zoneID, "", "")
+
+	for _, userID := range req.UserIDs {
+		if _, alreadyAssigned := previousUserIDs[userID]; alreadyAssigned {
+			continue
+		}
+		if err := utils.NotifyUserSync(
+			config.DB,
+			userID,
+			models.NotificationTypeZoneAssigned,
+			"Penugasan zona baru",
+			fmt.Sprintf("Anda ditugaskan ke zona %s. Buka Peta Sebaran CCTV untuk melihat cakupan tugas.", zone.Nama),
+			"zone",
+			&zoneID,
+		); err != nil {
+			utils.Log.Errorf("Gagal mengirim notifikasi penugasan zona %s ke user %s: %v", zoneID, userID, err)
+		}
+	}
 
 	return c.JSON(fiber.Map{
 		"status":  "success",

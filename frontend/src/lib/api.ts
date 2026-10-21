@@ -529,6 +529,8 @@ export interface SiteQuery {
   page?: number;
   limit?: number;
   search?: string;
+  sort_by?: 'nama' | 'kode' | 'alamat' | 'user_count';
+  order?: 'asc' | 'desc';
 }
 
 // Respons list site mengikuti konvensi SIGAP: { status, data: { rows, pagination } }.
@@ -558,6 +560,8 @@ export async function getSites(params?: SiteQuery): Promise<ApiResponse<SiteList
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.search) query.set('search', params.search);
+  if (params?.sort_by) query.set('sort_by', params.sort_by);
+  if (params?.order) query.set('order', params.order);
 
   const qs = query.toString();
   return apiRequest(`/sites${qs ? `?${qs}` : ''}`);

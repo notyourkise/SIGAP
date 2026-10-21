@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +46,48 @@ func TestGenerateReport_CSV_Success(t *testing.T) {
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/csv; charset=UTF-8", resp.Header.Get("Content-Type"))
 	assert.Contains(t, resp.Header.Get("Content-Disposition"), "laporan_")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGenerateReport_PDF_LongNameAndIPNVR menjaga agar nilai panjang dibungkus
+// di dalam sel, bukan dipotong atau melampaui kolom.
+func TestGenerateReport_PDF_LongNameAndIPNVR(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"kode_cctv", "id_channel", "nama", "lokasi_area",
+		"longitude", "latitude", "jenis_cctv", "sumber_listrik",
+		"tipe_koneksi", "indoor_outdoor", "pemilik", "status",
+		"ip_nvr", "ip_camera", "keterangan", "qr_payload", "health_score",
+		"channel_port", "rtsp_password", "stream_enabled",
+	})
+	for i := 1; i <= 24; i++ {
+		rows.AddRow(uuid.New(), time.Now(), time.Now(), nil,
+			fmt.Sprintf("IKN-KIPP-CCTV-%04d", i), "CH-01",
+			fmt.Sprintf("CCTV Gerbang Utama Kawasan Inti Pusat Pemerintahan Nusantara %02d", i),
+			"Koridor pelayanan utama kawasan pemerintahan", "117.1", "-0.5", "Dome", "PLN",
+			"Fiber", "outdoor", "Otorita Ibu Kota Nusantara", "aktif",
+			fmt.Sprintf("192.168.100.%d", i), fmt.Sprintf("10.20.30.%d", i), "Aman", "encrypted", 100, 19, "encrypted-rtsp", true)
+	}
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+
+	app := newTestApp()
+	app.Post("/reports/generate", withUserLocals(uuid.New().String(), "admin"), GenerateReport)
+	body := `{"entity":"cctv","columns":["kode_cctv","nama","lokasi_area","jenis_cctv","status","ip_camera","ip_nvr","pemilik","created_at"],"format":"pdf"}`
+	req := httptest.NewRequest("POST", "/reports/generate", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	pdfBytes, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(pdfBytes), "%PDF"))
+	if output := os.Getenv("CUSTOM_REPORT_PDF_QA_OUTPUT"); output != "" {
+		assert.NoError(t, os.WriteFile(output, pdfBytes, 0o600))
+	}
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -28,13 +28,16 @@ const (
 	kopSubInstansi  = "Sistem Informasi Gangguan & Aset Pusat (SIGAP)"
 	kopAlamat1      = "Kompleks Perkantoran Pemerintah IKN, Kabupaten Penajam Paser Utara,"
 	kopAlamat2      = "Provinsi Kalimantan Timur"
-	kopTelepon      = ""          // isi jika diperlukan
-	kopEmail        = ""          // isi jika diperlukan
+	kopTelepon      = "" // isi jika diperlukan
+	kopEmail        = "" // isi jika diperlukan
 	kopWebsite      = "www.ikn.go.id"
 	kopLogoPath     = "assets/nusantara-logo.png"
 	kopLogoWidth    = 15.3 // mm (691x996 px, rasio ~0.694)
 	kopLogoHeight   = 22.0
 )
+
+// Total tepat 182 mm, sama dengan lebar konten A4 setelah margin 14 mm.
+var maintenanceReportColumnWidths = []float64{10, 28, 20, 44, 24, 36, 20}
 
 // GenerateMaintenanceReportPDF membuat laporan pemeliharaan CCTV dalam format PDF
 // (Admin & Teknisi), dengan opsi filter rentang tanggal & status.
@@ -53,6 +56,7 @@ const (
 func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
 	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
+	query = applyMaintenanceSiteScope(c, query)
 
 	// SECURITY (Fase 3.9): Teknisi hanya boleh mengunduh laporan data miliknya;
 	// admin berhak atas seluruh data.
@@ -83,6 +87,13 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(pdfMarginX, 12, pdfMarginX)
 	pdf.SetAutoPageBreak(true, 16)
+	pdf.SetFooterFunc(func() {
+		pdf.SetY(-11)
+		pdf.SetFont("Helvetica", "", 7.5)
+		pdf.SetTextColor(105, 105, 105)
+		pdf.SetX(pdfMarginX)
+		pdf.CellFormat(pdfContentW, 5, fmt.Sprintf("SIGAP - Laporan Pemeliharaan CCTV | Halaman %d", pdf.PageNo()), "", 0, "C", false, 0, "")
+	})
 	pdf.AddPage()
 
 	// Kop surat resmi
@@ -92,17 +103,19 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	pdf.SetY(pdf.GetY() + 3)
 	pdf.SetFont("Helvetica", "B", 14)
 	pdf.SetTextColor(30, 30, 30)
+	pdf.SetX(pdfMarginX)
 	pdf.CellFormat(pdfContentW, 8, "LAPORAN PEMELIHARAAN CCTV", "", 1, "C", false, 0, "")
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(110, 110, 110)
+	pdf.SetX(pdfMarginX)
 	pdf.CellFormat(pdfContentW, 5, "Periode: "+reportPeriod(c)+"   |   Dihasilkan: "+time.Now().Format("2006-01-02 15:04:05"), "", 1, "C", false, 0, "")
 	pdf.SetTextColor(30, 30, 30)
 
 	// Ringkasan
 	summary := map[string]int{
-		"Terjadwal":   0,
-		"Dalam proses": 0,
-		"Selesai":              0,
+		"Terjadwal":           0,
+		"Dalam proses":        0,
+		"Selesai":             0,
 		"Perlu Tindak Lanjut": 0,
 	}
 	for _, l := range logs {
@@ -120,8 +133,10 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 
 	pdf.SetY(pdf.GetY() + 3)
 	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetX(pdfMarginX)
 	pdf.CellFormat(pdfContentW, 6, fmt.Sprintf("Ringkasan: %d catatan pemeliharaan", len(logs)), "", 1, "", false, 0, "")
 	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetX(pdfMarginX)
 	pdf.CellFormat(pdfContentW, 5, fmt.Sprintf(
 		"Terjadwal: %d   |   Dalam proses: %d   |   Selesai: %d   |   Perlu Tindak Lanjut: %d",
 		summary["Terjadwal"], summary["Dalam proses"], summary["Selesai"], summary["Perlu Tindak Lanjut"],
@@ -194,11 +209,14 @@ func drawLetterhead(pdf *fpdf.Fpdf) {
 
 	pdf.SetFont("Helvetica", "", 8.5)
 	pdf.SetTextColor(60, 60, 60)
+	pdf.SetX(textX)
 	pdf.CellFormat(textW, 5, kopSubInstansi, "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "", 8)
 	pdf.SetTextColor(90, 90, 90)
+	pdf.SetX(textX)
 	pdf.CellFormat(textW, 4.5, kopAlamat1, "", 1, "C", false, 0, "")
+	pdf.SetX(textX)
 	pdf.CellFormat(textW, 4.5, kopAlamat2, "", 1, "C", false, 0, "")
 
 	contact := "Website: " + kopWebsite
@@ -208,10 +226,14 @@ func drawLetterhead(pdf *fpdf.Fpdf) {
 	if kopEmail != "" {
 		contact += "   |   Email: " + kopEmail
 	}
+	pdf.SetX(textX)
 	pdf.CellFormat(textW, 4.5, contact, "", 1, "C", false, 0, "")
 
 	// Garis kop: tebal lalu tipis
 	lineY := topY + kopLogoHeight + 2.5
+	if textBottom := pdf.GetY() + 1.5; textBottom > lineY {
+		lineY = textBottom
+	}
 	pdf.SetDrawColor(20, 20, 20)
 	pdf.SetLineWidth(0.9)
 	pdf.Line(leftX, lineY, rightX, lineY)
@@ -226,32 +248,49 @@ func pdfTableHeader(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Helvetica", "B", 8)
 	pdf.SetFillColor(64, 112, 56)
 	pdf.SetTextColor(255, 255, 255)
-	colWidths := []float64{9, 32, 22, 60, 20, 28, 19}
 	headers := []string{"No", "Nama CCTV", "Kode CCTV", "Tindakan", "Status", "Teknisi", "Tanggal"}
 	pdf.SetX(pdfMarginX)
 	for i, h := range headers {
-		pdf.CellFormat(colWidths[i], 7, h, "1", 0, "C", true, 0, "")
+		pdf.CellFormat(maintenanceReportColumnWidths[i], 8, h, "1", 0, "C", true, 0, "")
 	}
 	pdf.Ln(-1)
 	pdf.SetTextColor(30, 30, 30)
 }
 
 func pdfTableRow(pdf *fpdf.Fpdf, no int, l models.MaintenanceLog) {
-	colWidths := []float64{9, 32, 22, 60, 20, 28, 19}
-	xStart := pdfMarginX
-
 	pdf.SetFont("Helvetica", "", 8)
-	action := strings.TrimSpace(l.ActionTaken)
-	if action == "" {
-		action = "—"
+	techName := ""
+	if l.User != nil {
+		techName = l.User.FullName
+	}
+	dateStr := ""
+	if l.CompletedAt != nil {
+		dateStr = l.CompletedAt.Format("2006-01-02")
+	} else if l.ScheduledDate != nil {
+		dateStr = l.ScheduledDate.Format("2006-01-02")
 	}
 
-	// Hitung tinggi baris dari jumlah baris terlipat yang akurat (SplitLines)
-	// agar sel tidak menimpa baris berikutnya dan tidak ada potongan di tengah sel.
-	actionLines := pdf.SplitLines([]byte(action), colWidths[3])
-	cellHeight := float64(len(actionLines))*5 + 3
-	if cellHeight < 8 {
-		cellHeight = 8
+	values := []string{
+		fmt.Sprintf("%d", no),
+		pdfCellValue(l.CCTV.Nama),
+		pdfCellValue(l.CCTV.KodeCCTV),
+		pdfCellValue(l.ActionTaken),
+		pdfCellValue(pdfStatusLabel(l.Status)),
+		pdfCellValue(techName),
+		pdfCellValue(dateStr),
+	}
+	alignments := []string{"C", "L", "L", "L", "C", "L", "C"}
+	const lineHeight = 4.2
+	maxLines := 1
+	for i, value := range values {
+		lines := pdf.SplitLines([]byte(value), maintenanceReportColumnWidths[i]-3)
+		if len(lines) > maxLines {
+			maxLines = len(lines)
+		}
+	}
+	cellHeight := float64(maxLines)*lineHeight + 3
+	if cellHeight < 9 {
+		cellHeight = 9
 	}
 
 	// Pindah halaman bila baris tidak muat; mencegah MultiCell terpotong tengah baris
@@ -259,54 +298,39 @@ func pdfTableRow(pdf *fpdf.Fpdf, no int, l models.MaintenanceLog) {
 	if yStart+cellHeight > pdfBreakY {
 		pdf.AddPage()
 		pdfTableHeader(pdf)
+		pdf.SetFont("Helvetica", "", 8)
 		yStart = pdf.GetY()
 	}
 
-	textY := yStart + 1.5
-
 	// Border grid penuh agar tabel simetris
 	pdf.SetDrawColor(205, 205, 205)
-	x := xStart
-	for _, w := range colWidths {
+	x := pdfMarginX
+	for _, w := range maintenanceReportColumnWidths {
 		pdf.Rect(x, yStart, w, cellHeight, "D")
 		x += w
 	}
 
-	// No
-	pdf.SetXY(xStart, textY)
-	pdf.CellFormat(colWidths[0], 5, fmt.Sprintf("%d", no), "", 0, "C", false, 0, "")
-	// Nama CCTV
-	pdf.SetX(xStart + colWidths[0])
-	pdf.CellFormat(colWidths[1], 5, pdfSafe(l.CCTV.Nama, 18), "", 0, "L", false, 0, "")
-	// Kode CCTV
-	pdf.SetX(xStart + colWidths[0] + colWidths[1])
-	pdf.CellFormat(colWidths[2], 5, pdfSafe(l.CCTV.KodeCCTV, 12), "", 0, "L", false, 0, "")
-	// Tindakan (multiline)
-	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2], textY)
-	pdf.MultiCell(colWidths[3], 5, action, "", "L", false)
-	// Status
-	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2]+colWidths[3], textY)
-	pdf.CellFormat(colWidths[4], 5, pdfStatusLabel(l.Status), "", 0, "C", false, 0, "")
-	// Teknisi
-	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2]+colWidths[3]+colWidths[4], textY)
-	techName := ""
-	if l.User != nil {
-		techName = l.User.FullName
+	x = pdfMarginX
+	for i, value := range values {
+		pdf.SetXY(x+1.5, yStart+1.5)
+		pdf.MultiCell(maintenanceReportColumnWidths[i]-3, lineHeight, value, "", alignments[i], false)
+		x += maintenanceReportColumnWidths[i]
 	}
-	pdf.CellFormat(colWidths[5], 5, pdfSafe(techName, 16), "", 0, "L", false, 0, "")
-	// Tanggal
-	pdf.SetXY(xStart+colWidths[0]+colWidths[1]+colWidths[2]+colWidths[3]+colWidths[4]+colWidths[5], textY)
-	dateStr := ""
-	if l.CompletedAt != nil {
-		dateStr = l.CompletedAt.Format("2006-01-02")
-	} else if l.ScheduledDate != nil {
-		dateStr = l.ScheduledDate.Format("2006-01-02")
-	}
-	pdf.CellFormat(colWidths[6], 5, dateStr, "", 0, "C", false, 0, "")
 
 	pdf.SetY(yStart + cellHeight)
 }
 
+func pdfCellValue(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// pdfSafe dipakai juga oleh generator PDF lain untuk membatasi teks pada
+// komponen berukuran tetap. Tabel laporan utama memakai pembungkusan penuh
+// melalui pdfCellValue sehingga isi penting tidak lagi dipotong.
 func pdfSafe(s string, maxRunes int) string {
 	s = strings.TrimSpace(s)
 	if s == "" {

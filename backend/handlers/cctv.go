@@ -384,6 +384,7 @@ func CreateCCTV(c *fiber.Ctx) error {
 // @Param        jenis_cctv query string false "Filter berdasarkan jenis CCTV"
 // @Param        indoor_outdoor query string false "Filter berdasarkan indoor/outdoor"
 // @Param        zone_id query string false "Filter berdasarkan zona operasional (UUID zona)"
+// @Param        site_id query string false "Filter berdasarkan kawasan operasional (UUID kawasan)"
 // @Param        search query string false "Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area"
 // @Param        page query integer false "Nomor Halaman (default: 1)"
 // @Param        limit query integer false "Jumlah data per halaman (default: 10)"
@@ -394,23 +395,23 @@ func CreateCCTV(c *fiber.Ctx) error {
 // @Router       /cctv [get]
 func GetAllCCTV(c *fiber.Ctx) error {
 	var cctvs []models.CCTV
-	query := config.DB.Model(&models.CCTV{})
+	query := config.DB.Model(&models.CCTV{}).Preload("Site")
 
 	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
 	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
 	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		query = query.Where("site_id = ?", siteID)
+		query = query.Where("cctvs.site_id = ?", siteID)
 	}
 
 	// Filter
 	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
+		query = query.Where("cctvs.status = ?", status)
 	}
 	if jenis := c.Query("jenis_cctv"); jenis != "" {
-		query = query.Where("jenis_cctv = ?", jenis)
+		query = query.Where("cctvs.jenis_cctv = ?", jenis)
 	}
 	if io := c.Query("indoor_outdoor"); io != "" {
-		query = query.Where("indoor_outdoor = ?", io)
+		query = query.Where("cctvs.indoor_outdoor = ?", io)
 	}
 	// Filter zona operasional (Task 11.4, Sprint 28): ?zone_id=<uuid>.
 	// Opsional — bila diisi hanya CCTV milik zona tersebut yang dikembalikan.
@@ -422,17 +423,24 @@ func GetAllCCTV(c *fiber.Ctx) error {
 				"message": "Filter zone_id tidak valid",
 			})
 		}
-		query = query.Where("zone_id = ?", zid)
+		query = query.Where("cctvs.zone_id = ?", zid)
 	}
 
 	// Pencarian
 	if search := c.Query("search"); search != "" {
-		query = query.Where("nama ILIKE ? OR kode_cctv ILIKE ? OR id_channel ILIKE ? OR lokasi_area ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+		query = query.Where("cctvs.nama ILIKE ? OR cctvs.kode_cctv ILIKE ? OR cctvs.id_channel ILIKE ? OR cctvs.lokasi_area ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
 	// Paginasi & Sorting
-	allowedSort := []string{"id", "kode_cctv", "nama", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
+	allowedSort := []string{"id", "kode_cctv", "nama", "site_name", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
+	if strings.HasPrefix(sort, "site_name ") {
+		order := strings.TrimPrefix(sort, "site_name ")
+		query = query.Joins("LEFT JOIN sites ON sites.id = cctvs.site_id AND sites.deleted_at IS NULL")
+		sort = "sites.nama " + order + " NULLS LAST, cctvs.nama ASC"
+	} else {
+		sort = "cctvs." + sort
+	}
 
 	var totalRows int64
 	if err := query.Count(&totalRows).Error; err != nil {

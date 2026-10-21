@@ -196,6 +196,35 @@ func TestGetAllMaintenanceLogs_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestGetAllMaintenanceLogs_SiteScoped memastikan filter kawasan mengikuti
+// relasi maintenance_logs.cctv_id -> cctvs.site_id.
+func TestGetAllMaintenanceLogs_SiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "maintenance_logs" WHERE \(EXISTS \(SELECT 1 FROM cctvs WHERE cctvs\.id = maintenance_logs\.cctv_id AND cctvs\.site_id = \$1 AND cctvs\.deleted_at IS NULL\)\)`).
+		WithArgs(siteID.String()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`SELECT \* FROM "maintenance_logs" WHERE \(EXISTS \(SELECT 1 FROM cctvs WHERE cctvs\.id = maintenance_logs\.cctv_id AND cctvs\.site_id = \$1 AND cctvs\.deleted_at IS NULL\)\)`).
+		WithArgs(siteID.String(), 10).
+		WillReturnRows(maintenanceMockRow())
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Get("/maintenance-logs", func(c *fiber.Ctx) error {
+		c.Locals("site_id", siteID.String())
+		return GetAllMaintenanceLogs(c)
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/maintenance-logs?page=1&limit=10", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpdateMaintenanceLog_OwnershipDenied(t *testing.T) {
 	_, mock := setupMockGORM(t)
 

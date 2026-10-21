@@ -153,7 +153,7 @@ jobs:
   #
   # Menguji regresi halaman /change-password: alur wajib ganti sandi tidak
   # boleh mengalami loop reload (/auth/me harus dipanggil sedikit kali) dan
-  # elemen mode wajib (banner + tombol Exit) harus tampil.
+  # elemen mode wajib (banner + tombol kembali ke halaman masuk) harus tampil.
   #
   # Seluruh stack dinyalakan lewat Docker Compose (sama seperti produksi lokal):
   # Nginx TLS + frontend + api + postgres + redis. Sertifikat TLS self-signed
@@ -178,6 +178,7 @@ jobs:
           POSTGRES_USER=sigap_user
           POSTGRES_PASSWORD=sigap_ci_password
           POSTGRES_DB=sigap_db
+          MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS=localhost
           EOF
           cat > backend/.env.docker <<'EOF'
           DB_HOST=db

@@ -306,6 +306,19 @@ func StartAllStreams(c *fiber.Ctx) error {
 	total := len(cctvs)
 	success := 0
 	failed := 0
+	if err := streamClient.Ping(); err != nil {
+		utils.Log.Warnf("⚠️ MediaMTX tidak dapat dijangkau saat start-all: %v", err)
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"status":  "error",
+			"message": "MediaMTX tidak dapat dijangkau dari backend. Pastikan layanan streaming berjalan dan konfigurasi MEDIAMTX_API_URL benar.",
+			"data": fiber.Map{
+				"total":              total,
+				"success":            0,
+				"failed":             total,
+				"mediamtx_reachable": false,
+			},
+		})
+	}
 
 	for _, cctv := range cctvs {
 		storedRTSPURL, err := utils.DecryptRTSPURL(cctv.RTSPURL)
@@ -317,6 +330,11 @@ func StartAllStreams(c *fiber.Ctx) error {
 
 		decrypted := ""
 		if storedRTSPURL == "" {
+			if cctv.ChannelPort <= 0 {
+				utils.Log.Warnf("CCTV %s (%s) channel port belum dikonfigurasi - dilewati", cctv.Nama, cctv.KodeCCTV)
+				failed++
+				continue
+			}
 			// Lewati dengan peringatan bila password kosong atau gagal didekripsi.
 			if cctv.RTSPPassword == "" {
 				utils.Log.Warnf("⚠️ CCTV %s (%s) password RTSP kosong — dilewati", cctv.Nama, cctv.KodeCCTV)
@@ -358,9 +376,40 @@ func StartAllStreams(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"total":   total,
-			"success": success,
-			"failed":  failed,
+			"total":              total,
+			"success":            success,
+			"failed":             failed,
+			"mediamtx_reachable": true,
+		},
+	})
+}
+
+// GetMediaMTXReadiness memeriksa apakah backend dapat menjangkau REST API
+// MediaMTX. Endpoint ini tidak membuka URL internal atau kredensial RTSP.
+// @Summary      Kesiapan MediaMTX
+// @Description  Memeriksa koneksi backend ke MediaMTX sebelum monitor memulai stream.
+// @Tags         Streaming
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{} "MediaMTX dapat dijangkau"
+// @Failure      503 {object} map[string]interface{} "MediaMTX tidak dapat dijangkau"
+// @Router       /streams/readiness [get]
+func GetMediaMTXReadiness(c *fiber.Ctx) error {
+	if err := streamClient.Ping(); err != nil {
+		utils.Log.Warnf("⚠️ Pemeriksaan kesiapan MediaMTX gagal: %v", err)
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"status":  "error",
+			"message": "MediaMTX belum dapat dijangkau. Pastikan layanan streaming berjalan dan konfigurasi koneksi benar.",
+			"data": fiber.Map{
+				"reachable": false,
+			},
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"reachable": true,
 		},
 	})
 }

@@ -10,6 +10,7 @@ import { getLiveBadge, type StreamState } from '@/lib/live-status';
 
 export interface CCTVMapItem {
   id: string;
+  zone_id?: string | null;
   kode_cctv: string;
   nama: string;
   lokasi_area?: string;

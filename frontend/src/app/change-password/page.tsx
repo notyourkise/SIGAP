@@ -1,279 +1,211 @@
 'use client';
 
-// Force dynamic rendering for authenticated-only pages to avoid static export errors
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldAlert, Sun } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { useAuth, type User as AuthUser } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { apiRequest } from '@/lib/api';
 
-// Get search params safely - only on client side
-function getQueryParams() {
-  if (typeof window !== 'undefined') {
-    return new URLSearchParams(window.location.search);
-  }
-  return new URLSearchParams();
+interface ChangePasswordResponse {
+  csrf_token: string;
+  user: AuthUser;
 }
 
 export default function ChangePasswordPage() {
-  // Client-side only logic wrapped in useEffect
-  const [queryParams, setQueryParams] = useState(new URLSearchParams());
-  
-  useEffect(() => {
-    setQueryParams(getQueryParams());
-  }, []);
-  
   const router = useRouter();
-  const { user, updateUser, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  
+  const { user, loading: authLoading, logout, updateUser } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const forced = user?.must_change_password === true;
+  const passwordIsStrong = newPassword.length >= 8
+    && /[A-Z]/.test(newPassword)
+    && /[a-z]/.test(newPassword)
+    && /\d/.test(newPassword)
+    && /[^A-Za-z0-9]/.test(newPassword);
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
 
-  // Handle successful password change navigation
-  const handleSuccess = (updatedUser: AuthUser) => {
-    // Perbarui state pengguna TANPA memicu navigasi otomatis AuthContext
-    // (memakai login() akan mengarahkan ulang dan menimpa tujuan di bawah,
-    // sekaligus memicu reload penuh yang tidak perlu).
-    updateUser(updatedUser);
-
-    if (forced) {
-      // Backend sudah menerbitkan sesi baru yang valid setelah ganti sandi
-      // (lihat handlers/auth.go: naikkan TokenVersion + SetSessionCookie),
-      // jadi lanjutkan ke dasbor alih-alih memaksa login ulang.
-      router.replace('/dashboard');
-    } else {
-      router.replace('/profile?password_changed=true');
-    }
-  };
+  useEffect(() => {
+    if (!authLoading && !user) router.replace('/login');
+  }, [authLoading, router, user]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
-    
-    if (!newPassword || !confirmPassword) {
-      setError('Mohon isi semua field');
+
+    if (!passwordIsStrong) {
+      setError('Gunakan minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol.');
       return;
     }
-    
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!passwordsMatch) {
+      setError('Konfirmasi kata sandi belum sama.');
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     try {
-      // Get CSRF token from cookie
-      const name = 'sigap_csrf=';
-      const decodedCookie = decodeURIComponent(document.cookie);
-      const ca = decodedCookie.split(';');
-      let csrfToken = '';
-      for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) === ' ') {
-          c = c.substring(1);
-        }
-        if (c.indexOf(name) === 0) {
-          csrfToken = c.substring(name.length, c.length);
-          break;
-        }
+      const response = await apiRequest<ChangePasswordResponse>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ old_password: '', new_password: newPassword }),
+      });
+
+      if (response.status !== 'success' || !response.data?.user) {
+        throw new Error(response.message || 'Kata sandi belum dapat diubah.');
       }
-      
-      const response = await apiRequest(
-        '/auth/change-password', 
-        {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-          },
-          body: JSON.stringify({ new_password: newPassword }),
-        }
-      );
-      
-      if (response.status === 'success') {
-        if (user) {
-          const updatedUser = { ...user, must_change_password: false };
-          handleSuccess(updatedUser);
-        }
-      } else {
-        throw new Error(response.message || 'Failed to change password');
-      }
-    } catch (err: any) {
-      console.error('Failed to change password:', err);
-      setError(err.message || 'Failed to change password');
+
+      updateUser(response.data.user);
+      router.replace(forced ? '/dashboard' : '/profile?password_changed=true');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Kata sandi belum dapat diubah. Coba lagi.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const handleExit = () => {
-    if (forced) {
-      logout();
-      router.push('/login');
-    } else {
-      router.replace('/profile');
-    }
+  const handleBackToLogin = () => {
+    void logout();
   };
+
+  if (authLoading || !user) {
+    return (
+      <main className="flex min-h-screen items-center justify-center gap-3 bg-background" role="status" aria-live="polite">
+        <LoaderCircle className="h-6 w-6 animate-spin text-primary" />
+        <span className="text-sm text-muted">Memeriksa akun…</span>
+      </main>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      {/* Theme Toggle */}
-      <button
-        onClick={toggleTheme}
-        className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        aria-label="Toggle theme"
-      >
-        {theme === 'dark' ? (
-          <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-        ) : (
-          <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-        )}
-      </button>
-
-      {/* Card Container */}
-      <div className="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center">
-            <ShieldAlert className="w-12 h-12 text-blue-600 dark:text-blue-400" />
-          </div>
-          
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Password Required
+    <main className="flex min-h-screen items-center justify-center bg-background px-5 py-10">
+      <section aria-labelledby="change-password-heading" className="w-full max-w-md rounded-2xl border border-border bg-card px-6 py-8 sm:px-8">
+        <header className="text-center">
+          <p className="text-sm font-bold text-primary">SIGAP</p>
+          <h1 id="change-password-heading" className="mt-2 text-2xl font-bold tracking-[-0.025em] text-foreground">
+            Atur ulang kata sandi
           </h1>
-          
-          {forced && (
-            <p className="text-sm text-red-600 dark:text-red-400">
-              You must change your password before continuing
-            </p>
-          )}
-        </div>
+          <p className="mt-2 text-sm text-muted">Buat kata sandi baru untuk melanjutkan.</p>
+        </header>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded">
-            <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
-            <span className="text-sm text-red-700 dark:text-red-400">{error}</span>
-          </div>
-        )}
-
-        {/* Exit Button for Forced Mode */}
         {forced && (
-          <button
-            onClick={handleExit}
-            className="w-full py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md 
-                      text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 
-                      transition-colors"
-          >
-            Exit / Back to Login
-          </button>
+          <p role="status" className="mt-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            Anda wajib mengganti kata sandi sebelum melanjutkan.
+          </p>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* New Password Field */}
-          <div className="space-y-2">
-            <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              New Password
-            </label>
-            <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                id="new_password"
-                type={showPassword ? 'text' : 'password'}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="pl-10 pr-10 py-2 w-full border border-gray-300 dark:border-gray-600 
-                          rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent 
-                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                required
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 
-                          hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
+        {error && (
+          <div role="alert" aria-live="assertive" className="mt-6 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+            {error}
           </div>
+        )}
 
-          {/* Confirm Password Field */}
-          <div className="space-y-2">
-            <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Confirm New Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                id="confirm_password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="pl-10 pr-10 py-2 w-full border border-gray-300 dark:border-gray-600 
-                          rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent 
-                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                required
-              />
-              {confirmPassword && (
-                <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
-                  newPassword === confirmPassword ? 
-                    'text-green-500' : 'text-red-500'
-                }`}>
-                  {newPassword === confirmPassword ? (
-                    <ShieldAlert className="w-5 h-5" />
-                  ) : (
-                    <ShieldAlert className="w-5 h-5" />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="mt-7 space-y-5">
+          <PasswordField
+            id="new_password"
+            label="Kata sandi baru"
+            value={newPassword}
+            onChange={setNewPassword}
+            visible={showPassword}
+            onToggleVisibility={() => setShowPassword((visible) => !visible)}
+            disabled={submitting}
+            autoFocus
+            hint="Minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol."
+          />
 
-          {/* Submit Button */}
+          <PasswordField
+            id="confirm_password"
+            label="Konfirmasi kata sandi baru"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            visible={showPassword}
+            onToggleVisibility={() => setShowPassword((visible) => !visible)}
+            disabled={submitting}
+            error={confirmPassword.length > 0 && !passwordsMatch ? 'Konfirmasi belum sama.' : undefined}
+          />
+
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold 
-                      rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={submitting || !passwordIsStrong || !passwordsMatch}
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-55"
           >
-            {loading ? (
-              <div className="flex items-center justify-center gap-2">
-                <LoaderCircle className="animate-spin w-5 h-5" />
-                Processing...
-              </div>
-            ) : (
-              'Change Password'
-            )}
+            {submitting ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Menyimpan…</> : 'Simpan kata sandi'}
           </button>
         </form>
 
-        {/* Help Text */}
-        {forced && (
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-            Your password will be required for future logins
-          </p>
-        )}
+        <button
+          type="button"
+          onClick={handleBackToLogin}
+          disabled={submitting}
+          className="mx-auto mt-5 flex items-center gap-2 text-sm font-semibold text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-50"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Kembali ke halaman masuk
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisibility,
+  disabled,
+  autoFocus,
+  hint,
+  error,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggleVisibility: () => void;
+  disabled: boolean;
+  autoFocus?: boolean;
+  hint?: string;
+  error?: string;
+}) {
+  const descriptionId = hint || error ? `${id}_description` : undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm font-semibold text-foreground">{label}</label>
+      <div className="relative">
+        <input
+          id={id}
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete="new-password"
+          disabled={disabled}
+          autoFocus={autoFocus}
+          aria-describedby={descriptionId}
+          aria-invalid={Boolean(error)}
+          className="w-full rounded-xl border border-input-border bg-input px-4 py-3 pr-12 text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-60"
+          required
+        />
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          disabled={disabled}
+          aria-label={visible ? `Sembunyikan ${label.toLowerCase()}` : `Tampilkan ${label.toLowerCase()}`}
+          className="absolute inset-y-0 right-0 flex items-center pr-4 text-muted transition-colors hover:text-foreground disabled:opacity-50"
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
       </div>
+      {(error || hint) && (
+        <p id={descriptionId} className={`mt-1.5 text-xs ${error ? 'text-error' : 'text-muted'}`}>
+          {error || hint}
+        </p>
+      )}
     </div>
   );
 }

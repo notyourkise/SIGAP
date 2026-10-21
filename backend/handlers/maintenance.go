@@ -18,9 +18,9 @@ import (
 )
 
 type CreateMaintenanceLogRequest struct {
-	CCTVID        string `json:"cctv_id" validate:"required,uuid4"`
-	ActionTaken   string `json:"action_taken" validate:"required,min=5"`
-	Notes         string `json:"notes" validate:"omitempty"`
+	CCTVID      string `json:"cctv_id" validate:"required,uuid4"`
+	ActionTaken string `json:"action_taken" validate:"required,min=5"`
+	Notes       string `json:"notes" validate:"omitempty"`
 	// Status hanya boleh bernilai "scheduled" saat pembuatan — alur status
 	// selanjutnya dikelola sistem: assign teknisi (-> ongoing) dan penyelesaian
 	// checklist (-> completed/failed), tidak bisa diubah manual lewat API.
@@ -165,11 +165,9 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
 	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
 
-	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
-	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
-	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		query = query.Where("site_id = ?", siteID)
-	}
+	// Scope kawasan mengikuti CCTV yang dirawat agar tetap akurat ketika CCTV
+	// dipindahkan ke kawasan lain dan konsisten dengan daftar aset terkini.
+	query = applyMaintenanceSiteScope(c, query)
 
 	// SECURITY: Teknisi hanya dapat melihat log miliknya (lewat penugasan)
 	query = applyRoleScope(c, query)
@@ -704,12 +702,12 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
 		field := models.FieldMaintenance{
-			CCTVID:          logEntry.CCTVID,
-			TechnicianID:    techUUID,
+			CCTVID:           logEntry.CCTVID,
+			TechnicianID:     techUUID,
 			MaintenanceLogID: &id,
-			OverallStatus:   overallStatus,
-			Notes:           req.Notes,
-			CompletedAt:     &now,
+			OverallStatus:    overallStatus,
+			Notes:            req.Notes,
+			CompletedAt:      &now,
 		}
 		if err := tx.Create(&field).Error; err != nil {
 			return err
@@ -793,12 +791,12 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 
 	// Task 12.3: dispatch event webhook maintenance.completed (semua status terminal).
 	DispatchWebhook(config.DB, models.EventWebhookMaintenanceCompleted, fiber.Map{
-		"log_id":          logEntry.ID.String(),
-		"cctv_id":         logEntry.CCTVID.String(),
-		"action_taken":    logEntry.ActionTaken,
-		"status":          newStatus,
-		"completed_at":    time.Now().Format(time.RFC3339),
-		"timestamp":       time.Now().Format(time.RFC3339),
+		"log_id":       logEntry.ID.String(),
+		"cctv_id":      logEntry.CCTVID.String(),
+		"action_taken": logEntry.ActionTaken,
+		"status":       newStatus,
+		"completed_at": time.Now().Format(time.RFC3339),
+		"timestamp":    time.Now().Format(time.RFC3339),
 	})
 
 	return c.JSON(fiber.Map{
@@ -887,6 +885,7 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	var logs []models.MaintenanceLog
 	query := config.DB.Model(&models.MaintenanceLog{}).Preload("CCTV").Preload("User")
+	query = applyMaintenanceSiteScope(c, query)
 
 	// SECURITY (Fase 3.9): Teknisi hanya boleh mengekspor data yang relevan
 	// untuk dirinya sendiri; admin berhak mengekspor seluruh data.
@@ -1002,6 +1001,20 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	return c.Send(buf.Bytes())
+}
+
+// applyMaintenanceSiteScope membatasi log berdasarkan relasi CCTV -> site.
+// EXISTS menjaga query Count dan Find tetap independen saat builder digunakan ulang.
+func applyMaintenanceSiteScope(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return query
+	}
+
+	return query.Where(
+		`EXISTS (SELECT 1 FROM cctvs WHERE cctvs.id = maintenance_logs.cctv_id AND cctvs.site_id = ? AND cctvs.deleted_at IS NULL)`,
+		siteID,
+	)
 }
 
 // applyRoleScope membatasi query berdasarkan peran pengguna dari JWT.

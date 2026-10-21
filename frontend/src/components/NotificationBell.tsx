@@ -33,6 +33,8 @@ export const typeStyles: Record<string, string> = {
   OVERDUE_CRITICAL: 'bg-red-600',
   FIELD_CHECK_ATTENTION: 'bg-accent',
   DAILY_DIGEST_AVAILABLE: 'bg-primary',
+  ZONE_ASSIGNED: 'bg-accent',
+  SCHEDULE_ASSIGNED: 'bg-primary',
 };
 
 // Tipe notifikasi kritis (overdue level 3) — ditampilkan dengan latar merah + ikon 🚨.
@@ -42,6 +44,8 @@ export const isCriticalType = (type: string) => type === 'OVERDUE_CRITICAL';
 export function getTargetRoute(item: NotificationItem): string {
   if (item.reference_type === 'field-maintenance') return '/field-maintenance';
   if (item.reference_type === 'daily-digest') return '/ringkasan';
+  if (item.reference_type === 'zone') return '/sebaran-cctv';
+  if (item.reference_type === 'maintenance-schedule') return '/dashboard';
   return '/maintenance';
 }
 

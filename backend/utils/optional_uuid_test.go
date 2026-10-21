@@ -19,6 +19,16 @@ func TestOptionalUUIDUnmarshalJSON(t *testing.T) {
 		}
 	})
 
+	t.Run("null with surrounding spaces clears value", func(t *testing.T) {
+		var v OptionalUUID
+		if err := json.Unmarshal([]byte(`  null  `), &v); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !v.Present || !v.Null || v.Value != nil || v.HasValue() {
+			t.Fatalf("unexpected state: %+v", v)
+		}
+	})
+
 	t.Run("empty string clears value", func(t *testing.T) {
 		var v OptionalUUID
 		if err := json.Unmarshal([]byte(`""`), &v); err != nil {

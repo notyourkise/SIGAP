@@ -7,7 +7,7 @@ import DashboardAnalytics, { type DashboardSummary } from '@/components/Dashboar
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
-import { CheckCheck, Package, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCheck, MapPin, Package, ScanLine } from 'lucide-react';
 import Link from 'next/link';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import NotificationBell from '@/components/NotificationBell';
@@ -85,6 +85,16 @@ const statusLabel = (status: MaintenanceLog['status']) => ({
   completed: 'Selesai',
   failed: 'Perlu Tindak Lanjut',
 }[status]);
+
+const formatTaskSchedule = (value: string) => {
+  if (!value) return 'Jadwal belum ditentukan';
+  const parsed = new Date(value.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+};
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -214,6 +224,19 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {user?.role === 'teknisi' && (
+              <Link
+                href={{ pathname: '/cctv', query: { scan: '1' } }}
+                aria-label="Pindai QR CCTV untuk pemeliharaan"
+                title="Pindai QR CCTV untuk pemeliharaan"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3.5 text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-[#203f25]">
+                  <ScanLine className="h-5.5 w-5.5" strokeWidth={2.5} aria-hidden="true" />
+                </span>
+                Pindai
+              </Link>
+            )}
             <NotificationBell />
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className={`h-2 w-2 rounded-full ${health === 'Terhubung' ? 'bg-success' : health === 'Memeriksa' ? 'animate-pulse bg-warning' : 'bg-error'}`} />
@@ -375,45 +398,42 @@ export default function DashboardPage() {
                     {tasks.tasks.map((task) => {
                       const isOverdue = task.days_overdue > 0;
                       return (
-                        <div key={task.id} className={`grid gap-2 px-5 py-4 sm:items-center sm:gap-4 ${isAdmin ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]' : 'sm:grid-cols-[minmax(0,1fr)_auto]'}`}>
+                        <article key={task.id} className="grid gap-4 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold" title={task.cctv_name}>
+                            <p className="text-[11px] font-bold text-primary">Nama tugas</p>
+                            <h3 className="mt-1 text-sm font-bold leading-snug" title={task.action_taken || undefined}>
+                              {task.action_taken || 'Pemeliharaan CCTV'}
+                            </h3>
+                            <p className="mt-1.5 text-xs font-semibold text-foreground">
                               {task.cctv_name || 'CCTV tidak tersedia'}
+                              {task.cctv_kode ? <span className="ml-1.5 font-mono text-primary">· {task.cctv_kode}</span> : null}
                             </p>
-                            {isAdmin && (
-                              <p className="mt-0.5 truncate text-xs text-muted" title={task.cctv_location || undefined}>
+                            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              <span className="truncate" title={task.cctv_location || undefined}>
                                 {task.cctv_location || 'Lokasi belum dicatat'}
-                              </p>
-                            )}
+                              </span>
+                            </p>
                           </div>
-                          {isAdmin && (
-                            <div className="min-w-0">
-                              <p className="truncate text-xs text-muted" title={task.action_taken}>
-                                {task.action_taken || '—'}
-                              </p>
-                              <p className="mt-0.5 font-mono text-[11px] text-muted">
-                                {task.scheduled_date ? `Jadwal: ${task.scheduled_date}` : 'Belum ada jadwal'}
-                              </p>
+                          <div className="flex flex-col items-start gap-2 sm:items-end">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted">
+                                <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                                {formatTaskSchedule(task.scheduled_date)}
+                              </span>
+                              {isOverdue && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-error/25 bg-error/10 px-2.5 py-1 text-[11px] font-bold text-error">
+                                  Terlambat {task.days_overdue} hari
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                                task.status === 'ongoing'
+                                  ? 'border-warning/25 bg-warning/10 text-warning'
+                                  : 'border-blue-500/25 bg-blue-500/10 text-blue-500'
+                              }`}>
+                                {statusLabel(task.status)}
+                              </span>
                             </div>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2">
-                            {!isAdmin && task.scheduled_date && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 font-mono text-[11px] font-semibold text-muted">
-                                {task.scheduled_date}
-                              </span>
-                            )}
-                            {isOverdue && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-error/25 bg-error/10 px-2.5 py-1 text-[11px] font-bold text-error">
-                                Terlambat {task.days_overdue} hari
-                              </span>
-                            )}
-                            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                              task.status === 'ongoing'
-                                ? 'border-warning/25 bg-warning/10 text-warning'
-                                : 'border-blue-500/25 bg-blue-500/10 text-blue-500'
-                            }`}>
-                              {statusLabel(task.status)}
-                            </span>
                             {!isAdmin && task.status === 'ongoing' && (
                               <button
                                 type="button"
@@ -425,7 +445,7 @@ export default function DashboardPage() {
                               </button>
                             )}
                           </div>
-                        </div>
+                        </article>
                       );
                     })}
                   </div>

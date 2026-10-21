@@ -1,6 +1,6 @@
 # Changelog - Frontend SIGAP
 
-## [1.55.10] - 2026-10-20
+## [1.55.23] - 2026-10-20
 
 ### Badge status Siaga untuk stream on-demand
 
@@ -28,7 +28,7 @@ alasan perubahan: Menampilkan status siaga on-demand secara akurat dan menghinda
 
 ---
 
-## [1.55.9] - 2026-10-20
+## [1.55.22] - 2026-10-20
 
 ### Default SD/sub dan pesan codec per-perangkat
 
@@ -50,7 +50,7 @@ alasan perubahan: Menyesuaikan default dan pesan UI dengan hasil pilot THD-15 SD
 
 ---
 
-## [1.55.8] - 2026-10-20
+## [1.55.21] - 2026-10-20
 
 ### Pemutar CCTV: pesan jelas saat codec H.265 ditolak browser
 
@@ -76,7 +76,7 @@ alasan perubahan: Mengubah kegagalan codec yang berulang menjadi pesan diagnosti
 
 ---
 
-## [1.55.7] - 2026-10-20
+## [1.55.20] - 2026-10-20
 
 ### Form CCTV: edit URL RTSP tanpa menerima kredensial mentah
 
@@ -98,7 +98,7 @@ alasan perubahan: Mencegah kredensial RTSP tampil di UI dan menjaga kompatibilit
 
 ---
 
-## [1.55.6] - 2026-10-20
+## [1.55.19] - 2026-10-20
 
 ### Form CCTV: konfigurasi streaming hanya lewat URL RTSP
 
@@ -120,7 +120,7 @@ alasan perubahan: Menyelaraskan UI dengan cara pakai sebenarnya: satu URL RTSP p
 
 ---
 
-## [1.55.5] - 2026-10-18
+## [1.55.18] - 2026-10-18
 
 ### Service worker: API selalu network-only (hardening cache PWA)
 
@@ -138,7 +138,7 @@ alasan perubahan: Mencegah kebocoran data via Cache Storage PWA dan penyajian da
 
 ---
 
-## [1.55.4] - 2026-10-18
+## [1.55.17] - 2026-10-18
 
 ### Perbaikan loop redirect halaman ganti sandi (alur wajib ganti sandi)
 
@@ -155,6 +155,285 @@ file yang diubah:
 - e2e/playwright.config.ts, e2e/package.json (setup Playwright)
 - frontend/changelog.md
 alasan perubahan: Mencegah loop reload tanpa henti + rate limit pada alur wajib ganti sandi, sekaligus memulihkan fungsi ganti sandi mandiri.
+
+---
+
+## [1.55.16] - 2026-09-28
+
+### Kejelasan penugasan jadwal dan proteksi inventaris
+
+perubahan yang dilakukan: **Menjelaskan status jadwal tanpa teknisi secara akurat dan mencegah teknisi melihat atau memuat halaman inventaris suku cadang.**
+
+- Jadwal tanpa teknisi kini berlabel `Belum ditugaskan` dan menjelaskan bahwa admin masih harus memilih teknisi.
+- Opsi kosong pada formulir jadwal tidak lagi menyatakan admin otomatis menjadi pelaksana.
+- Halaman Suku Cadang melakukan pemeriksaan peran sebelum memuat daftar, kawasan, atau langganan pembaruan stok.
+- Navigasi paksa oleh teknisi diarahkan kembali ke dashboard tanpa menampilkan isi inventaris.
+
+timestamp: 2026-09-28 WITA
+kategori: Kritis, Frontend (Manual Test Bug 14 dan 20)
+file yang diubah:
+- frontend/src/app/schedules/page.tsx
+- frontend/src/app/suku-cadang/page.tsx
+
+---
+
+## [1.55.15] - 2026-09-28
+
+### Diagnosis koneksi halaman Monitor CCTV
+
+perubahan yang dilakukan: **Menampilkan kesiapan MediaMTX secara langsung dan mencegah halaman menganggap stream aktif ketika seluruh proses start gagal.**
+
+- Mode native-local meneruskan `/stream/*` ke MediaMTX pada port 8889 tanpa membutuhkan Nginx.
+- Halaman Monitor menampilkan status MediaMTX terhubung/tidak terhubung dan menyediakan aksi periksa ulang.
+- Hasil start-all membedakan berhasil penuh, berhasil sebagian, tidak ada CCTV aktif, dan gagal seluruhnya.
+- Pesan kegagalan memberi tindakan yang relevan tanpa menampilkan informasi sensitif RTSP.
+
+timestamp: 2026-09-28 WITA
+kategori: Kritis, Frontend (Manual Test Bug 08)
+file yang diubah:
+- frontend/next.config.ts
+- frontend/src/app/monitor/page.tsx
+- docs/README.md
+
+---
+
+## [1.55.14] - 2026-09-28
+
+### Filter kawasan aset CCTV
+
+perubahan yang dilakukan: **Mengaktifkan filter dan sortir kawasan secara konsisten pada daftar, pagination, pemilihan semua, dan cetak QR CCTV.**
+
+- Modal Sortir menyediakan pilihan kawasan dan indikator filter aktif.
+- Permintaan daftar CCTV mengirim kawasan yang dipilih serta kembali ke halaman pertama ketika filter berubah.
+- Pemilihan seluruh CCTV dan pengambilan data cetak QR mempertahankan filter kawasan yang sedang aktif.
+- Kolom Kawasan dan Lokasi disejajarkan kembali dengan header tabel, serta kondisi kosong menjelaskan bila tidak ada hasil filter.
+- Opsi sortir Kawasan memakai nama kawasan secara alfabetis.
+
+timestamp: 2026-09-28 WITA
+kategori: Sedang, Frontend (Manual Test Bug 04)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- docs/README.md
+
+---
+
+## [1.55.13] - 2026-09-28
+
+### Perbaikan aktivasi push dan tujuan notifikasi jadwal
+
+perubahan yang dilakukan: **Menghapus ketergantungan pada VAPID build-time, menjaga Service Worker aktif saat pengujian lokal, dan memperjelas status push di profil.**
+
+- Profil mengambil public key dari backend dan memvalidasinya sebelum memanggil `PushManager.subscribe`.
+- Subscription dengan key lama dilepas sebelum dibuat ulang agar rotasi VAPID tidak meninggalkan endpoint usang.
+- Service Worker development tetap terdaftar untuk push tetapi seluruh caching dimatikan agar tidak mengganggu Turbopack.
+- Status konfigurasi, dukungan browser, izin ditolak, dan push aktif ditampilkan secara terpisah; notifikasi in-app tetap dinyatakan aktif sebagai fallback.
+- Notifikasi penugasan jadwal membuka dashboard teknisi.
+
+timestamp: 2026-09-28 WITA
+kategori: Tinggi, Frontend (Manual Test Bug 11, 12, dan 15)
+file yang diubah:
+- frontend/public/sw.js
+- frontend/src/app/pemberitahuan/page.tsx
+- frontend/src/components/NotificationBell.tsx
+- frontend/src/components/PushNotificationOptIn.tsx
+- frontend/src/components/ServiceWorkerRegister.tsx
+- frontend/tests/service-worker-cache.test.mjs
+- docs/README.md
+
+---
+
+## [1.55.12] - 2026-09-28
+
+### Perbaikan template laporan, filter kawasan, dan notifikasi zona
+
+perubahan yang dilakukan: **Memperjelas penggunaan kembali template laporan, mengaktifkan filter kawasan suku cadang, dan menambahkan tujuan navigasi notifikasi penugasan zona.**
+
+- Template tersimpan memiliki ringkasan konfigurasi, status aktif, dan tombol `Gunakan Template` yang jelas.
+- Form suku cadang menyimpan kawasan dan daftar dimuat ulang ketika filter kawasan berubah.
+- Notifikasi in-app maupun push penugasan zona mengarah ke Peta Sebaran CCTV yang dapat diakses teknisi.
+
+timestamp: 2026-09-28 WITA
+kategori: Sedang, Frontend (Manual Test Bug 18, 19, 22)
+file yang diubah:
+- frontend/src/app/laporan-kustom/page.tsx
+- frontend/src/app/suku-cadang/page.tsx
+- frontend/src/app/pemberitahuan/page.tsx
+- frontend/src/components/NotificationBell.tsx
+- frontend/public/sw.js
+- frontend/tests/service-worker-cache.test.mjs
+- docs/README.md
+
+---
+
+## [1.55.11] - 2026-09-27
+
+### Perbaikan Sebaran CCTV dan SLA
+
+perubahan yang dilakukan: **Menambahkan filter zona pada Sebaran CCTV, memperbaiki kontras mode gelap SLA, dan menghapus tombol Muat ulang SLA.**
+
+- Filter zona memakai endpoint `/zones/all` dan meneruskan `zone_id` ke daftar CCTV agar peta, grid, serta ringkasan tetap konsisten.
+- Grafik SLA memakai token tema yang valid untuk grid, sumbu, tooltip, dan teks pada mode gelap.
+- Data SLA tetap dimuat otomatis saat halaman dibuka tanpa tombol muat ulang manual.
+
+timestamp: 2026-09-27 WITA
+kategori: Sedang, Frontend (Manual Test Bug 23, 24, 25)
+file yang diubah:
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/app/sla/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- docs/README.md
+
+---
+
+## [1.55.10] - 2026-09-27
+
+### Penegasan ikon pemindai dashboard teknisi
+
+perubahan yang dilakukan: **Memendekkan label pintasan menjadi `Pindai` dan memperbesar ikon scanner dengan latar aksen agar lebih mudah dikenali.**
+
+timestamp: 2026-09-27 WITA
+kategori: Rendah, Frontend (Distill)
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+
+---
+
+## [1.55.9] - 2026-09-27
+
+### Distill pintasan pemindai QR dashboard teknisi
+
+perubahan yang dilakukan: **Mengganti kartu Pengecekan Lapangan menjadi satu tombol scanner ringkas di pojok kanan atas dashboard teknisi.**
+
+before:
+- Pintasan memakai satu section penuh dengan judul, ikon besar, deskripsi, dan tombol terpisah.
+
+after:
+- Pojok kanan atas hanya menampilkan ikon scanner dan label `Pindai QR CCTV untuk Pemeliharaan`.
+- Deskripsi perangkat fisik dihapus tanpa mengubah perilaku pembukaan pemindai.
+
+timestamp: 2026-09-27 WITA
+kategori: Rendah, Frontend (Distill)
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+
+---
+
+## [1.55.8] - 2026-09-27
+
+### Distill halaman ubah kata sandi
+
+perubahan yang dilakukan: **Menyederhanakan halaman menjadi satu form terpusat berisi kata sandi baru, konfirmasi, aksi simpan, dan kembali ke login.**
+
+before:
+- Halaman memakai panel dua kolom, logo besar, banner wajib, checklist visual, toggle tema, dan banyak penjelasan.
+- Mode sukarela menampilkan kata sandi saat ini dan tombol kembali dapat menuju profil.
+
+after:
+- Seluruh konten berada dalam satu panel ringkas dengan dua input dan satu petunjuk persyaratan.
+- Tombol kembali selalu melakukan logout lalu membuka halaman login sehingga tidak pernah singgah ke dashboard.
+
+timestamp: 2026-09-27 WITA
+kategori: Rendah, Frontend (Distill + Authentication UX)
+file yang diubah:
+- frontend/src/app/change-password/page.tsx
+
+---
+
+## [1.55.7] - 2026-09-27
+
+### Perbaikan Bug Manual 09: alur wajib ubah kata sandi
+
+perubahan yang dilakukan: **Menghapus kompetisi redirect antara AuthContext, login, dan halaman ubah kata sandi serta membangun ulang halaman pengamanan akun dalam Bahasa Indonesia.**
+
+before:
+- Login paksa memakai navigasi penuh sementara halaman lain menjalankan `router.push/replace`, sehingga halaman dapat reload berulang dan berkedip antara dashboard, login, dan ubah kata sandi.
+- Setelah kata sandi berhasil diubah, kode mengarah ke dashboard sekaligus ke login.
+- Tombol kembali menuju dashboard meskipun akun belum boleh mengaksesnya.
+
+after:
+- Login menentukan satu tujuan berdasarkan `must_change_password`, sedangkan route terlindungi memblokir isi dashboard dan memakai `replace` menuju pengamanan akun.
+- Respons backend memperbarui user serta cookie sesi, kemudian pengguna diarahkan satu kali ke dashboard tanpa logout.
+- Mode wajib menyediakan pilihan keluar ke login; mode sukarela kembali ke profil dan meminta kata sandi saat ini.
+- Halaman memakai identitas visual SIGAP, persyaratan kata sandi yang terlihat, validasi lokal, status loading, dan pesan kesalahan yang dapat ditindaklanjuti.
+
+timestamp: 2026-09-27 WITA
+kategori: Tinggi, Frontend (Authentication Flow + UX)
+file yang diubah:
+- frontend/src/context/AuthContext.tsx
+- frontend/src/components/ProtectedRoute.tsx
+- frontend/src/app/login/page.tsx
+- frontend/src/app/change-password/page.tsx
+
+---
+
+## [1.55.6] - 2026-09-27
+
+### Perbaikan Bug Manual 05-06: informasi tugas teknisi dan akses pemindai QR
+
+perubahan yang dilakukan: **Menjadikan nama pekerjaan sebagai informasi utama pada daftar Tugas Saya serta menambahkan pintasan Pengecekan Lapangan yang langsung membuka pemindai QR CCTV.**
+
+before:
+- Teknisi hanya melihat nama CCTV pada baris tugas sehingga pekerjaan yang perlu dilakukan tidak jelas.
+- Pemindai QR hanya tersedia di halaman aset CCTV dan membutuhkan navigasi serta klik tambahan.
+
+after:
+- Setiap tugas menampilkan nama tugas, CCTV, kode aset, lokasi, jadwal yang mudah dibaca, status, keterlambatan, dan aksi penyelesaian.
+- Dashboard teknisi memiliki aksi Pengecekan Lapangan yang membuka halaman aset dengan modal pemindai langsung aktif, lalu membersihkan parameter URL agar modal tidak terbuka ulang saat refresh.
+
+timestamp: 2026-09-27 WITA
+kategori: Sedang, Frontend (Bug Fix + Technician Workflow)
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+- frontend/src/app/cctv/page.tsx
+
+---
+
+## [1.55.5] - 2026-09-27
+
+### Perbaikan Bug Manual 07 dan 16: foto profil dan guard laporan kustom
+
+perubahan yang dilakukan: **Foto profil kini selalu memakai rasio persegi tanpa distorsi dan halaman laporan kustom tidak pernah merender konten untuk pengguna non-admin.**
+
+before:
+- State foto dapat tetap kosong saat halaman profil dibuka langsung sebelum bootstrap sesi selesai; bingkai foto belum menjelaskan atau mengunci perilaku rasio secara eksplisit.
+- Halaman laporan kustom mengandalkan proxy dan API tanpa guard klien, sehingga navigasi sisi klien dapat sempat menampilkan konten admin.
+
+after:
+- State profil disinkronkan setelah AuthContext tersedia; avatar memakai bingkai 1:1 dengan `object-cover object-center` dan petunjuk rasio yang jelas.
+- Halaman memeriksa `authLoading` dan role, menampilkan status pemeriksaan izin, mengalihkan teknisi ke dashboard, serta baru memuat template setelah role admin terkonfirmasi.
+
+timestamp: 2026-09-27 WITA
+kategori: Sedang, Frontend (Bug Fix + Authorization UX)
+file yang diubah:
+- frontend/src/app/profile/page.tsx
+- frontend/src/app/laporan-kustom/page.tsx
+
+---
+
+## [1.55.4] - 2026-09-26
+
+### Perbaikan Bug Manual 01-03: pengalihan teknisi dan filter/sortir kawasan
+
+perubahan yang dilakukan: **Pilihan alihkan tugas tidak lagi menampilkan teknisi aktif, ekspor maintenance mempertahankan filter kawasan, dan tabel site mengirim sortir ke backend agar berlaku pada seluruh hasil.**
+
+before:
+- Modal pengalihan menampilkan kembali teknisi yang sedang ditugaskan.
+- Unduhan CSV/PDF tidak membawa filter kawasan yang sedang aktif.
+- Sortir site hanya mengurutkan data pada halaman browser saat ini.
+
+after:
+- Daftar teknisi tujuan mengecualikan teknisi aktif, memiliki pesan kosong kontekstual, dan tombol aksi dinonaktifkan bila tidak ada tujuan valid.
+- `site_id` disertakan pada ekspor CSV dan PDF maintenance.
+- Kolom Nama, Kode, Alamat, dan Teknisi memakai sortir server-side serta kembali ke halaman pertama saat urutan berubah.
+
+timestamp: 2026-09-26 WITA
+kategori: Sedang, Frontend (Bug Fix + UX)
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+- frontend/src/app/sites/page.tsx
+- frontend/src/lib/api.ts
+
+---
 
 ## [1.55.3] - 2026-08-20
 

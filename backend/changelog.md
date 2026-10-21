@@ -1,6 +1,6 @@
 # Changelog - Backend SIGAP
 
-## [0.64.16] - 2026-10-21
+## [0.64.24] - 2026-10-21
 
 ### Stabilkan probe awal setelah restart
 
@@ -25,7 +25,7 @@ alasan perubahan: Menghilangkan status `unknown` palsu pada probe pertama setela
 
 ---
 
-## [0.64.15] - 2026-10-20
+## [0.64.23] - 2026-10-20
 
 ### Probe Metro-E pasif saat host tanpa rute OIKN
 
@@ -56,7 +56,7 @@ alasan perubahan: Menyimpan IP Metro-E tanpa menimbulkan offline palsu pada depl
 
 ---
 
-## [0.64.14] - 2026-10-20
+## [0.64.22] - 2026-10-20
 
 ### Status probe on-demand: idle bukan offline
 
@@ -86,7 +86,7 @@ alasan perubahan: Mencegah kamera on-demand yang hanya siaga ditampilkan offline
 
 ---
 
-## [0.64.13] - 2026-10-20
+## [0.64.21] - 2026-10-20
 
 ### Pilot THD-15 SD berhasil: sub-stream menjadi default
 
@@ -109,7 +109,7 @@ alasan perubahan: Menindaklanjuti pilot THD-15 SD yang berhasil dan menjadikan s
 
 ---
 
-## [0.64.12] - 2026-10-20
+## [0.64.20] - 2026-10-20
 
 ### Streaming: pemilihan sub-stream dan update path MediaMTX
 
@@ -138,7 +138,7 @@ alasan perubahan: Memastikan tombol SD/HD dan konfigurasi sub-stream benar-benar
 
 ---
 
-## [0.64.11] - 2026-10-20
+## [0.64.19] - 2026-10-20
 
 ### Perbaikan keamanan P0: metrics, diagnostik, dan URL RTSP
 
@@ -187,7 +187,7 @@ alasan perubahan: Menutup panic metrics, eksposur endpoint diagnostik, kebocoran
 
 ---
 
-## [0.64.10] - 2026-10-20
+## [0.64.18] - 2026-10-20
 
 ### Perubahan: Form CCTV memakai URL RTSP saja
 
@@ -209,7 +209,7 @@ alasan perubahan: Menyelaraskan form dengan konfigurasi streaming berbasis URL R
 
 ---
 
-## [0.64.9] - 2026-10-20
+## [0.64.17] - 2026-10-20
 
 ### Peningkatan: Tombol detail pada seluruh toast error frontend
 
@@ -235,7 +235,7 @@ alasan perubahan: Setiap error harus bisa dijelaskan lokasi dan penyebabnya lang
 
 ---
 
-## [0.64.8] - 2026-10-20
+## [0.64.16] - 2026-10-20
 
 ### Peningkatan: Pesan error parsing body request
 
@@ -263,7 +263,7 @@ alasan perubahan: Pesan error parsing harus menjelaskan field dan penyebabnya ag
 
 ---
 
-## [0.64.7] - 2026-10-20
+## [0.64.15] - 2026-10-20
 
 ### Fix: Form Tambah CCTV gagal saat Kawasan/Zona kosong
 
@@ -281,7 +281,7 @@ alasan perubahan: Field Kawasan/Zona bersifat opsional; nilai `null` harus diter
 
 ---
 
-## [0.64.6] - 2026-10-18
+## [0.64.14] - 2026-10-18
 
 ### Hardening Keamanan P0 (Tindak Lanjut Audit)
 
@@ -314,6 +314,206 @@ file yang diubah:
 - frontend/public/sw.js (network-only API)
 - backend/changelog.md
 alasan perubahan: Menutup temuan keamanan P0 dari audit (secret hardcoded, kebocoran env/credential, cache SW berisiko, SSRF, isolasi site tidak ditegakkan).
+
+---
+
+## [0.64.13] - 2026-10-20
+
+### Penghapusan kredensial database hardcoded dan pengamanan artefak lokal
+
+perubahan yang dilakukan: **Menghapus password database yang tertulis langsung di `docker-compose.yml` dan mencegah artefak debug/profil browser lokal ikut ter-commit.**
+
+- `DB_PASSWORD` tidak lagi di-hardcode; nilai dibaca dari `backend/.env.docker` atau Docker secret `/run/secrets/db_password`.
+- Menambahkan `.codex/`, `output/`, `tmp/`, serta cache build Go lokal ke `.gitignore`.
+- Password lama tetap perlu dirotasi karena masih tercatat pada riwayat Git.
+
+before:
+- `docker-compose.yml` memuat `DB_PASSWORD=...` secara hardcoded.
+- Profil browser `.codex/edge-cdp-profile` (±143 MB), `.codex/edge-debug-profile`, `output/`, dan `tmp/` berstatus untracked dan berpotensi ikut ter-commit.
+
+after:
+- `docker-compose.yml` hanya mengandalkan `env_file`/Docker secret.
+- Artefak lokal tersebut diabaikan Git sehingga tidak dapat ikut ter-commit secara tidak sengaja.
+
+timestamp: 2026-10-20 13:37 WITA
+kategori: Kritis, Keamanan/Infrastruktur
+file yang diubah:
+- docker-compose.yml
+- .gitignore
+- backend/changelog.md
+alasan perubahan: Mencegah kebocoran kredensial database dan mencegah artefak debug berukuran besar/profil browser masuk ke repositori.
+
+---
+
+## [0.64.12] - 2026-09-28
+
+### Otorisasi inventaris dan edit CCTV opsional
+
+perubahan yang dilakukan: **Mengunci inventaris suku cadang untuk admin dan memperbaiki parsing nilai kawasan/zona kosong saat mengedit CCTV.**
+
+- Seluruh endpoint daftar, detail, tambah, edit, dan hapus inventaris suku cadang kini mewajibkan peran admin.
+- Endpoint pencatatan penggunaan suku cadang pada pekerjaan pemeliharaan tetap tersedia untuk teknisi.
+- Parser UUID opsional kini menerima JSON `null` dan string kosong sebagai perintah mengosongkan relasi.
+- Ditambahkan pengujian HTTP 403 bagi teknisi serta regresi penyimpanan URL RTSP bersama `site_id`/`zone_id` kosong.
+- Perilaku generator jadwal tanpa teknisi diverifikasi tetap menghasilkan tugas `scheduled`, bukan otomatis dikerjakan admin.
+
+timestamp: 2026-09-28 WITA
+kategori: Kritis, Backend (Manual Test Bug 14, 20, 21)
+file yang diubah:
+- backend/handlers/cctv_test.go
+- backend/routes/routes_test.go
+- backend/routes/spare_part.go
+- backend/utils/optional_uuid.go
+- backend/utils/optional_uuid_test.go
+
+---
+
+## [0.64.11] - 2026-09-28
+
+### Kesiapan MediaMTX dan streaming lintas jaringan
+
+perubahan yang dilakukan: **Memisahkan alamat MediaMTX native-local dan Docker, menambahkan pemeriksaan kesiapan, serta menyediakan ICE TCP fallback untuk jaringan yang memblokir UDP.**
+
+- Backend native-local memakai MediaMTX pada `127.0.0.1:9997`; Compose mengirim alamat internal `mediamtx:9997` secara eksplisit.
+- Endpoint admin `GET /api/streams/readiness` memeriksa MediaMTX tanpa mengekspos URL internal atau kredensial RTSP.
+- `start-all` berhenti dengan pesan yang spesifik ketika MediaMTX tidak terjangkau, serta melewati CCTV yang belum memiliki channel port.
+- MediaMTX mendengarkan ICE pada UDP dan TCP port 8189; Compose mewajibkan kandidat domain/IP yang dapat dijangkau browser.
+- Ditambahkan pengujian kesiapan dan kegagalan start-all ketika MediaMTX tidak tersedia.
+
+timestamp: 2026-09-28 WITA
+kategori: Kritis, Backend/Infrastruktur (Manual Test Bug 08)
+file yang diubah:
+- .env.example
+- backend/handlers/stream.go
+- backend/handlers/stream_test.go
+- backend/routes/stream.go
+- backend/utils/mediamtx.go
+- docker-compose.yml
+- mediamtx.yml
+
+---
+
+## [0.64.10] - 2026-09-28
+
+### Filter dan sortir kawasan aset CCTV
+
+perubahan yang dilakukan: **Menerapkan kawasan pada query daftar CCTV dan menyediakan nama kawasan yang dapat dipakai frontend.**
+
+- Endpoint daftar CCTV menerima filter `site_id` dan menerapkannya sebelum perhitungan total serta pagination.
+- Relasi kawasan dimuat bersama CCTV agar nama kawasan tampil, bukan UUID atau label sementara.
+- Pengurutan `site_name` dilakukan berdasarkan nama kawasan untuk seluruh data, bukan hanya baris pada halaman aktif.
+- Ditambahkan pengujian handler untuk filter, relasi nama kawasan, dan sortir kawasan.
+
+timestamp: 2026-09-28 WITA
+kategori: Sedang, Backend (Manual Test Bug 04)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_list_test.go
+- backend/models/cctv.go
+
+---
+
+## [0.64.9] - 2026-09-28
+
+### Perbaikan VAPID dan notifikasi jadwal harian
+
+perubahan yang dilakukan: **Menyatukan konfigurasi Web Push di backend dan memastikan penugasan jadwal langsung menghasilkan notifikasi teknisi.**
+
+- Endpoint `GET /api/push/public-key` menjadi sumber public key tunggal untuk frontend.
+- Pasangan VAPID divalidasi sebagai key P-256 dan subject email dinormalisasi menjadi URI `mailto:`.
+- Jadwal baru atau perubahan teknisi menyimpan notifikasi penugasan secara sinkron.
+- Generator jadwal memakai `NotifyUserSync` agar in-app, WebSocket, dan Web Push berjalan pada jalur yang sama.
+- Ditambahkan utilitas `go run ./cmd/vapid-keygen` untuk membuat pasangan key unik per environment.
+
+timestamp: 2026-09-28 WITA
+kategori: Tinggi, Backend (Manual Test Bug 11, 12, dan 15)
+file yang diubah:
+- backend/.env.example
+- backend/cmd/vapid-keygen/main.go
+- backend/handlers/maintenance_schedule.go
+- backend/handlers/maintenance_schedule_test.go
+- backend/handlers/push.go
+- backend/handlers/push_test.go
+- backend/handlers/schedule_runner.go
+- backend/models/notification.go
+- backend/routes/push.go
+- backend/utils/push.go
+- backend/utils/push_test.go
+
+---
+
+## [0.64.8] - 2026-09-28
+
+### Perbaikan filter kawasan suku cadang dan notifikasi zona
+
+perubahan yang dilakukan: **Menambahkan relasi kawasan pada inventaris suku cadang serta notifikasi sinkron untuk teknisi yang baru ditugaskan ke zona.**
+
+- Migration `000026` menambahkan `site_id` tanpa menghapus data dan menempatkan data lama pada kawasan default (dinomori ulang dari `000025` agar tidak bentrok dengan migrasi stream_state).
+- Endpoint daftar suku cadang memvalidasi serta menerapkan filter `site_id`, termasuk pagination yang konsisten.
+- Penugasan zona membandingkan anggota lama dan baru agar notifikasi tidak dikirim berulang kepada teknisi yang sama.
+- Notifikasi disimpan sebelum respons sukses dan tetap diteruskan melalui WebSocket serta Web Push.
+
+timestamp: 2026-09-28 WITA
+kategori: Sedang, Backend (Manual Test Bug 19 dan 22)
+file yang diubah:
+- backend/migrations/000026_spare_parts_site.up.sql
+- backend/migrations/000026_spare_parts_site.down.sql
+- backend/models/spare_part.go
+- backend/models/notification.go
+- backend/handlers/spare_part.go
+- backend/handlers/spare_part_test.go
+- backend/handlers/zone.go
+- backend/handlers/zone_test.go
+
+---
+
+## [0.64.7] - 2026-09-27
+
+### Perbaikan Bug Manual 16-17: otorisasi laporan dan PDF kustom
+
+perubahan yang dilakukan: **Menambahkan pengujian route yang membuktikan teknisi ditolak dari API laporan serta mengganti tabel PDF kustom menjadi layout adaptif dengan pembungkusan teks dan pagination yang konsisten.**
+
+before:
+- Perlindungan `RequireRole("admin")` belum memiliki pengujian pada route laporan menggunakan token teknisi.
+- Semua kolom PDF dibagi sama rata dan isi dipotong berdasarkan jumlah karakter, sehingga Nama dan IP NVR dapat terpotong atau tidak rapi.
+
+after:
+- Pengujian route memakai token teknisi valid dan memastikan `/reports/generate` mengembalikan HTTP 403 sebelum handler dijalankan.
+- Lebar kolom dihitung dari label dan data, seluruh teks dibungkus, tinggi baris menyesuaikan isi, header diulang, dan footer menampilkan nomor halaman.
+
+timestamp: 2026-09-27 WITA
+kategori: Sedang, Backend (Authorization Test + PDF Reporting)
+file yang diubah:
+- backend/handlers/report_builder.go
+- backend/handlers/report_builder_test.go
+- backend/routes/routes_test.go
+
+---
+
+## [0.64.6] - 2026-09-26
+
+### Perbaikan Bug Manual 01-03: pengalihan teknisi, PDF, dan kawasan
+
+perubahan yang dilakukan: **API pengalihan tetap menolak teknisi aktif, filter kawasan maintenance mengikuti relasi CCTV pada daftar/CSV/PDF, sortir site diterapkan server-side, dan layout PDF dipadatkan menjadi tabel A4 yang membungkus seluruh isi.**
+
+before:
+- Filter maintenance dapat bergantung pada kolom site log yang tidak selalu mencerminkan kawasan CCTV saat ini; ekspor dan PDF tidak menerima scope kawasan dari UI.
+- Daftar site selalu diurutkan nama naik dan menghitung teknisi dengan query per baris.
+- Lebar tabel PDF melampaui area A4, posisi kop bergeser, isi sel panjang terpotong, serta header halaman lanjutan dapat memengaruhi gaya baris pertama.
+
+after:
+- Scope kawasan memakai `EXISTS` terhadap `cctvs.site_id` dan diterapkan konsisten pada daftar, ekspor CSV, serta laporan PDF.
+- Sortir site memakai whitelist kolom dan arah di backend; jumlah teknisi dihitung dalam satu subquery.
+- Lebar tabel tepat 182 mm, semua kolom membungkus teks, baris tidak terbelah antarhalaman, header tabel diulang, dan footer memberi nomor halaman.
+
+timestamp: 2026-09-26 WITA
+kategori: Sedang, Backend (Bug Fix + Reporting)
+file yang diubah:
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/report.go
+- backend/handlers/site.go
+- backend/handlers/site_test.go
 
 ---
 

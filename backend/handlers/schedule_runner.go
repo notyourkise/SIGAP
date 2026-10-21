@@ -135,22 +135,21 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 	// Broadcast agar halaman log pemeliharaan ter-refresh real-time.
 	utils.BroadcastEvent("MAINTENANCE_CREATED", logEntry)
 
-	// Bila jadwal langsung menugaskan teknisi, kirim notifikasi in-app.
-	// Penulisan dilakukan sinkron (bukan via utils.NotifyUser yang async) karena
-	// generator sudah berjalan di background — tidak ada request yang diblokir.
+	// Bila jadwal langsung menugaskan teknisi, tulis notifikasi secara sinkron.
+	// Helper ini juga memicu WebSocket dan Web Push sehingga jalur in-app dan
+	// push tidak lagi berbeda perilaku.
 	if schedule.TechnicianID != nil {
-		notif := models.Notification{
-			UserID:        *schedule.TechnicianID,
-			Type:          models.NotificationTypeAssigned,
-			Title:         "Tugas baru dari jadwal",
-			Message:       "Anda mendapat tugas pemeliharaan terjadwal otomatis: " + schedule.ActionTaken + ".",
-			ReferenceType: "maintenance-log",
-			ReferenceID:   &logEntry.ID,
-		}
-		if err := db.Create(&notif).Error; err != nil {
+		if err := utils.NotifyUserSync(
+			db,
+			*schedule.TechnicianID,
+			models.NotificationTypeAssigned,
+			"Tugas baru dari jadwal",
+			"Anda mendapat tugas pemeliharaan terjadwal otomatis: "+schedule.ActionTaken+".",
+			"maintenance-log",
+			&logEntry.ID,
+		); err != nil {
 			utils.Log.Errorf("⚠️ Gagal mengirim notifikasi jadwal %s: %v", schedule.ID.String(), err)
 		}
-		utils.BroadcastToUser(schedule.TechnicianID.String(), utils.EventNotifCreated, notif)
 	}
 
 	utils.Log.Infof("✅ Generator jadwal %s: log pemeliharaan dibuat (status: %s, next_run_at: %s)",

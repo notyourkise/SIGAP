@@ -2,8 +2,11 @@ package utils
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 
 	"sigap-backend/models"
 
@@ -52,9 +55,53 @@ type PushNotificationPayload struct {
 
 // vapidConfigured mengembalikan true bila seluruh kunci VAPID tersedia di env.
 func vapidConfigured() bool {
-	return os.Getenv("VAPID_PUBLIC_KEY") != "" &&
-		os.Getenv("VAPID_PRIVATE_KEY") != "" &&
-		os.Getenv("VAPID_EMAIL") != ""
+	return ValidateVAPIDConfiguration() == nil
+}
+
+// ValidateVAPIDConfiguration memastikan pasangan kunci dan kontak pengirim
+// lengkap sebelum browser ditawari fitur push.
+func ValidateVAPIDConfiguration() error {
+	if _, err := VAPIDPublicKey(); err != nil {
+		return err
+	}
+
+	privateKey := strings.Trim(strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")), `"'`)
+	decodedPrivate, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(privateKey, "="))
+	if err != nil || len(decodedPrivate) != 32 {
+		return fmt.Errorf("VAPID_PRIVATE_KEY tidak valid")
+	}
+	if VAPIDSubscriber() == "" {
+		return fmt.Errorf("VAPID_EMAIL belum dikonfigurasi")
+	}
+	return nil
+}
+
+// VAPIDSubscriber membentuk subject URI sesuai spesifikasi VAPID. Konfigurasi
+// lama yang hanya berisi alamat email tetap didukung dengan prefiks mailto:.
+func VAPIDSubscriber() string {
+	subscriber := strings.Trim(strings.TrimSpace(os.Getenv("VAPID_EMAIL")), `"'`)
+	if subscriber != "" && !strings.Contains(subscriber, ":") {
+		return "mailto:" + subscriber
+	}
+	return subscriber
+}
+
+// VAPIDPublicKey mengembalikan public key yang sudah dinormalisasi sekaligus
+// memvalidasi format P-256 uncompressed yang diwajibkan PushManager browser.
+// Public key VAPID harus ter-decode menjadi 65 byte dan diawali byte 0x04.
+func VAPIDPublicKey() (string, error) {
+	key := strings.Trim(strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")), `"'`)
+	if key == "" {
+		return "", fmt.Errorf("VAPID belum dikonfigurasi")
+	}
+
+	normalized := strings.TrimRight(key, "=")
+	decoded, err := base64.RawURLEncoding.DecodeString(normalized)
+	if err != nil || len(decoded) != 65 || decoded[0] != 0x04 {
+		return "", fmt.Errorf("VAPID_PUBLIC_KEY tidak valid")
+	}
+
+	return normalized, nil
 }
 
 // SendPush mengirim notifikasi push ke semua langganan aktif milik user.
@@ -108,6 +155,10 @@ func SendPush(db *gorm.DB, userID uuid.UUID, notifType string, title string, mes
 // SendPushToSubscription mengirim payload mentah (JSON) ke satu subscription
 // menggunakan webpush-go dengan opsi VAPID. Mengembalikan error bila gagal.
 func SendPushToSubscription(sub models.PushSubscription, raw []byte) error {
+	publicKey, err := VAPIDPublicKey()
+	if err != nil {
+		return err
+	}
 	subscription := &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys: webpush.Keys{
@@ -116,8 +167,8 @@ func SendPushToSubscription(sub models.PushSubscription, raw []byte) error {
 		},
 	}
 	options := &webpush.Options{
-		Subscriber:      os.Getenv("VAPID_EMAIL"),
-		VAPIDPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
+		Subscriber:      VAPIDSubscriber(),
+		VAPIDPublicKey:  publicKey,
 		VAPIDPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		TTL:             60,
 	}

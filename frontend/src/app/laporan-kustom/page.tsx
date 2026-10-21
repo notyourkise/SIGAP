@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest, API_BASE_URL, getCookie } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { useAuth } from '@/context/AuthContext';
 import {
   FileSpreadsheet,
   Download,
@@ -16,6 +18,7 @@ import {
   FileText,
   Layers,
   SlidersHorizontal,
+  FolderOpen,
 } from 'lucide-react';
 
 // Definisi entitas dan kolom laporan (konsisten dengan backend).
@@ -77,6 +80,14 @@ const FORMATS = [
   { value: 'pdf', label: 'PDF' },
 ];
 
+const EMPTY_FILTERS: Record<string, string> = {
+  status: '',
+  kategori: '',
+  low_stock: '',
+  start_date: '',
+  end_date: '',
+};
+
 interface ReportTemplate {
   id: string;
   nama: string;
@@ -118,34 +129,36 @@ async function downloadReport(payload: Record<string, unknown>): Promise<{ blob:
 export default function ReportBuilderPage() {
   const toast = useToast();
   const confirm = useConfirm();
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
 
   // Step: entitas
   const [entity, setEntity] = useState('cctv');
   // Step: kolom terpilih
   const [columns, setColumns] = useState<string[]>([]);
   // Step: filter
-  const [filters, setFilters] = useState<Record<string, string>>({
-    status: '',
-    kategori: '',
-    low_stock: '',
-    start_date: '',
-    end_date: '',
-  });
+  const [filters, setFilters] = useState<Record<string, string>>(EMPTY_FILTERS);
   // Step: format
   const [format, setFormat] = useState('csv');
 
   // Template
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [templateName, setTemplateName] = useState('');
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 
   // UI state
-  const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [error, setError] = useState('');
 
   const currentEntity = ENTITIES[entity];
+
+  // Pertahanan berlapis: proxy dan API sudah membatasi admin, sementara guard
+  // klien ini mencegah konten admin sempat terlihat pada navigasi sisi klien.
+  useEffect(() => {
+    if (!authLoading && user?.role !== 'admin') router.replace('/dashboard');
+  }, [authLoading, router, user?.role]);
 
   // Saat entitas berubah, reset kolom terpilih ke semua kolom.
   const handleEntityChange = (next: string) => {
@@ -171,8 +184,15 @@ export default function ReportBuilderPage() {
   }, []);
 
   useEffect(() => {
-    void fetchTemplates();
-  }, [fetchTemplates]);
+    if (user?.role !== 'admin') return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void fetchTemplates();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchTemplates, user?.role]);
 
   const handleDownload = async () => {
     if (columns.length === 0) {
@@ -255,9 +275,10 @@ export default function ReportBuilderPage() {
       if (config.entity && ENTITIES[config.entity]) {
         setEntity(config.entity);
         setColumns(config.columns || ENTITIES[config.entity].columns.map((c) => c.key));
-        setFilters({ ...filters, ...(config.filters || {}) });
+        setFilters({ ...EMPTY_FILTERS, ...(config.filters || {}) });
       }
       if (config.format) setFormat(config.format);
+      setActiveTemplateId(tmpl.id);
       toast.success(`Template "${tmpl.nama}" dimuat.`);
     } catch {
       toast.error('Config template tidak valid.');
@@ -287,6 +308,32 @@ export default function ReportBuilderPage() {
       prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]
     );
   };
+
+  const templateSummary = (tmpl: ReportTemplate) => {
+    try {
+      const config = JSON.parse(tmpl.config) as { entity?: string; columns?: string[]; format?: string };
+      const entityLabel = config.entity && ENTITIES[config.entity]?.label
+        ? ENTITIES[config.entity].label
+        : 'Laporan';
+      const columnCount = Array.isArray(config.columns) ? config.columns.length : 0;
+      return `${entityLabel} · ${columnCount} kolom · ${(config.format || 'csv').toUpperCase()}`;
+    } catch {
+      return 'Konfigurasi template tidak tersedia';
+    }
+  };
+
+  if (authLoading || user?.role !== 'admin') {
+    return (
+      <DashboardLayout>
+        <div className="flex min-h-[45vh] items-center justify-center" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 text-sm font-medium text-muted">
+            <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
+            Memeriksa izin akses admin…
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -553,24 +600,39 @@ export default function ReportBuilderPage() {
               ) : (
                 <div className="divide-y divide-border">
                   {templates.map((tmpl) => (
-                    <div key={tmpl.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                    <div key={tmpl.id} className="px-5 py-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-sm font-semibold">{tmpl.nama}</p>
+                            {activeTemplateId === tmpl.id && (
+                              <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                                Digunakan
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 truncate text-xs text-muted" title={templateSummary(tmpl)}>
+                            {templateSummary(tmpl)}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-muted">Disimpan {tmpl.created_at?.slice(0, 10)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(tmpl)}
+                          className="shrink-0 rounded-lg p-2 text-muted transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                          aria-label={`Hapus template ${tmpl.nama}`}
+                          title="Hapus template"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleLoadTemplate(tmpl)}
-                        className="min-w-0 text-left"
-                        title={`Muat template ${tmpl.nama}`}
+                        className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-bold text-primary transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       >
-                        <p className="truncate text-sm font-semibold hover:text-primary">{tmpl.nama}</p>
-                        <p className="mt-0.5 font-mono text-[11px] text-muted">{tmpl.created_at?.slice(0, 10)}</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTemplate(tmpl)}
-                        className="rounded-lg p-2 text-muted transition-colors hover:bg-error/10 hover:text-error"
-                        aria-label={`Hapus template ${tmpl.nama}`}
-                        title="Hapus template"
-                      >
-                        <Trash2 className="h-4 w-4" />
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        {activeTemplateId === tmpl.id ? 'Muat Ulang Template' : 'Gunakan Template'}
                       </button>
                     </div>
                   ))}

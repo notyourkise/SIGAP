@@ -25,6 +25,7 @@ import { apiRequest } from "@/lib/api";
 
 type PushState =
   | "unsupported" // browser/konteks tidak mendukung
+  | "unavailable" // VAPID belum dikonfigurasi / tidak valid di backend
   | "loading" // sedang memeriksa / berproses
   | "denied" // izin ditolak
   | "off" // belum berlangganan / dinonaktifkan
@@ -36,9 +37,10 @@ interface PushSubscriptionInfo {
   key_auth: string;
 }
 
-// Mengambil public key VAPID dari server via manifest? VAPID public key tidak
-// disediakan backend; pada deployment, key dibundel di frontend. Untuk
-// menandai dukungan, kita hanya cek browser Push API + service worker.
+interface PushConfig {
+  public_key: string;
+}
+
 function isPushSupported(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -62,12 +64,27 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
 }
 
 // Baca existing subscription atau buat yang baru.
-async function getPushSubscription(reg: ServiceWorkerRegistration) {
+async function getPushSubscription(reg: ServiceWorkerRegistration, publicKey: Uint8Array<ArrayBuffer>) {
   let subscription = await reg.pushManager.getSubscription();
+  if (subscription?.options.applicationServerKey) {
+    const currentKey = new Uint8Array(subscription.options.applicationServerKey);
+    const sameKey = currentKey.length === publicKey.length && currentKey.every((byte, index) => byte === publicKey[index]);
+    if (!sameKey) {
+      try {
+        await apiRequest("/push/unsubscribe", {
+          method: "DELETE",
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+      } finally {
+        await subscription.unsubscribe();
+        subscription = null;
+      }
+    }
+  }
   if (!subscription) {
     subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""),
+      applicationServerKey: publicKey,
     });
   }
   return subscription;
@@ -77,10 +94,21 @@ async function getPushSubscription(reg: ServiceWorkerRegistration) {
 // diminta pushManager.subscribe). Buffer dibuat eksplisit agar sesuai tipe
 // BufferSource pada lib TypeScript terbaru.
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-  if (!base64String) return new Uint8Array(new ArrayBuffer(0));
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
+  const normalized = base64String.trim().replace(/^['"]|['"]$/g, "").replace(/=+$/, "");
+  if (!normalized || !/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    throw new Error("Kunci notifikasi push dari server tidak valid.");
+  }
+  const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
+  const base64 = (normalized + padding).replace(/-/g, "+").replace(/_/g, "/");
+  let rawData: string;
+  try {
+    rawData = atob(base64);
+  } catch {
+    throw new Error("Kunci notifikasi push dari server tidak valid.");
+  }
+  if (rawData.length !== 65 || rawData.charCodeAt(0) !== 4) {
+    throw new Error("Kunci notifikasi push dari server tidak valid.");
+  }
   const buffer = new ArrayBuffer(rawData.length);
   const outputArray = new Uint8Array(buffer);
   for (let i = 0; i < rawData.length; ++i) {
@@ -103,6 +131,17 @@ export default function PushNotificationOptIn() {
   const [state, setState] = useState<PushState>("loading");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [publicKey, setPublicKey] = useState<Uint8Array<ArrayBuffer> | null>(null);
+
+  const loadPublicKey = useCallback(async () => {
+    const response = await apiRequest<PushConfig>("/push/public-key");
+    if (!response.data?.public_key) {
+      throw new Error("Notifikasi push belum dikonfigurasi oleh administrator sistem.");
+    }
+    const decoded = urlBase64ToUint8Array(response.data.public_key);
+    setPublicKey(decoded);
+    return decoded;
+  }, []);
 
   const refreshState = useCallback(async () => {
     if (!isPushSupported()) {
@@ -110,6 +149,7 @@ export default function PushNotificationOptIn() {
       return;
     }
     try {
+      await loadPublicKey();
       const permission = Notification.permission;
       if (permission === "denied") {
         setState("denied");
@@ -118,13 +158,15 @@ export default function PushNotificationOptIn() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       setState(sub ? "on" : "off");
-    } catch {
-      setState("off");
+    } catch (err) {
+      setState("unavailable");
+      setError(err instanceof Error ? err.message : "Konfigurasi notifikasi push belum tersedia.");
     }
-  }, []);
+  }, [loadPublicKey]);
 
   useEffect(() => {
-    void refreshState();
+    const timer = window.setTimeout(() => void refreshState(), 0);
+    return () => window.clearTimeout(timer);
   }, [refreshState]);
 
   const enable = async () => {
@@ -142,12 +184,13 @@ export default function PushNotificationOptIn() {
           return;
         }
       }
+      const key = publicKey ?? await loadPublicKey();
       const reg = await navigator.serviceWorker.ready;
-      const subscription = await getPushSubscription(reg);
+      const subscription = await getPushSubscription(reg, key);
       const info = toSubscriptionInfo(subscription);
 
       if (!info.endpoint || !info.key_p256dh || !info.key_auth) {
-        throw new Error("Subscription push tidak lengkap (VAPID public key belum diatur di frontend?).");
+        throw new Error("Langganan push browser tidak lengkap. Muat ulang halaman lalu coba lagi.");
       }
 
       await apiRequest("/push/subscribe", {
@@ -198,6 +241,20 @@ export default function PushNotificationOptIn() {
         Browser/perangkat ini tidak mendukung notifikasi push. Gunakan browser
         modern (Chrome/Edge) pada koneksi aman (https).
       </p>
+    );
+  }
+
+  if (state === "unavailable") {
+    return (
+      <div className="space-y-1.5" role="status">
+        <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <BellOff className="h-4 w-4 text-muted" />
+          Notifikasi push belum tersedia
+        </p>
+        <p className="max-w-[70ch] text-xs leading-5 text-muted">
+          {error || "Konfigurasi notifikasi push belum siap."} Notifikasi di dalam aplikasi tetap aktif.
+        </p>
+      </div>
     );
   }
 

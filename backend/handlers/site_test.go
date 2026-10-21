@@ -22,6 +22,14 @@ func siteRows(id uuid.UUID, nama, kode string, isDefault bool) *sqlmock.Rows {
 	}).AddRow(id, time.Now(), time.Now(), nil, nama, kode, "", nil, nil, isDefault)
 }
 
+// siteListRows menyertakan kolom hasil subquery jumlah teknisi.
+func siteListRows(id uuid.UUID, nama, kode string, isDefault bool, userCount int64) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at", "nama", "kode", "alamat",
+		"koordinat_lat", "koordinat_lng", "is_default", "user_count",
+	}).AddRow(id, time.Now(), time.Now(), nil, nama, kode, "", nil, nil, isDefault, userCount)
+}
+
 // TestCreateSite_Success menguji pembuatan site baru (LogAudit async tidak di-mock).
 func TestCreateSite_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
@@ -98,12 +106,9 @@ func TestGetAllSites_Success(t *testing.T) {
 
 	mock.ExpectQuery(`^SELECT count\(\*\) FROM "sites"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	// SELECT utama sites (order nama asc, limit, offset).
-	mock.ExpectQuery(`SELECT \* FROM "sites"`).
-		WillReturnRows(siteRows(id, "Kawasan OIKN", "OIKN", true))
-	// Hitung user_sites per site.
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "user_sites"`).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+	// SELECT utama menyertakan jumlah teknisi dan sorting server-side.
+	mock.ExpectQuery(`SELECT sites\.\*, \(SELECT COUNT\(\*\) FROM user_sites.*ORDER BY sites\.nama asc`).
+		WillReturnRows(siteListRows(id, "Kawasan OIKN", "OIKN", true, 2))
 
 	app := newTestApp()
 	app.Get("/sites", withUserLocals(uuid.New().String(), "admin"), GetAllSites)
@@ -120,6 +125,26 @@ func TestGetAllSites_Success(t *testing.T) {
 	data := result["data"].(map[string]interface{})
 	rows := data["rows"].([]interface{})
 	assert.Equal(t, float64(2), rows[0].(map[string]interface{})["user_count"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetAllSites_ServerSideSort memastikan sortir berlaku untuk seluruh data,
+// bukan hanya sepuluh baris yang sedang terlihat di browser.
+func TestGetAllSites_ServerSideSort(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id := uuid.New()
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "sites"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`SELECT sites\.\*, \(SELECT COUNT\(\*\) FROM user_sites.*ORDER BY sites\.kode desc`).
+		WillReturnRows(siteListRows(id, "Kawasan OIKN", "OIKN", true, 2))
+
+	app := newTestApp()
+	app.Get("/sites", withUserLocals(uuid.New().String(), "admin"), GetAllSites)
+	resp, err := app.Test(httptest.NewRequest("GET", "/sites?page=1&limit=10&sort_by=kode&order=desc", nil))
+
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

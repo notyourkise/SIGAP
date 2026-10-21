@@ -69,6 +69,9 @@ type CCTV struct {
 	// — CCTV dapat belum dimasukkan ke site mana pun; data existing otomatis
 	// masuk ke site default "OIKN" saat migrasi.
 	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
+	// Site dimuat pada endpoint daftar/detail agar antarmuka dapat menampilkan
+	// nama kawasan, bukan UUID mentah.
+	Site *Site `gorm:"foreignKey:SiteID" json:"site,omitempty"`
 	// === Field Status Live Stream (Task 14A.1, Sprint 37) ===
 	// StreamLive mencerminkan hasil probe RTSP terakhir: true bila kamera
 	// merespons probe (dianggap live), false bila down/belum pernah diperiksa.
