@@ -23,6 +23,17 @@ func withUserLocals(userID, role string) fiber.Handler {
 	}
 }
 
+// withUserSiteLocals mensimulasikan hasil Protected() + SiteContext() dengan
+// site aktif yang sudah ditentukan. Dipakai untuk menguji filter multi-site.
+func withUserSiteLocals(userID, role, siteID string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Locals("user_id", userID)
+		c.Locals("role", role)
+		c.Locals("site_id", siteID)
+		return c.Next()
+	}
+}
+
 // newTestApp membuat aplikasi Fiber untuk pengujian handler.
 func newTestApp() *fiber.App {
 	return fiber.New()

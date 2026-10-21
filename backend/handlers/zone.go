@@ -126,7 +126,11 @@ func GetAllZones(c *fiber.Ctx) error {
 // @Router       /zones/all [get]
 func GetAllZonesForSelect(c *fiber.Ctx) error {
 	var items []models.Zone
-	if err := config.DB.Order("nama asc").Find(&items).Error; err != nil {
+	query := config.DB.Model(&models.Zone{})
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		query = query.Where("site_id = ?", siteID)
+	}
+	if err := query.Order("nama asc").Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mengambil daftar zona",

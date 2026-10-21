@@ -324,6 +324,8 @@ definitions:
       satuan:
         maxLength: 20
         type: string
+      site_id:
+        type: string
       sku:
         maxLength: 50
         minLength: 2
@@ -742,6 +744,8 @@ definitions:
       satuan:
         maxLength: 20
         type: string
+      site_id:
+        type: string
       sku:
         maxLength: 50
         minLength: 2
@@ -1119,9 +1123,9 @@ paths:
       consumes:
       - application/json
       description: Mengganti password akun sendiri (self-service). Wajib menyertakan
-        password lama.
+        password lama, kecuali dalam mode must_change_password setelah reset admin.
       parameters:
-      - description: Password lama & baru
+      - description: Password lama (wajib kecuali forced) & baru
         in: body
         name: request
         required: true
@@ -1332,6 +1336,10 @@ paths:
       - description: Filter berdasarkan zona operasional (UUID zona)
         in: query
         name: zone_id
+        type: string
+      - description: Filter berdasarkan kawasan operasional (UUID kawasan)
+        in: query
+        name: site_id
         type: string
       - description: Cari berdasarkan nama, kode_cctv, id_channel, lokasi_area
         in: query
@@ -2250,6 +2258,11 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "403":
+          description: 'Akses ditolak: belum ditugaskan ke site'
+          schema:
+            additionalProperties: true
+            type: object
         "500":
           description: Gagal memuat data dashboard
           schema:
@@ -2274,6 +2287,11 @@ paths:
             type: object
         "401":
           description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: belum ditugaskan ke site'
           schema:
             additionalProperties: true
             type: object
@@ -2393,6 +2411,11 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "403":
+          description: 'Akses ditolak: belum ditugaskan ke site'
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - BearerAuth: []
       summary: Ambil Semua Pengecekan Lapangan
@@ -2428,6 +2451,11 @@ paths:
             type: object
         "401":
           description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: CCTV berada di site lain'
           schema:
             additionalProperties: true
             type: object
@@ -2502,6 +2530,11 @@ paths:
             type: object
         "401":
           description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: catatan berada di site lain'
           schema:
             additionalProperties: true
             type: object
@@ -3896,7 +3929,8 @@ paths:
       consumes:
       - application/json
       description: Mendapatkan daftar kawasan operasional (site) terpaginasi dengan
-        pencarian nama dan jumlah user per site.
+        pencarian nama dan jumlah user per site. Non-admin hanya melihat site yang
+        ditugaskan kepadanya.
       parameters:
       - description: Pencarian berdasarkan nama site
         in: query
@@ -3928,6 +3962,11 @@ paths:
             type: object
         "401":
           description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: belum ditugaskan ke site'
           schema:
             additionalProperties: true
             type: object
@@ -4035,7 +4074,8 @@ paths:
       tags:
       - Site
     get:
-      description: Mendapatkan detail satu site beserta user yang ditugaskan.
+      description: Mendapatkan detail satu site beserta user yang ditugaskan. Non-admin
+        hanya dapat membuka site yang ditugaskan kepadanya.
       parameters:
       - description: Site UUID
         in: path
@@ -4061,7 +4101,7 @@ paths:
             additionalProperties: true
             type: object
         "404":
-          description: Site tidak ditemukan
+          description: Site tidak ditemukan atau bukan penugasan pengguna
           schema:
             additionalProperties: true
             type: object
@@ -4184,8 +4224,8 @@ paths:
       - Site
   /sites/all:
     get:
-      description: Mendapatkan seluruh site (id + nama + kode) tanpa paginasi untuk
-        keperluan dropdown/filter.
+      description: Mendapatkan site (id + nama + kode) tanpa paginasi untuk keperluan
+        dropdown/filter. Non-admin hanya melihat site yang ditugaskan kepadanya.
       produces:
       - application/json
       responses:
@@ -4196,6 +4236,11 @@ paths:
             type: object
         "401":
           description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: belum ditugaskan ke site'
           schema:
             additionalProperties: true
             type: object
@@ -4444,6 +4489,10 @@ paths:
           Storage, Lainnya)
         in: query
         name: kategori
+        type: string
+      - description: Filter berdasarkan UUID kawasan
+        in: query
+        name: site_id
         type: string
       - description: Pencarian berdasarkan nama atau SKU
         in: query
@@ -4898,8 +4947,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Menampilkan ringkasan status live (online/offline/unchecked) seluruh
-        CCTV berdasarkan hasil probe RTSP terakhir.
+      description: Menampilkan ringkasan status live (online/idle/offline/unchecked)
+        seluruh CCTV berdasarkan hasil probe RTSP terakhir. Idle berarti path on-demand
+        terdaftar tetapi tidak ada penonton, bukan offline.
       produces:
       - application/json
       responses:
@@ -4926,6 +4976,27 @@ paths:
       security:
       - BearerAuth: []
       summary: Status Live Stream CCTV
+      tags:
+      - Streaming
+  /streams/readiness:
+    get:
+      description: Memeriksa koneksi backend ke MediaMTX sebelum monitor memulai stream.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: MediaMTX dapat dijangkau
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: MediaMTX tidak dapat dijangkau
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Kesiapan MediaMTX
       tags:
       - Streaming
   /streams/start-all:
@@ -5784,8 +5855,8 @@ paths:
     get:
       description: 'Membuka koneksi bi-directional WebSocket real-time untuk menerima
         siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED,
-        AUDIT_LOG_ADDED). Autentikasi wajib: sertakan token JWT sebagai query parameter
-        `token`.'
+        AUDIT_LOG_ADDED). Event AUDIT_LOG_ADDED hanya dikirim ke koneksi admin. Autentikasi
+        wajib: sertakan token JWT sebagai query parameter `token`.'
       parameters:
       - description: Token JWT (Bearer) untuk autentikasi
         in: query

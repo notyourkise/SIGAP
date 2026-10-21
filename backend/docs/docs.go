@@ -463,7 +463,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengganti password akun sendiri (self-service). Wajib menyertakan password lama.",
+                "description": "Mengganti password akun sendiri (self-service). Wajib menyertakan password lama, kecuali dalam mode must_change_password setelah reset admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -476,7 +476,7 @@ const docTemplate = `{
                 "summary": "Ganti Password Sendiri",
                 "parameters": [
                     {
-                        "description": "Password lama \u0026 baru",
+                        "description": "Password lama (wajib kecuali forced) \u0026 baru",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -783,6 +783,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter berdasarkan zona operasional (UUID zona)",
                         "name": "zone_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan kawasan operasional (UUID kawasan)",
+                        "name": "site_id",
                         "in": "query"
                     },
                     {
@@ -2127,6 +2133,13 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     },
+                    "403": {
+                        "description": "Akses ditolak: belum ditugaskan ke site",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
                     "500": {
                         "description": "Gagal memuat data dashboard",
                         "schema": {
@@ -2162,6 +2175,13 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: belum ditugaskan ke site",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -2339,6 +2359,13 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": true
                         }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: belum ditugaskan ke site",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
                     }
                 }
             },
@@ -2391,6 +2418,13 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": true
                         }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: CCTV berada di site lain",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
                     }
                 }
             }
@@ -2439,6 +2473,13 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: catatan berada di site lain",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -4524,7 +4565,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan daftar kawasan operasional (site) terpaginasi dengan pencarian nama dan jumlah user per site.",
+                "description": "Mendapatkan daftar kawasan operasional (site) terpaginasi dengan pencarian nama dan jumlah user per site. Non-admin hanya melihat site yang ditugaskan kepadanya.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4577,6 +4618,13 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: belum ditugaskan ke site",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -4665,7 +4713,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan seluruh site (id + nama + kode) tanpa paginasi untuk keperluan dropdown/filter.",
+                "description": "Mendapatkan site (id + nama + kode) tanpa paginasi untuk keperluan dropdown/filter. Non-admin hanya melihat site yang ditugaskan kepadanya.",
                 "produces": [
                     "application/json"
                 ],
@@ -4688,6 +4736,13 @@ const docTemplate = `{
                             "additionalProperties": true
                         }
                     },
+                    "403": {
+                        "description": "Akses ditolak: belum ditugaskan ke site",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
                     "500": {
                         "description": "Gagal mengambil daftar site",
                         "schema": {
@@ -4705,7 +4760,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mendapatkan detail satu site beserta user yang ditugaskan.",
+                "description": "Mendapatkan detail satu site beserta user yang ditugaskan. Non-admin hanya dapat membuka site yang ditugaskan kepadanya.",
                 "produces": [
                     "application/json"
                 ],
@@ -4745,7 +4800,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Site tidak ditemukan",
+                        "description": "Site tidak ditemukan atau bukan penugasan pengguna",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -5347,6 +5402,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Filter berdasarkan UUID kawasan",
+                        "name": "site_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Pencarian berdasarkan nama atau SKU",
                         "name": "search",
                         "in": "query"
@@ -5777,7 +5838,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Menampilkan ringkasan status live (online/offline/unchecked) seluruh CCTV berdasarkan hasil probe RTSP terakhir.",
+                "description": "Menampilkan ringkasan status live (online/idle/offline/unchecked) seluruh CCTV berdasarkan hasil probe RTSP terakhir. Idle berarti path on-demand terdaftar tetapi tidak ada penonton, bukan offline.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5812,6 +5873,39 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Gagal memuat data CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/streams/readiness": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Memeriksa koneksi backend ke MediaMTX sebelum monitor memulai stream.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Kesiapan MediaMTX",
+                "responses": {
+                    "200": {
+                        "description": "MediaMTX dapat dijangkau",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "MediaMTX tidak dapat dijangkau",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -7292,7 +7386,7 @@ const docTemplate = `{
         },
         "/ws": {
             "get": {
-                "description": "Membuka koneksi bi-directional WebSocket real-time untuk menerima siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED, AUDIT_LOG_ADDED). Autentikasi wajib: sertakan token JWT sebagai query parameter ` + "`" + `token` + "`" + `.",
+                "description": "Membuka koneksi bi-directional WebSocket real-time untuk menerima siaran langsung event sistem (CCTV_UPDATED, MAINTENANCE_CREATED, MAINTENANCE_UPDATED, AUDIT_LOG_ADDED). Event AUDIT_LOG_ADDED hanya dikirim ke koneksi admin. Autentikasi wajib: sertakan token JWT sebagai query parameter ` + "`" + `token` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -8342,6 +8436,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 20
                 },
+                "site_id": {
+                    "type": "string"
+                },
                 "sku": {
                     "type": "string",
                     "maxLength": 50,
@@ -8925,6 +9022,9 @@ const docTemplate = `{
                 "satuan": {
                     "type": "string",
                     "maxLength": 20
+                },
+                "site_id": {
+                    "type": "string"
                 },
                 "sku": {
                     "type": "string",

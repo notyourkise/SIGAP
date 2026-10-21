@@ -402,6 +402,93 @@ func TestGetAllFieldMaintenances_TechnicianScoped(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCreateFieldMaintenance_SiteMismatch(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	techID := uuid.New()
+	activeSite := uuid.New()
+	otherSite := uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status", "site_id"}).
+			AddRow(cctvID, "CCTV-001", "Kamera", "aktif", otherSite))
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserSiteLocals(techID.String(), "teknisi", activeSite.String()), CreateFieldMaintenance)
+
+	payload := fieldMaintenanceValidPayload(cctvID.String())
+	req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetAllFieldMaintenances_SiteScoped(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	techID := uuid.New()
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "field_maintenances" WHERE .*site_id = \$1.*technician_id = \$2`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances" WHERE .*site_id = \$1.*technician_id = \$2.*ORDER BY created_at desc LIMIT`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "overall_status", "notes", "check_latitude", "check_longitude", "completed_at",
+		}).AddRow(uuid.New(), time.Now(), time.Now(), nil, uuid.New(), techID, "ok", "Bersih", "", "", time.Now()))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "name", "result", "note"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Get("/field-maintenance", withUserSiteLocals(techID.String(), "teknisi", siteID.String()), GetAllFieldMaintenances)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetFieldMaintenanceByID_SiteMismatch(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	reportID := uuid.New()
+	cctvID := uuid.New()
+	techID := uuid.New()
+	activeSite := uuid.New()
+	otherSite := uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "overall_status", "notes", "check_latitude", "check_longitude", "completed_at",
+		}).AddRow(reportID, now, now, nil, cctvID, techID, "ok", "Bersih", "", "", now))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "deleted_at", "kode_cctv", "nama", "status", "site_id"}).
+			AddRow(cctvID, now, now, nil, "CCTV-001", "Kamera", "aktif", otherSite))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "name", "result", "note"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Get("/field-maintenance/:id", withUserSiteLocals(techID.String(), "teknisi", activeSite.String()), GetFieldMaintenanceByID)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/field-maintenance/"+reportID.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestGetFieldMaintenanceByID_InvalidUUID(t *testing.T) {
 	app := newTestApp()
 	app.Get("/field-maintenance/:id", GetFieldMaintenanceByID)
