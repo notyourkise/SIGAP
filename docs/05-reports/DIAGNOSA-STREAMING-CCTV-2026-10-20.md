@@ -92,9 +92,9 @@ Bukti uji restart terkontrol:
 | 20:05:39 | MediaMTX belum dapat di-resolve; tidak ada probe yang menulis status |
 | 20:05:42 | Registrasi 20 path selesai; probe pertama: `online=0 idle=20 offline=0 unknown=0` |
 
-Hasil database setelah probe pertama: `idle|20`, tanpa `unknown`. Path MediaMTX berjumlah 21 setelah path `dawda` dipulihkan secara runtime.
+Hasil database setelah probe pertama: `idle|20`, tanpa `unknown`. Path MediaMTX berjumlah 21 saat itu; baris testing `dawda` kemudian dihapus permanen pada 2026-10-21.
 
-Catatan: `dawda` adalah baris soft-deleted non-THD dengan `stream_enabled=true`. Path ini tidak ikut auto-register karena barisnya soft-deleted; setelah MediaMTX restart path tersebut hilang dan dipulihkan manual dari URL terenkripsi tanpa menampilkan kredensial. Keputusan apakah path ini perlu dipersistenkan masih pending.
+Catatan: `dawda` adalah baris testing non-THD dengan `stream_enabled=true`. Path ini tidak ikut auto-register karena barisnya soft-deleted; setelah MediaMTX restart path tersebut hilang dan sempat dipulihkan manual dari URL terenkripsi tanpa menampilkan kredensial. Pada 2026-10-21 baris ini dihapus permanen setelah dipastikan bukan CCTV asli, sehingga tidak ada path yang perlu dipersistenkan. Baris testing lain `adwda` (`dawdawda`) yang juga soft-deleted dan RTSP-nya kosong dihapus pada waktu yang sama.
 
 ## Catatan Kompatibilitas
 
@@ -113,7 +113,6 @@ Tidak ada transcoding FFmpeg yang diaktifkan.
 - Probe langsung Metro-E belum bisa diaktifkan dari host ini karena `10.20.105.x` tidak terjangkau; status masih pasif.
 - Sembilan koordinat masih estimasi dan perlu verifikasi lapangan.
 - Perlu pemantauan beberapa siklus untuk memastikan status idle tetap stabil dan tidak ada alarm palsu.
-- Path `dawda` (soft-deleted non-THD) hanya ada secara runtime dan hilang saat MediaMTX restart; perlu diputuskan apakah akan dipersistenkan atau dihentikan.
 
 ## Langkah Berikutnya
 

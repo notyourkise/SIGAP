@@ -1,5 +1,83 @@
 # Changelog - Backend SIGAP
 
+## [0.64.26] - 2026-10-21
+
+### Isolasi site dashboard, field maintenance, dan daftar site
+
+**Masalah**: `GET /dashboard/summary`, `GET /dashboard/tasks`, seluruh grup `/field-maintenance`, dan daftar `/sites` belum menegakkan site aktif. Non-admin masih dapat melihat agregat/tugas/catatan dari site lain, membuat pengecekan untuk CCTV di site lain, serta melihat seluruh daftar site.
+
+**Perbaikan**:
+- `SiteContext` dipasang setelah autentikasi pada route dashboard summary/tasks dan seluruh grup field-maintenance; non-admin tanpa penugasan ditolak `403`.
+- Distribusi status CCTV, tren pemeliharaan 6 bulan, pekerjaan overdue, dan daftar tugas dashboard difilter berdasarkan site aktif. Teknisi tetap dibatasi `technician_id`.
+- Daftar, detail, laporan PDF, dan pembuatan field maintenance memakai scope site lewat relasi CCTV. Pembuatan untuk CCTV di site lain ditolak `403`.
+- `/sites`, `/sites/all`, dan `/sites/{id}` memakai scope keanggotaan `user_sites`: non-admin hanya melihat site yang ditugaskan, admin tetap global. `/sites/all` sengaja tetap memuat seluruh site penugasan agar `SiteSwitcher` multi-site tidak rusak.
+- Event WebSocket `AUDIT_LOG_ADDED` dibatasi ke koneksi admin; non-admin tidak lagi menerima metadata audit (IP, user-agent, deskripsi aktivitas).
+- Test regresi ditambahkan untuk dashboard site scope, field maintenance list/create mismatch, daftar site non-admin, detail lintas site, dan route non-admin tanpa penugasan.
+- Swagger diregenerasi dengan respons `403` dan deskripsi scope site.
+
+timestamp: 2026-10-21 23:20 UTC+8
+kategori: Sedang, Backend (Keamanan/Multi-site)
+file yang diubah:
+- backend/handlers/dashboard.go
+- backend/handlers/dashboard_test.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/field_maintenance_test.go
+- backend/handlers/helpers_test.go
+- backend/handlers/site.go
+- backend/handlers/site_test.go
+- backend/routes/dashboard.go
+- backend/routes/field_maintenance.go
+- backend/routes/routes_test.go
+- backend/routes/websocket.go
+- backend/utils/audit.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docs/01-documentation/AGENTS.md
+- docs/02-audits/SECURITY-AUDIT.md
+- docs/04-manual-tests/manual-test-security-p0-hardening.md
+
+alasan perubahan: Menutup sisa kebocoran data lintas site pada dashboard, pengecekan lapangan, dan daftar site tanpa mengubah fitur atau alur kerja yang sudah ada.
+
+---
+
+## [0.64.25] - 2026-10-21
+
+### Scope site default non-admin dan validasi sandi lama
+
+**Masalah**: `SiteContext` membiarkan `site_id` kosong bila header `X-Site-ID`/cookie `sigap_site_id` tidak ada, sehingga non-admin dapat menerima data seluruh site. Pada modul CCTV, middleware site juga berjalan sebelum autentikasi sehingga pemeriksaan keanggotaan site tidak pernah dievaluasi. Selain itu, endpoint ganti sandi menerima `old_password` kosong untuk perubahan mandiri biasa.
+
+**Perbaikan**:
+- `SiteContext` memilih site penugasan default non-admin (site `is_default`, lalu nama site) saat konteks site tidak dikirim; akun tanpa penugasan ditolak `403` (fail closed).
+- Urutan middleware CCTV diubah: autentikasi lebih dulu, baru `SiteContext`, sehingga membership site benar-benar diperiksa. Rute admin tetap memakai `RequireRole("admin")`.
+- `SiteContext` dipasang pada grup `/zones`; daftar zona untuk dropdown ikut difilter berdasarkan site aktif.
+- `ChangePassword` mewajibkan `old_password` kecuali pengguna dalam mode `must_change_password`; sandi baru juga ditolak bila sama dengan sandi sementara saat ini.
+- Test middleware site (default scope, cookie fallback, tanpa penugasan, admin global) dan test ganti sandi (old password kosong, forced mode, sandi sama) ditambahkan, termasuk test registrasi rute CCTV setelah perubahan urutan middleware.
+- Swagger diregenerasi; deskripsi change-password, filter `site_id`, dan endpoint readiness MediaMTX yang tertunda ikut tersinkron.
+
+timestamp: 2026-10-21 21:35 UTC+8
+kategori: Sedang, Backend (Keamanan/Multi-site)
+file yang diubah:
+- backend/middleware/site.go
+- backend/middleware/site_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
+- backend/routes/zone.go
+- backend/handlers/zone.go
+- backend/handlers/auth.go
+- backend/handlers/auth_extra_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docs/01-documentation/AGENTS.md
+- docs/04-manual-tests/manual-test-security-p0-hardening.md
+
+alasan perubahan: Menutup kebocoran data lintas site saat cookie site belum ada dan mencegah pengambilalihan sesi mengganti sandi tanpa mengetahui sandi lama.
+
+---
+
 ## [0.64.24] - 2026-10-21
 
 ### Stabilkan probe awal setelah restart

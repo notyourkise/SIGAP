@@ -1,7 +1,7 @@
 # SECURITY-AUDIT — SIGAP
 
 > Audit keamanan, pemahaman sistem, dan rekomendasi pengembangan.
-> Audit awal: 2026-08-01 · Diperbarui: 2026-08-20 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
+> Audit awal: 2026-08-01 · Diperbarui: 2026-10-21 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
 >
 > Temuan 1–20 di bagian 3 adalah rekam audit awal. Ringkasan arsitektur dan catatan risiko terbuka telah diselaraskan dengan kondisi proyek setelah Sprint 40.
 
@@ -80,6 +80,24 @@ Bukti runtime: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 Bukti runtime: `docs/audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
 
+### 1.4 Dependency security update — 2026-10-21
+
+- [x] `next` dan `eslint-config-next` dinaikkan dari `16.2.11` ke `16.4.2`; perbaikan mencakup advisory RCE/SSRF/cache poisoning Next.js serta `sharp` dan `postcss`.
+- [x] `npm audit --omit=dev` menghasilkan **0 kerentanan** pada dependency produksi.
+- [x] `npm audit` penuh menyisakan **5 high** yang seluruhnya berada di rantai dev-only `eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces`; `braces` 3.0.3 adalah rilis terbaru dan belum memiliki patch.
+- [ ] `npm audit fix --force` tidak dijalankan karena solusinya menurunkan `eslint-config-next` ke `14.2.35` (tidak kompatibel dengan Next 16). Risiko diterima sampai upstream merilis patch; dampaknya hanya pada tooling lint, bukan runtime aplikasi.
+
+### 1.5 Isolasi site dashboard dan field maintenance — 2026-10-21
+
+- [x] `SiteContext` dipasang setelah autentikasi pada `GET /dashboard/summary`, `GET /dashboard/tasks`, dan seluruh grup `/field-maintenance`.
+- [x] Ringkasan dashboard (status, tren 6 bulan, overdue) serta daftar tugas difilter ke site aktif; teknisi tetap dibatasi pada `technician_id` miliknya.
+- [x] Field maintenance list/detail/laporan PDF dan pembuatan catatan memakai scope site melalui relasi CCTV; CCTV di luar site aktif ditolak `403`.
+- [x] Daftar `/sites` dan `/sites/all` memakai scope keanggotaan `user_sites` untuk non-admin; admin tetap melihat seluruh site. `/sites/all` tetap memuat semua site penugasan agar pemilih site multi-site berfungsi.
+- [x] Event WebSocket `AUDIT_LOG_ADDED` dibatasi ke koneksi admin; non-admin tidak menerima metadata audit (IP, user-agent, deskripsi aktivitas).
+- [x] Regression test mencakup dashboard, field maintenance, daftar site, detail lintas site, dan penolakan non-admin tanpa penugasan. `go test ./...`, `go vet ./...`, dan `go build ./...` lulus.
+- [x] Pemeriksaan read-only database deployment: 35/35 CCTV aktif memiliki `site_id` OIKN; tidak ada `site_id` NULL atau baris soft-deleted. Tidak ada data yang diubah.
+- [ ] Verifikasi runtime dengan dua site dan akun non-admin belum dijalankan karena database deployment masih memiliki 0 baris `user_sites`; penugasan harus dilakukan admin sebelum uji manual.
+
 ---
 
 ## 2. Pemahaman Sistem & Alur
@@ -126,8 +144,10 @@ SIGAP/
   membangun source URL dan tidak boleh dikembalikan pada respons JSON.
 - **Integrasi:** API key memakai scope, expiry, revoke, dan rate limit per key. Webhook dikirim
   asinkron dengan signature HMAC-SHA256, retry terbatas, serta log delivery ber-retensi.
-- **Multi-site:** Site aktif diteruskan melalui context/filter backend; write operation site,
-  zona, SLA, API key, dan webhook tetap dilindungi role admin.
+- **Multi-site:** Site aktif diteruskan melalui context/filter backend; non-admin dibatasi ke site
+  penugasan (default site, `403` bila belum ditugaskan) pada CCTV, zona, dashboard, field maintenance,
+  dan daftar site. Admin tetap global. Write operation site, zona, SLA, API key, dan webhook tetap
+  dilindungi role admin.
 - **Mobile:** Klien Expo menggunakan Bearer token yang disimpan melalui secure storage;
   kebijakan cookie/CSRF web tidak diterapkan pada request Bearer.
 

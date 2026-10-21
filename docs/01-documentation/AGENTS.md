@@ -614,23 +614,30 @@ Sejak Task 12.2 (Sprint 30), setiap request dapat menyertakan header `X-Site-ID`
 
 **Middleware Flow**:
 ```
-Client Request Ã¢â€ â€™ X-Site-ID header sent
-    Ã¢â€ â€œ
+Client Request -> X-Site-ID header, cookie sigap_site_id, atau ?site_id=
+    |
 SiteContext() middleware
-    Ã¢â€Å“Ã¢â€â‚¬ Valid UUID format + site exists Ã¢â€ â€™ c.Locals("site_id", <uuid>)
-    Ã¢â€Å“Ã¢â€â‚¬ Invalid UUID Ã¢â€ â€™ HTTP 401 Unauthorized
-    Ã¢â€â€Ã¢â€â‚¬ Missing header Ã¢â€ â€™ Query param ?site_id=<uuid> fallback
-    Ã¢â€ â€œ
+    |- Format UUID valid + site ada -> c.Locals("site_id", <uuid>)
+    |- Format UUID tidak valid / site tidak ada -> HTTP 400
+    |- Non-admin memilih site di luar user_sites -> HTTP 403
+    |- Non-admin tanpa konteks site -> site penugasan default
+    |- Non-admin tanpa penugasan -> HTTP 403 (fail closed)
+    |- Admin tanpa konteks site -> tanpa filter (semua site)
+    |
 Handler execution with filtered queries
-    Ã¢â€Å“Ã¢â€â‚¬ CCTV list: WHERE cctvs.site_id = current_site_id OR cctvs.site_id IS NULL
-    Ã¢â€Å“Ã¢â€â‚¬ Maintenance logs: JOIN maintenance_logs ON ... AND site_id matches
-    Ã¢â€â€Ã¢â€â‚¬ Zones: Filtered by current context
+    |- CCTV list: WHERE cctvs.site_id = current_site_id
+    |- Maintenance logs: JOIN maintenance_logs ON ... AND site_id matches
+    |- Zones: Filtered by current context
+    |- Dashboard summary/tasks: status, tren, overdue, dan tugas difilter site aktif
+    |- Field maintenance: EXISTS cctvs.site_id = current_site_id; create/detail lintas site -> 403
+    |- Sites list/select/detail: non-admin dibatasi keanggotaan user_sites (bukan site aktif)
+    |- WebSocket AUDIT_LOG_ADDED: hanya dikirim ke koneksi admin
 ```
 
 **API Usage**:
-- Admin write operations: POST `X-Site-ID` header required
-- Client read operations: Optional header/query parameter for scoped results
-- Global operations: Omit `X-Site-ID` to get all data (admin-only)
+- Admin write operations: `X-Site-ID` opsional; admin dapat mengakses semua site
+- Client read non-admin: header/cookie opsional; default ke site penugasan
+- Global operations: hanya admin yang boleh menghilangkan `X-Site-ID`
 
 **Security Note**: Site filtering ensures data isolation between different operational areas (kawasan/zona). Never trust client-provided site_id without validation in middleware layer.
 
@@ -640,6 +647,6 @@ Handler execution with filtered queries
 ---
 _Dokumen ini adalah referensi sentral untuk AI. Patuhi segala aturan, instruksi arsitektural, dan gotchas teknis yang tercantum di atas.
 
-> **Last Update**: 2026-08-20 UTC+8 — Multi-Site Isolation (Task 12.2), Security Hardening Fixes (#1-3), Environment Variables documentation updated, Manual Test V2 governance implemented.
+> **Last Update**: 2026-10-21 UTC+8 — SiteContext default scoping + cookie fallback untuk non-admin, serta scope dashboard, field maintenance, dan daftar site; sebelumnya Multi-Site Isolation (Task 12.2), Security Hardening Fixes (#1-3), Environment Variables documentation updated, Manual Test V2 governance implemented.
 > 
 > **Status Roadmap**: Semua Fase (1-15) selesai ✅ — Production Ready.
