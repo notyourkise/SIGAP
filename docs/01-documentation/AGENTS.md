@@ -36,6 +36,10 @@ Setiap pengembangan fitur atau perbaikan _bug_ HARUS menggunakan branch baru.
 6. Buat Pull Request (PR) di GitHub.
 7. User akan me-merge PR tersebut secara mandiri.
 8. Setelah PR di-merge dan Anda melakukan pull di lokal, hapus branch lokal: `git branch -D feature/<nama-fitur>`
+9. **Build Ulang Image Docker (WAJIB)**: Setiap perubahan yang terjadi baik pada frontend maupun backend yang telah di-merge ke branch `main`, WAJIB segera mem-build ulang image Docker yang sesuai dan me-restart container terkait agar aplikasi di `https://localhost` langsung mencerminkan perubahan terbaru:
+   - Jika frontend berubah: `docker compose build frontend && docker compose up -d frontend`
+   - Jika backend berubah: `docker compose build api && docker compose up -d api`
+   - Jika keduanya berubah: `docker compose build frontend api && docker compose up -d frontend api`
 
 ## 3. Struktur Folder
 
