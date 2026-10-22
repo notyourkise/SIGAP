@@ -71,6 +71,8 @@ interface CCTV {
   // berasal dari verifikasi aktif end-to-end yang dijalankan periodik/manual.
   stream_live?: boolean | null;
   stream_state?: 'live' | 'idle' | 'offline' | 'unknown' | null;
+  stream_checked_at?: string | null;
+  ping_latency_ms?: number | null;
   stream_last_active_at?: string | null;
   stream_verified_state?: 'live' | 'idle' | 'offline' | 'unknown' | null;
   stream_verified_at?: string | null;
@@ -398,7 +400,11 @@ export default function CCTVPage() {
       const response = await apiRequest<any>(`/cctv?${queryParams.join('&')}`, siteRequestOptions);
       
       if (response.status === 'success' && response.data) {
-        setCctvs(response.data.rows || []);
+        const enrichedRows = (response.data.rows || []).map((c: any) => ({
+          ...c,
+          network_type: c.network_type || (c.ip_camera?.startsWith('10.20.105.') ? 'metro-e' : 'gsm'),
+        }));
+        setCctvs(enrichedRows);
         setPagination(response.data.pagination || {
           total_rows: 0,
           total_pages: 1,
@@ -450,10 +456,37 @@ export default function CCTVPage() {
   const { subscribe } = useWebSocket();
 
   useEffect(() => {
-    const unsub = subscribe('CCTV_UPDATED', () => {
+    const unsubUpdate = subscribe('CCTV_UPDATED', () => {
       fetchCCTVs();
     });
-    return unsub;
+
+    const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload: any) => {
+      if (payload?.cctv_id) {
+        setCctvs((prev) =>
+          prev.map((c) => {
+            if (c.id !== payload.cctv_id) return c;
+            const prevItem = c;
+            return {
+              ...c,
+              stream_live: payload.stream_live ?? prevItem.stream_live ?? null,
+              stream_state: payload.stream_state ?? prevItem.stream_state ?? null,
+              stream_checked_at: payload.stream_checked_at ?? prevItem.stream_checked_at ?? null,
+              ping_latency_ms: payload.ping_latency_ms ?? prevItem.ping_latency_ms ?? null,
+              network_type: payload.network_type ?? prevItem.network_type ?? null,
+              stream_last_active_at: payload.stream_last_active_at ?? prevItem.stream_last_active_at ?? null,
+              stream_verified_state: payload.stream_verified_state ?? prevItem.stream_verified_state ?? null,
+              stream_verified_at: payload.stream_verified_at ?? prevItem.stream_verified_at ?? null,
+              stream_verified_method: payload.stream_verified_method ?? prevItem.stream_verified_method ?? null,
+            };
+          })
+        );
+      }
+    });
+
+    return () => {
+      unsubUpdate();
+      unsubLive();
+    };
   }, [subscribe]);
 
   const normalizedStatus = (status: string) => status.trim().toUpperCase();
@@ -1121,7 +1154,7 @@ export default function CCTVPage() {
     } else {
       setSortBy(key);
       // Kolom teks default naik; kolom angka default turun (terbesar dulu)
-      setSortOrder(key === 'health_score' ? 'desc' : 'asc');
+      setSortOrder(key === 'health_score' || key === 'stream_state' ? 'desc' : 'asc');
     }
     setPage(1);
   };
@@ -1401,11 +1434,11 @@ export default function CCTVPage() {
                     </th>
                     <th
                       className="px-5 py-3.5"
-                      aria-sort={sortBy === 'health_score' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      aria-sort={sortBy === 'stream_state' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                     >
                       <SortableHeader
-                        label="Kesehatan"
-                        sortKey="health_score"
+                        label="Live"
+                        sortKey="stream_state"
                         activeKey={sortBy}
                         direction={sortOrder}
                         onSort={handleHeaderSort}
@@ -1486,13 +1519,55 @@ export default function CCTVPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <span
-                          className={`inline-flex min-w-14 items-center justify-center rounded-full border px-2.5 py-1 text-xs font-bold tabular-nums ${healthScoreClasses(cctv.health_score)}`}
-                          title={`Skor kesehatan ${normalizedHealthScore(cctv.health_score)} dari 100`}
-                          aria-label={`Skor kesehatan ${normalizedHealthScore(cctv.health_score)} dari 100`}
-                        >
-                          {normalizedHealthScore(cctv.health_score)}
-                        </span>
+                        {(() => {
+                          const badge = getLiveBadge(cctv);
+                          const isAktif = isStatus(cctv.status, ['ACTIVE', 'AKTIF']);
+                          const isPemeliharaan = isStatus(cctv.status, ['MAINTENANCE', 'PEMELIHARAAN']);
+                          const isOffline = badge.label.toLowerCase().includes('offline');
+                          const isLive = badge.label.toLowerCase().includes('online');
+
+                          // Anomali: Kamera tercatat Aktif tetapi fisik/stream Offline
+                          const isAnomaly = isAktif && isOffline;
+                          // Pulih: Kamera dalam masa Pemeliharaan tetapi stream sudah kembali Online
+                          const isRecovered = isPemeliharaan && isLive;
+
+                          return (
+                            <div className="flex flex-col items-start gap-1">
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                                style={{
+                                  backgroundColor: `${badge.color}15`,
+                                  color: badge.color,
+                                  border: `1px solid ${badge.color}35`,
+                                }}
+                                title={badge.label}
+                              >
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full"
+                                  style={{ backgroundColor: badge.color }}
+                                />
+                                <span>{badge.label}</span>
+                              </span>
+                              {isAnomaly && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400"
+                                  title="Perhatian: CCTV berstatus Aktif tetapi koneksi jaringan terputus (Offline)"
+                                >
+                                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                                  <span>Perlu cek fisik</span>
+                                </span>
+                              )}
+                              {isRecovered && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400"
+                                  title="Kamera sudah terhubung kembali secara online selama masa pemeliharaan"
+                                >
+                                  <span>Koneksi pulih</span>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="relative inline-flex justify-end">
@@ -1635,6 +1710,7 @@ export default function CCTVPage() {
                     <option value="nama">Nama</option>
                     <option value="kode_cctv">Kode CCTV</option>
                     <option value="status">Status</option>
+                    <option value="stream_state">Status Live (Online/Offline)</option>
                     <option value="health_score">Skor kesehatan</option>
                     <option value="site_name">Kawasan</option>
                     <option value="lokasi_area">Lokasi area</option>

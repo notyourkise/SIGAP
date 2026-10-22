@@ -1,5 +1,24 @@
 # Changelog - Backend SIGAP
 
+## [0.64.30] - 2026-10-22
+
+### Dukungan sorting parameter status live pada Master CCTV
+
+**Masalah**: Endpoint `GET /api/cctv` belum mendukung parameter pengurutan `sort_by` berdasarkan kondisi streaming (`stream_state` dan `stream_live`).
+
+**Perbaikan**:
+- Menambahkan `stream_state` dan `stream_live` ke dalam daftar `allowedSort` pada handler `GetAllCCTV`.
+
+timestamp: 2026-10-22 16:15 UTC+8
+kategori: Kecil, Backend (CCTV/API)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/changelog.md
+
+alasan perubahan: Mendukung pengurutan tabel Master CCTV berdasarkan kondisi live kamera.
+
+---
+
 ## [0.64.29] - 2026-10-22
 
 ### Pembersihan teks mojibake pada riwayat pemeliharaan
