@@ -62,6 +62,7 @@ npm run build
 | 5 | Panggil `POST /api/streams/:id/verify` tanpa autentikasi. | HTTP 401. | **Lulus.** |
 | 6 | Tunggu satu siklus verifikasi periodik (default 15 menit). | Log menampilkan ringkasan `live/offline/unknown`; tidak ada error kredensial. | **Lulus.** Siklus berulang: 20 kamera, `live=17 offline=3 unknown=0`, sekitar 1 menit 6 detik. |
 | 7 | Periksa log snapshot setelah startup. | Tidak ada puluhan error 404 berulang. Bila endpoint snapshot tidak tersedia, scheduler berhenti dengan satu peringatan. | **Lulus.** Satu peringatan: "Snapshot berkala dihentikan: MediaMTX tidak menyediakan endpoint snapshot (404)". |
+| 8 | Klik **Stop Semua Stream** di halaman Monitor, lalu buka detail kamera dan klik **Cek Status Live**. | Backend mendaftarkan ulang path yang hilang satu kali lalu menjalankan verifikasi; status tidak langsung `unknown` hanya karena path tidak terdaftar. | **Lulus (unit test backend).** Uji ulang melalui UI menunggu sesi admin valid. |
 
 ### Catatan hasil runtime
 
@@ -79,6 +80,7 @@ npm run build
 - [x] Status `idle` on-demand tidak lagi membuat kamera tampak offline.
 - [x] Kegagalan koneksi MediaMTX tidak langsung dinyatakan sebagai kamera offline.
 - [x] Dua kegagalan berturut-turut diperlukan sebelum status offline.
+- [x] Path yang hilang setelah Stop Semua Stream/restart MediaMTX didaftarkan ulang sebelum verifikasi (unit test backend).
 - [x] Endpoint manual hanya dapat diakses admin.
 - [x] UI peta, grid, ringkasan, dan detail menampilkan status efektif yang konsisten.
 - [x] Tidak ada kredensial RTSP pada log, API, atau dokumen.

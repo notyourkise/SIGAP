@@ -233,6 +233,152 @@ func TestVerifyCCTVStreamDoesNotIncrementFailuresWhenMediaMTXUnreachable(t *test
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestVerifyCCTVStreamReRegistersMissingPath(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var registered atomic.Bool
+	var addCalls atomic.Int32
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !registered.Load() {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status": "error",
+				"error":  "path not found",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"name":      r.URL.Path[len("/v3/paths/get/"):],
+			"available": true,
+			"ready":     true,
+			"tracks":    []string{"H264"},
+		})
+	})
+	mux.HandleFunc("/v3/config/paths/add/", func(w http.ResponseWriter, r *http.Request) {
+		addCalls.Add(1)
+		registered.Store(true)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	oldClient := streamClient
+	streamClient = &utils.MediaMTXClient{BaseURL: srv.URL, HLSURL: srv.URL, HTTPClient: srv.Client()}
+	defer func() { streamClient = oldClient }()
+
+	cctv := models.CCTV{
+		Base:                models.Base{ID: uuid.New()},
+		KodeCCTV:            "THD-TEST",
+		Nama:                "Kamera Uji",
+		ChannelPort:         19,
+		RTSPPassword:        encryptedTestPassword(t, "secret123"),
+		StreamEnabled:       true,
+		StreamState:         models.StreamStateIdle,
+		StreamVerifiedState: models.StreamStateUnknown,
+	}
+
+	result := verifyCCTVStream(configDBForTest(t), cctv)
+
+	assert.Equal(t, models.StreamStateLive, result.State)
+	assert.Equal(t, streamVerifyMethodLive, result.Method)
+	assert.Zero(t, result.Failures)
+	assert.Equal(t, 1, result.Tracks)
+	assert.Empty(t, result.Error)
+	assert.EqualValues(t, 1, addCalls.Load(), "path yang hilang harus didaftarkan ulang tepat sekali")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVerifyCCTVStreamReportsReRegistrationFailure(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var addCalls atomic.Int32
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status": "error",
+			"error":  "path not found",
+		})
+	})
+	mux.HandleFunc("/v3/config/paths/add/", func(w http.ResponseWriter, r *http.Request) {
+		addCalls.Add(1)
+		http.Error(w, `{"error":"gagal mendaftarkan path"}`, http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	oldClient := streamClient
+	streamClient = &utils.MediaMTXClient{BaseURL: srv.URL, HLSURL: srv.URL, HTTPClient: srv.Client()}
+	defer func() { streamClient = oldClient }()
+
+	cctv := models.CCTV{
+		Base:                 models.Base{ID: uuid.New()},
+		KodeCCTV:             "THD-TEST",
+		Nama:                 "Kamera Uji",
+		ChannelPort:          19,
+		RTSPPassword:         encryptedTestPassword(t, "secret123"),
+		StreamEnabled:        true,
+		StreamVerifiedState:  models.StreamStateUnknown,
+		StreamVerifyFailures: 1,
+	}
+
+	result := verifyCCTVStream(configDBForTest(t), cctv)
+
+	assert.Equal(t, models.StreamStateUnknown, result.State)
+	assert.Equal(t, 1, result.Failures, "kegagalan registrasi bukan bukti kamera offline")
+	assert.Contains(t, result.Error, "pendaftaran ulang gagal")
+	assert.EqualValues(t, 1, addCalls.Load())
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVerifyCCTVStreamReportsPathStillMissingAfterReRegistration(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status": "error",
+			"error":  "path not found",
+		})
+	})
+	mux.HandleFunc("/v3/config/paths/add/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	oldClient := streamClient
+	streamClient = &utils.MediaMTXClient{BaseURL: srv.URL, HLSURL: srv.URL, HTTPClient: srv.Client()}
+	defer func() { streamClient = oldClient }()
+
+	cctv := models.CCTV{
+		Base:                models.Base{ID: uuid.New()},
+		KodeCCTV:            "THD-TEST",
+		Nama:                "Kamera Uji",
+		ChannelPort:         19,
+		RTSPPassword:        encryptedTestPassword(t, "secret123"),
+		StreamEnabled:       true,
+		StreamVerifiedState: models.StreamStateUnknown,
+	}
+
+	result := verifyCCTVStream(configDBForTest(t), cctv)
+
+	assert.Equal(t, models.StreamStateUnknown, result.State)
+	assert.Zero(t, result.Failures)
+	assert.Contains(t, result.Error, "setelah pendaftaran ulang")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // configDBForTest memastikan helper sqlmock sudah di-inject ke config.DB.
 func configDBForTest(t *testing.T) *gorm.DB {
 	t.Helper()

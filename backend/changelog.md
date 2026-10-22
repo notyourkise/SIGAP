@@ -1,5 +1,30 @@
 # Changelog - Backend SIGAP
 
+## [0.64.28] - 2026-10-22
+
+### Verifikasi stream memulihkan path MediaMTX yang hilang
+
+**Masalah**: Setelah **Stop Semua Stream** atau restart MediaMTX, verifikasi manual dapat langsung mengembalikan `unknown` dengan pesan "path stream belum terdaftar di MediaMTX". Path sebenarnya dapat didaftarkan ulang, tetapi verifier hanya memeriksa path yang sudah ada sehingga tombol **Cek Status Live** tidak memulihkan kondisi tersebut.
+
+**Perbaikan**:
+- Saat `GetPath` mengembalikan 404, verifier mendaftarkan ulang path satu kali melalui konfigurasi RTSP yang sama (sub-stream, on-demand, `closeAfter: 10s`) lalu memeriksa ulang.
+- Kegagalan pendaftaran ulang tetap menghasilkan `unknown` dan tidak menaikkan `stream_verify_failures`, karena bukan bukti kamera offline.
+- Pesan diagnosis membedakan pendaftaran ulang gagal, path tetap tidak ditemukan, dan MediaMTX tidak dapat dihubungi.
+- Test baru mencakup pendaftaran ulang berhasil, gagal, dan path tetap 404 setelah pendaftaran ulang.
+
+timestamp: 2026-10-22 11:40 UTC+8
+kategori: Sedang, Backend (Streaming/Reliability)
+file yang diubah:
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_test.go
+- backend/changelog.md
+- docs/04-manual-tests/manual-test-cctv-active-verification.md
+- docs/05-reports/CCTV-ACTIVE-VERIFICATION-2026-10-22.md
+
+alasan perubahan: Membuat verifikasi manual dan periodik tetap bekerja setelah path MediaMTX dihapus, tanpa menimbulkan false offline atau menunggu re-registrar periodik.
+
+---
+
 ## [0.64.27] - 2026-10-22
 
 ### Verifikasi aktif status streaming CCTV

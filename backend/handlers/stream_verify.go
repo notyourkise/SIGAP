@@ -182,12 +182,31 @@ func verifyCCTVStream(db *gorm.DB, cctv models.CCTV) streamVerificationResult {
 
 	info, err := streamClient.GetPath(path)
 	if err != nil {
-		result.Error = "path stream belum terdaftar di MediaMTX"
 		if !isMediaMTXNotFound(err) {
 			result.Error = "MediaMTX tidak dapat dihubungi"
+			result.Duration = time.Since(started)
+			return persistStreamVerification(db, result)
 		}
-		result.Duration = time.Since(started)
-		return persistStreamVerification(db, result)
+
+		// Path dapat hilang setelah "Stop Semua Stream" atau restart MediaMTX
+		// yang tidak menyimpan konfigurasi runtime. Daftarkan ulang satu kali
+		// sebelum menyimpulkan unknown agar Cek Status Live tetap bekerja.
+		utils.Log.Infof("🔁 Path streaming %s belum terdaftar; mendaftarkan ulang sebelum verifikasi", path)
+		if regErr := registerStreamWithRetry(cctv, 1); regErr != nil {
+			result.Error = "path stream belum terdaftar di MediaMTX; pendaftaran ulang gagal"
+			result.Duration = time.Since(started)
+			return persistStreamVerification(db, result)
+		}
+
+		info, err = streamClient.GetPath(path)
+		if err != nil {
+			result.Error = "path stream belum terdaftar di MediaMTX setelah pendaftaran ulang"
+			if !isMediaMTXNotFound(err) {
+				result.Error = "MediaMTX tidak dapat dihubungi setelah pendaftaran ulang"
+			}
+			result.Duration = time.Since(started)
+			return persistStreamVerification(db, result)
+		}
 	}
 
 	// Path yang sudah menyala tidak perlu dipicu ulang; ini juga menghindari

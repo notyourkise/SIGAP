@@ -22,6 +22,10 @@ dipercaya untuk operasional.
   bukan offline.
 - Endpoint admin `POST /api/streams/:id/verify` menjalankan verifikasi manual dan
   mengembalikan hasil beserta `tracks`, `duration_ms`, dan error diagnosis.
+- Bila path tidak ditemukan (404), verifier mendaftarkan ulang path satu kali
+  sebelum menyimpulkan `unknown`. Ini menangani path yang hilang setelah
+  **Stop Semua Stream** atau restart MediaMTX. Kegagalan pendaftaran ulang tidak
+  menaikkan failure counter karena bukan bukti kamera offline.
 - Status terverifikasi yang masih segar (30 menit) menang atas status pasif pada
   `/api/streams/live-status`, badge peta, grid monitor, detail CCTV, statistik peta,
   dan health monitor.
@@ -59,6 +63,10 @@ dipercaya untuk operasional.
   tidak dapat dijangkau dari host/API untuk diagnosis lebih lanjut.
 - Browser/perangkat tanpa dukungan H.265 tidak dapat memutar stream H.265 tanpa
   transcoding.
+- **Stop Semua Stream** hanya menghapus path dari MediaMTX; path dapat
+  didaftarkan ulang oleh re-registrar periodik atau saat verifikasi. Untuk
+  mematikan kamera secara permanen, nonaktifkan `stream_enabled` pada kamera
+  tersebut.
 
 ## Checklist Deployment
 
@@ -77,5 +85,6 @@ dipercaya untuk operasional.
 - Frontend: unit test service worker, WHEP, dan live-status lulus; `npm run build`
   lulus; lint 0 error (warning yang sudah ada tetap).
 - Test baru mencakup prioritas status terverifikasi, timestamp kedaluwarsa/masa
-  depan, ambang dua kegagalan, MediaMTX tidak terjangkau, pemicu HLS, dan
-  registrasi route verifikasi manual.
+  depan, ambang dua kegagalan, MediaMTX tidak terjangkau, pemicu HLS, registrasi
+  route verifikasi manual, serta pendaftaran ulang otomatis path yang hilang
+  (berhasil, gagal, dan tetap 404 setelah pendaftaran ulang).
