@@ -1,5 +1,32 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.27] - 2026-10-22
+
+### Urutan dan filter kamera pada Monitor CCTV
+
+**Masalah**: Dropdown kamera di halaman Monitor mengikuti urutan respons API sehingga tidak runtut dari THD awal ke akhir. Kamera yang sudah dipilih pada satu sel juga masih muncul di dropdown sel lain, sehingga satu kamera dapat dipakai di beberapa sel.
+
+**Perubahan**:
+- Daftar kamera diurutkan natural berdasarkan kode: `THD-02`, `THD-03`, `THD-10`, dan seterusnya.
+- Dropdown setiap sel hanya menampilkan kamera yang belum dipilih pada sel lain; kamera milik sel itu sendiri tetap tampil sebagai nilai aktif.
+- Pilihan duplikat dari state lama dibersihkan, dan pilihan pada sel di luar layout aktif tidak lagi mengunci dropdown.
+- Helper murni `monitor-cctv` ditambahkan beserta test untuk pengurutan, filter, dan deduplikasi.
+- CI frontend menjalankan `npm run test:monitor`.
+
+timestamp: 2026-10-22 11:55 UTC+8
+kategori: Sedang, Frontend (Monitor/UX)
+file yang diubah:
+- frontend/src/app/monitor/page.tsx
+- frontend/src/lib/monitor-cctv.ts
+- frontend/tests/monitor-cctv.test.mts
+- frontend/package.json
+- frontend/changelog.md
+- .github/workflows/ci.yml
+
+alasan perubahan: Membuat pemilihan kamera di grid Monitor lebih runtut dan mencegah kamera yang sama dipilih pada lebih dari satu sel.
+
+---
+
 ## [1.55.26] - 2026-10-22
 
 ### Badge status CCTV terverifikasi

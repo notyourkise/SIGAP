@@ -21,6 +21,7 @@ import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { getSelectableCctvs, sortCctvsByCode, uniqueSelectionForCells } from '@/lib/monitor-cctv';
 import {
   MonitorPlay,
   LayoutGrid,
@@ -184,8 +185,9 @@ export default function MonitorPage() {
     try {
       const response = await apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000');
       const rows = response.data?.rows || [];
-      // Hanya kamera dengan stream_enabled true yang layak dipilih.
-      setCctvs(rows.filter((c) => c.stream_enabled === true));
+      // Hanya kamera dengan stream_enabled true yang layak dipilih. Urutkan
+      // berdasarkan kode agar dropdown selalu runtut dari THD awal ke akhir.
+      setCctvs(sortCctvsByCode(rows.filter((c) => c.stream_enabled === true)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Data CCTV gagal dimuat.');
     } finally {
@@ -240,9 +242,15 @@ export default function MonitorPage() {
     const state = loadMonitorState();
     if (!state) return;
 
-    // Pulihkan konfigurasi grid.
-    setLayout(state.layout);
-    setSelection(state.selection);
+    // Pulihkan konfigurasi grid. Buang pilihan duplikat/sel tersembunyi dari
+    // state lama agar kamera yang sama tidak muncul di dua sel.
+    const restoredLayout = state.layout in LAYOUT_PRESETS ? state.layout : '3x3';
+    const restoredCells = Array.from(
+      { length: LAYOUT_PRESETS[restoredLayout].cells },
+      (_, index) => index
+    );
+    setLayout(restoredLayout);
+    setSelection(uniqueSelectionForCells(state.selection ?? {}, restoredCells));
     loadCctvs();
 
     if (state.leftAt != null) {
@@ -408,16 +416,17 @@ export default function MonitorPage() {
 
   // --- Buka modal konfigurasi massal (salin selection saat ini ke draft) ---
   const openConfig = () => {
-    setDraftSelection({ ...selection });
+    setDraftSelection(uniqueSelectionForCells(selection, cells));
     setIsConfigOpen(true);
   };
 
   // --- Terapkan hasil konfigurasi massal dari modal ke grid ---
   const applyConfig = () => {
-    // Bersihkan entri kosong / id tidak valid.
+    // Hanya simpan sel yang terlihat, buang duplikat, lalu validasi ID.
+    const normalized = uniqueSelectionForCells(draftSelection, cells);
     const validIds = new Set(cctvs.map((c) => c.id));
     const next: Record<number, string> = {};
-    Object.entries(draftSelection).forEach(([cellIndex, cctvId]) => {
+    Object.entries(normalized).forEach(([cellIndex, cctvId]) => {
       if (cctvId && validIds.has(cctvId)) {
         next[Number(cellIndex)] = cctvId;
       }
@@ -555,7 +564,7 @@ export default function MonitorPage() {
                 <GridCell
                   key={index}
                   index={index}
-                  cctvs={availableCctvs}
+                  cctvs={getSelectableCctvs(availableCctvs, selection, index, cells)}
                   selectedCctv={selectedCctv}
                   isPlaying={isPlaying}
                   onSelect={(id) =>
@@ -627,26 +636,29 @@ export default function MonitorPage() {
 
               {/* Daftar sel & pemilihan kamera */}
               <div className="space-y-3">
-                {cells.map((index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <span className="w-14 shrink-0 text-sm font-semibold text-muted">Sel {index + 1}</span>
-                    <select
-                      value={draftSelection[index] ?? ''}
-                      onChange={(e) =>
-                        setDraftSelection((prev) => ({ ...prev, [index]: e.target.value }))
-                      }
-                      aria-label={`Pilih kamera untuk sel ${index + 1}`}
-                      className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
-                    >
-                      <option value="">— Kosong —</option>
-                      {cctvs.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.kode_cctv} — {c.nama}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                {cells.map((index) => {
+                  const selectableCctvs = getSelectableCctvs(cctvs, draftSelection, index, cells);
+                  return (
+                    <div key={index} className="flex items-center gap-3">
+                      <span className="w-14 shrink-0 text-sm font-semibold text-muted">Sel {index + 1}</span>
+                      <select
+                        value={draftSelection[index] ?? ''}
+                        onChange={(e) =>
+                          setDraftSelection((prev) => ({ ...prev, [index]: e.target.value }))
+                        }
+                        aria-label={`Pilih kamera untuk sel ${index + 1}`}
+                        className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
+                      >
+                        <option value="">— Kosong —</option>
+                        {selectableCctvs.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.kode_cctv} — {c.nama}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

@@ -139,6 +139,10 @@ jobs:
         run: npm run test:whep
         working-directory: ./frontend
 
+      - name: Run Monitor Selection Tests
+        run: npm run test:monitor
+        working-directory: ./frontend
+
       - name: Run Build
         run: npm run build
         working-directory: ./frontend
