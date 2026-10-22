@@ -294,6 +294,53 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		utils.Log.Errorf("❌ Gagal menyimpan hasil verifikasi stream CCTV %s: %v", result.CCTV.ID, err)
 	}
 
+	stateChanged := result.State != result.CCTV.StreamVerifiedState
+	if stateChanged {
+		var eventType string
+		var eventMsg string
+		switch result.State {
+		case models.StreamStateLive:
+			eventType = "online"
+			eventMsg = fmt.Sprintf("Verifikasi stream berhasil (%s, track=%d)", result.Method, result.Tracks)
+		case models.StreamStateOffline:
+			eventType = "offline"
+			eventMsg = "Verifikasi stream gagal"
+			if result.Error != "" {
+				eventMsg += ": " + result.Error
+			}
+		default:
+			eventType = "unknown"
+			eventMsg = "Hasil verifikasi stream tidak diketahui: " + result.Error
+		}
+
+		streamLog := models.CCTVStreamLog{
+			CCTVID:        result.CCTV.ID,
+			EventType:     eventType,
+			PreviousState: result.CCTV.StreamVerifiedState,
+			CurrentState:  result.State,
+			TriggerSource: "verify",
+			NetworkType:   networkType(result.CCTV),
+			ErrorDetail:   result.Error,
+			Message:       eventMsg,
+		}
+		if logErr := db.Create(&streamLog).Error; logErr != nil {
+			utils.Log.Warnf("⚠️ Gagal mencatat log verifikasi stream CCTV %s: %v", result.CCTV.KodeCCTV, logErr)
+		} else {
+			utils.BroadcastEvent("CCTV_STREAM_LOG_CREATED", fiber.Map{
+				"id":             streamLog.ID.String(),
+				"cctv_id":        result.CCTV.ID.String(),
+				"nama":           result.CCTV.Nama,
+				"kode_cctv":      result.CCTV.KodeCCTV,
+				"event_type":     eventType,
+				"previous_state": result.CCTV.StreamVerifiedState,
+				"current_state":  result.State,
+				"trigger_source": "verify",
+				"created_at":     result.VerifiedAt.Format(time.RFC3339),
+				"message":        eventMsg,
+			})
+		}
+	}
+
 	payload := fiber.Map{
 		"cctv_id":                result.CCTV.ID.String(),
 		"nama":                   result.CCTV.Nama,
