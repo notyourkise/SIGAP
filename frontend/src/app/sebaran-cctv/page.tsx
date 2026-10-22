@@ -7,6 +7,7 @@ import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest, getAllSitesForSelect, getCookie } from '@/lib/api';
 import type { Site } from '@/lib/api';
 import type { CCTVMapItem } from '@/components/CCTVMap';
+import { getEffectiveStreamState } from '@/lib/live-status';
 import type { StreamState } from '@/lib/live-status';
 import { MapPinned } from 'lucide-react';
 
@@ -253,9 +254,9 @@ export default function SebaranCCTVPage() {
     };
   }, [subscribe, loadMap]);
 
-  const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
-  const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
-  const maintenance = cctvs.filter((item) => isMaintenanceCCTV(item.status)).length;
+  const onlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'live').length;
+  const idleCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'idle').length;
+  const offlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'offline').length;
   const selectedZoneName = zones.find((zone) => zone.id === selectedZoneId)?.nama;
 
   return (
@@ -311,7 +312,7 @@ export default function SebaranCCTVPage() {
           <div className="h-[560px] animate-pulse rounded-3xl border border-border bg-card" role="status" aria-label="Memuat peta sebaran CCTV" />
         ) : (
           <>
-            <section aria-label="Ringkasan sebaran CCTV" className="grid overflow-hidden rounded-2xl border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
+            <section aria-label="Ringkasan status streaming CCTV" className="grid overflow-hidden rounded-2xl border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex min-h-20 items-center justify-between gap-6 border-b border-border px-5 py-5 sm:border-r lg:border-b-0 lg:last:border-r-0">
                 <div className="flex items-center gap-2.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
@@ -321,24 +322,24 @@ export default function SebaranCCTVPage() {
               </div>
               <div className="flex min-h-20 items-center justify-between gap-6 border-b border-border px-5 py-5 lg:border-b-0 lg:border-r">
                 <div className="flex items-center gap-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                  <span className="text-sm font-medium text-muted">Aktif</span>
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  <span className="text-sm font-medium text-muted">Online</span>
                 </div>
-                <strong className="text-2xl font-bold tabular-nums">{active}</strong>
+                <strong className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{onlineCount}</strong>
               </div>
               <div className="flex min-h-20 items-center justify-between gap-6 border-b border-border px-5 py-5 sm:border-b-0 sm:border-r">
                 <div className="flex items-center gap-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-warning" />
-                  <span className="text-sm font-medium text-muted">Pemeliharaan</span>
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                  <span className="text-sm font-medium text-muted">Siaga</span>
                 </div>
-                <strong className="text-2xl font-bold tabular-nums">{maintenance}</strong>
+                <strong className="text-2xl font-bold tabular-nums text-blue-600 dark:text-blue-400">{idleCount}</strong>
               </div>
               <div className="flex min-h-20 items-center justify-between gap-6 px-5 py-5">
                 <div className="flex items-center gap-2.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-error" />
-                  <span className="text-sm font-medium text-muted">Nonaktif</span>
+                  <span className="text-sm font-medium text-muted">Offline</span>
                 </div>
-                <strong className="text-2xl font-bold tabular-nums">{inactive}</strong>
+                <strong className="text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{offlineCount}</strong>
               </div>
             </section>
 
