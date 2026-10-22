@@ -1,5 +1,27 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.29] - 2026-10-22
+
+### Penghapusan tampilan grid pada halaman Peta Sebaran CCTV
+
+**Masalah**: Halaman Peta Sebaran CCTV (/sebaran-cctv) sebelumnya menyediakan opsi toggle tampilan Grid (StreamGridView). Opsi ini redundan karena sistem SIGAP sudah memiliki halaman tersendiri Monitor CCTV (/monitor) untuk pemantauan multi-kamera.
+
+**Perubahan**:
+- Menghapus tombol toggle tampilan Peta/Grid pada header halaman /sebaran-cctv.
+- Menghapus state iewMode dan import dinamis komponen StreamGridView.
+- Menyederhanakan layout halaman agar langsung memuat peta GIS interaktif CCTVMap.
+- Mengurangi kompleksitas kode dan overhead bundle halaman /sebaran-cctv.
+
+timestamp: 2026-10-22 15:45 UTC+8
+kategori: Ringan, Frontend (Refactor/UX)
+file yang diubah:
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menghilangkan redundansi tampilan grid di halaman sebaran CCTV karena sudah tersedia halaman khusus Monitor CCTV.
+
+---
+
 ## [1.55.28] - 2026-10-22
 
 ### Pembersihan karakter mojibake pada halaman CCTV
