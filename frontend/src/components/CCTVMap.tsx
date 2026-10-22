@@ -6,7 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Link from 'next/link';
 import { MapPin, Maximize, Minimize, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { getLiveBadge, type StreamState } from '@/lib/live-status';
+import { getEffectiveStreamState, getLiveBadge, hasFreshVerification, type StreamState } from '@/lib/live-status';
 
 export interface CCTVMapItem {
   id: string;
@@ -40,6 +40,11 @@ export interface CCTVMapItem {
   // Waktu terakhir stream benar-benar aktif (string ISO) — dipakai badge GSM 4-state
   // ("Pernah aktif hari ini" / "Offline") saat kamera sedang tidak live.
   stream_last_active_at?: string | null;
+  // Hasil verifikasi aktif end-to-end melalui MediaMTX. Bila masih segar, badge
+  // menampilkan "Online terverifikasi"/"Offline terkonfirmasi".
+  stream_verified_state?: StreamState | null;
+  stream_verified_at?: string | null;
+  stream_verified_method?: string | null;
 }
 
 interface CCTVMapProps {
@@ -109,7 +114,10 @@ export const formatLatency = (ms?: number | null): string => {
 const createCustomMarkerIcon = (
   healthScore?: number,
   isStreaming?: boolean,
-  cctv?: Pick<CCTVMapItem, 'stream_live' | 'stream_state' | 'stream_last_active_at' | 'network_type'>
+  cctv?: Pick<
+    CCTVMapItem,
+    'stream_live' | 'stream_state' | 'stream_last_active_at' | 'network_type' | 'stream_verified_state' | 'stream_verified_at'
+  >
 ) => {
   const color = healthScoreColor(healthScore);
   const shadowColor = `${color}66`;
@@ -283,16 +291,10 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
   // Statistik status live streaming (RTSP) dari seluruh CCTV.
   // stream_state tersedia → hitung live/idle/offline/unknown secara eksplisit;
   // data lama tanpa stream_state → fallback ke stream_live.
-  const onlineCount = cctvs.filter((c) =>
-    c.stream_state ? c.stream_state === 'live' : c.stream_live === true
-  ).length;
-  const idleCount = cctvs.filter((c) => c.stream_state === 'idle').length;
-  const offlineCount = cctvs.filter((c) =>
-    c.stream_state ? c.stream_state === 'offline' : c.stream_live === false
-  ).length;
-  const uncheckedCount = cctvs.filter((c) =>
-    c.stream_state ? c.stream_state === 'unknown' : c.stream_live == null
-  ).length;
+  const onlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'live').length;
+  const idleCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'idle').length;
+  const offlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'offline').length;
+  const uncheckedCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'unknown').length;
 
   // Pusat peta: gunakan prop `center` bila tersedia, fallback ke pusat IKN.
   // `mapCenterKey` dipakai sebagai key MapContainer agar peta di-reinit bila
@@ -329,7 +331,7 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
           <Marker
             key={item.id}
             position={[item.lat, item.lng]}
-            icon={createCustomMarkerIcon(item.health_score, item.stream_enabled, item)}
+            icon={createCustomMarkerIcon(item.health_score, getEffectiveStreamState(item) === 'live', item)}
             eventHandlers={{
               click: () => {
                 // Jika ada handler klik & kamera streaming aktif → buka modal stream, jangan buka Popup.
@@ -389,6 +391,9 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
                   {/* GSM: waktu terakhir stream aktif (tidak pernah di-probe ICMP). */}
                   {item.network_type === 'gsm' && item.stream_last_active_at && (
                     <span className="text-muted">· Aktif {formatCheckTime(item.stream_last_active_at)}</span>
+                  )}
+                  {hasFreshVerification(item) && item.stream_verified_at && (
+                    <span className="text-muted">· Verifikasi {formatCheckTime(item.stream_verified_at)}</span>
                   )}
                   {item.stream_checked_at && (
                     <span className="text-muted">· Dicek {formatCheckTime(item.stream_checked_at)}</span>

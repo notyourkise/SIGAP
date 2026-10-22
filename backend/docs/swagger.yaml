@@ -4909,6 +4909,57 @@ paths:
       summary: Ambil URL Stream CCTV
       tags:
       - Streaming
+  /streams/{id}/verify:
+    post:
+      consumes:
+      - application/json
+      description: Memicu pembacaan singkat melalui MediaMTX lalu memeriksa apakah
+        sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu
+        verifikasi.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Hasil verifikasi stream
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid / streaming belum diaktifkan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Database belum tersedia
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Verifikasi Status Stream CCTV
+      tags:
+      - Streaming
   /streams/health:
     get:
       consumes:

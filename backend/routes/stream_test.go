@@ -59,3 +59,20 @@ func TestStreamRoutesRequireAuth(t *testing.T) {
 func handlersStubGetStreamStatus(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
+
+// TestSetupStreamRoutesRegistersVerify memastikan endpoint verifikasi manual
+// terdaftar sebagai POST admin-only dan tidak tertimpa rute dinamis lain.
+func TestSetupStreamRoutesRegistersVerify(t *testing.T) {
+	app := fiber.New()
+	SetupStreamRoutes(app.Group("/api"))
+
+	verifyPath := "/api/streams/:id/verify"
+	found := false
+	for _, route := range app.GetRoutes() {
+		if route.Method == "POST" && route.Path == verifyPath {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "rute %s belum terdaftar", verifyPath)
+}

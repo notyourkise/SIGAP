@@ -1,5 +1,34 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.26] - 2026-10-22
+
+### Badge status CCTV terverifikasi
+
+**Masalah**: Badge peta/grid memakai `stream_state` pasif. Path on-demand yang `idle` tampil sebagai "Siaga" walaupun kamera mungkin offline, dan status verifikasi end-to-end dari backend belum ditampilkan.
+
+**Perubahan**:
+- Helper `hasFreshVerification`/`getEffectiveStreamState` memakai `stream_verified_state` yang masih segar (30 menit), lalu jatuh kembali ke status pasif.
+- Badge baru "Online terverifikasi" dan "Offline terkonfirmasi" diterapkan pada peta, popup, grid monitor, dan detail CCTV.
+- Marker peta berdenyut dan statistik peta memakai status efektif; tooltip menampilkan waktu verifikasi.
+- Detail CCTV menampilkan waktu/metode verifikasi, pesan diagnosis, dan tombol admin **Cek Status Live** yang memanggil `POST /api/streams/:id/verify`.
+- Enrichment WebSocket mempertahankan field probe/verifikasi yang tidak dikirim payload lama, sehingga status tidak berkedip ke `null`.
+- Test live-status diperluas untuk prioritas verifikasi live/offline dan fallback saat verifikasi kedaluwarsa.
+
+timestamp: 2026-10-22 11:05 UTC+8
+kategori: Sedang, Frontend (Streaming/UX)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/lib/live-status.ts
+- frontend/tests/live-status.test.mts
+- frontend/changelog.md
+
+alasan perubahan: Menampilkan status live/offline yang memiliki bukti verifikasi dan tidak lagi membingungkan pengguna saat path MediaMTX sedang idle.
+
+---
+
 ## [1.55.25] - 2026-10-21
 
 ### Patch keamanan dependency Next.js

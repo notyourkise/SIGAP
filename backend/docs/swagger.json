@@ -6272,6 +6272,79 @@
                 }
             }
         },
+        "/streams/{id}/verify": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Memicu pembacaan singkat melalui MediaMTX lalu memeriksa apakah sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu verifikasi.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Verifikasi Status Stream CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Hasil verifikasi stream",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid / streaming belum diaktifkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid / Token tidak terdaftar",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: Hanya Admin yang diperbolehkan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Database belum tersedia",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/test-panic": {
             "get": {
                 "description": "Endpoint uji coba untuk memastikan Recovery Middleware bekerja (hanya tersedia di development).",

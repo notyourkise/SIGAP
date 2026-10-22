@@ -7,6 +7,7 @@ import Pagination from '@/components/Pagination';
 import SortableHeader from '@/components/SortableHeader';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages, getAllSitesForSelect } from '@/lib/api';
+import { getLiveBadge, hasFreshVerification } from '@/lib/live-status';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { useToast } from '@/components/Toast';
@@ -66,6 +67,17 @@ interface CCTV {
   rtsp_url_masked?: string;
   rtsp_url_configured?: boolean;
   snapshot_url?: string;
+  // Status streaming. stream_state berasal dari probe pasif; field verified
+  // berasal dari verifikasi aktif end-to-end yang dijalankan periodik/manual.
+  stream_live?: boolean | null;
+  stream_state?: 'live' | 'idle' | 'offline' | 'unknown' | null;
+  stream_last_active_at?: string | null;
+  stream_verified_state?: 'live' | 'idle' | 'offline' | 'unknown' | null;
+  stream_verified_at?: string | null;
+  stream_verified_method?: string | null;
+  stream_verify_failures?: number;
+  stream_verify_error?: string | null;
+  network_type?: 'metro-e' | 'gsm' | null;
   // Zona operasional & kawasan (site) Ã¢â‚¬â€ opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
   site_id?: string | null;
@@ -183,6 +195,7 @@ export default function CCTVPage() {
   const [isFieldMaintenanceOpen, setIsFieldMaintenanceOpen] = useState(false);
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   // Id CCTV yang menu aksinya (detail/edit/hapus) sedang terbuka.
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
@@ -488,6 +501,28 @@ export default function CCTVPage() {
       toast.error(err instanceof Error ? err.message : 'Detail CCTV belum dapat dimuat. Coba lagi.', err);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // Verifikasi manual end-to-end: backend memicu HLS MediaMTX, menunggu sumber
+  // siap, lalu mengembalikan live/offline/unknown beserta waktu verifikasi.
+  const handleVerifyStream = async () => {
+    if (!currentCCTV) return;
+    setVerifyLoading(true);
+    try {
+      const response = await apiRequest<CCTV>(`/streams/${currentCCTV.id}/verify`, {
+        method: 'POST',
+      });
+      if (response.data) {
+        const updated: CCTV = { ...currentCCTV, ...response.data };
+        setCurrentCCTV(updated);
+        setCctvs((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+        toast.success(response.message || 'Status streaming berhasil diverifikasi.');
+      }
+    } catch (err) {
+      toast.error('Verifikasi status streaming gagal. Coba lagi.', err);
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -2204,6 +2239,54 @@ export default function CCTVPage() {
                     <dd className="mt-1 whitespace-pre-wrap text-sm">{currentCCTV.keterangan || 'Tidak ada keterangan tambahan.'}</dd>
                   </div>
                 </dl>
+              </div>
+
+              {/* Status streaming: bedakan status pasif (idle/on-demand) dari
+                  hasil verifikasi aktif end-to-end melalui MediaMTX. */}
+              <div className="space-y-2 border-t border-border pt-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <h4 className="flex items-center gap-1.5 text-sm font-bold">
+                      <Camera className="h-4 w-4 text-primary" />
+                      Status Streaming
+                    </h4>
+                    <p className="text-sm font-semibold" style={{ color: getLiveBadge(currentCCTV).color }}>
+                      {getLiveBadge(currentCCTV).dot} {getLiveBadge(currentCCTV).label}
+                    </p>
+                    {!currentCCTV.stream_enabled && (
+                      <p className="text-xs text-muted">Streaming belum diaktifkan untuk CCTV ini.</p>
+                    )}
+                    {hasFreshVerification(currentCCTV) && currentCCTV.stream_verified_at && (
+                      <p className="text-xs text-muted">
+                        Diverifikasi {new Date(currentCCTV.stream_verified_at).toLocaleString('id-ID', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                        {currentCCTV.stream_verified_method ? ` · ${currentCCTV.stream_verified_method}` : ''}
+                      </p>
+                    )}
+                    {currentCCTV.stream_verify_error && (
+                      <p className="max-w-md text-xs text-amber-600 dark:text-amber-400">
+                        {currentCCTV.stream_verify_error}
+                      </p>
+                    )}
+                  </div>
+                  {isAdmin && currentCCTV.stream_enabled && (
+                    <button
+                      type="button"
+                      onClick={handleVerifyStream}
+                      disabled={verifyLoading}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {verifyLoading ? (
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}
+                      {verifyLoading ? 'Memverifikasi…' : 'Cek Status Live'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Breakdown skor kesehatan Ã¢â‚¬â€ alasan penurunan skor */}

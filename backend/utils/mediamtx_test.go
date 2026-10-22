@@ -452,11 +452,53 @@ func TestNilHTTPClient(t *testing.T) {
 // env MEDIAMTX_API_URL dan membuang trailing slash, serta menetapkan timeout.
 func TestNewMediaMTXClientDefault(t *testing.T) {
 	t.Setenv("MEDIAMTX_API_URL", "http://mediamtx:9997/")
+	t.Setenv("MEDIAMTX_HLS_URL", "http://mediamtx:8888/")
 	client := NewMediaMTXClient()
 	if client.BaseURL != "http://mediamtx:9997" {
 		t.Errorf("NewMediaMTXClient() BaseURL = %q, want http://mediamtx:9997", client.BaseURL)
 	}
+	if client.HLSURL != "http://mediamtx:8888" {
+		t.Errorf("NewMediaMTXClient() HLSURL = %q, want http://mediamtx:8888", client.HLSURL)
+	}
 	if client.HTTPClient == nil {
 		t.Fatal("NewMediaMTXClient() HTTPClient nil")
+	}
+}
+
+// TestTriggerHLSStatusHandling memastikan status HLS yang menandakan salah
+// konfigurasi tidak dianggap sebagai sumber kamera yang siap, sedangkan 500
+// (sumber belum siap) tetap dianggap pemicu normal.
+func TestTriggerHLSStatusHandling(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		wantErr    bool
+	}{
+		{name: "ok", statusCode: http.StatusOK, wantErr: false},
+		{name: "source not ready", statusCode: http.StatusInternalServerError, wantErr: false},
+		{name: "path not found", statusCode: http.StatusNotFound, wantErr: true},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+			}))
+			defer server.Close()
+
+			client := &MediaMTXClient{
+				BaseURL:    server.URL,
+				HLSURL:     server.URL,
+				HTTPClient: server.Client(),
+			}
+			err := client.TriggerHLS("cam-test", time.Second)
+			if tc.wantErr && err == nil {
+				t.Fatal("TriggerHLS() expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("TriggerHLS() unexpected error: %v", err)
+			}
+		})
 	}
 }

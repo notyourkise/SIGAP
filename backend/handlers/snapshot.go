@@ -3,6 +3,7 @@ package handlers
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"sigap-backend/config"
@@ -34,6 +35,11 @@ const (
 // snapshotClient adalah klien global MediaMTX untuk pengambilan snapshot.
 var snapshotClient = utils.NewMediaMTXClient()
 
+// snapshotEndpointUnavailable menandai bahwa MediaMTX yang berjalan tidak
+// menyediakan endpoint snapshot (v1.20 tidak memilikinya). Scheduler dihentikan
+// agar tidak menulis puluhan error 404 setiap siklus.
+var snapshotEndpointUnavailable atomic.Bool
+
 // snapshotURLFor membangun path URL snapshot terbaru sebuah CCTV.
 func snapshotURLFor(cctvID string) string {
 	return "/api/cctv/" + cctvID + "/snapshot"
@@ -48,7 +54,13 @@ func CaptureSnapshot(cctv models.CCTV, eventType, notes string) (string, error) 
 	path := utils.BuildStreamPath(cctv.ID.String())
 	data, err := snapshotClient.GetSnapshot(path)
 	if err != nil {
-		utils.Log.Warnf("⚠️ Gagal mengambil snapshot CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+		if isMediaMTXNotFound(err) {
+			// Path bisa saja belum terdaftar atau endpoint snapshot memang tidak
+			// tersedia. Scheduler menangani kondisi ini tanpa spam log.
+			utils.Log.Debugf("Snapshot CCTV %s (%s) belum tersedia: %v", cctv.Nama, cctv.KodeCCTV, err)
+		} else {
+			utils.Log.Warnf("⚠️ Gagal mengambil snapshot CCTV %s (%s): %v", cctv.Nama, cctv.KodeCCTV, err)
+		}
 		return "", err
 	}
 
@@ -248,8 +260,9 @@ func GetCCTVTimeline(c *fiber.Ctx) error {
 }
 
 // RunSnapshotScheduler menjalankan pengambilan snapshot otomatis untuk seluruh
-// CCTV berstatus stream_enabled=true. Berjalan sekali segera, lalu berulang
-// setiap 15 menit. Kegagalan MediaMTX hanya dicatat, tidak menghentikan loop.
+// CCTV berstatus stream_enabled=true. Percobaan pertama ditunda agar registrasi
+// path selesai, lalu berulang setiap 15 menit. Bila MediaMTX terbukti tidak
+// menyediakan endpoint snapshot, scheduler berhenti dengan satu peringatan.
 func RunSnapshotScheduler(db *gorm.DB) {
 	if db == nil {
 		utils.Log.Warn("⚠️ RunSnapshotScheduler: db nil — scheduler dihentikan")
@@ -259,7 +272,14 @@ func RunSnapshotScheduler(db *gorm.DB) {
 	// Interval pengambilan snapshot berkala (15 menit).
 	const interval = 15 * time.Minute
 
+	// Beri waktu registrasi path MediaMTX selesai sebelum percobaan pertama.
+	time.Sleep(10 * time.Second)
+
 	for {
+		if snapshotEndpointUnavailable.Load() {
+			return
+		}
+
 		var cctvs []models.CCTV
 		if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
 			utils.Log.Errorf("❌ RunSnapshotScheduler: gagal memuat CCTV aktif: %v", err)
@@ -267,6 +287,17 @@ func RunSnapshotScheduler(db *gorm.DB) {
 			success := 0
 			for _, cctv := range cctvs {
 				if _, err := CaptureSnapshot(cctv, EventPeriodicSnapshot, ""); err != nil {
+					// Bila path terdaftar tetapi endpoint snapshot tetap 404,
+					// berarti MediaMTX tidak menyediakan API snapshot. Hentikan
+					// scheduler sekali saja daripada mengulang error setiap 15 menit.
+					if isMediaMTXNotFound(err) {
+						path := utils.BuildStreamPath(cctv.ID.String())
+						if _, pathErr := snapshotClient.GetPath(path); pathErr == nil {
+							snapshotEndpointUnavailable.Store(true)
+							utils.Log.Warn("⚠️ Snapshot berkala dihentikan: MediaMTX tidak menyediakan endpoint snapshot (404)")
+							return
+						}
+					}
 					continue
 				}
 				success++

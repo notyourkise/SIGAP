@@ -19,6 +19,12 @@ import (
 // Dapat diganti (di-inject) pada pengujian melalui setStreamClient.
 var streamClient = utils.NewMediaMTXClient()
 
+// streamOnDemandCloseAfter menentukan berapa lama MediaMTX mempertahankan
+// sumber RTSP setelah penonton terakhir pergi. Nilai 10 detik cukup untuk
+// reconnects singkat dan membatasi jumlah stream bersamaan saat verifikasi
+// periodik, sehingga NVR tidak mengembalikan 453 Not Enough Bandwidth.
+const streamOnDemandCloseAfter = "10s"
+
 // setStreamClient mengganti klien MediaMTX global — khusus dipakai pada
 // pengujian untuk menyuntikkan mock yang tidak benar-benar memanggil server.
 func setStreamClient(c *utils.MediaMTXClient) {
@@ -195,7 +201,7 @@ func StartStream(c *fiber.Ctx) error {
 	pathCfg := utils.PathConfig{
 		Source:                   rtspURL,
 		SourceOnDemand:           true,
-		SourceOnDemandCloseAfter: "30s",
+		SourceOnDemandCloseAfter: streamOnDemandCloseAfter,
 		RTSPTransport:            "tcp",
 	}
 	pathAlreadyRegistered, err := ensureStreamPath(path, pathCfg)
@@ -355,7 +361,7 @@ func StartAllStreams(c *fiber.Ctx) error {
 		pathCfg := utils.PathConfig{
 			Source:                   rtspURL,
 			SourceOnDemand:           true,
-			SourceOnDemandCloseAfter: "30s",
+			SourceOnDemandCloseAfter: streamOnDemandCloseAfter,
 			RTSPTransport:            "tcp",
 		}
 		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
@@ -676,7 +682,7 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 	pathCfg := utils.PathConfig{
 		Source:                   rtspURL,
 		SourceOnDemand:           true,
-		SourceOnDemandCloseAfter: "30s",
+		SourceOnDemandCloseAfter: streamOnDemandCloseAfter,
 		RTSPTransport:            "tcp",
 	}
 
@@ -824,8 +830,9 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 
 	// Path tidak siap (isReady=false). Bedakan idle on-demand dari outage:
 	// path yang terdaftar tetapi belum berjalan karena tidak ada penonton tidak
-	// boleh memicu countdown STREAM_DOWN.
-	streamState := cctv.StreamState
+	// boleh memicu countdown STREAM_DOWN. Status terverifikasi yang masih segar
+	// (live/offline) menang atas status pasif.
+	streamState := effectiveStreamState(cctv, now)
 	if streamState == models.StreamStateIdle {
 		if _, wasDown := streamDownSince[path]; wasDown {
 			delete(streamDownSince, path)
@@ -840,9 +847,7 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 		return
 	}
 
-	// Gunakan hasil probe RTSP (stream_live/stream_state) sebagai sumber
-	// kebenaran bila tersedia. Nilai ini dimuat dari DB saat
-	// runStreamHealthOnce sehingga mencerminkan hasil probe terakhir.
+	// Gunakan hasil probe/verifikasi sebagai sumber kebenaran bila tersedia.
 	live := cctv.StreamLive
 	switch streamState {
 	case models.StreamStateLive:
