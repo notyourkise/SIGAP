@@ -298,9 +298,9 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {isStreaming ? (
+          {isStreaming && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleStop}
@@ -314,23 +314,9 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
                   )}
                   {stopping ? 'Menghentikan…' : 'Hentikan Stream'}
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStartFromPlaceholder}
-                  disabled={starting}
-                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60"
-                >
-                  {starting ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Video className="h-4 w-4" />
-                  )}
-                  {starting ? 'Memulai…' : 'Mulai Stream'}
-                </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

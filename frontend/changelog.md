@@ -1,5 +1,26 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.32] - 2026-10-22
+
+### Penghapusan tombol duplikat Mulai Stream pada modal streaming CCTV
+
+**Masalah**: Pada modal streaming CCTV (`StreamModal.tsx`), terdapat dua tombol untuk memulai streaming saat video belum berjalan: satu tombol besar "Mulai Streaming" di bagian tengah pemutar video (*placeholder*) dan satu tombol "Mulai Stream" di bagian footer bawah. Keduanya menjalankan aksi yang sama sehingga redundan.
+
+**Perbaikan**:
+- Menghapus tombol "Mulai Stream" duplikat pada footer ketika status belum streaming (`!isStreaming`).
+- Tombol "Mulai Streaming" utama tetap berada di tengah area pemutar video sebagai Call-to-Action utama yang intuitif.
+- Footer bawah kini hanya menampilkan tombol "Hentikan Stream" saat video sedang aktif diputar.
+
+timestamp: 2026-10-22 17:26 UTC+8
+kategori: Ringan, Frontend (UI / StreamModal)
+file yang diubah:
+- frontend/src/components/StreamModal.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menghilangkan tombol aksi duplikat pada modal streaming CCTV demi kebersihan dan konsistensi antarmuka.
+
+---
+
 ## [1.55.31] - 2026-10-22
 
 ### Penyesuaian kartu ringkasan status pada Peta Sebaran CCTV
