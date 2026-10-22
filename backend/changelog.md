@@ -1,5 +1,39 @@
 # Changelog - Backend SIGAP
 
+## [0.64.31] - 2026-10-22
+
+### Perbaikan trusted proxy rate limit dan penambahan sistem log event CCTV
+
+**Masalah**:
+1. Go Fiber backend belum mengatur `ProxyHeader: fiber.HeaderXForwardedFor` pada konfigurasi Fiber, sehingga IP peer Nginx (`172.28.0.10`) dianggap sebagai IP klien bagi semua request dan grup middleware `/api` membatasi total request seluruh pengguna menjadi 100/menit (memicu error 429 "Terlalu banyak permintaan" saat login).
+2. Sistem belum memiliki pencatatan riwayat event perubahan status stream/koneksi kamera (kapan sebuah CCTV online, offline, atau siaga), sehingga perubahan status di lapangan tidak dapat dilacak secara historis.
+
+**Perbaikan**:
+- Menambahkan `ProxyHeader: fiber.HeaderXForwardedFor` di `main.go` agar backend membaca IP asli pengguna dari reverse proxy Nginx.
+- Memperbaiki `limiterKey` pada `middleware/limiter.go` agar membedakan kuota per endpoint spesifik (`c.Path()`) dan menaikkan batas `GlobalLimiter` menjadi 300 request/menit.
+- Membuat tabel migrasi `cctv_stream_logs` (`000028_cctv_stream_logs.up.sql`), model `models.CCTVStreamLog`, dan endpoint `GET /api/cctv-logs` (alias `/api/cctv/logs`).
+- Mengintegrasikan pencatatan log otomatis dan event broadcast WebSocket `CCTV_STREAM_LOG_CREATED` pada `RunRTSPProber` dan `persistStreamVerification`.
+
+timestamp: 2026-10-22 18:18 UTC+8
+kategori: Sedang, Backend (Security / Rate Limit / CCTV Stream Logs)
+file yang diubah:
+- backend/main.go
+- backend/middleware/limiter.go
+- backend/middleware/limiter_test.go
+- backend/models/cctv_stream_log.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_verify.go
+- backend/handlers/cctv_stream_log.go
+- backend/handlers/cctv_stream_log_test.go
+- backend/routes/cctv.go
+- backend/migrations/000028_cctv_stream_logs.up.sql
+- backend/migrations/000028_cctv_stream_logs.down.sql
+- backend/changelog.md
+
+alasan perubahan: Memperbaiki pemblokiran rate limit palsu pada proxy dan menyediakan pelacakan riwayat online/offline CCTV.
+
+---
+
 ## [0.64.30] - 2026-10-22
 
 ### Dukungan sorting parameter status live pada Master CCTV

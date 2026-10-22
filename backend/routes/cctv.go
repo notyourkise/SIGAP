@@ -24,6 +24,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 
 	// Rute yang dapat diakses oleh Admin & Teknisi (via sesi JWT).
 	protectedCCTV := cctvGroup.Group("", middleware.Protected(), siteMiddleware)
+	protectedCCTV.Get("/logs", handlers.GetCCTVStreamLogs)
 	protectedCCTV.Get("/template", handlers.DownloadTemplateCCTV)
 	protectedCCTV.Post("/scan", handlers.ScanCCTV)
 	protectedCCTV.Get("/:id/qrcode", handlers.GetCCTVQRCode)
@@ -41,4 +42,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	adminCCTV.Post("/:id/rotate-qr", handlers.RotateQRCode)
 	adminCCTV.Put("/:id", handlers.UpdateCCTV)
 	adminCCTV.Delete("/:id", handlers.DeleteCCTV)
+
+	// Alias route /api/cctv-logs
+	router.Get("/cctv-logs", middleware.Protected(), siteMiddleware, handlers.GetCCTVStreamLogs)
 }

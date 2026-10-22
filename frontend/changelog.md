@@ -1,5 +1,30 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.34] - 2026-10-22
+
+### Penambahan menu dan halaman Log Status CCTV (Riwayat Online/Offline)
+
+**Masalah**: Pengguna tidak dapat mengetahui riwayat dan kronologi perubahan status kamera CCTV saat sebuah kamera beralih Online atau Offline di lapangan.
+
+**Perbaikan**:
+- Menambahkan item menu **Log CCTV** pada sidebar di bawah menu "Peta Sebaran CCTV" pada grup *CCTV & Monitoring* (`DashboardLayout.tsx`).
+- Membangun halaman antarmuka baru `/cctv/logs` (`frontend/src/app/cctv/logs/page.tsx`) yang menampilkan:
+  - Kartu metrik: Total Riwayat Event, Event Online Hari Ini, dan Event Offline Hari Ini.
+  - Daftar riwayat status kamera dengan badge `Online 🟢`, `Offline 🔴`, dan `Siaga 🔵`, waktu kejadian, jaringan, metode pemeriksaan, dan rincian pesan/error.
+  - Filter tipe event (Semua, Online, Offline, Siaga), pencarian nama/kode CCTV, dan tombol segarkan.
+  - Integrasi listener WebSocket `CCTV_STREAM_LOG_CREATED` dan `CCTV_LIVE_STATUS_UPDATED` untuk sinkronisasi seketika saat event terjadi.
+
+timestamp: 2026-10-22 18:20 UTC+8
+kategori: Sedang, Frontend (CCTV Logs / Navigation)
+file yang diubah:
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/app/cctv/logs/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Memberikan visibilitas riwayat status operasional dan deteksi event offline/online kamera CCTV secara terperinci.
+
+---
+
 ## [1.55.33] - 2026-10-22
 
 ### Penyelarasan metrik live streaming dan rincian anomali pada Dashboard utama

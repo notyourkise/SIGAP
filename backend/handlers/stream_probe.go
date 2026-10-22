@@ -208,15 +208,52 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				payload["stream_last_active_at"] = now.Format(time.RFC3339)
 			}
 			utils.BroadcastEvent("CCTV_LIVE_STATUS_UPDATED", payload)
+			var eventType string
+			var eventMsg string
 			switch streamState {
 			case models.StreamStateLive:
+				eventType = "online"
+				eventMsg = "Kamera terdeteksi online via probe jaringan"
 				utils.Log.Infof("🟢 CCTV %s (%s) kini live [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			case models.StreamStateIdle:
+				eventType = "standby"
+				eventMsg = "Kamera siaga on-demand (belum ada penonton)"
 				utils.Log.Infof("🔵 CCTV %s (%s) siaga on-demand (tidak ada penonton) [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			case models.StreamStateOffline:
+				eventType = "offline"
+				eventMsg = "Kamera tidak merespons probe jaringan"
 				utils.Log.Warnf("🔴 CCTV %s (%s) kini offline [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			default:
+				eventType = "unknown"
+				eventMsg = "Status stream tidak dapat disimpulkan"
 				utils.Log.Warnf("⚪ CCTV %s (%s) status stream tidak diketahui [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
+			}
+
+			streamLog := models.CCTVStreamLog{
+				CCTVID:        cctv.ID,
+				EventType:     eventType,
+				PreviousState: cctv.StreamState,
+				CurrentState:  streamState,
+				TriggerSource: "probe",
+				NetworkType:   networkType(cctv),
+				LatencyMs:     latencyMs,
+				Message:       eventMsg,
+			}
+			if logErr := db.Create(&streamLog).Error; logErr != nil {
+				utils.Log.Warnf("⚠️ Gagal mencatat log stream CCTV %s: %v", cctv.KodeCCTV, logErr)
+			} else {
+				utils.BroadcastEvent("CCTV_STREAM_LOG_CREATED", fiber.Map{
+					"id":             streamLog.ID.String(),
+					"cctv_id":        cctv.ID.String(),
+					"nama":           cctv.Nama,
+					"kode_cctv":      cctv.KodeCCTV,
+					"event_type":     eventType,
+					"previous_state": cctv.StreamState,
+					"current_state":  streamState,
+					"trigger_source": "probe",
+					"created_at":     now.Format(time.RFC3339),
+					"message":        eventMsg,
+				})
 			}
 		} else if live {
 			// Status tetap live → tetap update (menyegarkan stream_last_active_at

@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import ProtectedRoute from './ProtectedRoute';
 import {
+  Activity,
   Wrench, 
   Menu, 
   X, 
@@ -115,6 +116,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       icon: Cctv,
       items: [
         { name: 'Peta Sebaran CCTV', href: '/sebaran-cctv', icon: MapPinned },
+        { name: 'Log CCTV', href: '/cctv/logs', icon: Activity },
         { name: 'Aset CCTV', href: '/cctv', icon: Database },
         { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
         ...(isAdmin ? [{ name: 'Monitor CCTV', href: '/monitor', icon: MonitorPlay }] : []),

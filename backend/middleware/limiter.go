@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -26,7 +28,7 @@ func getClientIP(c *fiber.Ctx) string {
 // satu endpoint dihitung dalam satu bucket; fallback ke URL path aktual.
 func limiterKey(c *fiber.Ctx) string {
 	endpoint := c.Path()
-	if r := c.Route(); r != nil && r.Path != "" {
+	if r := c.Route(); r != nil && r.Path != "" && r.Path != "/api" {
 		endpoint = r.Path
 	}
 	return "limiter:" + getClientIP(c) + ":" + endpoint
@@ -133,7 +135,13 @@ func newFixedWindowLimiter(max int, window time.Duration, message string) fiber.
 // GlobalLimiter membatasi maksimal 100 request per menit per IP per endpoint
 // (key "limiter:{ip}:{endpoint}").
 func GlobalLimiter() fiber.Handler {
-	return newFixedWindowLimiter(100, 1*time.Minute, "Terlalu banyak permintaan. Silakan coba lagi beberapa saat lagi.")
+	limit := 300
+	if raw := os.Getenv("RATE_LIMIT_GLOBAL_MAX"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	return newFixedWindowLimiter(limit, 1*time.Minute, "Terlalu banyak permintaan. Silakan coba lagi beberapa saat lagi.")
 }
 
 // AuthLimiter membatasi maksimal 5 request per menit per IP khusus rute login

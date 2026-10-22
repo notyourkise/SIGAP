@@ -231,6 +231,7 @@ func main() {
 	app := fiber.New(fiber.Config{
 		EnableTrustedProxyCheck: len(trustedProxies) > 0,
 		TrustedProxies:          trustedProxies,
+		ProxyHeader:             fiber.HeaderXForwardedFor,
 	})
 	if len(trustedProxies) > 0 {
 		utils.Log.Info("🛡️ Trusted proxy aktif: " + strings.Join(trustedProxies, ", "))

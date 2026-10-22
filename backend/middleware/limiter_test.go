@@ -26,6 +26,7 @@ func TestGlobalLimiter_AllowsUnderLimit(t *testing.T) {
 }
 
 func TestGlobalLimiter_RejectsOverLimit(t *testing.T) {
+	t.Setenv("RATE_LIMIT_GLOBAL_MAX", "100")
 	app := fiber.New()
 	app.Use(GlobalLimiter())
 	app.Get("/", func(c *fiber.Ctx) error {
