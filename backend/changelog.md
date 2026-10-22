@@ -1,5 +1,32 @@
 # Changelog - Backend SIGAP
 
+## [0.64.29] - 2026-10-22
+
+### Pembersihan teks mojibake pada riwayat pemeliharaan
+
+**Masalah**: Alasan sinkronisasi status CCTV menyimpan karakter `â€”` (mojibake dari em dash) ketika tugas pemeliharaan gagal. Karakter yang sama juga muncul pada deskripsi Swagger dan beberapa komentar sumber.
+
+**Perbaikan**:
+- `syncReason` kegagalan checklist sekarang memakai `—`.
+- Deskripsi endpoint `CompleteMaintenanceLog` pada anotasi, `docs.go`, `swagger.json`, dan `swagger.yaml` diseragamkan.
+- Komentar `auth.go` dan `push_test.go` dibersihkan tanpa mengubah perilaku.
+- Audit database terhadap seluruh kolom teks tidak menemukan nilai mojibake; data CCTV tetap utuh.
+
+timestamp: 2026-10-22 13:10 UTC+8
+kategori: Kecil, Backend (Text/Encoding)
+file yang diubah:
+- backend/handlers/maintenance.go
+- backend/handlers/auth.go
+- backend/utils/push_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+
+alasan perubahan: Menghilangkan karakter rusak pada teks yang dapat tersimpan/ditampilkan dan menjaga dokumentasi API tetap bersih.
+
+---
+
 ## [0.64.28] - 2026-10-22
 
 ### Verifikasi stream memulihkan path MediaMTX yang hilang

@@ -73,7 +73,7 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate JWT Token â€” sertakan versi token agar token lama bisa dicabut
+	// Generate JWT Token — sertakan versi token agar token lama bisa dicabut
 	token, err := utils.GenerateToken(user.ID.String(), user.Role, user.TokenVersion)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -288,7 +288,7 @@ func Logout(c *fiber.Ctx) error {
 		}
 	}
 
-	// Masukkan token ke blacklist â€” token tidak akan bisa digunakan lagi
+	// Masukkan token ke blacklist — token tidak akan bisa digunakan lagi
 	utils.RevokeToken(tokenString, expiry)
 	utils.ClearSessionCookies(c)
 

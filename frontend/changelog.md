@@ -1,5 +1,38 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.28] - 2026-10-22
+
+### Pembersihan karakter mojibake pada halaman CCTV
+
+**Masalah**: Beberapa teks di halaman Master CCTV dan detail CCTV tampil sebagai karakter acak, misalnya `THD-04 Ã‚Â· Channel D4`, `Ã¢â‚¬â€`, `Ã¢â‚¬Â¦`, dan `Ãƒâ€”`. Penyebabnya adalah teks UTF-8 yang ter-encode ganda di `frontend/src/app/cctv/page.tsx`, bukan data dari database.
+
+**Perbaikan**:
+- Seluruh 40 baris teks terdampak dikembalikan ke karakter yang benar: `·`, `—`, `–`, `…`, `“`, `”`, `•`, `×`, dan `→`.
+- BOM di awal file dihapus.
+- Teks backend yang dapat muncul di riwayat pemeliharaan juga dibersihkan; deskripsi Swagger ikut disinkronkan.
+- Ditambahkan test `npm run test:encoding` yang memindai seluruh `frontend/src` terhadap mojibake, karakter kontrol, replacement character, dan BOM. Test dijalankan di CI.
+- Audit browser admin mencakup 24 halaman; tidak ada lagi karakter mojibake pada teks, atribut, atau opsi dropdown. Teks THD-04 terverifikasi menjadi `Jalan Masjid Negara 1 · Channel D4`.
+
+timestamp: 2026-10-22 13:10 UTC+8
+kategori: Sedang, Frontend (Encoding/UI)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/tests/text-encoding.test.mts
+- frontend/package.json
+- frontend/changelog.md
+- backend/handlers/maintenance.go
+- backend/handlers/auth.go
+- backend/utils/push_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- .github/workflows/ci.yml
+
+alasan perubahan: Menghilangkan karakter rusak yang terlihat pengguna dan mencegah mojibake masuk kembali melalui CI.
+
+---
+
 ## [1.55.27] - 2026-10-22
 
 ### Urutan dan filter kamera pada Monitor CCTV

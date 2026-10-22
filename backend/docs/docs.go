@@ -3194,7 +3194,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi \"completed\" bila semua item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed â†’ \"aktif\", failed â†’ \"pemeliharaan\"; status \"nonaktif\" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -\u003e completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).",
+                "description": "Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi \"completed\" bila semua item \"ok\", selain itu \"failed\". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → \"aktif\", failed → \"pemeliharaan\"; status \"nonaktif\" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -\u003e completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).",
                 "consumes": [
                     "application/json"
                 ],

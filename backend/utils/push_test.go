@@ -76,7 +76,7 @@ func TestSendPushNoopWhenVapidMissing(t *testing.T) {
 	t.Setenv("VAPID_EMAIL", "")
 
 	db, mock := newPushTestDB(t)
-	// Tidak ada ekspektasi query â€” bila ada query, ExpectationsWereMet gagal.
+	// Tidak ada ekspektasi query — bila ada query, ExpectationsWereMet gagal.
 	SendPush(db, uuid.New(), "MAINTENANCE_ASSIGNED", "T", "B", "maintenance-log", nil)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
