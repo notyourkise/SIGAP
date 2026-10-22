@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
 import { apiRequest } from '@/lib/api';
 import { AlertTriangle, CalendarClock, CheckCheck, MapPin, Package, ScanLine } from 'lucide-react';
+import { getEffectiveStreamState, getLiveBadge, type StreamState } from '@/lib/live-status';
 import Link from 'next/link';
 import FieldMaintenanceModal from '@/components/FieldMaintenanceModal';
 import NotificationBell from '@/components/NotificationBell';
@@ -19,9 +20,16 @@ interface CCTV {
   nama: string;
   kode_cctv: string;
   lokasi_area: string;
+  stream_live?: boolean | null;
+  stream_state?: StreamState | null;
+  stream_last_active_at?: string | null;
+  network_type?: 'metro-e' | 'gsm' | null;
+  stream_verified_state?: StreamState | null;
+  stream_verified_at?: string | null;
+  health_score?: number;
 }
 
-type CCTVFilter = 'all' | 'active' | 'inactive';
+type CCTVFilter = 'all' | 'live' | 'idle' | 'offline' | 'maintenance';
 const CCTV_PAGE_SIZE = 6;
 
 interface MaintenanceLog {
@@ -175,20 +183,25 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const unsubCCTV = subscribe('CCTV_UPDATED', () => loadDashboard());
+    const unsubCCTVLive = subscribe('CCTV_LIVE_STATUS_UPDATED', () => loadDashboard());
     const unsubMaintCreated = subscribe('MAINTENANCE_CREATED', () => loadDashboard());
     const unsubMaintUpdated = subscribe('MAINTENANCE_UPDATED', () => loadDashboard());
     const unsubStockLow = subscribe('STOCK_LOW', () => loadDashboard());
 
     return () => {
       unsubCCTV();
+      unsubCCTVLive();
       unsubMaintCreated();
       unsubMaintUpdated();
       unsubStockLow();
     };
   }, [subscribe, loadDashboard]);
 
-  const active = cctvs.filter((item) => isActiveCCTV(item.status)).length;
-  const inactive = cctvs.filter((item) => isInactiveCCTV(item.status)).length;
+  const liveCount = cctvs.filter((item) => getEffectiveStreamState(item) === 'live').length;
+  const idleCount = cctvs.filter((item) => getEffectiveStreamState(item) === 'idle').length;
+  const offlineCount = cctvs.filter((item) => getEffectiveStreamState(item) === 'offline').length;
+  const maintenanceCount = cctvs.filter((item) => ['MAINTENANCE', 'PEMELIHARAAN'].includes(normalizeStatus(item.status))).length;
+
   const scheduled = logs.filter((item) => item.status === 'scheduled').length;
   const ongoing = logs.filter((item) => item.status === 'ongoing').length;
   const completed = logs.filter((item) => item.status === 'completed').length;
@@ -197,16 +210,28 @@ export default function DashboardPage() {
 
   const summary: Array<{ key: CCTVFilter; label: string; value: number; tone: string }> = [
     { key: 'all', label: 'Total CCTV', value: totalCctv, tone: 'bg-blue-500' },
-    { key: 'active', label: 'Aktif', value: active, tone: 'bg-success' },
-    { key: 'inactive', label: 'Nonaktif', value: inactive, tone: 'bg-error' },
+    { key: 'live', label: 'Online', value: liveCount, tone: 'bg-emerald-500' },
+    { key: 'idle', label: 'Siaga', value: idleCount, tone: 'bg-blue-400' },
+    { key: 'offline', label: 'Offline', value: offlineCount, tone: 'bg-rose-500' },
+    { key: 'maintenance', label: 'Pemeliharaan', value: maintenanceCount, tone: 'bg-amber-500' },
   ];
-  const selectedCctvs = selectedCctvFilter === 'active'
-    ? cctvs.filter((item) => isActiveCCTV(item.status))
-    : selectedCctvFilter === 'inactive'
-      ? cctvs.filter((item) => isInactiveCCTV(item.status))
-      : selectedCctvFilter === 'all'
-        ? cctvs
-        : [];
+
+  const selectedCctvs = (() => {
+    switch (selectedCctvFilter) {
+      case 'live':
+        return cctvs.filter((item) => getEffectiveStreamState(item) === 'live');
+      case 'idle':
+        return cctvs.filter((item) => getEffectiveStreamState(item) === 'idle');
+      case 'offline':
+        return cctvs.filter((item) => getEffectiveStreamState(item) === 'offline');
+      case 'maintenance':
+        return cctvs.filter((item) => ['MAINTENANCE', 'PEMELIHARAAN'].includes(normalizeStatus(item.status)));
+      case 'all':
+        return cctvs;
+      default:
+        return [];
+    }
+  })();
   const selectedSummary = summary.find((item) => item.key === selectedCctvFilter);
   const selectedCctvTotalPages = Math.max(1, Math.ceil(selectedCctvs.length / CCTV_PAGE_SIZE));
   const safeSelectedCctvPage = Math.min(selectedCctvPage, selectedCctvTotalPages);
@@ -260,7 +285,7 @@ export default function DashboardPage() {
         ) : (
           <>
             <section aria-label="Ringkasan CCTV" className="overflow-hidden rounded-2xl border border-border bg-card">
-              <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="grid divide-y divide-border sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 sm:divide-x sm:divide-y-0">
                 {summary.map(({ key, label, value, tone }) => {
                   const isSelected = selectedCctvFilter === key;
                   return (
@@ -321,8 +346,12 @@ export default function DashboardPage() {
                 ) : (
                   <div className="divide-y divide-border">
                     {visibleCctvs.map((cctv) => {
-                      const isActive = isActiveCCTV(cctv.status);
-                      const isInactive = isInactiveCCTV(cctv.status);
+                      const streamState = getEffectiveStreamState(cctv);
+                      const liveBadge = getLiveBadge(cctv);
+                      const isMaintenance = ['MAINTENANCE', 'PEMELIHARAAN'].includes(normalizeStatus(cctv.status));
+                      const isAnomalousOffline = !isMaintenance && streamState === 'offline';
+                      const isAnomalousRecovered = isMaintenance && streamState === 'live';
+
                       return (
                         <div
                           key={cctv.id}
@@ -335,16 +364,41 @@ export default function DashboardPage() {
                           <p className="truncate text-xs text-muted" title={cctv.lokasi_area || undefined}>
                             {cctv.lokasi_area || 'Lokasi belum dicatat'}
                           </p>
-                          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            isActive
-                              ? 'border-success/25 bg-success/10 text-success'
-                              : isInactive
-                                ? 'border-error/25 bg-error/10 text-error'
-                                : 'border-warning/25 bg-warning/10 text-warning'
-                          }`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-success' : isInactive ? 'bg-error' : 'bg-warning'}`} />
-                            {cctvStatusLabel(cctv.status)}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                            <span
+                              className="inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+                              style={{
+                                borderColor: `${liveBadge.color}40`,
+                                backgroundColor: `${liveBadge.color}15`,
+                                color: liveBadge.color,
+                              }}
+                            >
+                              <span>{liveBadge.dot}</span>
+                              <span>{liveBadge.label}</span>
+                            </span>
+
+                            {isAnomalousOffline && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                                title="Kamera terdaftar aktif tetapi sinyal RTSP offline"
+                              >
+                                ⚠️ Cek fisik
+                              </span>
+                            )}
+                            {isAnomalousRecovered && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                                title="Kamera dalam pemeliharaan tetapi sinyal live terdeteksi online"
+                              >
+                                🟢 Sinyal pulih
+                              </span>
+                            )}
+                            {isMaintenance && !isAnomalousRecovered && (
+                              <span className="inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                Pemeliharaan
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
