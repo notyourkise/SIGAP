@@ -35,6 +35,28 @@ func TestGenerateMaintenanceReportPDF_Success(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestGenerateMaintenanceReportPDF_CCTVFilter(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+
+	// Filter CCTV harus diteruskan ke query PDF, bukan hanya ke daftar/CSV.
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE cctv_id = \$1`).
+		WithArgs(cctvID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "action_taken", "notes", "status",
+			"scheduled_date", "completed_at", "image_url",
+		}))
+
+	app := newTestApp()
+	app.Get("/maintenance-logs/report-pdf", withUserLocals(uuid.New().String(), "admin"), GenerateMaintenanceReportPDF)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/maintenance-logs/report-pdf?cctv_id="+cctvID.String(), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestGenerateMaintenanceReportPDF_TechnicianScoped(t *testing.T) {
 	_, mock := setupMockGORM(t)
 
