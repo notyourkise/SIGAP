@@ -1089,11 +1089,15 @@ export default function CCTVPage() {
 
   const applySortFilter = () => {
     let changed = false;
+    let filterChanged = false;
     if (draftSortBy !== sortBy) { setSortBy(draftSortBy); changed = true; }
     if (draftSortOrder !== sortOrder) { setSortOrder(draftSortOrder); changed = true; }
-    if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; }
-    if (draftIoFilter !== ioFilter) { setIoFilter(draftIoFilter); changed = true; }
-    if (draftSiteFilter !== siteFilter) { setSiteFilter(draftSiteFilter); changed = true; }
+    if (draftStatusFilter !== statusFilter) { setStatusFilter(draftStatusFilter); changed = true; filterChanged = true; }
+    if (draftIoFilter !== ioFilter) { setIoFilter(draftIoFilter); changed = true; filterChanged = true; }
+    if (draftSiteFilter !== siteFilter) { setSiteFilter(draftSiteFilter); changed = true; filterChanged = true; }
+    // Seleksi lintas halaman hanya aman bila filter tidak berubah. Jika filter
+    // berubah, baris terpilih bisa tersembunyi dan tetap ikut aksi massal.
+    if (filterChanged) setSelectedIDs([]);
     if (changed) setPage(1);
     setIsSortModalOpen(false);
   };
@@ -1104,6 +1108,7 @@ export default function CCTVPage() {
     setStatusFilter('');
     setIoFilter('');
     setSiteFilter('');
+    setSelectedIDs([]);
     setPage(1);
     setIsSortModalOpen(false);
   };
@@ -1728,9 +1733,14 @@ export default function CCTVPage() {
 
         {isFormModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-            <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cctv-form-title"
+              className="relative w-full max-w-2xl bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            >
               <div className="flex items-center justify-between border-b border-border pb-4">
-                <h3 className="text-xl font-bold">{currentCCTV ? 'Ubah Data CCTV' : 'Tambah CCTV'}</h3>
+                <h3 id="cctv-form-title" className="text-xl font-bold">{currentCCTV ? 'Ubah Data CCTV' : 'Tambah CCTV'}</h3>
                 <button type="button" aria-label="Tutup formulir CCTV" onClick={() => setIsFormModalOpen(false)} className="p-1 rounded-lg border hover:bg-background text-gray-400 hover:text-foreground cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
