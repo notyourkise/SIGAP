@@ -432,7 +432,7 @@ func GetAllCCTV(c *fiber.Ctx) error {
 	}
 
 	// Paginasi & Sorting
-	allowedSort := []string{"id", "kode_cctv", "nama", "site_name", "lokasi_area", "status", "health_score", "created_at", "updated_at"}
+	allowedSort := []string{"id", "kode_cctv", "nama", "site_name", "lokasi_area", "status", "health_score", "stream_state", "stream_live", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
 	if strings.HasPrefix(sort, "site_name ") {
 		order := strings.TrimPrefix(sort, "site_name ")

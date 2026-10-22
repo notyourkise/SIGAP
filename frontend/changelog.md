@@ -1,5 +1,29 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.30] - 2026-10-22
+
+### Penggantian kolom Kesehatan dengan kolom Live (Online/Offline) pada Master CCTV
+
+**Masalah**: Kolom Kesehatan (skor 0-100) di tabel utama Master CCTV (`/cctv`) kurang memberikan visibilitas langsung terhadap status konektivitas fisik perangkat di lapangan, sedangkan status administratif (`cctv.status`) belum sinkron dengan kondisi koneksi jaringan nyata.
+
+**Perubahan**:
+- Mengganti kolom tabel "Kesehatan" dengan kolom "Live" (Online/Siaga/Offline) menggunakan helper `getLiveBadge`.
+- Menambahkan indikator anomali sinkronisasi: menampilkan peringatan "Perlu cek fisik" jika kamera tercatat `Aktif` tetapi koneksi jaringan `Offline`.
+- Menambahkan indikator pemulihan: menampilkan label "Koneksi pulih" jika kamera berstatus `Pemeliharaan` tetapi sinyal streaming terdeteksi `Online`.
+- Menambahkan listener WebSocket `CCTV_LIVE_STATUS_UPDATED` agar baris tabel langsung terupdate real-time saat probe latar belakang berjalan.
+- Menambahkan opsi pengurutan `stream_state` pada modal sortir dan header tabel.
+- Rincian skor kesehatan dan grafik tren historis tetap dipertahankan lengkap pada modal Detail CCTV.
+
+timestamp: 2026-10-22 16:15 UTC+8
+kategori: Sedang, Frontend (Master CCTV/Live Status)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Memberikan visibilitas kondisi jaringan real-time dan sinkronisasi antara status operasional dengan status koneksi fisik CCTV.
+
+---
+
 ## [1.55.29] - 2026-10-22
 
 ### Penghapusan tampilan grid pada halaman Peta Sebaran CCTV
