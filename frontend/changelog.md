@@ -1,5 +1,26 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.31] - 2026-10-22
+
+### Penyesuaian kartu ringkasan status pada Peta Sebaran CCTV
+
+**Masalah**: Kartu metrik di atas peta pada halaman `/sebaran-cctv` sebelumnya menghitung status administratif statis (`status` = aktif/pemeliharaan/nonaktif), sehingga menampilkan 20 Aktif dan 15 Nonaktif meskipun seluruh kamera telah dikonfigurasi streaming dan status live nyata di bawah peta menunjukkan 21 Online, 10 Siaga, dan 4 Offline.
+
+**Perbaikan**:
+- Mengubah kalkulasi kartu ringkasan di atas peta agar menggunakan fungsi `getEffectiveStreamState` dari status probe real-time.
+- Kartu kini menampilkan metrik operasional live yang akurat: **Total CCTV**, **Online**, **Siaga**, dan **Offline**.
+- Nilai kartu di atas kini 100% konsisten dengan indikator status bar di bawah peta dan warna marker Leaflet.
+
+timestamp: 2026-10-22 16:50 UTC+8
+kategori: Ringan, Frontend (Peta Sebaran/Live Metrics)
+file yang diubah:
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menyelaraskan metrik ringkasan kartu dengan kondisi live streaming real-time pada peta pemantauan.
+
+---
+
 ## [1.55.30] - 2026-10-22
 
 ### Penggantian kolom Kesehatan dengan kolom Live (Online/Offline) pada Master CCTV
