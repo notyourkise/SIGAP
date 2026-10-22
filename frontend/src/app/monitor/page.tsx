@@ -21,6 +21,7 @@ import dynamic from 'next/dynamic';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { getSelectableCctvs, sortCctvsByCode, uniqueSelectionForCells } from '@/lib/monitor-cctv';
 import {
   MonitorPlay,
   LayoutGrid,
@@ -63,13 +64,6 @@ interface PaginationPayload<T> {
   pagination: { total_rows: number };
 }
 
-interface StartAllStreamsResult {
-  total: number;
-  success: number;
-  failed: number;
-  mediamtx_reachable: boolean;
-}
-
 type StreamingServiceState = 'checking' | 'ready' | 'unavailable';
 
 // Preset ukuran grid: jumlah sel & kelas grid responsif.
@@ -103,6 +97,10 @@ interface MonitorState {
   selection: Record<number, string>;
   // Waktu (ms) saat user meninggalkan halaman Monitor. Null bila sedang di halaman.
   leftAt: number | null;
+  // Apakah streaming untuk sel yang dipilih sedang dinyalakan. Disimpan terpisah
+  // dari leftAt agar timer "kembali dalam 10 menit" tidak pernah menyalakan
+  // streaming yang belum/tidak lagi dijalankan.
+  isPlaying?: boolean;
 }
 
 // Baca state monitor dari localStorage.
@@ -131,7 +129,7 @@ function saveMonitorState(state: MonitorState | null) {
 }
 
 export default function MonitorPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   // Data & status muat daftar CCTV.
@@ -155,27 +153,32 @@ export default function MonitorPage() {
 
   // Modal konfigurasi massal (atur CCTV untuk setiap sel sekaligus).
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  // Salinan sementara selection saat mengedit di modal (disimpan saat "Terapkan").
+  // Salinan sementara layout & selection saat mengedit di modal. Perubahan baru
+  // berlaku setelah "Terapkan"; menutup modal tidak boleh mengubah grid.
+  const [draftLayout, setDraftLayout] = useState<'2x2' | '3x3' | '4x4'>('3x3');
   const [draftSelection, setDraftSelection] = useState<Record<number, string>>({});
 
   // Ref kontainer untuk fullscreen seluruh grid.
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
 
-  // Ref nilai terbaru layout & selection, dipakai cleanup saat unmount (berpindah menu).
+  // Ref nilai terbaru layout, selection, dan status playing. Dipakai listener
+  // visibility/pagehide serta cleanup unmount agar tidak menyimpan state lama.
   const layoutRef = useRef(layout);
   const selectionRef = useRef(selection);
+  const playingRef = useRef(isPlaying);
   useEffect(() => {
     layoutRef.current = layout;
     selectionRef.current = selection;
-  }, [layout, selection]);
+    playingRef.current = isPlaying;
+  }, [layout, selection, isPlaying]);
 
-  // --- Guard admin: bukan admin dialihkan ke dashboard ---
+  // --- Guard admin: tunggu bootstrap auth selesai sebelum memutuskan redirect ---
   useEffect(() => {
-    if (!loading && user?.role !== 'admin') {
+    if (!authLoading && !loading && user?.role !== 'admin') {
       router.replace('/dashboard');
     }
-  }, [loading, user, router]);
+  }, [authLoading, loading, user, router]);
 
   // --- Muat daftar CCTV yang streaming aktif ---
   const loadCctvs = useCallback(async () => {
@@ -184,8 +187,9 @@ export default function MonitorPage() {
     try {
       const response = await apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000');
       const rows = response.data?.rows || [];
-      // Hanya kamera dengan stream_enabled true yang layak dipilih.
-      setCctvs(rows.filter((c) => c.stream_enabled === true));
+      // Hanya kamera dengan stream_enabled true yang layak dipilih. Urutkan
+      // berdasarkan kode agar dropdown selalu runtut dari THD awal ke akhir.
+      setCctvs(sortCctvsByCode(rows.filter((c) => c.stream_enabled === true)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Data CCTV gagal dimuat.');
     } finally {
@@ -235,59 +239,80 @@ export default function MonitorPage() {
   // lain), waktu keluar dicatat. Kembali dalam < 10 menit → timer di-reset & streaming
   // lanjut. Kembali setelah > 10 menit → streaming berakhir, perlu klik Play ulang.
 
-  // Saat halaman dimuat: pulihkan konfigurasi & tentukan status streaming dari leftAt.
+  // Saat halaman dimuat: pulihkan konfigurasi & tentukan status streaming.
+  // isPlaying disimpan eksplisit; leftAt saja tidak cukup karena user bisa
+  // meninggalkan halaman tanpa pernah menekan Play (atau setelah menekan Stop).
   useEffect(() => {
     const state = loadMonitorState();
     if (!state) return;
 
-    // Pulihkan konfigurasi grid.
-    setLayout(state.layout);
-    setSelection(state.selection);
+    // Pulihkan konfigurasi grid. Buang pilihan duplikat/sel tersembunyi dari
+    // state lama agar kamera yang sama tidak muncul di dua sel.
+    const restoredLayout = state.layout in LAYOUT_PRESETS ? state.layout : '3x3';
+    const restoredCells = Array.from(
+      { length: LAYOUT_PRESETS[restoredLayout].cells },
+      (_, index) => index
+    );
+    setLayout(restoredLayout);
+    setSelection(uniqueSelectionForCells(state.selection ?? {}, restoredCells));
     loadCctvs();
+
+    if (state.isPlaying !== true) {
+      // State lama (tanpa flag) atau sesi yang memang sudah dihentikan tidak
+      // boleh dianggap playing. Konfigurasi tetap dipertahankan.
+      setIsPlaying(false);
+      saveMonitorState({ ...state, leftAt: null, isPlaying: false });
+      return;
+    }
 
     if (state.leftAt != null) {
       const elapsed = Date.now() - state.leftAt;
-      if (elapsed < STREAM_GRACE_MS) {
-        // Kembali dalam masa tunggu → streaming dianggap masih menyala & timer di-reset.
-        setIsPlaying(true);
-        saveMonitorState({ ...state, leftAt: null });
-      } else {
-        // Sudah lebih dari 10 menit → perlu klik Play ulang.
-        setIsPlaying(false);
-        saveMonitorState({ ...state, leftAt: null });
-      }
+      const stillPlaying = elapsed < STREAM_GRACE_MS;
+      // Kembali dalam masa tunggu → streaming lanjut; lewat 10 menit → perlu Play ulang.
+      setIsPlaying(stillPlaying);
+      saveMonitorState({ ...state, leftAt: null, isPlaying: stillPlaying });
+    } else {
+      // Reload saat masih berada di halaman dengan streaming aktif.
+      setIsPlaying(true);
+      saveMonitorState({ ...state, leftAt: null, isPlaying: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Deteksi saat user meninggalkan / kembali ke halaman Monitor.
   useEffect(() => {
+    const persistCurrent = (leftAt: number | null) => {
+      saveMonitorState({
+        layout: layoutRef.current,
+        selection: selectionRef.current,
+        leftAt,
+        isPlaying: playingRef.current,
+      });
+    };
+
     const recordLeave = () => {
-      const state = loadMonitorState() ?? { layout, selection, leftAt: null };
-      saveMonitorState({ layout: state.layout ?? layout, selection: state.selection ?? selection, leftAt: Date.now() });
+      // Timer 10 menit hanya berlaku bila streaming memang sedang dinyalakan.
+      persistCurrent(playingRef.current ? Date.now() : null);
     };
 
     const handleVisibility = () => {
       if (document.hidden) {
-        // User meninggalkan halaman (buka tab/menu lain) → mulai hitung mundur 10 menit.
-        const state = loadMonitorState() ?? { layout, selection, leftAt: null };
-        saveMonitorState({ layout, selection, leftAt: Date.now() });
-      } else {
-        // User kembali ke halaman → cek masa tunggu.
-        const state = loadMonitorState();
-        if (state && state.leftAt != null) {
-          const elapsed = Date.now() - state.leftAt;
-          if (elapsed < STREAM_GRACE_MS) {
-            // Masih dalam masa tunggu → reset timer, streaming lanjut.
-            setIsPlaying(true);
-            saveMonitorState({ ...state, leftAt: null });
-          } else {
-            // Masa tunggu habis → perlu klik Play ulang.
-            setIsPlaying(false);
-            saveMonitorState({ ...state, leftAt: null });
-          }
-        }
+        recordLeave();
+        return;
       }
+
+      // User kembali ke halaman → cek masa tunggu hanya bila stream memang aktif.
+      const state = loadMonitorState();
+      if (!state || state.isPlaying !== true) {
+        setIsPlaying(false);
+        return;
+      }
+      if (state.leftAt == null) return;
+
+      const elapsed = Date.now() - state.leftAt;
+      const stillPlaying = elapsed < STREAM_GRACE_MS;
+      setIsPlaying(stillPlaying);
+      saveMonitorState({ ...state, leftAt: null, isPlaying: stillPlaying });
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
@@ -301,25 +326,23 @@ export default function MonitorPage() {
       window.removeEventListener('blur', recordLeave);
       window.removeEventListener('focus', handleVisibility);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, selection]);
+  }, []);
 
   // Catat waktu keluar saat komponen di-unmount (mis. berpindah ke menu lain via
   // navigasi internal Next.js yang tidak memicu visibilitychange/pagehide).
   useEffect(() => {
     return () => {
-      const state = loadMonitorState() ?? { layout: '3x3', selection: {}, leftAt: null };
       saveMonitorState({
-        layout: layoutRef.current ?? state.layout,
-        selection: selectionRef.current ?? state.selection,
-        leftAt: Date.now(),
+        layout: layoutRef.current,
+        selection: selectionRef.current,
+        leftAt: playingRef.current ? Date.now() : null,
+        isPlaying: playingRef.current,
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Guard admin rendering awal (cegah render penuh sebelum role diketahui) ---
-  if (loading || user?.role !== 'admin') {
+  if (authLoading || loading || user?.role !== 'admin') {
     return (
       <DashboardLayout>
         <div className="flex h-[60vh] items-center justify-center gap-3 text-muted">
@@ -333,6 +356,10 @@ export default function MonitorPage() {
   const preset = LAYOUT_PRESETS[layout];
   const cells = Array.from({ length: preset.cells }, (_, i) => i);
   const availableCctvs = cctvs;
+  const selectedCctvs = Object.values(selection)
+    .map((id) => cctvs.find((cctv) => cctv.id === id))
+    .filter((cctv): cctv is CCTV => Boolean(cctv));
+  const draftCells = Array.from({ length: LAYOUT_PRESETS[draftLayout].cells }, (_, i) => i);
 
   // --- Toggle fullscreen seluruh grid ---
   const toggleGridFullscreen = async () => {
@@ -351,32 +378,46 @@ export default function MonitorPage() {
     }
   };
 
-  // --- Nyalakan streaming untuk seluruh CCTV pada grid via backend ---
+  // --- Nyalakan streaming hanya untuk kamera yang sedang tampil di grid ---
+  // Sengaja tidak memakai /streams/start-all: endpoint itu menyalakan seluruh
+  // CCTV sehingga tabrakan dengan halaman lain dan memboroskan bandwidth NVR.
   const handlePlay = async () => {
     if (acting) return;
+    if (selectedCctvs.length === 0) {
+      setError('Pilih minimal satu kamera pada grid sebelum menyalakan streaming.');
+      return;
+    }
+
     setActing(true);
     setError('');
     setWarning('');
     try {
-      const res = await apiRequest<StartAllStreamsResult>('/streams/start-all', { method: 'POST' });
-      const result = res.data;
-      if (res.status === 'success' && result && result.success > 0) {
+      const results = await Promise.allSettled(
+        selectedCctvs.map((cctv) => apiRequest(`/streams/${cctv.id}/start`, { method: 'POST' }))
+      );
+      const success = results.filter(
+        (result) => result.status === 'fulfilled' && result.value.status === 'success'
+      ).length;
+      const failed = selectedCctvs.length - success;
+
+      if (success > 0) {
         setIsPlaying(true);
         setStreamingServiceState('ready');
         setStreamingServiceMessage('MediaMTX terhubung');
-        if (result.failed > 0) {
-          setWarning(`${result.success} stream berhasil dimulai, tetapi ${result.failed} CCTV belum dapat dihubungkan. Periksa konfigurasi RTSP CCTV tersebut.`);
+        if (failed > 0) {
+          setWarning(`${success} stream berhasil dimulai, tetapi ${failed} kamera terpilih belum dapat dihubungkan. Periksa konfigurasi RTSP CCTV tersebut.`);
         }
-        // Simpan konfigurasi grid; leftAt null = sedang berada di halaman (timer tak berjalan).
-        saveMonitorState({ layout, selection, leftAt: null });
-      } else if (res.status === 'success' && result?.total === 0) {
-        setError('Belum ada CCTV dengan streaming aktif untuk dijalankan.');
+        // leftAt null = sedang berada di halaman (timer tidak berjalan).
+        saveMonitorState({ layout, selection, leftAt: null, isPlaying: true });
       } else {
         setIsPlaying(false);
-        setError(res.message || 'Tidak ada stream yang berhasil dimulai. Periksa konfigurasi MediaMTX dan RTSP CCTV.');
+        setError('Tidak ada stream kamera terpilih yang berhasil dimulai. Periksa konfigurasi MediaMTX dan RTSP CCTV.');
+        saveMonitorState({ layout, selection, leftAt: null, isPlaying: false });
+        await loadStreamingReadiness();
       }
     } catch (e) {
       setIsPlaying(false);
+      saveMonitorState({ layout, selection, leftAt: null, isPlaying: false });
       setError(e instanceof Error ? e.message : 'Gagal menyalakan streaming.');
       await loadStreamingReadiness();
     } finally {
@@ -384,47 +425,96 @@ export default function MonitorPage() {
     }
   };
 
-  // --- Matikan seluruh streaming via backend ---
+  // --- Matikan streaming hanya untuk kamera yang sedang tampil di grid ---
   const handleStop = async () => {
     if (acting) return;
     setActing(true);
     setError('');
     setWarning('');
     try {
-      const res = await apiRequest('/streams/stop-all', { method: 'POST' });
+      const results = await Promise.allSettled(
+        selectedCctvs.map((cctv) => apiRequest(`/streams/${cctv.id}/stop`, { method: 'POST' }))
+      );
+      const failed = results.filter(
+        (result) => result.status === 'rejected' || result.value.status !== 'success'
+      ).length;
       setIsPlaying(false);
-      saveMonitorState(null);
-      if (res.status !== 'success') {
-        setError(res.message || 'Gagal mematikan streaming.');
+      // Konfigurasi grid tetap disimpan; hanya status playing yang dimatikan.
+      saveMonitorState({ layout, selection, leftAt: null, isPlaying: false });
+      if (failed > 0) {
+        setWarning(`${failed} stream kamera terpilih belum dapat dihentikan. Periksa koneksi MediaMTX.`);
       }
     } catch (e) {
       setIsPlaying(false);
-      saveMonitorState(null);
+      saveMonitorState({ layout, selection, leftAt: null, isPlaying: false });
       setError(e instanceof Error ? e.message : 'Gagal mematikan streaming.');
     } finally {
       setActing(false);
     }
   };
 
-  // --- Buka modal konfigurasi massal (salin selection saat ini ke draft) ---
+  // --- Buka modal konfigurasi massal (salin layout & selection saat ini ke draft) ---
   const openConfig = () => {
-    setDraftSelection({ ...selection });
+    setDraftLayout(layout);
+    setDraftSelection(uniqueSelectionForCells(selection, cells));
     setIsConfigOpen(true);
   };
 
   // --- Terapkan hasil konfigurasi massal dari modal ke grid ---
-  const applyConfig = () => {
-    // Bersihkan entri kosong / id tidak valid.
+  const applyConfig = async () => {
+    // Hanya simpan sel yang terlihat pada layout draft, buang duplikat, lalu validasi ID.
+    const nextLayout = draftLayout;
+    const nextCells = Array.from({ length: LAYOUT_PRESETS[nextLayout].cells }, (_, index) => index);
+    const normalized = uniqueSelectionForCells(draftSelection, nextCells);
     const validIds = new Set(cctvs.map((c) => c.id));
     const next: Record<number, string> = {};
-    Object.entries(draftSelection).forEach(([cellIndex, cctvId]) => {
+    Object.entries(normalized).forEach(([cellIndex, cctvId]) => {
       if (cctvId && validIds.has(cctvId)) {
         next[Number(cellIndex)] = cctvId;
       }
     });
+
+    setLayout(nextLayout);
     setSelection(next);
     setError('');
     setIsConfigOpen(false);
+    saveMonitorState({ layout: nextLayout, selection: next, leftAt: null, isPlaying });
+
+    // Bila sedang playing, daftarkan path untuk kamera yang baru dipilih agar
+    // pemutar di sel baru tidak menunggu tombol Play ditekan ulang.
+    if (isPlaying) {
+      const previousIds = new Set(Object.values(selection));
+      const newlySelected = Object.values(next)
+        .filter((id) => id && !previousIds.has(id))
+        .map((id) => cctvs.find((cctv) => cctv.id === id))
+        .filter((cctv): cctv is CCTV => Boolean(cctv));
+      if (newlySelected.length > 0) {
+        const results = await Promise.allSettled(
+          newlySelected.map((cctv) => apiRequest(`/streams/${cctv.id}/start`, { method: 'POST' }))
+        );
+        const failed = results.filter(
+          (result) => result.status === 'rejected' || result.value.status !== 'success'
+        ).length;
+        if (failed > 0) {
+          setWarning(`${failed} stream kamera baru belum dapat dihubungkan. Periksa konfigurasi RTSP CCTV tersebut.`);
+        }
+      }
+    }
+  };
+
+  // Pilih kamera langsung dari dropdown sel kosong. Bila grid sedang playing,
+  // path kamera baru langsung didaftarkan agar pemutar bisa tersambung.
+  const handleCellSelect = async (index: number, id: string) => {
+    const next = { ...selection, [index]: id };
+    setSelection(next);
+    saveMonitorState({ layout, selection: next, leftAt: null, isPlaying });
+
+    if (isPlaying && id) {
+      const response = await apiRequest(`/streams/${id}/start`, { method: 'POST' }).catch(() => null);
+      if (!response || response.status !== 'success') {
+        setWarning('Stream kamera yang baru dipilih belum dapat dihubungkan. Periksa konfigurasi RTSP CCTV tersebut.');
+      }
+    }
   };
 
   return (
@@ -481,9 +571,9 @@ export default function MonitorPage() {
             <button
               type="button"
               onClick={handlePlay}
-              disabled={acting || cctvs.length === 0}
+              disabled={acting || cctvs.length === 0 || selectedCctvs.length === 0}
               aria-label={isPlaying ? 'Putar ulang streaming' : 'Nyalakan streaming'}
-              title={isPlaying ? 'Putar ulang streaming' : 'Nyalakan streaming'}
+              title={isPlaying ? 'Putar ulang streaming kamera terpilih' : 'Nyalakan streaming kamera terpilih'}
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {acting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -493,7 +583,7 @@ export default function MonitorPage() {
               onClick={handleStop}
               disabled={acting || !isPlaying}
               aria-label="Matikan streaming"
-              title="Matikan streaming"
+              title="Matikan streaming kamera terpilih"
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-error/30 bg-error/10 text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {acting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
@@ -555,12 +645,10 @@ export default function MonitorPage() {
                 <GridCell
                   key={index}
                   index={index}
-                  cctvs={availableCctvs}
+                  cctvs={getSelectableCctvs(availableCctvs, selection, index, cells)}
                   selectedCctv={selectedCctv}
                   isPlaying={isPlaying}
-                  onSelect={(id) =>
-                    setSelection((prev) => ({ ...prev, [index]: id }))
-                  }
+                  onSelect={(id) => handleCellSelect(index, id)}
                 />
               );
             })}
@@ -586,7 +674,7 @@ export default function MonitorPage() {
               <div>
                 <h3 className="text-lg font-bold tracking-[-0.015em]">Konfigurasi CCTV</h3>
                 <p className="mt-0.5 text-xs text-muted">
-                  Atur kamera untuk setiap sel ({layout}) sekaligus. Tata letak: {layout}
+                  Atur kamera untuk setiap sel sekaligus. Tata letak: {draftLayout}
                 </p>
               </div>
               <button
@@ -610,11 +698,11 @@ export default function MonitorPage() {
                     <button
                       key={presetKey}
                       type="button"
-                      onClick={() => setLayout(presetKey)}
+                      onClick={() => setDraftLayout(presetKey)}
                       aria-label={`Tata letak ${presetKey}`}
                       title={`Tata letak ${presetKey}`}
                       className={`h-8 flex-1 rounded-lg px-3 text-xs font-bold transition-colors ${
-                        layout === presetKey
+                        draftLayout === presetKey
                           ? 'bg-primary text-white shadow-sm'
                           : 'text-muted hover:bg-background hover:text-foreground'
                       }`}
@@ -627,26 +715,29 @@ export default function MonitorPage() {
 
               {/* Daftar sel & pemilihan kamera */}
               <div className="space-y-3">
-                {cells.map((index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <span className="w-14 shrink-0 text-sm font-semibold text-muted">Sel {index + 1}</span>
-                    <select
-                      value={draftSelection[index] ?? ''}
-                      onChange={(e) =>
-                        setDraftSelection((prev) => ({ ...prev, [index]: e.target.value }))
-                      }
-                      aria-label={`Pilih kamera untuk sel ${index + 1}`}
-                      className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
-                    >
-                      <option value="">— Kosong —</option>
-                      {cctvs.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.kode_cctv} — {c.nama}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                {draftCells.map((index) => {
+                  const selectableCctvs = getSelectableCctvs(cctvs, draftSelection, index, draftCells);
+                  return (
+                    <div key={index} className="flex items-center gap-3">
+                      <span className="w-14 shrink-0 text-sm font-semibold text-muted">Sel {index + 1}</span>
+                      <select
+                        value={draftSelection[index] ?? ''}
+                        onChange={(e) =>
+                          setDraftSelection((prev) => ({ ...prev, [index]: e.target.value }))
+                        }
+                        aria-label={`Pilih kamera untuk sel ${index + 1}`}
+                        className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
+                      >
+                        <option value="">— Kosong —</option>
+                        {selectableCctvs.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.kode_cctv} — {c.nama}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

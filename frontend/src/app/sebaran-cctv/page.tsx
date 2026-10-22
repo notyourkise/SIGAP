@@ -66,6 +66,11 @@ interface LiveStatusItem {
   network_type?: 'metro-e' | 'gsm' | null;
   ping_latency_ms?: number | null;
   stream_last_active_at?: string | null;
+  stream_verified_state?: StreamState | null;
+  stream_verified_at?: string | null;
+  stream_verified_method?: string | null;
+  stream_verify_failures?: number | null;
+  stream_verify_error?: string | null;
 }
 
 interface LiveStatusResponse {
@@ -195,6 +200,9 @@ export default function SebaranCCTVPage() {
                   network_type: live.network_type ?? null,
                   ping_latency_ms: live.ping_latency_ms ?? null,
                   stream_last_active_at: live.stream_last_active_at ?? null,
+                  stream_verified_state: live.stream_verified_state ?? null,
+                  stream_verified_at: live.stream_verified_at ?? null,
+                  stream_verified_method: live.stream_verified_method ?? null,
                 }
               : c;
           });
@@ -233,18 +241,19 @@ export default function SebaranCCTVPage() {
             const prevItem = c;
             return {
               ...c,
-              stream_live: payload.stream_live ?? null,
+              stream_live: payload.stream_live ?? prevItem.stream_live ?? null,
               stream_state: payload.stream_state ?? prevItem.stream_state ?? null,
-              stream_checked_at: payload.stream_checked_at ?? null,
+              stream_checked_at: payload.stream_checked_at ?? prevItem.stream_checked_at ?? null,
               // Sprint 37-PATCH: pertahankan field probe jaringan; payload tanpa field
               // (event lama) tidak menimpa nilai yang sudah ada di item.
               ping_latency_ms: payload.ping_latency_ms ?? prevItem.ping_latency_ms ?? null,
               network_type: payload.network_type ?? prevItem.network_type ?? null,
-              // stream_last_active_at hanya diperbarui saat kamera live (payload membawa
-              // stream_checked_at sebagai waktu aktif); saat offline riwayat dipertahankan.
-              stream_last_active_at: payload.stream_live
-                ? (payload.stream_checked_at ?? prevItem.stream_last_active_at ?? null)
-                : (prevItem.stream_last_active_at ?? null),
+              // Payload verifikasi aktif membawa waktu ini; payload probe pasif hanya
+              // membawanya saat live. Jangan hapus riwayat saat field tidak ada.
+              stream_last_active_at: payload.stream_last_active_at ?? prevItem.stream_last_active_at ?? null,
+              stream_verified_state: payload.stream_verified_state ?? prevItem.stream_verified_state ?? null,
+              stream_verified_at: payload.stream_verified_at ?? prevItem.stream_verified_at ?? null,
+              stream_verified_method: payload.stream_verified_method ?? prevItem.stream_verified_method ?? null,
             };
           })
         );

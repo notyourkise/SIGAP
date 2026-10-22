@@ -175,8 +175,15 @@ func main() {
 	go handlers.RunRTSPProber(config.DB)
 	utils.Log.Info("📡 RTSP Probe Engine aktif (interval: 2 menit)")
 
-	// Jalankan scheduler snapshot otomatis (Task 10.1). Berjalan sekali segera,
-	// lalu berulang setiap 15 menit untuk seluruh CCTV stream_enabled.
+	// Verifikasi aktif end-to-end melalui MediaMTX. Berjalan periodik dengan
+	// concurrency terbatas agar status live/offline memiliki bukti sumber
+	// stream, bukan hanya kondisi path on-demand yang sedang idle.
+	go handlers.RunStreamVerifier(config.DB)
+	utils.Log.Info("🔎 Verifikasi stream aktif diaktifkan (default interval: 15 menit)")
+
+	// Jalankan scheduler snapshot otomatis (Task 10.1). Percobaan pertama
+	// menunggu registrasi path, lalu berulang setiap 15 menit untuk CCTV
+	// stream_enabled; scheduler berhenti bila API snapshot tidak tersedia.
 	go handlers.RunSnapshotScheduler(config.DB)
 	utils.Log.Info("📸 Scheduler snapshot otomatis diaktifkan (interval: 15 menit)")
 

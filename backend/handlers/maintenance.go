@@ -585,7 +585,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 
 // CompleteMaintenanceLog menyelesaikan tugas terjadwal lewat checklist (Admin & Teknisi)
 // @Summary      Selesaikan Tugas Pemeliharaan
-// @Description  Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi "completed" bila semua item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed â†’ "aktif", failed â†’ "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -> completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).
+// @Description  Teknisi melaporkan hasil pengecekan checklist beserta foto bukti. Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status menjadi "completed" bila semua item "ok", selain itu "failed". Teknisi wajib menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed → "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13 Fix (2026-08-20): Status kini dinamis - semua item OK -> completed, apa pun jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).
 // @Tags         Log Pemeliharaan
 // @Accept       json
 // @Produce      json
@@ -749,7 +749,7 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		// transaksi yang sama — completed (semua checklist OK) mengembalikan CCTV ke
 		// "aktif"; failed (ada item tidak ok) memindahkannya ke "pemeliharaan".
 		targetStatus := "pemeliharaan"
-		syncReason := "tugas pemeliharaan gagal â€” ada item checklist tidak OK"
+		syncReason := "tugas pemeliharaan gagal — ada item checklist tidak OK"
 		if newStatus == "completed" {
 			targetStatus = "aktif"
 			syncReason = "semua checklist pemeliharaan berhasil"

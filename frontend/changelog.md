@@ -1,5 +1,94 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.28] - 2026-10-22
+
+### Pembersihan karakter mojibake pada halaman CCTV
+
+**Masalah**: Beberapa teks di halaman Master CCTV dan detail CCTV tampil sebagai karakter acak, misalnya `THD-04 Ã‚Â· Channel D4`, `Ã¢â‚¬â€`, `Ã¢â‚¬Â¦`, dan `Ãƒâ€”`. Penyebabnya adalah teks UTF-8 yang ter-encode ganda di `frontend/src/app/cctv/page.tsx`, bukan data dari database.
+
+**Perbaikan**:
+- Seluruh 40 baris teks terdampak dikembalikan ke karakter yang benar: `·`, `—`, `–`, `…`, `“`, `”`, `•`, `×`, dan `→`.
+- BOM di awal file dihapus.
+- Teks backend yang dapat muncul di riwayat pemeliharaan juga dibersihkan; deskripsi Swagger ikut disinkronkan.
+- Ditambahkan test `npm run test:encoding` yang memindai seluruh `frontend/src` terhadap mojibake, karakter kontrol, replacement character, dan BOM. Test dijalankan di CI.
+- Audit browser admin mencakup 24 halaman; tidak ada lagi karakter mojibake pada teks, atribut, atau opsi dropdown. Teks THD-04 terverifikasi menjadi `Jalan Masjid Negara 1 · Channel D4`.
+
+timestamp: 2026-10-22 13:10 UTC+8
+kategori: Sedang, Frontend (Encoding/UI)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/tests/text-encoding.test.mts
+- frontend/package.json
+- frontend/changelog.md
+- backend/handlers/maintenance.go
+- backend/handlers/auth.go
+- backend/utils/push_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- .github/workflows/ci.yml
+
+alasan perubahan: Menghilangkan karakter rusak yang terlihat pengguna dan mencegah mojibake masuk kembali melalui CI.
+
+---
+
+## [1.55.27] - 2026-10-22
+
+### Urutan dan filter kamera pada Monitor CCTV
+
+**Masalah**: Dropdown kamera di halaman Monitor mengikuti urutan respons API sehingga tidak runtut dari THD awal ke akhir. Kamera yang sudah dipilih pada satu sel juga masih muncul di dropdown sel lain, sehingga satu kamera dapat dipakai di beberapa sel.
+
+**Perubahan**:
+- Daftar kamera diurutkan natural berdasarkan kode: `THD-02`, `THD-03`, `THD-10`, dan seterusnya.
+- Dropdown setiap sel hanya menampilkan kamera yang belum dipilih pada sel lain; kamera milik sel itu sendiri tetap tampil sebagai nilai aktif.
+- Pilihan duplikat dari state lama dibersihkan, dan pilihan pada sel di luar layout aktif tidak lagi mengunci dropdown.
+- Helper murni `monitor-cctv` ditambahkan beserta test untuk pengurutan, filter, dan deduplikasi.
+- CI frontend menjalankan `npm run test:monitor`.
+
+timestamp: 2026-10-22 11:55 UTC+8
+kategori: Sedang, Frontend (Monitor/UX)
+file yang diubah:
+- frontend/src/app/monitor/page.tsx
+- frontend/src/lib/monitor-cctv.ts
+- frontend/tests/monitor-cctv.test.mts
+- frontend/package.json
+- frontend/changelog.md
+- .github/workflows/ci.yml
+
+alasan perubahan: Membuat pemilihan kamera di grid Monitor lebih runtut dan mencegah kamera yang sama dipilih pada lebih dari satu sel.
+
+---
+
+## [1.55.26] - 2026-10-22
+
+### Badge status CCTV terverifikasi
+
+**Masalah**: Badge peta/grid memakai `stream_state` pasif. Path on-demand yang `idle` tampil sebagai "Siaga" walaupun kamera mungkin offline, dan status verifikasi end-to-end dari backend belum ditampilkan.
+
+**Perubahan**:
+- Helper `hasFreshVerification`/`getEffectiveStreamState` memakai `stream_verified_state` yang masih segar (30 menit), lalu jatuh kembali ke status pasif.
+- Badge baru "Online terverifikasi" dan "Offline terkonfirmasi" diterapkan pada peta, popup, grid monitor, dan detail CCTV.
+- Marker peta berdenyut dan statistik peta memakai status efektif; tooltip menampilkan waktu verifikasi.
+- Detail CCTV menampilkan waktu/metode verifikasi, pesan diagnosis, dan tombol admin **Cek Status Live** yang memanggil `POST /api/streams/:id/verify`.
+- Enrichment WebSocket mempertahankan field probe/verifikasi yang tidak dikirim payload lama, sehingga status tidak berkedip ke `null`.
+- Test live-status diperluas untuk prioritas verifikasi live/offline dan fallback saat verifikasi kedaluwarsa.
+
+timestamp: 2026-10-22 11:05 UTC+8
+kategori: Sedang, Frontend (Streaming/UX)
+file yang diubah:
+- frontend/src/app/cctv/page.tsx
+- frontend/src/app/sebaran-cctv/page.tsx
+- frontend/src/components/CCTVMap.tsx
+- frontend/src/components/StreamGridView.tsx
+- frontend/src/lib/live-status.ts
+- frontend/tests/live-status.test.mts
+- frontend/changelog.md
+
+alasan perubahan: Menampilkan status live/offline yang memiliki bukti verifikasi dan tidak lagi membingungkan pengguna saat path MediaMTX sedang idle.
+
+---
+
 ## [1.55.25] - 2026-10-21
 
 ### Patch keamanan dependency Next.js

@@ -92,4 +92,22 @@ type CCTV struct {
 	// StreamLastActiveAt mencatat waktu terakhir stream kamera aktif
 	// (Ready di MediaMTX). Dipakai badge GSM ("Pernah aktif hari ini").
 	StreamLastActiveAt *time.Time `gorm:"column:stream_last_active_at" json:"stream_last_active_at,omitempty"`
+	// === Field Verifikasi Aktif Stream (Sprint 41) ===
+	// StreamVerifiedState adalah hasil verifikasi end-to-end melalui MediaMTX,
+	// terpisah dari StreamState yang bersifat pasif. Nilai: live (sumber benar-
+	// benar mengirim track), offline (gagal setelah beberapa percobaan), atau
+	// unknown (belum diverifikasi / MediaMTX tidak dapat dihubungi).
+	StreamVerifiedState string `gorm:"column:stream_verified_state;type:varchar(20);not null;default:'unknown'" json:"stream_verified_state"`
+	// StreamVerifiedAt mencatat waktu percobaan verifikasi terakhir. Nilai nil
+	// berarti kamera belum pernah diverifikasi secara aktif.
+	StreamVerifiedAt *time.Time `gorm:"column:stream_verified_at" json:"stream_verified_at,omitempty"`
+	// StreamVerifiedMethod menyimpan metode verifikasi terakhir, mis.
+	// "mediamtx-hls" atau "mediamtx-live".
+	StreamVerifiedMethod string `gorm:"column:stream_verified_method;type:varchar(32);not null;default:''" json:"stream_verified_method,omitempty"`
+	// StreamVerifyFailures menghitung kegagalan verifikasi berturut-turut.
+	// Offline baru ditetapkan setelah ambang tertentu agar tidak false alarm.
+	StreamVerifyFailures int `gorm:"column:stream_verify_failures;not null;default:0" json:"stream_verify_failures"`
+	// StreamVerifyError menyimpan ringkasan kegagalan terakhir (tanpa kredensial)
+	// untuk membantu diagnosis di UI/API.
+	StreamVerifyError string `gorm:"column:stream_verify_error;type:text;not null;default:''" json:"stream_verify_error,omitempty"`
 }

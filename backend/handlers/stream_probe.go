@@ -279,7 +279,9 @@ func GetLiveStatus(c *fiber.Ctx) error {
 		})
 	}
 
+	now := time.Now()
 	online, idle, offline, unchecked := 0, 0, 0, 0
+	verifiedLive, verifiedOffline := 0, 0
 	data := make([]fiber.Map, 0, len(cctvs))
 	for _, cctv := range cctvs {
 		streamState := cctv.StreamState
@@ -295,7 +297,8 @@ func GetLiveStatus(c *fiber.Ctx) error {
 			}
 		}
 
-		switch streamState {
+		effectiveState := effectiveStreamState(cctv, now)
+		switch effectiveState {
 		case models.StreamStateLive:
 			online++
 		case models.StreamStateIdle:
@@ -305,27 +308,44 @@ func GetLiveStatus(c *fiber.Ctx) error {
 		default:
 			unchecked++
 		}
+		if isStreamVerificationFresh(cctv, now) {
+			switch cctv.StreamVerifiedState {
+			case models.StreamStateLive:
+				verifiedLive++
+			case models.StreamStateOffline:
+				verifiedOffline++
+			}
+		}
+
 		data = append(data, fiber.Map{
-			"cctv_id":               cctv.ID.String(),
-			"nama":                  cctv.Nama,
-			"kode_cctv":             cctv.KodeCCTV,
-			"stream_enabled":        cctv.StreamEnabled,
-			"stream_live":           cctv.StreamLive,
-			"stream_state":          streamState,
-			"stream_checked_at":     cctv.StreamCheckedAt,
-			"stream_last_active_at": cctv.StreamLastActiveAt,
-			"ping_latency_ms":       cctv.PingLatencyMs,
-			"network_type":          networkType(cctv),
+			"cctv_id":                cctv.ID.String(),
+			"nama":                   cctv.Nama,
+			"kode_cctv":              cctv.KodeCCTV,
+			"stream_enabled":         cctv.StreamEnabled,
+			"stream_live":            cctv.StreamLive,
+			"stream_state":           streamState,
+			"effective_stream_state": effectiveState,
+			"stream_checked_at":      cctv.StreamCheckedAt,
+			"stream_last_active_at":  cctv.StreamLastActiveAt,
+			"stream_verified_state":  cctv.StreamVerifiedState,
+			"stream_verified_at":     cctv.StreamVerifiedAt,
+			"stream_verified_method": cctv.StreamVerifiedMethod,
+			"stream_verify_failures": cctv.StreamVerifyFailures,
+			"stream_verify_error":    cctv.StreamVerifyError,
+			"ping_latency_ms":        cctv.PingLatencyMs,
+			"network_type":           networkType(cctv),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"summary": fiber.Map{
-			"online":    online,
-			"idle":      idle,
-			"offline":   offline,
-			"unchecked": unchecked,
+			"online":           online,
+			"idle":             idle,
+			"offline":          offline,
+			"unchecked":        unchecked,
+			"verified_live":    verifiedLive,
+			"verified_offline": verifiedOffline,
 		},
 		"data": data,
 	})

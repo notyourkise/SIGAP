@@ -2901,9 +2901,9 @@ paths:
       description: 'Teknisi melaporkan hasil pengecekan checklist beserta foto bukti.
         Checklist items dinamis berdasarkan template aktif (jumlah bervariasi). Status
         menjadi "completed" bila semua item "ok", selain itu "failed". Teknisi wajib
-        menyelesaikan tugas yang ditugaskan â€” tidak ada mekanisme penolakan. Status
-        CCTV ikut disinkronkan otomatis (konservatif): completed â†’ "aktif", failed
-        â†’ "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13
+        menyelesaikan tugas yang ditugaskan — tidak ada mekanisme penolakan. Status
+        CCTV ikut disinkronkan otomatis (konservatif): completed → "aktif", failed
+        → "pemeliharaan"; status "nonaktif" tidak pernah ditimpa otomatis. Bug BB-13
         Fix (2026-08-20): Status kini dinamis - semua item OK -> completed, apa pun
         jumlah itemsnya (tidak lagi terpaku pada hardcoded 9 items).'
       parameters:
@@ -4907,6 +4907,57 @@ paths:
       security:
       - BearerAuth: []
       summary: Ambil URL Stream CCTV
+      tags:
+      - Streaming
+  /streams/{id}/verify:
+    post:
+      consumes:
+      - application/json
+      description: Memicu pembacaan singkat melalui MediaMTX lalu memeriksa apakah
+        sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu
+        verifikasi.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Hasil verifikasi stream
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid / streaming belum diaktifkan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid / Token tidak terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: Hanya Admin yang diperbolehkan'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Database belum tersedia
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Verifikasi Status Stream CCTV
       tags:
       - Streaming
   /streams/health:

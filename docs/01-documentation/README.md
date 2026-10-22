@@ -33,7 +33,7 @@
 - **QR Code Scanner** — Identifikasi aset CCTV via kamera perangkat langsung di browser (`html5-qrcode`).
 - **Peta Sebaran CCTV** — Visualisasi lokasi seluruh 35 kamera di peta interaktif (Leaflet.js). Marker menampilkan status live 🟢/🔴 secara real-time. Klik marker untuk popup stream langsung.
 - **Live Streaming CCTV** — RTSP → WebRTC via MediaMTX (zero-transcoding, H.264 native). Sub-stream default untuk efisiensi bandwidth. Akses Live View khusus Admin.
-- **Live Status Detection** — Probe otomatis tiap 2 menit untuk 17 kamera Metro-E (`10.20.105.x`) via ICMP ping. Kamera GSM dipantau via MediaMTX path list (zero data consumption). Badge 🟢/🔴/🟡/⚪ di peta dan monitor grid diperbarui real-time via WebSocket.
+- **Live Status Detection** — Probe pasif tiap 2 menit untuk 17 kamera Metro-E (`10.20.105.x`) via ICMP ping; kamera GSM dipantau via MediaMTX path list (zero data consumption). Sejak verifikasi aktif, status end-to-end juga diuji periodik/manual dengan bukti sumber benar-benar mengirim track, sehingga `idle` on-demand tidak lagi disalahartikan sebagai offline. Badge 🟢/🔴/🟡/⚪ di peta dan monitor grid diperbarui real-time via WebSocket.
 - **Monitor Multi-Kamera** — Grid view 2×2, 3×3, 4×4 di halaman `/monitor` (Admin only). Border status live per sel.
 - **Log Pemeliharaan** — CRUD riwayat pemeliharaan, filter status & rentang tanggal, ekspor CSV, laporan PDF, unggah foto bukti (EXIF/GPS dihapus otomatis, akses dilindungi JWT).
 - **Pengecekan Lapangan** — Checklist kondisi kamera, foto bukti, laporan PDF per kegiatan.
@@ -398,11 +398,18 @@ erDiagram
 ### Live Streaming CCTV
 | Method | Endpoint | Deskripsi | Auth | Role |
 |--------|----------|-----------|------|------|
-| GET | `/api/streams/url/:id` | Generate WHEP stream URL | JWT | Admin |
-| GET | `/api/streams/live-status` | Status live semua kamera | JWT | Admin |
-| POST | `/api/streams/start/:id` | Aktifkan stream on-demand | JWT | Admin |
-| DELETE | `/api/streams/stop/:id` | Hentikan stream | JWT | Admin |
-| GET | `/api/streams/snapshots/:id` | Daftar snapshot kamera | JWT | Admin |
+| GET | `/api/streams/status` | Status path MediaMTX | JWT | Admin |
+| GET | `/api/streams/live-status` | Status live seluruh kamera (efektif + terverifikasi) | JWT | Admin |
+| GET | `/api/streams/readiness` | Kesiapan MediaMTX | JWT | Admin |
+| GET | `/api/streams/health` | Health monitor stream | JWT | Admin |
+| POST | `/api/streams/start-all` | Aktifkan semua stream on-demand | JWT | Admin |
+| POST | `/api/streams/stop-all` | Hentikan semua stream | JWT | Admin |
+| POST | `/api/streams/:id/start` | Aktifkan stream on-demand | JWT | Admin |
+| POST | `/api/streams/:id/verify` | Verifikasi end-to-end status stream | JWT | Admin |
+| POST | `/api/streams/:id/stop` | Hentikan stream | JWT | Admin |
+| GET | `/api/streams/:id/url` | Generate WHEP/HLS stream URL | JWT | Admin |
+| GET | `/api/cctv/:id/snapshot` | Snapshot terbaru kamera | JWT | Admin |
+| GET | `/api/cctv/:id/timeline` | Timeline snapshot/kegiatan kamera | JWT | Admin |
 
 ### Inventaris Suku Cadang
 | Method | Endpoint | Deskripsi | Auth | Role |

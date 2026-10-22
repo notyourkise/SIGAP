@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Video, VideoOff, MonitorPlay, LoaderCircle, MapPin, Pause, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatLatency } from '@/components/CCTVMap';
-import { getLiveBadge } from '@/lib/live-status';
+import { getEffectiveStreamState, getLiveBadge, hasFreshVerification } from '@/lib/live-status';
 import type { CCTVMapItem } from '@/components/CCTVMap';
 
 // Format waktu pengecekan status live menjadi HH:mm (waktu lokal). Mengembalikan
@@ -82,22 +82,17 @@ function StreamCell({
     </span>
   );
 
-  // Ring/border warna berdasarkan status live streaming (RTSP) pada sel kamera:
-  // live → emerald, idle → biru, offline → merah, unknown/data lama → abu tipis.
+  // Ring/border warna berdasarkan status efektif (verifikasi aktif bila masih
+  // segar, lalu status pasif): live → emerald, idle → biru, offline → merah.
+  const effectiveState = getEffectiveStreamState(cctv);
   const liveRingClass =
-    cctv.stream_state === 'live'
+    effectiveState === 'live'
       ? 'ring-1 ring-emerald-500/60'
-      : cctv.stream_state === 'idle'
+      : effectiveState === 'idle'
         ? 'ring-1 ring-blue-500/60'
-        : cctv.stream_state === 'offline'
+        : effectiveState === 'offline'
           ? 'ring-1 ring-red-500/60 ring-inset'
-          : cctv.stream_state === 'unknown'
-            ? 'ring-1 ring-gray-500/20'
-            : cctv.stream_live === true
-              ? 'ring-1 ring-emerald-500/60'
-              : cctv.stream_live === false
-                ? 'ring-1 ring-red-500/60 ring-inset'
-                : 'ring-1 ring-gray-500/20';
+          : 'ring-1 ring-gray-500/20';
 
   // Badge status live memakai logika yang sama dengan marker peta.
   // (🟢 Live / 🔵 Siaga on-demand / 🟡 Pernah aktif / 🔴 Offline / ⚪ Unknown)
@@ -109,6 +104,9 @@ function StreamCell({
   const badgeTitle = badge.label;
   const liveIndicatorTitle = [
     cctv.network_type === 'metro-e' && cctv.ping_latency_ms != null ? formatLatency(cctv.ping_latency_ms) : '',
+    hasFreshVerification(cctv) && cctv.stream_verified_at
+      ? `Verifikasi ${formatCheckTime(cctv.stream_verified_at)}`
+      : '',
     cctv.stream_checked_at ? `Dicek ${formatCheckTime(cctv.stream_checked_at)}` : '',
   ]
     .filter(Boolean)

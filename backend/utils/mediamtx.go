@@ -2,7 +2,9 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +17,11 @@ import (
 // MediaMTX adalah media server (proxy RTSP/HLS/WebRTC) yang dipakai SIGAP
 // untuk me-relay aliran kamera dari NVR ke client.
 type MediaMTXClient struct {
-	BaseURL    string
+	BaseURL string
+	// HLSURL adalah alamat HTTP HLS MediaMTX. Dipakai untuk memicu path
+	// on-demand sebelum verifikasi status. Bila kosong, diturunkan dari
+	// BaseURL (port 9997 -> 8888).
+	HLSURL     string
 	HTTPClient *http.Client
 }
 
@@ -30,12 +36,14 @@ type PathConfig struct {
 
 // PathInfo — informasi path dari MediaMTX
 type PathInfo struct {
-	Name      string        `json:"name"`
-	Source    interface{}   `json:"source"`
-	Available bool          `json:"available"`
-	Online    bool          `json:"online"`
-	Ready     bool          `json:"ready"` // kompatibilitas MediaMTX sebelum v1.20
-	Readers   []interface{} `json:"readers"`
+	Name          string        `json:"name"`
+	Source        interface{}   `json:"source"`
+	Available     bool          `json:"available"`
+	Online        bool          `json:"online"`
+	Ready         bool          `json:"ready"` // kompatibilitas MediaMTX sebelum v1.20
+	Tracks        []interface{} `json:"tracks"`
+	Readers       []interface{} `json:"readers"`
+	BytesReceived int64         `json:"bytesReceived"`
 }
 
 // SourceReady memakai field available MediaMTX v1.20. Field ready hanya
@@ -56,8 +64,10 @@ const defaultMediaMTXURL = "http://127.0.0.1:9997"
 // client diberi timeout 10 detik agar panggilan tidak menggantung selamanya.
 func NewMediaMTXClient() *MediaMTXClient {
 	baseURL := getenvOr("MEDIAMTX_API_URL", defaultMediaMTXURL)
+	hlsURL := getenvOr("MEDIAMTX_HLS_URL", "http://127.0.0.1:8888")
 	return &MediaMTXClient{
 		BaseURL:    strings.TrimSuffix(baseURL, "/"),
+		HLSURL:     strings.TrimSuffix(hlsURL, "/"),
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -233,12 +243,72 @@ func (c *MediaMTXClient) Ping() error {
 	return err
 }
 
+// hlsBaseURL mengembalikan alamat HLS MediaMTX. Bila HLSURL belum diset,
+// turunkan dari BaseURL dengan mengganti port API 9997 menjadi 8888. Ini
+// menjaga kompatibilitas pemanggil lama yang hanya mengisi BaseURL.
+func (c *MediaMTXClient) hlsBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	if c.HLSURL != "" {
+		return strings.TrimSuffix(c.HLSURL, "/")
+	}
+	return strings.Replace(strings.TrimSuffix(c.BaseURL, "/"), ":9997", ":8888", 1)
+}
+
+// TriggerHLS memicu path on-demand MediaMTX agar sumber RTSP mulai ditarik.
+// Permintaan HLS normalnya menggantung sampai segmen pertama tersedia; timeout
+// karena itu bukan kegagalan selama koneksi berhasil. Status 5xx/3xx dianggap
+// pemicu normal, sedangkan 404/401/403 menandakan path atau konfigurasi HLS
+// salah dan dikembalikan sebagai error agar tidak salah diklasifikasikan
+// sebagai kamera offline. Hasil sebenarnya tetap dibaca dari endpoint path API.
+func (c *MediaMTXClient) TriggerHLS(name string, timeout time.Duration) error {
+	if c == nil || c.HTTPClient == nil {
+		return fmt.Errorf("MediaMTXClient tidak siap")
+	}
+	base := c.hlsBaseURL()
+	if base == "" {
+		return fmt.Errorf("alamat HLS MediaMTX kosong")
+	}
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	endpoint := base + "/" + url.PathEscape(name) + "/index.m3u8"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("gagal membuat request HLS: %w", err)
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if resp != nil {
+		status := resp.StatusCode
+		_ = resp.Body.Close()
+		// 404/401/403 menandakan path atau konfigurasi HLS salah, bukan
+		// sumber kamera yang belum siap. Jangan hitung sebagai kegagalan
+		// kamera; biarkan verifikasi melaporkan unknown.
+		if status == http.StatusNotFound || status == http.StatusUnauthorized || status == http.StatusForbidden {
+			return fmt.Errorf("HLS MediaMTX mengembalikan status %d", status)
+		}
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		// Timeout adalah perilaku normal HLS live; path sudah dipicu.
+		return nil
+	}
+	return fmt.Errorf("gagal memicu HLS MediaMTX: %w", err)
+}
+
 // GetSnapshot mengambil snapshot JPEG sebuah path dari MediaMTX. Endpoint
 // snapshot mengembalikan gambar berformat JPEG (Content-Type image/jpeg).
 // Mengembalikan error pada status non-2xx atau bila client tidak valid.
 func (c *MediaMTXClient) GetSnapshot(name string) ([]byte, error) {
 	endpoint := "/v3/paths/get/" + url.PathEscape(name) + "/snapshot"
-	_, body, err := c.doRequest(http.MethodGet, endpoint, nil)
+	// Pemanggil (scheduler) menangani kegagalan snapshot; jangan mencetak ERROR
+	// untuk setiap path yang belum siap atau endpoint yang tidak tersedia.
+	_, body, err := c.doRequestWithLog(http.MethodGet, endpoint, nil, false)
 	if err != nil {
 		return nil, err
 	}

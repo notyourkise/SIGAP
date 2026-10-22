@@ -1,5 +1,94 @@
 # Changelog - Backend SIGAP
 
+## [0.64.29] - 2026-10-22
+
+### Pembersihan teks mojibake pada riwayat pemeliharaan
+
+**Masalah**: Alasan sinkronisasi status CCTV menyimpan karakter `â€”` (mojibake dari em dash) ketika tugas pemeliharaan gagal. Karakter yang sama juga muncul pada deskripsi Swagger dan beberapa komentar sumber.
+
+**Perbaikan**:
+- `syncReason` kegagalan checklist sekarang memakai `—`.
+- Deskripsi endpoint `CompleteMaintenanceLog` pada anotasi, `docs.go`, `swagger.json`, dan `swagger.yaml` diseragamkan.
+- Komentar `auth.go` dan `push_test.go` dibersihkan tanpa mengubah perilaku.
+- Audit database terhadap seluruh kolom teks tidak menemukan nilai mojibake; data CCTV tetap utuh.
+
+timestamp: 2026-10-22 13:10 UTC+8
+kategori: Kecil, Backend (Text/Encoding)
+file yang diubah:
+- backend/handlers/maintenance.go
+- backend/handlers/auth.go
+- backend/utils/push_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+
+alasan perubahan: Menghilangkan karakter rusak pada teks yang dapat tersimpan/ditampilkan dan menjaga dokumentasi API tetap bersih.
+
+---
+
+## [0.64.28] - 2026-10-22
+
+### Verifikasi stream memulihkan path MediaMTX yang hilang
+
+**Masalah**: Setelah **Stop Semua Stream** atau restart MediaMTX, verifikasi manual dapat langsung mengembalikan `unknown` dengan pesan "path stream belum terdaftar di MediaMTX". Path sebenarnya dapat didaftarkan ulang, tetapi verifier hanya memeriksa path yang sudah ada sehingga tombol **Cek Status Live** tidak memulihkan kondisi tersebut.
+
+**Perbaikan**:
+- Saat `GetPath` mengembalikan 404, verifier mendaftarkan ulang path satu kali melalui konfigurasi RTSP yang sama (sub-stream, on-demand, `closeAfter: 10s`) lalu memeriksa ulang.
+- Kegagalan pendaftaran ulang tetap menghasilkan `unknown` dan tidak menaikkan `stream_verify_failures`, karena bukan bukti kamera offline.
+- Pesan diagnosis membedakan pendaftaran ulang gagal, path tetap tidak ditemukan, dan MediaMTX tidak dapat dihubungi.
+- Test baru mencakup pendaftaran ulang berhasil, gagal, dan path tetap 404 setelah pendaftaran ulang.
+
+timestamp: 2026-10-22 11:40 UTC+8
+kategori: Sedang, Backend (Streaming/Reliability)
+file yang diubah:
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_test.go
+- backend/changelog.md
+- docs/04-manual-tests/manual-test-cctv-active-verification.md
+- docs/05-reports/CCTV-ACTIVE-VERIFICATION-2026-10-22.md
+
+alasan perubahan: Membuat verifikasi manual dan periodik tetap bekerja setelah path MediaMTX dihapus, tanpa menimbulkan false offline atau menunggu re-registrar periodik.
+
+---
+
+## [0.64.27] - 2026-10-22
+
+### Verifikasi aktif status streaming CCTV
+
+**Masalah**: Status path MediaMTX `idle` pada mode on-demand tidak membuktikan kamera benar-benar mengirim video. Badge online/offline sebelumnya dapat menampilkan status pasif yang menyesatkan ketika tidak ada penonton, dan kegagalan sumber tidak memiliki jejak diagnosis yang terpisah.
+
+**Perbaikan**:
+- Migrasi `000027_stream_verification` menambahkan `stream_verified_state`, `stream_verified_at`, `stream_verified_method`, `stream_verify_failures`, dan `stream_verify_error` tanpa mengubah kolom probe pasif.
+- Verifier periodik end-to-end memicu HLS MediaMTX, memeriksa `SourceReady()` dan track, menetapkan `unknown` untuk kegagalan koneksi, serta `offline` setelah dua kegagalan berturut-turut. Interval default 15 menit (5-30) dan concurrency default 1 (1-4).
+- Endpoint admin `POST /api/streams/:id/verify` menjalankan verifikasi manual dan mengembalikan `tracks`, `duration_ms`, serta error diagnosis tanpa kredensial.
+- `GET /api/streams/live-status` dan health monitor memakai status terverifikasi yang masih segar (30 menit) sebagai status efektif; summary menambahkan `verified_live`/`verified_offline`.
+- `SourceOnDemandCloseAfter` diturunkan ke `10s` dan konfigurasi HLS memakai `hlsSegmentCount: 7` agar playlist low-latency valid dan NVR tidak dibuka serentak.
+- Scheduler snapshot berhenti dengan satu peringatan bila MediaMTX terbukti tidak menyediakan endpoint snapshot; error 404 per kamera tidak lagi membanjiri log dan tidak memakai transcoding FFmpeg.
+- Test baru mencakup prioritas status terverifikasi, timestamp kedaluwarsa/masa depan, ambang kegagalan, MediaMTX tidak terjangkau, pemicu HLS, dan registrasi route admin.
+
+timestamp: 2026-10-22 11:05 UTC+8
+kategori: Besar, Backend (Streaming/Reliability)
+file yang diubah:
+- backend/handlers/snapshot.go
+- backend/handlers/stream.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_test.go
+- backend/main.go
+- backend/migrations/000027_stream_verification.up.sql
+- backend/migrations/000027_stream_verification.down.sql
+- backend/models/cctv.go
+- backend/routes/stream.go
+- backend/routes/stream_test.go
+- backend/utils/mediamtx.go
+- backend/utils/mediamtx_test.go
+- backend/changelog.md
+
+alasan perubahan: Memberi bukti end-to-end yang dapat dipercaya untuk status live/offline CCTV, memisahkan status terverifikasi dari probe pasif, dan menghindari false alarm akibat path on-demand yang idle.
+
+---
+
 ## [0.64.26] - 2026-10-21
 
 ### Isolasi site dashboard, field maintenance, dan daftar site

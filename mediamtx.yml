@@ -26,7 +26,8 @@ webrtcICEServers2:
 hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: no
-hlsSegmentCount: 3
+# Low-Latency HLS menolak playlist dengan kurang dari 7 segmen.
+hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 # REST API (untuk Go backend)
 api: yes

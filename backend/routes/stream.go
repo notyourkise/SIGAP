@@ -25,6 +25,7 @@ func SetupStreamRoutes(router fiber.Router) {
 
 	// Rute DINAMIS dengan parameter :id.
 	streamGroup.Post("/:id/start", handlers.StartStream)
+	streamGroup.Post("/:id/verify", handlers.VerifyStream)
 	streamGroup.Post("/:id/stop", handlers.StopStream)
 	streamGroup.Get("/:id/url", handlers.GetStreamURL)
 }

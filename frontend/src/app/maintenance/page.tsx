@@ -208,25 +208,9 @@ export default function MaintenanceLogsPage() {
     image_url: ''
   });
 
-  // Sortir client-side kolom header (main table).
-  const { sortedRows, sortKey, sortDirection, onSort } = useSortableRows(logs, {
-    getValue: (row, key) => {
-      switch (key) {
-        case 'cctv':
-          return row.cctv?.nama ?? '';
-        case 'pekerjaan':
-          return row.action_taken;
-        case 'teknisi':
-          return row.technician?.full_name ?? '';
-        case 'waktu':
-          return row.completed_at || row.scheduled_date || '';
-        case 'status':
-          return row.status;
-        default:
-          return '';
-      }
-    },
-  });
+  // Sortir tabel utama memakai state server-side di modal "Sortir & Filter".
+  // Header tabel tidak lagi memiliki sortir client-side agar urutan halaman
+  // tidak berbeda dari urutan global/paginasi.
 
   // Sortir client-side kolom header (tabel suku cadang pada modal detail).
   const usageSort = useSortableRows<SparePartUsage>(usages, {
@@ -626,6 +610,7 @@ export default function MaintenanceLogsPage() {
   const handleReportPDF = async () => {
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
+    if (cctvFilter) params.set('cctv_id', cctvFilter);
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
     if (siteFilter) params.set('site_id', siteFilter);
@@ -721,6 +706,7 @@ export default function MaintenanceLogsPage() {
     setDraftCctvFilter(cctvFilter);
     setDraftStartDate(startDate);
     setDraftEndDate(endDate);
+    setDraftSiteFilter(siteFilter);
     setIsSortModalOpen(true);
   };
 
@@ -843,9 +829,9 @@ export default function MaintenanceLogsPage() {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <Wrench className="h-10 w-10 text-muted/45" />
-            <h3 className="mt-3 text-base font-semibold">{statusFilter || cctvFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
+            <h3 className="mt-3 text-base font-semibold">{statusFilter || cctvFilter || startDate || endDate || siteFilter ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan pemeliharaan'}</h3>
             <p className="mt-1 max-w-sm text-xs text-muted">
-              {statusFilter || cctvFilter ? 'Ubah filter CCTV atau status untuk melihat catatan lain.' : 'Gunakan “Catat Pemeliharaan” untuk membuat catatan pertama.'}
+              {statusFilter || cctvFilter || startDate || endDate || siteFilter ? 'Ubah filter CCTV, status, tanggal, atau kawasan untuk melihat catatan lain.' : 'Gunakan “Catat Pemeliharaan” untuk membuat catatan pertama.'}
             </p>
           </div>
         ) : (
@@ -854,17 +840,17 @@ export default function MaintenanceLogsPage() {
               <table className="w-full min-w-[900px] border-collapse text-left">
                  <thead>
                    <tr className="border-b border-border bg-background/50 text-xs font-semibold text-muted">
-                     <th className="px-5 py-3.5"><SortableHeader label="CCTV" sortKey="cctv" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                     <th className="px-5 py-3.5"><SortableHeader label="Pekerjaan" sortKey="pekerjaan" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                     <th className="px-5 py-3.5 text-sm font-semibold text-muted">Kawasan</th>
-                     <th className="px-5 py-3.5"><SortableHeader label="Teknisi" sortKey="teknisi" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                     <th className="px-5 py-3.5"><SortableHeader label="Waktu" sortKey="waktu" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
-                     <th className="px-5 py-3.5"><SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} /></th>
+                     <th className="px-5 py-3.5">CCTV</th>
+                     <th className="px-5 py-3.5">Pekerjaan</th>
+                     <th className="px-5 py-3.5">Kawasan</th>
+                     <th className="px-5 py-3.5">Teknisi</th>
+                     <th className="px-5 py-3.5">Waktu</th>
+                     <th className="px-5 py-3.5">Status</th>
                      <th className="px-5 py-3.5 text-right">Tindakan</th>
                    </tr>
                  </thead>
                 <tbody className="divide-y divide-border text-sm">
-                  {sortedRows.map((log) => (
+                  {logs.map((log) => (
                     <tr key={log.id} className="transition-colors hover:bg-background/40">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">

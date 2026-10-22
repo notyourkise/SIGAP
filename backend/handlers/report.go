@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-pdf/fpdf"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 const (
@@ -40,12 +41,13 @@ const (
 var maintenanceReportColumnWidths = []float64{10, 28, 20, 44, 24, 36, 20}
 
 // GenerateMaintenanceReportPDF membuat laporan pemeliharaan CCTV dalam format PDF
-// (Admin & Teknisi), dengan opsi filter rentang tanggal & status.
+// (Admin & Teknisi), dengan opsi filter CCTV, rentang tanggal, & status.
 // @Summary      Laporan Pemeliharaan CCTV (PDF)
-// @Description  Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter status dan rentang tanggal.
+// @Description  Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter CCTV, status, dan rentang tanggal.
 // @Tags         Log Pemeliharaan
 // @Produce      application/pdf
 // @Security     BearerAuth
+// @Param        cctv_id query string false "Filter berdasarkan UUID CCTV (alias asset_id didukung)"
 // @Param        status query string false "Filter berdasarkan status log"
 // @Param        start_date query string false "Filter rentang awal (YYYY-MM-DD)"
 // @Param        end_date query string false "Filter rentang akhir (YYYY-MM-DD)"
@@ -61,6 +63,18 @@ func GenerateMaintenanceReportPDF(c *fiber.Ctx) error {
 	// SECURITY (Fase 3.9): Teknisi hanya boleh mengunduh laporan data miliknya;
 	// admin berhak atas seluruh data.
 	query = applyRoleScope(c, query)
+
+	// Filter berdasarkan CCTV (dukung alias legacy asset_id dari QR lama).
+	// Harus sama dengan filter daftar/CSV agar PDF tidak memuat log kamera lain.
+	if cctvID := c.Query("cctv_id"); cctvID != "" {
+		if cctvUUID, err := uuid.Parse(cctvID); err == nil {
+			query = query.Where("cctv_id = ?", cctvUUID)
+		}
+	} else if assetID := c.Query("asset_id"); assetID != "" {
+		if assetUUID, err := uuid.Parse(assetID); err == nil {
+			query = query.Where("cctv_id = ?", assetUUID)
+		}
+	}
 
 	// Filter berdasarkan status
 	if status := c.Query("status"); status != "" {
