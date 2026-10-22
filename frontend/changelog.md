@@ -1,5 +1,26 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.33] - 2026-10-22
+
+### Penyelarasan metrik live streaming dan rincian anomali pada Dashboard utama
+
+**Masalah**: Kartu ringkasan CCTV di bagian atas halaman `/dashboard` sebelumnya hanya membaca status administratif statis (`status` = aktif/nonaktif), sehingga menampilkan 35 Aktif dan 0 Nonaktif meskipun di lapangan terdapat 14 CCTV yang offline. Selain itu, status pemeliharaan tidak memiliki filter/kartu, daftar rincian tidak menampilkan badge Live, dan halaman belum berlangganan ke event WebSocket `CCTV_LIVE_STATUS_UPDATED`.
+
+**Perbaikan**:
+- Menyelaraskan kartu ringkasan CCTV menjadi 5 metrik komprehensif: **Total CCTV**, **Online**, **Siaga**, **Offline**, dan **Pemeliharaan** menggunakan `getEffectiveStreamState`.
+- Menambahkan badge status **Live** (Online/Siaga/Offline) serta indikator anomali (`⚠️ Cek fisik` jika aktif tapi offline, `🟢 Sinyal pulih` jika pemeliharaan tapi online) pada daftar rincian CCTV saat kartu diklik.
+- Menambahkan langganan WebSocket ke `CCTV_LIVE_STATUS_UPDATED` agar metrik di Dashboard terbarui secara otomatis mengikuti hasil probe latar belakang.
+
+timestamp: 2026-10-22 17:53 UTC+8
+kategori: Sedang, Frontend (Dashboard / Live Metrics)
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Memberikan visibilitas status operasional CCTV yang akurat, real-time, dan selaras antara Dashboard dengan halaman pemantauan lainnya.
+
+---
+
 ## [1.55.32] - 2026-10-22
 
 ### Penghapusan tombol duplikat Mulai Stream pada modal streaming CCTV
