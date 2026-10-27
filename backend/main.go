@@ -215,6 +215,13 @@ func main() {
 	handlers.StartWebhookLogCleanup(config.DB)
 	utils.Log.Info("🗑️ Cleanup log webhook delivery diaktifkan (interval: 7 hari)")
 
+	// Jalankan cleanup log event CCTV (P1 #144). Berjalan sekali saat startup
+	// lalu setiap 24 jam, menghapus maksimal 1.000 baris per batch yang lebih
+	// tua dari CCTV_STREAM_LOG_RETENTION_DAYS (default 90 hari).
+	go handlers.StartCCTVStreamLogCleanup(config.DB)
+	utils.Log.Infof("🧹 Cleanup log event CCTV diaktifkan (retensi: %d hari, interval: 24 jam)",
+		config.CCTVStreamLogRetentionDays())
+
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
 	// X-Forwarded-For hanya dipercaya bila koneksi datang dari IP/CIDR yang
 	// terdaftar di TRUSTED_PROXY_IPS (mis. Nginx). Entri tidak valid dibuang

@@ -236,6 +236,19 @@ menjadi **78 file test** (19 utils, 8 middleware, 40 handlers, 3 models,
 sehingga total menjadi **80 file test** (19 utils, 8 middleware, 41 handlers,
 3 models, 5 config, 3 routes, 1 monitoring).
 
+### Matriks Retensi & Index Log CCTV (P1 #144, 2026-10-28)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `config/cctv_log_test.go` (baru) | #144 | `CCTVStreamLogRetentionDays` default 90 hari; override `30` dan `" 45 "`; nilai kosong, `0`, negatif, bukan angka, desimal, dan overflow jatuh ke default |
+| `handlers/cctv_stream_log_cleanup_test.go` (baru) | #144 | `CleanupCCTVStreamLogs` menghapus batch 1.000 + 1.000 + 250 (total 2.250); idempotent (panggilan kedua 0 baris); error database diteruskan tanpa panic; `cctvStreamLogRetentionCutoff` menghitung cutoff 90 hari, log 89 hari aman, log 91 hari terhapus, dan retensi `<= 0` memakai default |
+| `config/migrate_test.go` (diperluas) | #144 | Migration `000029` membuat index komposit `(cctv_id, created_at)` dan `(event_type, created_at)`, menghapus index kolom tunggal, serta rollback mengembalikan index kolom tunggal |
+
+**Catatan (2026-10-28):** #144 menambah **2 file test baru**
+(`config/cctv_log_test.go` dan `handlers/cctv_stream_log_cleanup_test.go`),
+sehingga total menjadi **82 file test** (19 utils, 8 middleware, 42 handlers,
+3 models, 6 config, 3 routes, 1 monitoring).
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:
@@ -430,6 +443,7 @@ Prioritas lanjutan:
 - `manual-test-backup-encryption-v2.md`: 329 lines — Backup encryption/decryption workflow validation
 - `manual-test-trusted-proxy-ip-hardening.md` (#140): verifikasi Nginx menimpa XFF, klien langsung tidak bisa spoofing, rate limit/audit memakai IP valid, dan deployment tanpa proxy
 - `manual-test-cctv-log-ux.md` (#143): verifikasi debounce 300 ms, filter `unknown`, filter tersimpan di URL, reset halaman, tombol "Coba lagi", indikator "Terakhir diperbarui", dan pembedaan empty state
+- `manual-test-cctv-log-retention.md` (#144): verifikasi cleanup startup/harian, cutoff 90 hari, batch 1.000, override/fallback retensi, idempotensi, audit log lama, dan index komposit
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):

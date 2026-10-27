@@ -1,5 +1,68 @@
 # Changelog - Backend SIGAP
 
+## [0.64.36] - 2026-10-28
+
+### Retensi dan index komposit log event CCTV
+
+**Masalah**: Tabel `cctv_stream_logs` terus bertambah karena setiap perubahan
+status stream menghasilkan baris baru tanpa mekanisme cleanup. Index yang ada
+hanya kolom tunggal `cctv_id` dan `event_type`, sehingga query daftar yang
+memfilter kamera/jenis event lalu mengurutkan `created_at` harus membaca dan
+mengurutkan banyak baris. Tabel yang tumbuh tanpa batas memperlambat query serta
+memperbesar biaya storage dan backup.
+
+**Perbaikan**:
+- Menambahkan `config.CCTVStreamLogRetentionDays()` yang membaca
+  `CCTV_STREAM_LOG_RETENTION_DAYS` dengan default **90 hari**. Nilai kosong,
+  bukan angka, atau `<= 0` jatuh ke default agar salah konfigurasi tidak
+  menghapus seluruh log.
+- Menambahkan `handlers.CleanupCCTVStreamLogs` yang menghapus log lebih tua
+  dari cutoff secara bertahap maksimal **1.000 baris per batch** dengan jeda
+  **100 ms** antar-batch, sehingga lock tabel singkat dan worker tidak
+  membanjiri database saat backlog besar.
+- Menambahkan `handlers.StartCCTVStreamLogCleanup` yang berjalan sekali saat
+  startup lalu setiap **24 jam**. Worker bersifat idempotent: pemanggilan
+  berikutnya pada data yang sama tidak menghapus apa pun.
+- Menambahkan migration `000029_cctv_stream_logs_indexes` yang membuat index
+  komposit `(cctv_id, created_at)` dan `(event_type, created_at)`, menghapus
+  index kolom tunggal yang sudah tercakup prefix, serta mempertahankan index
+  `created_at DESC` untuk query cleanup.
+- Menghubungkan worker di `main.go` dan mendokumentasikan konfigurasi retensi di
+  `.env.example`, `.env.docker.example`, dan `docker-compose.yml`.
+- Menambahkan test konfigurasi default/override/fallback, test cleanup (batch,
+  idempotensi, error database, cutoff), dan test isi migration up/down.
+
+**Hasil verifikasi** (dijalankan dari `backend/`):
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+- Catatan: Docker tidak tersedia di lingkungan lokal, sehingga verifikasi
+  migration `up → down → up` dan cleanup black-box dijalankan oleh CI serta
+  prosedur di `docs/04-manual-tests/manual-test-cctv-log-retention.md`.
+
+timestamp: 2026-10-28 00:20 UTC+8
+kategori: Sedang, Backend (CCTV Logs / Retention / Index / Ops)
+file yang diubah:
+- backend/config/cctv_log.go
+- backend/config/cctv_log_test.go
+- backend/handlers/cctv_stream_log_cleanup.go
+- backend/handlers/cctv_stream_log_cleanup_test.go
+- backend/migrations/000029_cctv_stream_logs_indexes.up.sql
+- backend/migrations/000029_cctv_stream_logs_indexes.down.sql
+- backend/config/migrate_test.go
+- backend/main.go
+- backend/.env.example
+- backend/.env.docker.example
+- docker-compose.yml
+- backend/changelog.md
+- docs/04-manual-tests/manual-test-cctv-log-retention.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Membatasi pertumbuhan tabel log event CCTV, menghapus data lama secara aman dan bertahap, serta mempercepat query daftar/ringkasan melalui index komposit.
+
+---
+
 ## [0.64.35] - 2026-10-27
 
 ### Timezone operasional dan konsistensi ringkasan Log CCTV
