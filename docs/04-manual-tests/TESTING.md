@@ -429,6 +429,7 @@ Prioritas lanjutan:
 - `manual-test-multi-site-isolation-v2.md`: 344 lines — Multi-Site Isolation operational testing
 - `manual-test-backup-encryption-v2.md`: 329 lines — Backup encryption/decryption workflow validation
 - `manual-test-trusted-proxy-ip-hardening.md` (#140): verifikasi Nginx menimpa XFF, klien langsung tidak bisa spoofing, rate limit/audit memakai IP valid, dan deployment tanpa proxy
+- `manual-test-cctv-log-ux.md` (#143): verifikasi debounce 300 ms, filter `unknown`, filter tersimpan di URL, reset halaman, tombol "Coba lagi", indikator "Terakhir diperbarui", dan pembedaan empty state
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):

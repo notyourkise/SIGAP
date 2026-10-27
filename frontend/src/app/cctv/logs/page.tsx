@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { useWebSocket } from '@/context/WebSocketContext';
@@ -9,6 +10,7 @@ import {
   Activity,
   AlertTriangle,
   Clock,
+  LoaderCircle,
   MapPin,
   Radio,
   RotateCw,
@@ -16,6 +18,7 @@ import {
   ShieldCheck,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react';
 
 interface CCTVInfo {
@@ -60,6 +63,25 @@ interface LogResponseData {
   summary: LogSummary;
 }
 
+type EventTypeFilter = 'all' | 'online' | 'offline' | 'standby' | 'unknown';
+
+interface QueryUpdate {
+  event_type?: EventTypeFilter;
+  search?: string;
+  page?: number;
+}
+
+const LOG_LIMIT = 15;
+const SEARCH_DEBOUNCE_MS = 300;
+
+const EVENT_TYPE_FILTERS: ReadonlyArray<{ value: EventTypeFilter; label: string }> = [
+  { value: 'all', label: 'Semua Event' },
+  { value: 'online', label: 'Online' },
+  { value: 'offline', label: 'Offline' },
+  { value: 'standby', label: 'Siaga' },
+  { value: 'unknown', label: 'Tidak Diketahui' },
+];
+
 const formatDateTime = (isoString: string) => {
   if (!isoString) return '-';
   const date = new Date(isoString);
@@ -90,7 +112,28 @@ const formatTimeAgo = (isoString: string) => {
   return `${diffDay} hari lalu`;
 };
 
-export default function CCTVLogsPage() {
+const parseEventTypeFilter = (value: string | null): EventTypeFilter => {
+  const match = EVENT_TYPE_FILTERS.find((option) => option.value === value);
+  return match ? match.value : 'all';
+};
+
+const parsePage = (value: string | null): number => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+};
+
+function CCTVLogsContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL menjadi sumber kebenaran filter agar tautan dapat dibagikan dan tetap
+  // bertahan setelah refresh/back-forward.
+  const page = parsePage(searchParams.get('page'));
+  const eventTypeFilter = parseEventTypeFilter(searchParams.get('event_type'));
+  const urlSearch = searchParams.get('search') ?? '';
+
+  const [searchTerm, setSearchTerm] = useState(urlSearch);
   const [logs, setLogs] = useState<CCTVStreamLogItem[]>([]);
   const [summary, setSummary] = useState<LogSummary>({
     today_online_events: 0,
@@ -98,31 +141,89 @@ export default function CCTVLogsPage() {
     total_events: 0,
     timezone: 'Asia/Makassar',
   });
-  const [page, setPage] = useState(1);
-  const [limit] = useState(15);
   const [totalRows, setTotalRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [eventTypeFilter, setEventTypeFilter] = useState<'all' | 'online' | 'offline' | 'standby'>('all');
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState('');
+  const requestIdRef = useRef(0);
+
+  const updateQuery = useCallback(
+    (updates: QueryUpdate) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (updates.event_type !== undefined) {
+        if (updates.event_type === 'all') {
+          params.delete('event_type');
+        } else {
+          params.set('event_type', updates.event_type);
+        }
+      }
+
+      if (updates.search !== undefined) {
+        const trimmed = updates.search.trim();
+        if (trimmed) {
+          params.set('search', trimmed);
+        } else {
+          params.delete('search');
+        }
+      }
+
+      if (updates.page !== undefined) {
+        if (updates.page > 1) {
+          params.set('page', String(updates.page));
+        } else {
+          params.delete('page');
+        }
+      }
+
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  // Sinkronkan input saat URL berubah dari luar (mis. tombol back browser atau
+  // tautan yang dibagikan).
+  useEffect(() => {
+    setSearchTerm(urlSearch);
+  }, [urlSearch]);
+
+  // Debounce 300 ms: URL (dan karena itu fetch) baru berubah setelah pengguna
+  // berhenti mengetik, sehingga setiap ketikan tidak membanjiri API.
+  useEffect(() => {
+    if (searchTerm.trim() === urlSearch.trim()) return;
+
+    const timer = window.setTimeout(() => {
+      updateQuery({ search: searchTerm, page: 1 });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [searchTerm, urlSearch, updateQuery]);
 
   const fetchLogs = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError('');
+
     try {
       const params = new URLSearchParams({
         page: String(page),
-        limit: String(limit),
+        limit: String(LOG_LIMIT),
       });
       if (eventTypeFilter !== 'all') {
         params.set('event_type', eventTypeFilter);
       }
-      if (searchTerm.trim()) {
-        params.set('search', searchTerm.trim());
+      if (urlSearch.trim()) {
+        params.set('search', urlSearch.trim());
       }
 
       const res = await apiRequest<LogResponseData>(`/cctv-logs?${params.toString()}`);
+
+      // Abaikan respons lama yang datang setelah permintaan yang lebih baru.
+      if (requestId !== requestIdRef.current) return;
+
       if (res && res.data) {
         setLogs(res.data.rows || []);
         setTotalRows(res.data.pagination?.total_rows ?? 0);
@@ -131,15 +232,20 @@ export default function CCTVLogsPage() {
           setSummary(res.data.summary);
         }
       }
+      setHasLoaded(true);
+      setLastUpdated(new Date());
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : 'Gagal memuat log status CCTV');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [page, limit, eventTypeFilter, searchTerm]);
+  }, [eventTypeFilter, page, urlSearch]);
 
   useEffect(() => {
-    fetchLogs();
+    void fetchLogs();
   }, [fetchLogs]);
 
   // Event WebSocket hanya memicu refetch bila berasal dari site aktif.
@@ -160,10 +266,10 @@ export default function CCTVLogsPage() {
   const { subscribe } = useWebSocket();
   useEffect(() => {
     const unsubLog = subscribe('CCTV_STREAM_LOG_CREATED', (payload) => {
-      if (shouldHandleSiteEvent(payload)) fetchLogs();
+      if (shouldHandleSiteEvent(payload)) void fetchLogs();
     });
     const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload) => {
-      if (shouldHandleSiteEvent(payload)) fetchLogs();
+      if (shouldHandleSiteEvent(payload)) void fetchLogs();
     });
 
     return () => {
@@ -171,6 +277,13 @@ export default function CCTVLogsPage() {
       unsubLive();
     };
   }, [subscribe, fetchLogs, shouldHandleSiteEvent]);
+
+  const resetFilters = useCallback(() => {
+    setSearchTerm('');
+    updateQuery({ event_type: 'all', search: '', page: 1 });
+  }, [updateQuery]);
+
+  const hasActiveFilters = eventTypeFilter !== 'all' || urlSearch.trim() !== '';
 
   const eventBadge = (type: string) => {
     switch (type) {
@@ -222,10 +335,10 @@ export default function CCTVLogsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
             <button
               type="button"
-              onClick={() => fetchLogs()}
+              onClick={() => void fetchLogs()}
               disabled={loading}
               className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-background disabled:opacity-50"
               title="Perbarui log"
@@ -233,6 +346,18 @@ export default function CCTVLogsPage() {
               <RotateCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Segarkan
             </button>
+            <p className="text-[11px] text-muted" aria-live="polite">
+              {loading ? (
+                <span className="inline-flex items-center gap-1">
+                  <LoaderCircle className="h-3 w-3 animate-spin" />
+                  {hasLoaded ? 'Memperbarui…' : 'Memuat data…'}
+                </span>
+              ) : lastUpdated ? (
+                <>Terakhir diperbarui {formatDateTime(lastUpdated.toISOString())}</>
+              ) : (
+                'Belum pernah diperbarui'
+              )}
+            </p>
           </div>
         </header>
 
@@ -280,73 +405,131 @@ export default function CCTVLogsPage() {
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative w-full max-w-md flex-1">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Cari kode atau nama CCTV (mis. THD-12)..."
-              className="w-full rounded-xl border border-border bg-background py-2 pl-10 pr-4 text-xs font-medium placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              aria-label="Cari log berdasarkan kode atau nama CCTV"
+              className="w-full rounded-xl border border-border bg-background py-2 pl-10 pr-10 text-xs font-medium placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  updateQuery({ search: '', page: 1 });
+                }}
+                aria-label="Hapus pencarian"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {(['all', 'online', 'offline', 'standby'] as const).map((type) => {
-              const active = eventTypeFilter === type;
-              const labels = {
-                all: 'Semua Event',
-                online: 'Online',
-                offline: 'Offline',
-                standby: 'Siaga',
-              };
+            {EVENT_TYPE_FILTERS.map((option) => {
+              const active = eventTypeFilter === option.value;
               return (
                 <button
-                  key={type}
+                  key={option.value}
                   type="button"
-                  onClick={() => {
-                    setEventTypeFilter(type);
-                    setPage(1);
-                  }}
+                  aria-pressed={active}
+                  onClick={() => updateQuery({ event_type: option.value, page: 1 })}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                     active
                       ? 'bg-primary text-white'
                       : 'border border-border bg-background text-muted hover:bg-card hover:text-foreground'
                   }`}
                 >
-                  {labels[type]}
+                  {option.label}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Error Notification */}
-        {error && (
-          <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-600 dark:text-rose-400">
-            {error}
+        {/* Error banner tetap menampilkan data lama agar pengguna tidak
+            kehilangan konteks saat refresh gagal. */}
+        {error && logs.length > 0 && (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-600 dark:text-rose-400 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-bold">Gagal memperbarui data</p>
+                <p className="mt-0.5">{error}</p>
+                <p className="mt-1 text-[11px] opacity-80">Data terakhir tetap ditampilkan.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void fetchLogs()}
+              disabled={loading}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-card px-3 py-2 font-semibold text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-400"
+            >
+              <RotateCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Coba lagi
+            </button>
           </div>
         )}
 
         {/* Log Timeline Table */}
         <section aria-label="Daftar Log Event CCTV" className="overflow-hidden rounded-2xl border border-border bg-card">
-          {loading && logs.length === 0 ? (
+          {loading && !hasLoaded ? (
             <div className="space-y-4 p-6">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="h-14 animate-pulse rounded-xl bg-background" />
               ))}
             </div>
-          ) : logs.length === 0 ? (
+          ) : error && logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center">
-              <Activity className="h-10 w-10 text-muted opacity-40" />
-              <p className="mt-3 text-sm font-bold text-foreground">Belum ada catatan log status</p>
-              <p className="mt-1 text-xs text-muted max-w-sm">
-                Setiap kali engine probe atau verifier mendeteksi kamera beralih Online atau Offline, riwayatnya akan tersimpan di sini.
-              </p>
+              <AlertTriangle className="h-10 w-10 text-rose-500 opacity-70" />
+              <p className="mt-3 text-sm font-bold text-foreground">Gagal memuat log status</p>
+              <p className="mt-1 max-w-md text-xs text-muted">{error}</p>
+              <button
+                type="button"
+                onClick={() => void fetchLogs()}
+                disabled={loading}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-card disabled:opacity-50"
+              >
+                <RotateCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                Coba lagi
+              </button>
             </div>
+          ) : logs.length === 0 ? (
+            hasActiveFilters ? (
+              <div className="flex flex-col items-center justify-center p-12 text-center">
+                <Search className="h-10 w-10 text-muted opacity-40" />
+                <p className="mt-3 text-sm font-bold text-foreground">Tidak ada hasil filter</p>
+                <p className="mt-1 max-w-sm text-xs text-muted">
+                  {urlSearch.trim()
+                    ? `Tidak ada log yang cocok dengan pencarian “${urlSearch.trim()}” pada filter ini.`
+                    : 'Tidak ada log yang cocok dengan filter event yang dipilih.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-card"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Hapus filter
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 text-center">
+                <Activity className="h-10 w-10 text-muted opacity-40" />
+                <p className="mt-3 text-sm font-bold text-foreground">Belum ada catatan log status</p>
+                <p className="mt-1 max-w-sm text-xs text-muted">
+                  Setiap kali engine probe atau verifier mendeteksi kamera beralih Online atau Offline, riwayatnya akan tersimpan di sini.
+                </p>
+              </div>
+            )
           ) : (
             <div className="divide-y divide-border">
               {logs.map((item) => {
@@ -427,10 +610,10 @@ export default function CCTVLogsPage() {
             <div className="border-t border-border p-3">
               <Pagination
                 page={page}
-                limit={limit}
+                limit={LOG_LIMIT}
                 totalRows={totalRows}
                 totalPages={totalPages}
-                onPageChange={setPage}
+                onPageChange={(nextPage) => updateQuery({ page: nextPage })}
                 itemLabel="Catatan Log"
               />
             </div>
@@ -438,5 +621,30 @@ export default function CCTVLogsPage() {
         </section>
       </div>
     </DashboardLayout>
+  );
+}
+
+function CCTVLogsFallback() {
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="h-20 animate-pulse rounded-2xl bg-card" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-24 animate-pulse rounded-2xl bg-card" />
+          ))}
+        </div>
+        <div className="h-16 animate-pulse rounded-2xl bg-card" />
+        <div className="h-80 animate-pulse rounded-2xl bg-card" />
+      </div>
+    </DashboardLayout>
+  );
+}
+
+export default function CCTVLogsPage() {
+  return (
+    <Suspense fallback={<CCTVLogsFallback />}>
+      <CCTVLogsContent />
+    </Suspense>
   );
 }

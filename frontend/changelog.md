@@ -1,5 +1,50 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.37] - 2026-10-27
+
+### Perbaikan UX filter dan pencarian Log CCTV
+
+**Masalah**: Halaman Log CCTV memanggil API pada setiap ketikan pencarian,
+menyimpan filter hanya di state lokal (hilang saat refresh), tidak menyediakan
+filter event `unknown`, tidak punya tombol pulih saat gagal, dan empty state
+tidak membedakan "belum ada log" dengan "tidak ada hasil filter". Saat memuat
+ulang, skeleton juga menutupi data lama.
+
+**Perbaikan**:
+- Menambahkan filter **Tidak Diketahui** yang mengirim `event_type=unknown`
+  (backend sudah mendukung exact match).
+- Menerapkan debounce pencarian **300 ms**; fetch hanya berjalan setelah
+  pengguna berhenti mengetik.
+- Menyimpan `event_type`, `search`, dan `page` di URL query. Filter kini
+  bertahan saat refresh, dapat dibagikan, dan mendukung tombol back/forward.
+- Mereset halaman ke 1 setiap filter atau pencarian yang diterapkan berubah.
+- Menambahkan tombol **Coba lagi** pada banner error (data lama tetap tampil)
+  dan pada empty state error, sehingga pemulihan tidak perlu reload penuh.
+- Menambahkan indikator **Terakhir diperbarui** serta status "Memperbarui…" di
+  header tanpa menutupi daftar lama; skeleton hanya muncul pada pemuatan awal.
+- Memisahkan empty state **Belum ada catatan log status** dan **Tidak ada hasil
+  filter**, lengkap dengan tombol "Hapus filter".
+- Menambahkan tombol hapus pencarian, `aria-pressed` pada filter, dan perlindungan
+  respons API lama agar tidak menimpa hasil permintaan terbaru.
+
+**Hasil verifikasi**: `npm run lint` 0 error (2 warning
+`react-hooks/set-state-in-effect` pada halaman ini mengikuti pola sinkronisasi
+URL/fetch; warning lama lain di luar perubahan tidak bertambah) dan
+`npm run build` PASS, termasuk prerender `/cctv/logs` dengan Suspense. Empat
+test Node CI (`test:sw`, `test:whep`, `test:monitor`, `test:encoding`) juga PASS.
+
+timestamp: 2026-10-27 23:40 UTC+8
+kategori: Sedang, Frontend (CCTV Logs / UX / Filter / URL State)
+file yang diubah:
+- frontend/src/app/cctv/logs/page.tsx
+- frontend/changelog.md
+- docs/04-manual-tests/manual-test-cctv-log-ux.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Membuat filter/pencarian Log CCTV hemat request, dapat dipulihkan, konsisten dengan URL, dan tetap menampilkan data lama saat memuat ulang atau error.
+
+---
+
 ## [1.55.36] - 2026-10-27
 
 ### Label ringkasan Log CCTV mengikuti filter dan zona waktu
