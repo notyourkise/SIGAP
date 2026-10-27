@@ -11,7 +11,6 @@ import (
 	"sigap-backend/monitoring"
 	"sigap-backend/routes"
 	"sigap-backend/utils"
-	"strings"
 	"syscall"
 	"time"
 
@@ -217,26 +216,16 @@ func main() {
 	utils.Log.Info("🗑️ Cleanup log webhook delivery diaktifkan (interval: 7 hari)")
 
 	// 3. Inisialisasi Aplikasi Fiber — konfigurasi Trusted Proxy: header
-	// X-Forwarded-For / X-Real-IP hanya dipercaya bila koneksi datang dari
-	// proxy yang dikenal (mis. frontend Next.js/Nginx). Default kosong =
-	// header proxy diabaikan (aman dari spoofing).
-	trustedProxies := []string{}
-	if trustedIPs := os.Getenv("TRUSTED_PROXY_IPS"); trustedIPs != "" {
-		for _, p := range strings.Split(trustedIPs, ",") {
-			if t := strings.TrimSpace(p); t != "" {
-				trustedProxies = append(trustedProxies, t)
-			}
-		}
-	}
-	app := fiber.New(fiber.Config{
-		EnableTrustedProxyCheck: len(trustedProxies) > 0,
-		TrustedProxies:          trustedProxies,
-		ProxyHeader:             fiber.HeaderXForwardedFor,
-	})
+	// X-Forwarded-For hanya dipercaya bila koneksi datang dari IP/CIDR yang
+	// terdaftar di TRUSTED_PROXY_IPS (mis. Nginx). Entri tidak valid dibuang
+	// dengan warning; bila tidak ada entri valid, header proxy diabaikan
+	// sepenuhnya (aman dari spoofing).
+	trustedProxies := config.ParseTrustedProxies(os.Getenv("TRUSTED_PROXY_IPS"))
+	app := fiber.New(config.NewFiberConfig(trustedProxies))
 	if len(trustedProxies) > 0 {
-		utils.Log.Info("🛡️ Trusted proxy aktif: " + strings.Join(trustedProxies, ", "))
+		utils.Log.Infof("🛡️ Trusted proxy aktif: %v", trustedProxies)
 	} else {
-		utils.Log.Warn("⚠️ TRUSTED_PROXY_IPS tidak diset — header X-Forwarded-For/X-Real-IP TIDAK dipercaya. Set variabel ini bila aplikasi di belakang proxy (frontend Next.js/Nginx).")
+		utils.Log.Warn("⚠️ TRUSTED_PROXY_IPS kosong/tidak valid — header X-Forwarded-For TIDAK dipercaya. Set variabel ini bila aplikasi di belakang proxy (Nginx).")
 	}
 
 	// Pasang Custom Recovery Middleware paling awal untuk melindung server dari crash/panic

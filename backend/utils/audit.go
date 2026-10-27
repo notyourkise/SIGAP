@@ -16,9 +16,10 @@ const (
 )
 
 // ExtractClientIP mengembalikan IP address klien (proxy-aware).
-// Hanya membaca header proxy bila koneksi datang dari trusted proxy yang
-// dikonfigurasi (app.SetTrustedProxies); jika tidak, c.IP() mengembalikan
-// IP peer langsung sehingga header X-Forwarded-For tidak bisa dipalsukan klien.
+// Hanya membaca header X-Forwarded-For bila koneksi datang dari trusted proxy
+// yang dikonfigurasi via TRUSTED_PROXY_IPS (config.NewFiberConfig); jika tidak,
+// c.IP() mengembalikan IP peer langsung sehingga header X-Forwarded-For tidak
+// bisa dipalsukan klien.
 func ExtractClientIP(c *fiber.Ctx) string {
 	return c.IP()
 }
