@@ -28,3 +28,33 @@ func TestCCTVStreamLogRetentionDays_InvalidFallsBackToDefault(t *testing.T) {
 			"nilai %q harus jatuh ke default", value)
 	}
 }
+
+func TestCCTVLogStandbyEvents_DefaultFalse(t *testing.T) {
+	t.Setenv("CCTV_LOG_STANDBY_EVENTS", "")
+
+	assert.False(t, DefaultCCTVLogStandbyEvents)
+	assert.False(t, CCTVLogStandbyEvents())
+}
+
+func TestCCTVLogStandbyEvents_Configured(t *testing.T) {
+	for _, value := range []string{"true", "TRUE", "1", "t", "yes"} {
+		t.Setenv("CCTV_LOG_STANDBY_EVENTS", value)
+		if value == "yes" {
+			assert.False(t, CCTVLogStandbyEvents(), "ParseBool tidak menerima yes")
+			continue
+		}
+		assert.True(t, CCTVLogStandbyEvents(), "nilai %q harus mengaktifkan standby", value)
+	}
+
+	for _, value := range []string{"false", "0", "f"} {
+		t.Setenv("CCTV_LOG_STANDBY_EVENTS", value)
+		assert.False(t, CCTVLogStandbyEvents(), "nilai %q harus menonaktifkan standby", value)
+	}
+}
+
+func TestCCTVLogStandbyEvents_InvalidFallsBackToFalse(t *testing.T) {
+	for _, value := range []string{"abc", "2", "aktif"} {
+		t.Setenv("CCTV_LOG_STANDBY_EVENTS", value)
+		assert.False(t, CCTVLogStandbyEvents(), "nilai %q harus jatuh ke default false", value)
+	}
+}

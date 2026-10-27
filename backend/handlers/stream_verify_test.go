@@ -130,7 +130,10 @@ func newVerificationTestClient(t *testing.T, ready *atomic.Bool) (*utils.MediaMT
 
 func TestVerifyCCTVStreamMarksLiveWhenPathBecomesReady(t *testing.T) {
 	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
 	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+	expectNoPreviousCCTVStreamLog(mock, cctvID)
+	expectCCTVStreamLogInsert(mock)
 
 	var ready atomic.Bool
 	client, closeServer := newVerificationTestClient(t, &ready)
@@ -144,7 +147,7 @@ func TestVerifyCCTVStreamMarksLiveWhenPathBecomesReady(t *testing.T) {
 	defer func() { streamVerifyTimeout, streamVerifyPollInterval = oldTimeout, oldPoll }()
 
 	cctv := models.CCTV{
-		Base:                models.Base{ID: uuid.New()},
+		Base:                models.Base{ID: cctvID},
 		KodeCCTV:            "THD-TEST",
 		Nama:                "Kamera Uji",
 		StreamEnabled:       true,
@@ -163,7 +166,10 @@ func TestVerifyCCTVStreamMarksLiveWhenPathBecomesReady(t *testing.T) {
 
 func TestVerifyCCTVStreamMarksOfflineAfterTwoFailures(t *testing.T) {
 	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
 	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+	expectNoPreviousCCTVStreamLog(mock, cctvID)
+	expectCCTVStreamLogInsert(mock)
 
 	// Server selalu menjawab tersedia=false dan HLS tidak pernah membuat path siap.
 	mux := http.NewServeMux()
@@ -187,7 +193,7 @@ func TestVerifyCCTVStreamMarksOfflineAfterTwoFailures(t *testing.T) {
 	defer func() { streamVerifyTimeout, streamVerifyPollInterval = oldTimeout, oldPoll }()
 
 	cctv := models.CCTV{
-		Base:                 models.Base{ID: uuid.New()},
+		Base:                 models.Base{ID: cctvID},
 		KodeCCTV:             "THD-TEST",
 		Nama:                 "Kamera Uji",
 		StreamEnabled:        true,
@@ -235,7 +241,10 @@ func TestVerifyCCTVStreamDoesNotIncrementFailuresWhenMediaMTXUnreachable(t *test
 
 func TestVerifyCCTVStreamReRegistersMissingPath(t *testing.T) {
 	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
 	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+	expectNoPreviousCCTVStreamLog(mock, cctvID)
+	expectCCTVStreamLogInsert(mock)
 
 	var registered atomic.Bool
 	var addCalls atomic.Int32
@@ -271,7 +280,7 @@ func TestVerifyCCTVStreamReRegistersMissingPath(t *testing.T) {
 	defer func() { streamClient = oldClient }()
 
 	cctv := models.CCTV{
-		Base:                models.Base{ID: uuid.New()},
+		Base:                models.Base{ID: cctvID},
 		KodeCCTV:            "THD-TEST",
 		Nama:                "Kamera Uji",
 		ChannelPort:         19,

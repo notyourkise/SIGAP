@@ -87,6 +87,8 @@ services:
       - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Makassar}
       # Retensi log event CCTV (hari). Worker cleanup berjalan tiap 24 jam.
       - CCTV_STREAM_LOG_RETENTION_DAYS=${CCTV_STREAM_LOG_RETENTION_DAYS:-90}
+      # Catat event standby (kamera idle tanpa penonton). Default false.
+      - CCTV_LOG_STANDBY_EVENTS=${CCTV_LOG_STANDBY_EVENTS:-false}
       # Probe langsung Metro-E hanya jika host benar-benar punya rute ke
       # 10.20.105.x. Default false agar deployment lokal tidak menampilkan
       # kamera Metro-E sebagai offline saat jaringan OIKN tidak terjangkau.

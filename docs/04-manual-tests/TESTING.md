@@ -260,6 +260,20 @@ dan menambahkan konstanta `models.CCTVEvent*`, sehingga total tetap **82 file
 test** (19 utils, 8 middleware, 42 handlers, 3 models, 6 config, 3 routes,
 1 monitoring).
 
+### Matriks Kebijakan Standby & Deduplikasi Log CCTV (P1 #146, 2026-10-28)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `config/cctv_log_test.go` (diperluas) | #146 | `CCTVLogStandbyEvents` default `false`; nilai `true`/`1`/`t` mengaktifkan; `false`/`0`/`f` menonaktifkan; `yes` dan nilai tidak valid jatuh ke `false` |
+| `handlers/cctv_stream_log_events_test.go` (baru) | #146 | `shouldLogCCTVStreamEvent`: standby tidak dicatat secara default tanpa query DB; standby dicatat saat diaktifkan; tipe sama dalam 60 detik diduplikasi; tipe berbeda tetap dicatat; tipe sama setelah 60 detik dicatat; belum ada log → dicatat; error query dedup → fail-open (tetap dicatat) |
+| `handlers/stream_probe_test.go` (diperluas) | #146 | Siklus probe yang bertransisi ke live/offline mengekspektasikan query dedup + INSERT log secara eksplisit; status tetap diperbarui walau log di-skip |
+| `handlers/stream_verify_test.go` (diperluas) | #146 | Verifikasi yang bertransisi ke live/offline mengekspektasikan query dedup + INSERT log; state terverifikasi tetap disimpan walau log dideduplikasi |
+
+**Catatan (2026-10-28):** #146 menambah **1 file test baru**
+(`handlers/cctv_stream_log_events_test.go`), sehingga total menjadi
+**83 file test** (19 utils, 8 middleware, 43 handlers, 3 models, 6 config,
+3 routes, 1 monitoring).
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:
@@ -456,6 +470,7 @@ Prioritas lanjutan:
 - `manual-test-cctv-log-ux.md` (#143): verifikasi debounce 300 ms, filter `unknown`, filter tersimpan di URL, reset halaman, tombol "Coba lagi", indikator "Terakhir diperbarui", dan pembedaan empty state
 - `manual-test-cctv-log-retention.md` (#144): verifikasi cleanup startup/harian, cutoff 90 hari, batch 1.000, override/fallback retensi, idempotensi, audit log lama, dan index komposit
 - `manual-test-cctv-log-validation.md` (#145): verifikasi event type valid/invalid, pesan 400, filter `unknown`, konsistensi ringkasan, dan kegagalan query ringkasan
+- `manual-test-cctv-log-dedup.md` (#146): verifikasi standby nonaktif secara default, aktivasi via env, dedup 60 detik lintas probe/verifier, event penting tetap tercatat, fail-open, dan regresi retensi/UI
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):
