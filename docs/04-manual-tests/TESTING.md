@@ -205,6 +205,24 @@ Angka historis 64/67 di atas dibiarkan sebagai catatan sprint. Perubahan #139 me
 dan memperluas `middleware/limiter_test.go`, sehingga total menjadi **77 file test**
 (19 utils, 8 middleware, 39 handlers, 3 models, 4 config, 3 routes, 1 monitoring).
 
+### Matriks Regression Multi-Site & Proxy Spoofing (P0 #141, 2026-10-27)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/cctv_stream_log_isolation_test.go` (baru) | #141 | Teknisi site A dan site B mengakses endpoint log CCTV yang sama; masing-masing hanya menerima log/CCTV site-nya. Query count, list, preload CCTV, serta ringkasan online/offline diverifikasi memakai `site_id` yang benar |
+| `handlers/cctv_stream_log_test.go` (existing) | #141 | Admin global, admin dengan site terpilih, teknisi dengan site, dan non-admin tanpa assignment (403 fail closed) tetap berjalan |
+| `utils/websocket_test.go` (diperkuat) | #141 | Event nyata `CCTV_STREAM_LOG_CREATED` site A hanya diterima teknisi site A + admin, bukan teknisi site B; payload `site_id`/`nama`/`kode_cctv` diverifikasi |
+| `routes/websocket_test.go` (existing) | #141 | Handshake teknisi memuat `user_sites` sebelum registrasi Hub |
+| `config/fiber_test.go` (existing #140) | #141 | XFF dari klien langsung diabaikan; XFF dari trusted proxy dipakai; entri invalid dilewati; XFF seluruhnya invalid jatuh ke IP peer |
+| `middleware/limiter_test.go` (diperluas) | #141 | Bucket terpisah per endpoint; peer yang tidak ada di trusted list tidak boleh memakai XFF; trusted proxy CIDR memakai bucket per IP klien; XFF palsu dari klien langsung tidak memecah bucket |
+
+**Catatan (2026-10-27):** #141 menambah **1 file test baru**
+(`handlers/cctv_stream_log_isolation_test.go`) dan memperluas
+`middleware/limiter_test.go` serta `utils/websocket_test.go`, sehingga total
+menjadi **78 file test** (19 utils, 8 middleware, 40 handlers, 3 models,
+4 config, 3 routes, 1 monitoring). Hasil lengkap ada di
+`docs/05-reports/SECURITY-REGRESSION-2026-10-27.md`.
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:

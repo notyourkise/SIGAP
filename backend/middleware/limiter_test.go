@@ -127,6 +127,75 @@ func TestLimiter_TrustedProxyUsesValidatedClientIP(t *testing.T) {
 		"IP valid pertama tetap menjadi identitas klien")
 }
 
+// TestLimiter_SameIPDifferentEndpointsUseSeparateBuckets memastikan kuota rate
+// limit dihitung per endpoint, bukan menumpuk seluruh endpoint dalam satu IP.
+func TestLimiter_SameIPDifferentEndpointsUseSeparateBuckets(t *testing.T) {
+	app := fiber.New(config.NewFiberConfig(nil))
+	handler := func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
+
+	app.Get("/api/limiter-endpoint-a", newFixedWindowLimiter(1, time.Minute, "Terlalu banyak permintaan."), handler)
+	app.Get("/api/limiter-endpoint-b", newFixedWindowLimiter(1, time.Minute, "Terlalu banyak permintaan."), handler)
+
+	request := func(path string) int {
+		resp, err := app.Test(httptest.NewRequest("GET", path, nil))
+		assert.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	assert.Equal(t, fiber.StatusOK, request("/api/limiter-endpoint-a"))
+	assert.Equal(t, fiber.StatusTooManyRequests, request("/api/limiter-endpoint-a"))
+	assert.Equal(t, fiber.StatusOK, request("/api/limiter-endpoint-b"),
+		"endpoint berbeda harus memiliki bucket sendiri")
+}
+
+// TestLimiter_UntrustedPeerCannotUseTrustedXFF memastikan XFF hanya dipercaya
+// bila IP peer benar-benar ada di daftar trusted proxy. Peer yang tidak cocok
+// tidak bisa memakai XFF untuk memecah bucket.
+func TestLimiter_UntrustedPeerCannotUseTrustedXFF(t *testing.T) {
+	const route = "/api/limiter-untrusted-peer"
+	app := fiber.New(config.NewFiberConfig([]string{"203.0.113.1"}))
+	app.Get(route, newFixedWindowLimiter(1, time.Minute, "Terlalu banyak permintaan."), func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	spoofed := []string{"198.51.100.10", "198.51.100.11"}
+	for i, ip := range spoofed {
+		req := httptest.NewRequest("GET", route, nil)
+		req.Header.Set(fiber.HeaderXForwardedFor, ip)
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+
+		if i == 0 {
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+		} else {
+			assert.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode,
+				"peer yang tidak ada di trusted proxy tidak boleh memakai XFF")
+		}
+	}
+}
+
+// TestLimiter_TrustedProxyCIDR memastikan entri CIDR pada TRUSTED_PROXY_IPS
+// benar-benar dikenali Fiber dan IP klien di dalam header dipakai per klien.
+func TestLimiter_TrustedProxyCIDR(t *testing.T) {
+	const route = "/api/limiter-trusted-cidr"
+	app := fiber.New(config.NewFiberConfig([]string{"0.0.0.0/32"}))
+	app.Get(route, newFixedWindowLimiter(1, time.Minute, "Terlalu banyak permintaan."), func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	request := func(forwardedFor string) int {
+		req := httptest.NewRequest("GET", route, nil)
+		req.Header.Set(fiber.HeaderXForwardedFor, forwardedFor)
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	assert.Equal(t, fiber.StatusOK, request("198.51.100.20"))
+	assert.Equal(t, fiber.StatusTooManyRequests, request("198.51.100.20"))
+	assert.Equal(t, fiber.StatusOK, request("198.51.100.21"))
+}
+
 // TestLimiterMemoryCounter_WindowReset memverifikasi counter in-memory di-reset
 // setelah window rate limit berakhir (fallback tanpa Redis).
 func TestLimiterMemoryCounter_WindowReset(t *testing.T) {

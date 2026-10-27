@@ -1,5 +1,50 @@
 # Changelog - Backend SIGAP
 
+## [0.64.34] - 2026-10-27
+
+### Regression test multi-site dan proxy spoofing
+
+**Masalah**: Perbaikan P0 #139 (isolasi log CCTV/WebSocket per site) dan #140
+(hardening trusted proxy serta anti-spoofing `X-Forwarded-For`) belum memiliki
+regression test yang menguji skenario dua site secara bersamaan. Tanpa test ini,
+perubahan berikutnya berpotensi mengembalikan kebocoran data lintas site atau
+membuka kembali celah spoofing IP tanpa terdeteksi.
+
+**Perbaikan**:
+- Menambahkan `handlers/cctv_stream_log_isolation_test.go`: teknisi site A dan
+  site B mengakses endpoint log CCTV yang sama dan masing-masing hanya menerima
+  log/CCTV milik site-nya. Seluruh query (count, list, preload CCTV, ringkasan
+  online/offline) diverifikasi memakai parameter `site_id` yang benar.
+- Memperluas `middleware/limiter_test.go`: IP yang sama pada endpoint berbeda
+  memiliki bucket terpisah; peer yang tidak ada di daftar trusted proxy tidak
+  dapat memakai XFF untuk memecah bucket; entri trusted proxy berbentuk CIDR
+  dikenali dan IP klien di header dipakai per klien.
+- Memperkuat `utils/websocket_test.go`: event nyata `CCTV_STREAM_LOG_CREATED`
+  site A hanya diterima teknisi site A dan admin, tidak diterima teknisi site B;
+  payload `site_id`/`nama`/`kode_cctv` ikut diverifikasi.
+- Menambahkan laporan hasil `docs/05-reports/SECURITY-REGRESSION-2026-10-27.md`
+  dan memperbarui matriks `docs/04-manual-tests/TESTING.md`.
+
+**Hasil verifikasi** (dijalankan dari `backend/`, Go 1.26.5):
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+
+timestamp: 2026-10-27 23:20 UTC+8
+kategori: Rendah, Backend (Regression Test / Security)
+file yang diubah:
+- backend/handlers/cctv_stream_log_isolation_test.go
+- backend/middleware/limiter_test.go
+- backend/utils/websocket_test.go
+- backend/changelog.md
+- docs/04-manual-tests/TESTING.md
+- docs/05-reports/SECURITY-REGRESSION-2026-10-27.md
+
+alasan perubahan: Mengunci perilaku isolasi multi-site dan hardening proxy dengan regression test agar perbaikan P0 #139/#140 tidak kembali regresi.
+
+---
+
 ## [0.64.33] - 2026-10-27
 
 ### Hardening trusted proxy: validasi IP dan anti-spoofing X-Forwarded-For
