@@ -79,13 +79,27 @@ func sanitizeCCTVForResponse(cctv *models.CCTV) {
 	cctv.RTSPPassword = ""
 }
 
+// cctvSiteIDStr mengembalikan UUID site CCTV sebagai string, atau string
+// kosong bila kamera belum dimasukkan ke site mana pun. Nilai ini dipakai
+// untuk payload event dan target broadcast WebSocket per site.
+func cctvSiteIDStr(cctv models.CCTV) string {
+	if cctv.SiteID == nil {
+		return ""
+	}
+	return cctv.SiteID.String()
+}
+
 // broadcastCCTVUpdate hanya menyiarkan metadata aman. Jangan pernah mengirim
 // model CCTV utuh karena dapat memuat RTSPURL/kredensial atau hash password.
+// Event dibatasi ke site kamera agar teknisi tidak menerima metadata kamera
+// dari kawasan lain.
 func broadcastCCTVUpdate(cctv models.CCTV) {
-	utils.BroadcastEvent("CCTV_UPDATED", fiber.Map{
+	siteID := cctvSiteIDStr(cctv)
+	utils.BroadcastToSite(siteID, "CCTV_UPDATED", fiber.Map{
 		"id":        cctv.ID.String(),
 		"kode_cctv": cctv.KodeCCTV,
 		"nama":      cctv.Nama,
+		"site_id":   siteID,
 	})
 }
 

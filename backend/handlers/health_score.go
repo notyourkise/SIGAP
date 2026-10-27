@@ -143,9 +143,11 @@ func recalculateCCTVHealthScoreAt(db *gorm.DB, cctvID uuid.UUID, now time.Time) 
 		utils.Log.Warnf("⚠️ Gagal merekam histori skor kesehatan CCTV %s: %v", cctvID, err)
 	}
 
-	utils.BroadcastEvent("CCTV_UPDATED", map[string]interface{}{
+	siteID := cctvSiteIDStr(cctv)
+	utils.BroadcastToSite(siteID, "CCTV_UPDATED", map[string]interface{}{
 		"id":           cctvID.String(),
 		"health_score": result.HealthScore,
+		"site_id":      siteID,
 	})
 
 	// Task 12.3: dispatch event webhook health_score.changed bila skor berubah.

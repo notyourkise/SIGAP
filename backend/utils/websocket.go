@@ -13,11 +13,30 @@ type EventMessage struct {
 }
 
 // WSClientInfo menyimpan identitas pengguna di balik sebuah koneksi WebSocket.
-// Dipakai untuk broadcast terarah per-user (BroadcastToUser) dan per-role
-// (BroadcastToRole) — prasyarat arsitektur notifikasi in-app (Fase 5.1).
+// Dipakai untuk broadcast terarah per-user (BroadcastToUser), per-role
+// (BroadcastToRole), dan per-site (BroadcastToSite) — prasyarat arsitektur
+// notifikasi in-app (Fase 5.1) sekaligus isolasi data multi-site.
 type WSClientInfo struct {
 	UserID string
 	Role   string
+	// SiteIDs berisi seluruh site yang ditugaskan ke pengguna (user_sites).
+	// Admin tidak memerlukannya karena memiliki akses ke semua site.
+	SiteIDs map[string]struct{}
+}
+
+// CanReceiveSiteEvent menentukan apakah koneksi berhak menerima event dari
+// site tertentu. Admin selalu boleh; non-admin hanya boleh untuk site yang
+// ditugaskan. Event tanpa site (siteID kosong) hanya dikirim ke admin agar
+// data yang belum terklasifikasi tidak bocor lintas site.
+func (i WSClientInfo) CanReceiveSiteEvent(siteID string) bool {
+	if i.Role == "admin" {
+		return true
+	}
+	if siteID == "" {
+		return false
+	}
+	_, ok := i.SiteIDs[siteID]
+	return ok
 }
 
 // WSHubStore mengelola seluruh koneksi WebSocket aktif secara thread-safe
@@ -31,11 +50,20 @@ var Hub = &WSHubStore{
 }
 
 // Register mendaftarkan koneksi WebSocket client baru ke Hub beserta identitas
-// pengguna yang terautentikasi (userID & role berasal dari klaim JWT).
-func (h *WSHubStore) Register(conn *websocket.Conn, userID string, role string) {
+// pengguna yang terautentikasi (userID & role berasal dari klaim JWT) dan
+// daftar site yang ditugaskan. SiteIDs diabaikan untuk admin yang memang
+// memiliki akses global.
+func (h *WSHubStore) Register(conn *websocket.Conn, userID string, role string, siteIDs []string) {
+	sites := make(map[string]struct{}, len(siteIDs))
+	for _, siteID := range siteIDs {
+		if siteID != "" {
+			sites[siteID] = struct{}{}
+		}
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.clients[conn] = WSClientInfo{UserID: userID, Role: role}
+	h.clients[conn] = WSClientInfo{UserID: userID, Role: role, SiteIDs: sites}
 	Log.Infof("🔌 Client WebSocket terhubung: %s (Total aktif: %d)", conn.RemoteAddr(), len(h.clients))
 }
 
@@ -98,6 +126,34 @@ func BroadcastToUser(userID string, eventType string, payload interface{}) {
 
 	for client, info := range Hub.clients {
 		if info.UserID != userID {
+			continue
+		}
+		err := client.WriteJSON(msg)
+		if err != nil {
+			Log.Warnf("⚠️ Gagal mengirim pesan WebSocket ke %s: %v", client.RemoteAddr(), err)
+			go Hub.Unregister(client)
+		}
+	}
+}
+
+// BroadcastToSite mempublikasikan event hanya ke koneksi admin dan koneksi
+// user yang ditugaskan ke site terkait. Ini mencegah event CCTV site A bocor
+// ke teknisi site B. Event dengan siteID kosong hanya dikirim ke admin.
+func BroadcastToSite(siteID string, eventType string, payload interface{}) {
+	Hub.mu.RLock()
+	defer Hub.mu.RUnlock()
+
+	if len(Hub.clients) == 0 {
+		return
+	}
+
+	msg := EventMessage{
+		Event:   eventType,
+		Payload: payload,
+	}
+
+	for client, info := range Hub.clients {
+		if !info.CanReceiveSiteEvent(siteID) {
 			continue
 		}
 		err := client.WriteJSON(msg)

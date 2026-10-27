@@ -48,6 +48,14 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 			return db.Select("id, nama, kode_cctv, lokasi_area, ip_camera, status")
 		})
 
+	query, ok := applyCCTVStreamLogSiteScope(c, query)
+	if !ok {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Anda belum ditugaskan ke site mana pun",
+		})
+	}
+
 	if cctvIDStr := strings.TrimSpace(c.Query("cctv_id")); cctvIDStr != "" {
 		if cctvID, err := uuid.Parse(cctvIDStr); err == nil {
 			query = query.Where("cctv_id = ?", cctvID)
@@ -87,15 +95,8 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	var todayOnline int64
-	var todayOffline int64
-	config.DB.Model(&models.CCTVStreamLog{}).
-		Where("created_at >= ? AND event_type = ?", startOfDay, "online").
-		Count(&todayOnline)
-
-	config.DB.Model(&models.CCTVStreamLog{}).
-		Where("created_at >= ? AND event_type = ?", startOfDay, "offline").
-		Count(&todayOffline)
+	todayOnline := countCCTVStreamLogs(c, startOfDay, "online")
+	todayOffline := countCCTVStreamLogs(c, startOfDay, "offline")
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
 	if totalPages < 1 {
@@ -119,4 +120,43 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 			},
 		},
 	})
+}
+
+// applyCCTVStreamLogSiteScope membatasi log event CCTV berdasarkan site
+// kamera melalui relasi cctv_stream_logs.cctv_id -> cctvs.site_id. Pola EXISTS
+// dipakai agar query Count, Find, dan ringkasan tetap konsisten.
+//
+// Admin tanpa site aktif melihat seluruh kawasan. Non-admin wajib memiliki
+// site aktif; bila tidak ada, akses ditolak (fail closed) — bukan membuka
+// seluruh data lintas site.
+func applyCCTVStreamLogSiteScope(c *fiber.Ctx, query *gorm.DB) (*gorm.DB, bool) {
+	siteID, _ := c.Locals("site_id").(string)
+	if siteID != "" {
+		return query.Where(
+			`EXISTS (SELECT 1 FROM cctvs WHERE cctvs.id = cctv_stream_logs.cctv_id AND cctvs.site_id = ? AND cctvs.deleted_at IS NULL)`,
+			siteID,
+		), true
+	}
+
+	role, _ := c.Locals("role").(string)
+	// role kosong hanya terjadi pada unit test tanpa middleware autentikasi;
+	// perilaku lama (tanpa filter) dipertahankan untuk kompatibilitas.
+	if role == "" || role == "admin" {
+		return query, true
+	}
+	return query, false
+}
+
+// countCCTVStreamLogs menghitung event hari ini dengan scope site yang sama
+// seperti daftar utama. Kegagalan query tidak menggagalkan endpoint agar
+// ringkasan tetap dapat ditampilkan (perilaku lama).
+func countCCTVStreamLogs(c *fiber.Ctx, since time.Time, eventType string) int64 {
+	query, ok := applyCCTVStreamLogSiteScope(c, config.DB.Model(&models.CCTVStreamLog{}))
+	if !ok {
+		return 0
+	}
+
+	var count int64
+	query.Where("created_at >= ? AND event_type = ?", since, eventType).Count(&count)
+	return count
 }

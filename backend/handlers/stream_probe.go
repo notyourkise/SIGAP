@@ -192,8 +192,10 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				utils.Log.Errorf("❌ Gagal memperbarui status live CCTV %s: %v", cctv.ID.String(), err)
 				continue
 			}
+			siteID := cctvSiteIDStr(cctv)
 			payload := fiber.Map{
 				"cctv_id":           cctv.ID.String(),
+				"site_id":           siteID,
 				"stream_live":       live,
 				"stream_state":      streamState,
 				"stream_checked_at": now.Format(time.RFC3339),
@@ -207,7 +209,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			if live {
 				payload["stream_last_active_at"] = now.Format(time.RFC3339)
 			}
-			utils.BroadcastEvent("CCTV_LIVE_STATUS_UPDATED", payload)
+			utils.BroadcastToSite(siteID, "CCTV_LIVE_STATUS_UPDATED", payload)
 			var eventType string
 			var eventMsg string
 			switch streamState {
@@ -242,9 +244,10 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			if logErr := db.Create(&streamLog).Error; logErr != nil {
 				utils.Log.Warnf("⚠️ Gagal mencatat log stream CCTV %s: %v", cctv.KodeCCTV, logErr)
 			} else {
-				utils.BroadcastEvent("CCTV_STREAM_LOG_CREATED", fiber.Map{
+				utils.BroadcastToSite(siteID, "CCTV_STREAM_LOG_CREATED", fiber.Map{
 					"id":             streamLog.ID.String(),
 					"cctv_id":        cctv.ID.String(),
+					"site_id":        siteID,
 					"nama":           cctv.Nama,
 					"kode_cctv":      cctv.KodeCCTV,
 					"event_type":     eventType,

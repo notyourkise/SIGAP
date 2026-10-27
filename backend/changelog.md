@@ -1,5 +1,39 @@
 # Changelog - Backend SIGAP
 
+## [0.64.32] - 2026-10-27
+
+### Isolasi log stream CCTV dan event WebSocket per site
+
+**Masalah**: `GetCCTVStreamLogs` menerima `SiteContext` tetapi tidak memakai `c.Locals("site_id")`, sehingga teknisi di site A dapat melihat log CCTV site B. Event WebSocket `CCTV_STREAM_LOG_CREATED`, `CCTV_LIVE_STATUS_UPDATED`, dan `CCTV_UPDATED` juga disiarkan global ke seluruh koneksi, membocorkan nama/kode kamera lintas kawasan. Selain itu, identitas JWT pada koneksi WebSocket tidak pernah terbaca karena library `gofiber/websocket` tidak menyediakan locals `fiberctx`, sehingga `BroadcastToUser`/`BroadcastToRole` selama ini menerima identitas kosong.
+
+**Perbaikan**:
+- Menerapkan scope site pada `GetCCTVStreamLogs` untuk query count, list, dan ringkasan harian memakai pola `EXISTS` ke `cctvs.site_id` seperti `applyMaintenanceSiteScope`.
+- Menolak non-admin tanpa site assignment dengan `403 "Anda belum ditugaskan ke site mana pun"` (fail closed); admin tanpa site tetap melihat seluruh kawasan dan admin dengan site terpilih ikut terfilter.
+- Menambahkan `WSClientInfo.SiteIDs`, `CanReceiveSiteEvent`, dan `BroadcastToSite` pada `utils/websocket.go`. Admin menerima semua event; non-admin hanya event dari site yang ditugaskan; event tanpa `site_id` hanya dikirim ke admin.
+- Mengubah `Hub.Register` agar menerima daftar site dan memuat `user_sites` saat handshake WebSocket (`routes/websocket.go`).
+- Menambahkan `site_id` pada payload `CCTV_STREAM_LOG_CREATED`, `CCTV_LIVE_STATUS_UPDATED`, dan `CCTV_UPDATED`, lalu mengarahkan broadcast-nya melalui `BroadcastToSite` pada `stream_probe.go`, `stream_verify.go`, `health_score.go`, dan `cctv.go`.
+- Memperbaiki pembacaan identitas WebSocket agar memakai `c.Locals("user_id")`/`c.Locals("role")` langsung dari koneksi, bukan locals `fiberctx` yang tidak pernah diisi.
+- Menambahkan regression test dua site/two user: `cctv_stream_log_test.go`, `utils/websocket_test.go`, dan `routes/websocket_test.go`.
+
+timestamp: 2026-10-27 22:35 UTC+8
+kategori: Sedang, Backend (Security / Multi-Site Isolation / WebSocket)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/cctv_stream_log.go
+- backend/handlers/cctv_stream_log_test.go
+- backend/handlers/health_score.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_verify.go
+- backend/routes/websocket.go
+- backend/routes/websocket_test.go
+- backend/utils/websocket.go
+- backend/utils/websocket_test.go
+- backend/changelog.md
+
+alasan perubahan: Menutup kebocoran data log/event CCTV lintas site dan memastikan broadcast real-time mengikuti hak akses site pengguna.
+
+---
+
 ## [0.64.31] - 2026-10-22
 
 ### Perbaikan trusted proxy rate limit dan penambahan sistem log event CCTV

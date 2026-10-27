@@ -1,5 +1,26 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.35] - 2026-10-27
+
+### Filter site aktif pada event WebSocket halaman Log CCTV
+
+**Masalah**: Halaman `/cctv/logs` memicu `fetchLogs` untuk setiap event `CCTV_STREAM_LOG_CREATED` dan `CCTV_LIVE_STATUS_UPDATED`. Saat admin memilih satu site di `SiteSwitcher`, event dari site lain tetap memicu refetch walaupun datanya tidak akan tampil, sehingga terjadi request berulang yang tidak perlu.
+
+**Perbaikan**:
+- Menambahkan helper `shouldHandleSiteEvent` yang membandingkan `payload.site_id` event dengan cookie `sigap_site_id` aktif.
+- Event dari site lain diabaikan saat satu site dipilih; event tanpa `site_id` tetap memicu refetch agar kompatibel dengan payload lama.
+- Backend tetap menjadi penentu utama isolasi data; filter ini hanya mengurangi refetch yang tidak relevan di sisi klien.
+
+timestamp: 2026-10-27 22:35 UTC+8
+kategori: Ringan, Frontend (CCTV Logs / WebSocket)
+file yang diubah:
+- frontend/src/app/cctv/logs/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menyelaraskan sinkronisasi real-time halaman log dengan site aktif dan menghindari refetch lintas site.
+
+---
+
 ## [1.55.34] - 2026-10-22
 
 ### Penambahan menu dan halaman Log Status CCTV (Riwayat Online/Offline)

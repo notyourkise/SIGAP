@@ -294,6 +294,7 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		utils.Log.Errorf("❌ Gagal menyimpan hasil verifikasi stream CCTV %s: %v", result.CCTV.ID, err)
 	}
 
+	siteID := cctvSiteIDStr(result.CCTV)
 	stateChanged := result.State != result.CCTV.StreamVerifiedState
 	if stateChanged {
 		var eventType string
@@ -326,9 +327,10 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		if logErr := db.Create(&streamLog).Error; logErr != nil {
 			utils.Log.Warnf("⚠️ Gagal mencatat log verifikasi stream CCTV %s: %v", result.CCTV.KodeCCTV, logErr)
 		} else {
-			utils.BroadcastEvent("CCTV_STREAM_LOG_CREATED", fiber.Map{
+			utils.BroadcastToSite(siteID, "CCTV_STREAM_LOG_CREATED", fiber.Map{
 				"id":             streamLog.ID.String(),
 				"cctv_id":        result.CCTV.ID.String(),
+				"site_id":        siteID,
 				"nama":           result.CCTV.Nama,
 				"kode_cctv":      result.CCTV.KodeCCTV,
 				"event_type":     eventType,
@@ -343,6 +345,7 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 
 	payload := fiber.Map{
 		"cctv_id":                result.CCTV.ID.String(),
+		"site_id":                siteID,
 		"nama":                   result.CCTV.Nama,
 		"kode_cctv":              result.CCTV.KodeCCTV,
 		"network_type":           networkType(result.CCTV),
@@ -362,7 +365,7 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 	} else if result.CCTV.StreamLastActiveAt != nil {
 		payload["stream_last_active_at"] = result.CCTV.StreamLastActiveAt.Format(time.RFC3339)
 	}
-	utils.BroadcastEvent("CCTV_LIVE_STATUS_UPDATED", payload)
+	utils.BroadcastToSite(siteID, "CCTV_LIVE_STATUS_UPDATED", payload)
 
 	switch result.State {
 	case models.StreamStateLive:
