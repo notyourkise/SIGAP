@@ -301,16 +301,16 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		var eventMsg string
 		switch result.State {
 		case models.StreamStateLive:
-			eventType = "online"
+			eventType = models.CCTVEventOnline
 			eventMsg = fmt.Sprintf("Verifikasi stream berhasil (%s, track=%d)", result.Method, result.Tracks)
 		case models.StreamStateOffline:
-			eventType = "offline"
+			eventType = models.CCTVEventOffline
 			eventMsg = "Verifikasi stream gagal"
 			if result.Error != "" {
 				eventMsg += ": " + result.Error
 			}
 		default:
-			eventType = "unknown"
+			eventType = models.CCTVEventUnknown
 			eventMsg = "Hasil verifikasi stream tidak diketahui: " + result.Error
 		}
 

@@ -1,5 +1,53 @@
 # Changelog - Backend SIGAP
 
+## [0.64.37] - 2026-10-28
+
+### Validasi event type dan error handling ringkasan Log CCTV
+
+**Masalah**: Parameter `event_type` tidak divalidasi, sehingga nilai typo
+seperti `onlne` tetap menghasilkan HTTP 200 dengan daftar kosong dan nilai
+`all` diam-diam diabaikan. Kegagalan query count ringkasan juga ditelan dan
+dikembalikan sebagai `0`, sehingga UI menampilkan angka palsu seolah tidak ada
+event. Literal event type tersebar di beberapa handler sehingga rawan typo.
+
+**Perbaikan**:
+- Menambahkan konstanta `models.CCTVEventOnline`, `CCTVEventOffline`,
+  `CCTVEventStandby`, dan `CCTVEventUnknown`, lalu memakainya di
+  `stream_probe.go`, `stream_verify.go`, serta handler Log CCTV.
+- Memvalidasi `event_type` sebelum menyentuh database: nilai kosong berarti
+  tanpa filter, hanya empat nilai resmi yang diterima, dan nilai lain
+  menghasilkan **HTTP 400** dengan pesan yang menyebut nilai yang diizinkan.
+- Mengubah `countCCTVStreamLogs` agar mengembalikan error. Handler kini
+  merespons **HTTP 500** `"Gagal menghitung ringkasan log CCTV"` bila query
+  ringkasan gagal, bukan menampilkan `0` palsu.
+- Memperbarui anotasi Swagger untuk nilai `unknown` dan respons `400`.
+- Menambahkan test event type invalid (termasuk `all`, huruf besar, dan typo),
+  filter `unknown` yang valid, serta kegagalan query ringkasan online/offline.
+- Endpoint belum memiliki parameter rentang tanggal, sehingga batas maksimum
+  rentang belum relevan untuk ditambahkan.
+
+**Hasil verifikasi** (dijalankan dari `backend/`, Go 1.26.5):
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+
+timestamp: 2026-10-28 00:30 UTC+8
+kategori: Sedang, Backend (CCTV Logs / Validation / Error Handling)
+file yang diubah:
+- backend/handlers/cctv_stream_log.go
+- backend/handlers/cctv_stream_log_test.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_verify.go
+- backend/models/cctv_stream_log.go
+- backend/changelog.md
+- docs/04-manual-tests/manual-test-cctv-log-validation.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Menolak input filter yang tidak dikenal dengan pesan jelas dan memastikan kegagalan database tidak menampilkan ringkasan palsu.
+
+---
+
 ## [0.64.36] - 2026-10-28
 
 ### Retensi dan index komposit log event CCTV
