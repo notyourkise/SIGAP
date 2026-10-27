@@ -313,9 +313,9 @@ Setiap item dianggap selesai jika:
 
 ---
 
-## Usulan Issue GitHub
+## Issue GitHub
 
-Jika backlog ini dipecah menjadi issue, berikut judul dan label yang disarankan:
+17 issue telah dibuat pada 2026-10-27. Rentang issue: **#139-#155** (P0: #139-#141, P1: #142-#148, P2: #149-#155). Berikut judul dan labelnya:
 
 | ID | Judul issue | Label |
 |---|---|---|
