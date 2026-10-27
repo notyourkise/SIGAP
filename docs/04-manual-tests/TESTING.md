@@ -471,6 +471,7 @@ Prioritas lanjutan:
 - `manual-test-cctv-log-retention.md` (#144): verifikasi cleanup startup/harian, cutoff 90 hari, batch 1.000, override/fallback retensi, idempotensi, audit log lama, dan index komposit
 - `manual-test-cctv-log-validation.md` (#145): verifikasi event type valid/invalid, pesan 400, filter `unknown`, konsistensi ringkasan, dan kegagalan query ringkasan
 - `manual-test-cctv-log-dedup.md` (#146): verifikasi standby nonaktif secara default, aktivasi via env, dedup 60 detik lintas probe/verifier, event penting tetap tercatat, fail-open, dan regresi retensi/UI
+- `manual-test-release-gate-bugs-4-8-21.md` (#147): gate manual filter kawasan CCTV, MediaMTX production/publik/seluler, dan edit CCTV + URL RTSP, termasuk format bukti dan sign-off
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):
