@@ -46,12 +46,12 @@ func TestGetCCTVStreamLogs_Success(t *testing.T) {
 	expectCCTVStreamLogRows(mock, `^SELECT \* FROM "cctv_stream_logs"`)
 
 	// Summary count queries (online and offline) tanpa filter site untuk admin.
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE created_at >= \$1 AND event_type = \$2`).
-		WithArgs(sqlmock.AnyArg(), "online").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE cctv_stream_logs\.created_at >= \$1 AND cctv_stream_logs\.created_at < \$2 AND event_type = \$3`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "online").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE created_at >= \$1 AND event_type = \$2`).
-		WithArgs(sqlmock.AnyArg(), "offline").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE cctv_stream_logs\.created_at >= \$1 AND cctv_stream_logs\.created_at < \$2 AND event_type = \$3`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "offline").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	app := newTestApp()
@@ -100,12 +100,12 @@ func TestGetCCTVStreamLogs_TechnicianSiteScope(t *testing.T) {
 			"id", "nama", "kode_cctv", "lokasi_area", "ip_camera", "status",
 		}).AddRow(cctvID, "Rest Area 1", "THD-01", "Rest Area", "10.20.105.1", "aktif"))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "online").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "online").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "offline").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "offline").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	app := newTestApp()
@@ -153,12 +153,12 @@ func TestGetCCTVStreamLogs_AdminSelectedSite(t *testing.T) {
 			"current_state", "trigger_source", "network_type", "latency_ms", "error_detail", "message",
 		}))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "online").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "online").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "offline").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "offline").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	app := newTestApp()

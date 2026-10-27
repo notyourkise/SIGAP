@@ -1,5 +1,35 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.36] - 2026-10-27
+
+### Label ringkasan Log CCTV mengikuti filter dan zona waktu
+
+**Masalah**: Label kartu "Total Riwayat Event", "Event Online Hari Ini", dan
+"Event Offline Hari Ini" tidak menjelaskan bahwa angka dipengaruhi filter aktif
+maupun batas hari operasional. Pengguna juga tidak tahu zona waktu yang dipakai
+backend saat menghitung "hari ini".
+
+**Perbaikan**:
+- Mengubah label kartu menjadi "Total hasil filter", "Event online hari ini",
+  dan "Event offline hari ini".
+- Menambahkan keterangan di bawah kartu bahwa event hari ini mengikuti
+  site/filter aktif dan batas hari dihitung dalam zona waktu dari backend.
+- Menambahkan field opsional `timezone` pada `LogSummary` dan menampilkan
+  "WITA" untuk `Asia/Makassar` (fallback aman untuk respons lama).
+
+**Hasil verifikasi**: `npm run lint` 0 error (77 warning lama yang tidak
+terkait perubahan ini) dan `npm run build` PASS.
+
+timestamp: 2026-10-27 23:25 UTC+8
+kategori: Ringan, Frontend (CCTV Logs / Copy / Timezone)
+file yang diubah:
+- frontend/src/app/cctv/logs/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menyelaraskan label dan keterangan kartu dengan perilaku ringkasan backend yang mengikuti filter serta zona waktu operasional.
+
+---
+
 ## [1.55.35] - 2026-10-27
 
 ### Filter site aktif pada event WebSocket halaman Log CCTV

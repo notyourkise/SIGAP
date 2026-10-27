@@ -223,6 +223,19 @@ menjadi **78 file test** (19 utils, 8 middleware, 40 handlers, 3 models,
 4 config, 3 routes, 1 monitoring). Hasil lengkap ada di
 `docs/05-reports/SECURITY-REGRESSION-2026-10-27.md`.
 
+### Matriks Timezone & Konsistensi Ringkasan Log CCTV (P1 #142, 2026-10-27)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `config/timezone_test.go` (baru) | #142 | `AppLocation` default `Asia/Makassar` (UTC+8), menghormati `APP_TIMEZONE` lain (mis. `Asia/Jakarta` UTC+7), dan jatuh ke fixed zone WITA bila nama zona tidak valid |
+| `handlers/cctv_stream_log_timezone_test.go` (baru) | #142 | `cctvStreamLogDayRange` menghitung `[start, end)` tengah malam WITA; event 00:30 WITA masuk hari yang benar, 23:59:59 masih inklusif, 00:00 hari berikutnya eksklusif; hasil sama saat instan direpresentasikan UTC maupun WITA; ringkasan memakai `cctv_id`/`event_type`/`search` dan rentang hari yang sama dengan daftar |
+| `handlers/cctv_stream_log_test.go` (diperluas) | #142 | Ekspektasi query ringkasan memverifikasi batas atas eksklusif `created_at < end` selain batas bawah `created_at >= start` |
+
+**Catatan (2026-10-27):** #142 menambah **2 file test baru**
+(`config/timezone_test.go` dan `handlers/cctv_stream_log_timezone_test.go`),
+sehingga total menjadi **80 file test** (19 utils, 8 middleware, 41 handlers,
+3 models, 5 config, 3 routes, 1 monitoring).
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:

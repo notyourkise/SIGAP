@@ -46,6 +46,7 @@ interface LogSummary {
   today_online_events: number;
   today_offline_events: number;
   total_events: number;
+  timezone?: string;
 }
 
 interface LogResponseData {
@@ -95,6 +96,7 @@ export default function CCTVLogsPage() {
     today_online_events: 0,
     today_offline_events: 0,
     total_events: 0,
+    timezone: 'Asia/Makassar',
   });
   const [page, setPage] = useState(1);
   const [limit] = useState(15);
@@ -238,7 +240,7 @@ export default function CCTVLogsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-5">
             <div>
-              <p className="text-xs font-semibold text-muted">Total Riwayat Event</p>
+              <p className="text-xs font-semibold text-muted">Total hasil filter</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{summary.total_events}</p>
             </div>
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
@@ -248,7 +250,7 @@ export default function CCTVLogsPage() {
 
           <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-5">
             <div>
-              <p className="text-xs font-semibold text-muted">Event Online Hari Ini</p>
+              <p className="text-xs font-semibold text-muted">Event online hari ini</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                 {summary.today_online_events}
               </p>
@@ -260,7 +262,7 @@ export default function CCTVLogsPage() {
 
           <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-5">
             <div>
-              <p className="text-xs font-semibold text-muted">Event Offline Hari Ini</p>
+              <p className="text-xs font-semibold text-muted">Event offline hari ini</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
                 {summary.today_offline_events}
               </p>
@@ -270,6 +272,11 @@ export default function CCTVLogsPage() {
             </div>
           </div>
         </div>
+
+        <p className="-mt-3 text-[11px] text-muted">
+          Kartu event hari ini mengikuti site/filter aktif. Batas hari dihitung dalam zona waktu{' '}
+          {summary.timezone === 'Asia/Makassar' ? 'WITA' : summary.timezone || 'WITA'}.
+        </p>
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">

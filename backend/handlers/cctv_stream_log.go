@@ -56,21 +56,7 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 		})
 	}
 
-	if cctvIDStr := strings.TrimSpace(c.Query("cctv_id")); cctvIDStr != "" {
-		if cctvID, err := uuid.Parse(cctvIDStr); err == nil {
-			query = query.Where("cctv_id = ?", cctvID)
-		}
-	}
-
-	if eventType := strings.TrimSpace(c.Query("event_type")); eventType != "" && eventType != "all" {
-		query = query.Where("event_type = ?", eventType)
-	}
-
-	if search := strings.TrimSpace(c.Query("search")); search != "" {
-		searchPattern := "%" + search + "%"
-		query = query.Joins("LEFT JOIN cctvs ON cctvs.id = cctv_stream_logs.cctv_id").
-			Where("cctvs.nama ILIKE ? OR cctvs.kode_cctv ILIKE ?", searchPattern, searchPattern)
-	}
+	query = applyCCTVStreamLogFilters(c, query)
 
 	var totalRows int64
 	if err := query.Count(&totalRows).Error; err != nil {
@@ -91,12 +77,15 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 		})
 	}
 
-	// Ringkasan hari ini (start of day UTC)
+	// Ringkasan hari ini memakai zona waktu operasional (APP_TIMEZONE) dan
+	// filter yang sama dengan daftar. Batas atas eksklusif agar event tepat
+	// tengah malam berikutnya tidak ikut terhitung.
 	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	location := config.AppLocation()
+	startOfDay, endOfDay := cctvStreamLogDayRange(now, location)
 
-	todayOnline := countCCTVStreamLogs(c, startOfDay, "online")
-	todayOffline := countCCTVStreamLogs(c, startOfDay, "offline")
+	todayOnline := countCCTVStreamLogs(c, startOfDay, endOfDay, "online")
+	todayOffline := countCCTVStreamLogs(c, startOfDay, endOfDay, "offline")
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
 	if totalPages < 1 {
@@ -117,6 +106,7 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 				"today_online_events":  todayOnline,
 				"today_offline_events": todayOffline,
 				"total_events":         totalRows,
+				"timezone":             location.String(),
 			},
 		},
 	})
@@ -147,16 +137,55 @@ func applyCCTVStreamLogSiteScope(c *fiber.Ctx, query *gorm.DB) (*gorm.DB, bool) 
 	return query, false
 }
 
-// countCCTVStreamLogs menghitung event hari ini dengan scope site yang sama
-// seperti daftar utama. Kegagalan query tidak menggagalkan endpoint agar
-// ringkasan tetap dapat ditampilkan (perilaku lama).
-func countCCTVStreamLogs(c *fiber.Ctx, since time.Time, eventType string) int64 {
+// applyCCTVStreamLogFilters menerapkan filter daftar (cctv_id, event_type,
+// search) yang sama pada query utama dan query ringkasan.
+func applyCCTVStreamLogFilters(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
+	if cctvIDStr := strings.TrimSpace(c.Query("cctv_id")); cctvIDStr != "" {
+		if cctvID, err := uuid.Parse(cctvIDStr); err == nil {
+			query = query.Where("cctv_id = ?", cctvID)
+		}
+	}
+
+	if eventType := strings.TrimSpace(c.Query("event_type")); eventType != "" && eventType != "all" {
+		query = query.Where("event_type = ?", eventType)
+	}
+
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		searchPattern := "%" + search + "%"
+		query = query.Joins("LEFT JOIN cctvs ON cctvs.id = cctv_stream_logs.cctv_id").
+			Where("cctvs.nama ILIKE ? OR cctvs.kode_cctv ILIKE ?", searchPattern, searchPattern)
+	}
+
+	return query
+}
+
+// cctvStreamLogDayRange menghitung batas [start, end) satu hari kalender pada
+// zona waktu operasional, lalu mengembalikannya dalam UTC agar perbandingan
+// dengan kolom timestamptz konsisten terlepas dari timezone proses server.
+func cctvStreamLogDayRange(now time.Time, location *time.Location) (time.Time, time.Time) {
+	if location == nil {
+		location = config.AppLocation()
+	}
+	localNow := now.In(location)
+	start := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	end := start.AddDate(0, 0, 1)
+	return start.UTC(), end.UTC()
+}
+
+// countCCTVStreamLogs menghitung event hari ini dengan scope site dan filter
+// yang sama seperti daftar utama. Kegagalan query tidak menggagalkan endpoint
+// agar ringkasan tetap dapat ditampilkan (perilaku lama).
+func countCCTVStreamLogs(c *fiber.Ctx, start, end time.Time, eventType string) int64 {
 	query, ok := applyCCTVStreamLogSiteScope(c, config.DB.Model(&models.CCTVStreamLog{}))
 	if !ok {
 		return 0
 	}
+	query = applyCCTVStreamLogFilters(c, query)
 
 	var count int64
-	query.Where("created_at >= ? AND event_type = ?", since, eventType).Count(&count)
+	query.Where(
+		"cctv_stream_logs.created_at >= ? AND cctv_stream_logs.created_at < ? AND event_type = ?",
+		start, end, eventType,
+	).Count(&count)
 	return count
 }
