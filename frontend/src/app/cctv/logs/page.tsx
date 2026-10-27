@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import { useWebSocket } from '@/context/WebSocketContext';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getCookie } from '@/lib/api';
 import {
   Activity,
   AlertTriangle,
@@ -140,21 +140,35 @@ export default function CCTVLogsPage() {
     fetchLogs();
   }, [fetchLogs]);
 
+  // Event WebSocket hanya memicu refetch bila berasal dari site aktif.
+  // Backend sudah memfilter per penugasan; filter ini mencegah refetch saat
+  // admin sedang memilih satu site namun menerima event dari site lain.
+  const shouldHandleSiteEvent = useCallback((payload: unknown) => {
+    const activeSiteId = getCookie('sigap_site_id');
+    if (!activeSiteId) return true;
+
+    const eventSiteId =
+      payload && typeof payload === 'object' && 'site_id' in payload
+        ? (payload as { site_id?: string | null }).site_id
+        : undefined;
+    return !eventSiteId || eventSiteId === activeSiteId;
+  }, []);
+
   // Real-time synchronization via WebSocket
   const { subscribe } = useWebSocket();
   useEffect(() => {
-    const unsubLog = subscribe('CCTV_STREAM_LOG_CREATED', () => {
-      fetchLogs();
+    const unsubLog = subscribe('CCTV_STREAM_LOG_CREATED', (payload) => {
+      if (shouldHandleSiteEvent(payload)) fetchLogs();
     });
-    const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', () => {
-      fetchLogs();
+    const unsubLive = subscribe('CCTV_LIVE_STATUS_UPDATED', (payload) => {
+      if (shouldHandleSiteEvent(payload)) fetchLogs();
     });
 
     return () => {
       unsubLog();
       unsubLive();
     };
-  }, [subscribe, fetchLogs]);
+  }, [subscribe, fetchLogs, shouldHandleSiteEvent]);
 
   const eventBadge = (type: string) => {
     switch (type) {

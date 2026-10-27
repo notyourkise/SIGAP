@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // SetupWebSocketRoutes mendaftarkan rute WebSocket real-time broadcast
@@ -81,14 +82,12 @@ func SetupWebSocketRoutes(api fiber.Router) {
 
 	// GET /api/ws — Handshake & Listening Loop WebSocket
 	api.Get("/ws", websocket.New(func(c *websocket.Conn) {
-		// Ambil kembali Fiber context asli dari middleware upgrade; identitas
-		// pengguna (user_id & role) sudah divalidasi & disimpan di c.Locals.
-		var userID, role string
-		if fc, ok := c.Locals("fiberctx").(*fiber.Ctx); ok {
-			userID, _ = fc.Locals("user_id").(string)
-			role, _ = fc.Locals("role").(string)
-		}
-		utils.Hub.Register(c, userID, role)
+		// Identitas pengguna (user_id & role) sudah divalidasi middleware
+		// upgrade dan disalin oleh library websocket ke locals koneksi.
+		userID, _ := c.Locals("user_id").(string)
+		role, _ := c.Locals("role").(string)
+
+		utils.Hub.Register(c, userID, role, loadUserSiteIDs(userID, role))
 		defer utils.Hub.Unregister(c)
 
 		// Loop pembacaan pesan (menjaga koneksi tetap terbuka & merespons ping)
@@ -105,4 +104,28 @@ func SetupWebSocketRoutes(api fiber.Router) {
 			}
 		}
 	}))
+}
+
+// loadUserSiteIDs memuat daftar site yang ditugaskan ke pengguna untuk
+// keperluan filter broadcast WebSocket. Admin tidak dibatasi site sehingga
+// tidak perlu query. Kegagalan query diperlakukan fail closed (tanpa site)
+// agar koneksi non-admin tidak menerima event lintas site.
+func loadUserSiteIDs(userID string, role string) []string {
+	if role == "admin" || userID == "" || config.DB == nil {
+		return nil
+	}
+
+	var rows []uuid.UUID
+	if err := config.DB.Table("user_sites").
+		Where("user_id = ?", userID).
+		Pluck("site_id", &rows).Error; err != nil {
+		utils.Log.Warnf("⚠️ Gagal memuat penugasan site WebSocket user %s: %v", userID, err)
+		return nil
+	}
+
+	siteIDs := make([]string, 0, len(rows))
+	for _, siteID := range rows {
+		siteIDs = append(siteIDs, siteID.String())
+	}
+	return siteIDs
 }

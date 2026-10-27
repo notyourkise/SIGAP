@@ -180,6 +180,19 @@ Ringkasan cakupan test multi-site isolation:
 
 **Total: 64 file test** (14 utils, 7 middleware, 33 handlers, 2 models, 3 config, 4 routes, 1 monitoring, termasuk helper).
 
+### Matriks Isolasi Site Log CCTV & WebSocket (P0 #139, 2026-10-27)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `handlers/cctv_stream_log_test.go` (diperluas) | #139 | `GetCCTVStreamLogs` memakai scope site pada query count, list, dan ringkasan harian; teknisi site A hanya melihat log site A; non-admin tanpa penugasan → 403 `"Anda belum ditugaskan ke site mana pun"`; admin tanpa site → global; admin dengan site terpilih → terfilter |
+| `utils/websocket_test.go` (baru) | #139 | `WSClientInfo.CanReceiveSiteEvent` (admin selalu boleh, teknisi hanya site penugasan, event tanpa site hanya admin); `BroadcastToSite` dengan tiga koneksi WebSocket nyata memastikan event site A hanya diterima teknisi A + admin, bukan teknisi B |
+| `routes/websocket_test.go` (diperluas) | #139 | Handshake teknisi memuat `user_sites` sebelum registrasi Hub sehingga `BroadcastToSite` memiliki daftar site yang benar; handshake tanpa token tetap 401 |
+
+**Catatan (2026-10-27):** audit ulang menemukan total aktual **76 file test** backend
+(19 utils, 8 middleware, 39 handlers, 3 models, 3 config, 3 routes, 1 monitoring).
+Angka historis 64/67 di atas dibiarkan sebagai catatan sprint. Perubahan #139 menambah
+**1 file baru** (`utils/websocket_test.go`) dan memperluas 2 file yang sudah ada.
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:
