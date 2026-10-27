@@ -94,7 +94,11 @@ func TestBroadcastToSite_FiltersRecipients(t *testing.T) {
 		return Hub.ActiveConnections() == 3
 	}, time.Second, 10*time.Millisecond)
 
-	BroadcastToSite("site-a", "SITE_EVENT", map[string]string{"site_id": "site-a"})
+	BroadcastToSite("site-a", "CCTV_STREAM_LOG_CREATED", map[string]string{
+		"site_id":   "site-a",
+		"nama":      "Kamera Site A",
+		"kode_cctv": "SITE-A-01",
+	})
 
 	readEvent := func(conn *websocket.Conn) EventMessage {
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
@@ -106,8 +110,18 @@ func TestBroadcastToSite_FiltersRecipients(t *testing.T) {
 		return event
 	}
 
-	assert.Equal(t, "SITE_EVENT", readEvent(clientA).Event)
-	assert.Equal(t, "SITE_EVENT", readEvent(admin).Event)
+	eventA := readEvent(clientA)
+	assert.Equal(t, "CCTV_STREAM_LOG_CREATED", eventA.Event)
+	payloadA, ok := eventA.Payload.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "site-a", payloadA["site_id"])
+	assert.Equal(t, "Kamera Site A", payloadA["nama"])
+
+	eventAdmin := readEvent(admin)
+	assert.Equal(t, "CCTV_STREAM_LOG_CREATED", eventAdmin.Event)
+	payloadAdmin, ok := eventAdmin.Payload.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "site-a", payloadAdmin["site_id"])
 
 	// Teknisi site B tidak boleh menerima event site A.
 	require.NoError(t, clientB.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
