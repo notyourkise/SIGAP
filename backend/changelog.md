@@ -1,5 +1,72 @@
 # Changelog - Backend SIGAP
 
+## [0.64.38] - 2026-10-28
+
+### Kebijakan event standby dan deduplikasi Log CCTV
+
+**Masalah**: Setiap siklus probe (2 menit) dan verifier (15 menit) dapat
+menghasilkan event `standby` saat kamera on-demand idle, sehingga tabel
+`cctv_stream_logs` dipenuhi event rutin yang bukan gangguan. Selain itu, probe
+dan verifier dapat mengamati transisi `online`/`offline` yang sama dan menulis
+dua baris log untuk satu kejadian.
+
+**Keputusan produk**:
+- `standby` tetap menjadi status stream yang sah, tetapi **tidak dicatat
+  sebagai event secara default**. Pencatatan dapat diaktifkan dengan
+  `CCTV_LOG_STANDBY_EVENTS=true` untuk audit/debugging.
+- Event dengan tipe sama untuk CCTV yang sama diduplikasi dalam jendela
+  **60 detik** berdasarkan log terakhir kamera tersebut.
+- Query deduplikasi yang gagal bersifat **fail-open**: event tetap dicatat agar
+  kejadian penting tidak hilang.
+
+**Perbaikan**:
+- Menambahkan `config.CCTVLogStandbyEvents()` dan
+  `DefaultCCTVLogStandbyEvents=false`; nilai kosong/tidak valid kembali ke
+  `false`.
+- Menambahkan `handlers.shouldLogCCTVStreamEvent` yang menerapkan kebijakan
+  standby sebelum query, lalu memeriksa log terakhir per CCTV untuk deduplikasi
+  60 detik.
+- Membungkus penulisan log di `stream_probe.go` dan `stream_verify.go` dengan
+  helper tersebut. Status stream, kolom `stream_*`, dan broadcast
+  `CCTV_LIVE_STATUS_UPDATED` tetap berjalan walaupun log di-skip.
+- Mendokumentasikan `CCTV_LOG_STANDBY_EVENTS` di `.env.example`,
+  `.env.docker.example`, dan `docker-compose.yml`.
+- Menambahkan test konfigurasi default/override/fallback, test helper
+  (standby default/aktif, duplikat dalam/lewat jendela, tipe berbeda, tanpa log,
+  error database), serta melengkapi ekspektasi sqlmock pada test probe/verifier.
+- Menambahkan dokumen semantics `docs/01-documentation/cctv-stream-log-semantics.md`
+  yang menjelaskan perbedaan `probe` vs `verify`, arti status, kebijakan
+  standby, deduplikasi, dan query diagnosis.
+
+**Hasil verifikasi** (dijalankan dari `backend/`, Go 1.26.5):
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+
+timestamp: 2026-10-28 00:45 UTC+8
+kategori: Sedang, Backend (CCTV Logs / Policy / Deduplication)
+file yang diubah:
+- backend/config/cctv_log.go
+- backend/config/cctv_log_test.go
+- backend/handlers/cctv_stream_log_events.go
+- backend/handlers/cctv_stream_log_events_test.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_probe_test.go
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_test.go
+- backend/.env.example
+- backend/.env.docker.example
+- docker-compose.yml
+- backend/changelog.md
+- docs/01-documentation/cctv-stream-log-semantics.md
+- docs/04-manual-tests/manual-test-cctv-log-dedup.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Menghentikan banjir log standby dan duplikasi event dari probe/verifier tanpa menghilangkan event online/offline yang penting.
+
+---
+
 ## [0.64.37] - 2026-10-28
 
 ### Validasi event type dan error handling ringkasan Log CCTV

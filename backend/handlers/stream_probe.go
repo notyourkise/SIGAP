@@ -231,32 +231,34 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				utils.Log.Warnf("⚪ CCTV %s (%s) status stream tidak diketahui [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			}
 
-			streamLog := models.CCTVStreamLog{
-				CCTVID:        cctv.ID,
-				EventType:     eventType,
-				PreviousState: cctv.StreamState,
-				CurrentState:  streamState,
-				TriggerSource: "probe",
-				NetworkType:   networkType(cctv),
-				LatencyMs:     latencyMs,
-				Message:       eventMsg,
-			}
-			if logErr := db.Create(&streamLog).Error; logErr != nil {
-				utils.Log.Warnf("⚠️ Gagal mencatat log stream CCTV %s: %v", cctv.KodeCCTV, logErr)
-			} else {
-				utils.BroadcastToSite(siteID, "CCTV_STREAM_LOG_CREATED", fiber.Map{
-					"id":             streamLog.ID.String(),
-					"cctv_id":        cctv.ID.String(),
-					"site_id":        siteID,
-					"nama":           cctv.Nama,
-					"kode_cctv":      cctv.KodeCCTV,
-					"event_type":     eventType,
-					"previous_state": cctv.StreamState,
-					"current_state":  streamState,
-					"trigger_source": "probe",
-					"created_at":     now.Format(time.RFC3339),
-					"message":        eventMsg,
-				})
+			if shouldLogCCTVStreamEvent(db, cctv.ID, eventType, now) {
+				streamLog := models.CCTVStreamLog{
+					CCTVID:        cctv.ID,
+					EventType:     eventType,
+					PreviousState: cctv.StreamState,
+					CurrentState:  streamState,
+					TriggerSource: "probe",
+					NetworkType:   networkType(cctv),
+					LatencyMs:     latencyMs,
+					Message:       eventMsg,
+				}
+				if logErr := db.Create(&streamLog).Error; logErr != nil {
+					utils.Log.Warnf("⚠️ Gagal mencatat log stream CCTV %s: %v", cctv.KodeCCTV, logErr)
+				} else {
+					utils.BroadcastToSite(siteID, "CCTV_STREAM_LOG_CREATED", fiber.Map{
+						"id":             streamLog.ID.String(),
+						"cctv_id":        cctv.ID.String(),
+						"site_id":        siteID,
+						"nama":           cctv.Nama,
+						"kode_cctv":      cctv.KodeCCTV,
+						"event_type":     eventType,
+						"previous_state": cctv.StreamState,
+						"current_state":  streamState,
+						"trigger_source": "probe",
+						"created_at":     now.Format(time.RFC3339),
+						"message":        eventMsg,
+					})
+				}
 			}
 		} else if live {
 			// Status tetap live → tetap update (menyegarkan stream_last_active_at

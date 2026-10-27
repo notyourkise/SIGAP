@@ -316,6 +316,8 @@ func TestRunProbeCycle_GSM(t *testing.T) {
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_last_active_at"=\$2,"stream_live"=\$3,"stream_state"=\$4,"updated_at"=\$5 WHERE id = \$6 AND "cctvs"."deleted_at" IS NULL$`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), true, models.StreamStateLive, sqlmock.AnyArg(), id.String()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	expectNoPreviousCCTVStreamLog(mock, id)
+	expectCCTVStreamLogInsert(mock)
 
 	runRTSPProbeCycle(db)
 
@@ -443,6 +445,8 @@ func TestRunProbeCycle_GSMReadyFalseWithReadersIsOffline(t *testing.T) {
 	mock.ExpectExec(`^UPDATE "cctvs" SET "stream_checked_at"=\$1,"stream_live"=\$2,"stream_state"=\$3,"updated_at"=\$4 WHERE id = \$5 AND "cctvs"."deleted_at" IS NULL$`).
 		WithArgs(sqlmock.AnyArg(), false, models.StreamStateOffline, sqlmock.AnyArg(), id.String()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	expectNoPreviousCCTVStreamLog(mock, id)
+	expectCCTVStreamLogInsert(mock)
 
 	runRTSPProbeCycle(db)
 
