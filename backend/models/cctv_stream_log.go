@@ -7,6 +7,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// Nilai EventType pada CCTVStreamLog. Konstanta ini dipakai oleh produsen log
+// (probe/verifier) dan validasi filter endpoint agar tidak ada typo.
+const (
+	CCTVEventOnline  = "online"
+	CCTVEventOffline = "offline"
+	CCTVEventStandby = "standby"
+	CCTVEventUnknown = "unknown"
+)
+
 // CCTVStreamLog mencatat riwayat event perubahan status stream/koneksi CCTV (Sprint 42).
 type CCTVStreamLog struct {
 	ID            uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`

@@ -23,9 +23,10 @@ import (
 // @Param        page        query  int     false  "Nomor halaman (default 1)"
 // @Param        limit       query  int     false  "Jumlah per halaman (default 20, maks 100)"
 // @Param        cctv_id     query  string  false  "Filter berdasarkan ID CCTV"
-// @Param        event_type  query  string  false  "Filter tipe event ('online', 'offline', 'standby')"
+// @Param        event_type  query  string  false  "Filter tipe event ('online', 'offline', 'standby', 'unknown')"
 // @Param        search      query  string  false  "Pencarian nama atau kode CCTV"
 // @Success      200         {object}  map[string]interface{}
+// @Failure      400         {object}  map[string]interface{} "event_type tidak valid"
 // @Failure      500         {object}  map[string]interface{}
 // @Router       /cctv-logs [get]
 func GetCCTVStreamLogs(c *fiber.Ctx) error {
@@ -42,6 +43,16 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 		limit = 100
 	}
 	offset := (page - 1) * limit
+
+	// Validasi event_type sebelum menyentuh database. Nilai kosong berarti
+	// tanpa filter; nilai lain harus salah satu event type resmi agar typo
+	// tidak diam-diam mengembalikan hasil kosong.
+	if !isValidCCTVStreamLogEventType(c.Query("event_type")) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "event_type tidak valid. Nilai yang diizinkan: online, offline, standby, unknown",
+		})
+	}
 
 	query := config.DB.Model(&models.CCTVStreamLog{}).
 		Preload("CCTV", func(db *gorm.DB) *gorm.DB {
@@ -84,8 +95,20 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 	location := config.AppLocation()
 	startOfDay, endOfDay := cctvStreamLogDayRange(now, location)
 
-	todayOnline := countCCTVStreamLogs(c, startOfDay, endOfDay, "online")
-	todayOffline := countCCTVStreamLogs(c, startOfDay, endOfDay, "offline")
+	todayOnline, err := countCCTVStreamLogs(c, startOfDay, endOfDay, models.CCTVEventOnline)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung ringkasan log CCTV",
+		})
+	}
+	todayOffline, err := countCCTVStreamLogs(c, startOfDay, endOfDay, models.CCTVEventOffline)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal menghitung ringkasan log CCTV",
+		})
+	}
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
 	if totalPages < 1 {
@@ -137,6 +160,26 @@ func applyCCTVStreamLogSiteScope(c *fiber.Ctx, query *gorm.DB) (*gorm.DB, bool) 
 	return query, false
 }
 
+// cctvStreamLogEventTypes adalah nilai event_type yang valid untuk filter
+// endpoint log CCTV.
+var cctvStreamLogEventTypes = map[string]struct{}{
+	models.CCTVEventOnline:  {},
+	models.CCTVEventOffline: {},
+	models.CCTVEventStandby: {},
+	models.CCTVEventUnknown: {},
+}
+
+// isValidCCTVStreamLogEventType mengembalikan true bila nilai kosong (tanpa
+// filter) atau salah satu event type resmi.
+func isValidCCTVStreamLogEventType(raw string) bool {
+	eventType := strings.TrimSpace(raw)
+	if eventType == "" {
+		return true
+	}
+	_, ok := cctvStreamLogEventTypes[eventType]
+	return ok
+}
+
 // applyCCTVStreamLogFilters menerapkan filter daftar (cctv_id, event_type,
 // search) yang sama pada query utama dan query ringkasan.
 func applyCCTVStreamLogFilters(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
@@ -146,7 +189,7 @@ func applyCCTVStreamLogFilters(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
 		}
 	}
 
-	if eventType := strings.TrimSpace(c.Query("event_type")); eventType != "" && eventType != "all" {
+	if eventType := strings.TrimSpace(c.Query("event_type")); eventType != "" {
 		query = query.Where("event_type = ?", eventType)
 	}
 
@@ -173,19 +216,21 @@ func cctvStreamLogDayRange(now time.Time, location *time.Location) (time.Time, t
 }
 
 // countCCTVStreamLogs menghitung event hari ini dengan scope site dan filter
-// yang sama seperti daftar utama. Kegagalan query tidak menggagalkan endpoint
-// agar ringkasan tetap dapat ditampilkan (perilaku lama).
-func countCCTVStreamLogs(c *fiber.Ctx, start, end time.Time, eventType string) int64 {
+// yang sama seperti daftar utama. Error dikembalikan ke pemanggil agar handler
+// tidak menampilkan angka 0 palsu saat database gagal.
+func countCCTVStreamLogs(c *fiber.Ctx, start, end time.Time, eventType string) (int64, error) {
 	query, ok := applyCCTVStreamLogSiteScope(c, config.DB.Model(&models.CCTVStreamLog{}))
 	if !ok {
-		return 0
+		return 0, nil
 	}
 	query = applyCCTVStreamLogFilters(c, query)
 
 	var count int64
-	query.Where(
+	if err := query.Where(
 		"cctv_stream_logs.created_at >= ? AND cctv_stream_logs.created_at < ? AND event_type = ?",
 		start, end, eventType,
-	).Count(&count)
-	return count
+	).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

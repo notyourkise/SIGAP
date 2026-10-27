@@ -214,19 +214,19 @@ func runRTSPProbeCycle(db *gorm.DB) {
 			var eventMsg string
 			switch streamState {
 			case models.StreamStateLive:
-				eventType = "online"
+				eventType = models.CCTVEventOnline
 				eventMsg = "Kamera terdeteksi online via probe jaringan"
 				utils.Log.Infof("🟢 CCTV %s (%s) kini live [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			case models.StreamStateIdle:
-				eventType = "standby"
+				eventType = models.CCTVEventStandby
 				eventMsg = "Kamera siaga on-demand (belum ada penonton)"
 				utils.Log.Infof("🔵 CCTV %s (%s) siaga on-demand (tidak ada penonton) [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			case models.StreamStateOffline:
-				eventType = "offline"
+				eventType = models.CCTVEventOffline
 				eventMsg = "Kamera tidak merespons probe jaringan"
 				utils.Log.Warnf("🔴 CCTV %s (%s) kini offline [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			default:
-				eventType = "unknown"
+				eventType = models.CCTVEventUnknown
 				eventMsg = "Status stream tidak dapat disimpulkan"
 				utils.Log.Warnf("⚪ CCTV %s (%s) status stream tidak diketahui [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			}
