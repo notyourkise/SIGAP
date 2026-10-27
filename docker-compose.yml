@@ -83,6 +83,8 @@ services:
       # mengaktifkan Secure cookie, HSTS, dan CSP ketat. Set APP_ENV=development
       # di root .env hanya bila memang sedang mengembangkan API.
       - APP_ENV=${APP_ENV:-production}
+      # Zona waktu operasional untuk batas "hari ini" pada ringkasan Log CCTV.
+      - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Makassar}
       # Probe langsung Metro-E hanya jika host benar-benar punya rute ke
       # 10.20.105.x. Default false agar deployment lokal tidak menampilkan
       # kamera Metro-E sebagai offline saat jaringan OIKN tidak terjangkau.

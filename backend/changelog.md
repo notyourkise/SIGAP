@@ -1,5 +1,59 @@
 # Changelog - Backend SIGAP
 
+## [0.64.35] - 2026-10-27
+
+### Timezone operasional dan konsistensi ringkasan Log CCTV
+
+**Masalah**: `startOfDay` pada ringkasan Log CCTV memakai timezone proses,
+sedangkan komentar menyebut UTC. Container umumnya berjalan di UTC, sementara
+operasional memakai WITA, sehingga event pukul 00:00-07:59 WITA bisa masuk ke
+hari yang salah. Ringkasan "hari ini" juga hanya memakai scope site dan tidak
+mengikuti filter `cctv_id`, `event_type`, atau `search`, sehingga angka kartu
+tidak konsisten dengan daftar.
+
+**Perbaikan**:
+- Menambahkan `config.AppLocation()` yang membaca `APP_TIMEZONE` (default
+  `Asia/Makassar`), di-cache per nama zona, dan jatuh ke fixed zone WITA (UTC+8)
+  bila nama zona tidak valid/tidak tersedia di runtime.
+- Menambahkan `cctvStreamLogDayRange` yang menghitung rentang `[start, end)`
+  satu hari kalender WITA, lalu mengembalikannya dalam UTC agar perbandingan
+  `timestamptz` konsisten di server UTC maupun WITA.
+- Memusatkan filter daftar pada `applyCCTVStreamLogFilters`; query ringkasan
+  kini memakai scope site serta filter `cctv_id`, `event_type`, dan `search`
+  yang sama dengan daftar.
+- Menambahkan field `timezone` pada `summary` respons `/api/cctv-logs` agar UI
+  dapat menampilkan zona waktu perhitungan hari.
+- Mendokumentasikan `APP_TIMEZONE` di `.env.example`, `.env.docker.example`,
+  dan `docker-compose.yml`.
+- Menambahkan test `config/timezone_test.go` serta
+  `handlers/cctv_stream_log_timezone_test.go` untuk batas tengah malam WITA,
+  independensi timezone proses, dan propagasi filter ke ringkasan.
+
+**Hasil verifikasi** (dijalankan dari `backend/`, Go 1.26.5):
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+
+timestamp: 2026-10-27 23:25 UTC+8
+kategori: Sedang, Backend (CCTV Logs / Timezone / Query Consistency)
+file yang diubah:
+- backend/config/timezone.go
+- backend/config/timezone_test.go
+- backend/handlers/cctv_stream_log.go
+- backend/handlers/cctv_stream_log_test.go
+- backend/handlers/cctv_stream_log_isolation_test.go
+- backend/handlers/cctv_stream_log_timezone_test.go
+- backend/.env.example
+- backend/.env.docker.example
+- docker-compose.yml
+- backend/changelog.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Menyamakan batas hari Log CCTV dengan zona waktu operasional WITA dan memastikan kartu ringkasan konsisten dengan daftar serta filter aktif.
+
+---
+
 ## [0.64.34] - 2026-10-27
 
 ### Regression test multi-site dan proxy spoofing

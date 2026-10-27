@@ -37,12 +37,12 @@ func expectCCTVStreamLogForSite(mock sqlmock.Sqlmock, siteID string, cctvID uuid
 			"id", "nama", "kode_cctv", "lokasi_area", "ip_camera", "status",
 		}).AddRow(cctvID, nama, kode, "Area Uji", "10.0.0.1", "aktif"))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "online").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "online").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(created_at >= \$2 AND event_type = \$3\)`).
-		WithArgs(siteID, sqlmock.AnyArg(), "offline").
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1.* AND \(cctv_stream_logs\.created_at >= \$2 AND cctv_stream_logs\.created_at < \$3 AND event_type = \$4\)`).
+		WithArgs(siteID, sqlmock.AnyArg(), sqlmock.AnyArg(), "offline").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 }
 
