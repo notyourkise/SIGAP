@@ -15,10 +15,10 @@ import (
 )
 
 // getClientIP mengembalikan IP klien yang sebenarnya.
-// Hanya membaca header proxy (X-Real-IP / X-Forwarded-For) bila koneksi datang
-// dari trusted proxy yang dikonfigurasi di main.go (app.SetTrustedProxies).
-// Tanpa trusted proxy, c.IP() mengembalikan IP peer langsung sehingga header
-// yang dipalsukan klien tidak berpengaruh (anti-spoofing).
+// Hanya membaca header X-Forwarded-For bila koneksi datang dari trusted proxy
+// yang dikonfigurasi via TRUSTED_PROXY_IPS (config.NewFiberConfig). Tanpa
+// trusted proxy, c.IP() mengembalikan IP peer langsung sehingga header yang
+// dipalsukan klien tidak berpengaruh (anti-spoofing).
 func getClientIP(c *fiber.Ctx) string {
 	return c.IP()
 }

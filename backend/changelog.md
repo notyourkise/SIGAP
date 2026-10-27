@@ -1,5 +1,39 @@
 # Changelog - Backend SIGAP
 
+## [0.64.33] - 2026-10-27
+
+### Hardening trusted proxy: validasi IP dan anti-spoofing X-Forwarded-For
+
+**Masalah**: `main.go` selalu memasang `ProxyHeader: fiber.HeaderXForwardedFor` meskipun `EnableTrustedProxyCheck` nonaktif saat `TRUSTED_PROXY_IPS` kosong. Pada Fiber v2, `IsProxyTrusted()` mengembalikan `true` bila pengecekan trusted proxy nonaktif, sehingga API yang diakses langsung mempercayai `X-Forwarded-For` dari klien. Klien dapat memalsukan IP untuk memecah bucket rate limit dan mengotori audit log. Nginx juga memakai `$proxy_add_x_forwarded_for` sehingga nilai XFF dari klien ikut diteruskan ke backend.
+
+**Perbaikan**:
+- Menambahkan `config.ParseTrustedProxies` untuk memvalidasi dan menormalisasi daftar IP/CIDR dari `TRUSTED_PROXY_IPS`; entri kosong/duplikat dibuang, entri tidak valid dibuang dengan warning, dan bentuk IPv4-mapped IPv6/CIDR dinormalisasi.
+- Menambahkan `config.NewFiberConfig` yang selalu mengaktifkan `EnableIPValidation`; `EnableTrustedProxyCheck`, `TrustedProxies`, dan `ProxyHeader` hanya dipasang bila ada minimal satu trusted proxy valid.
+- `main.go` kini memakai helper tersebut, sehingga deployment tanpa proxy tidak membaca `X-Forwarded-For` sama sekali.
+- Nginx menimpa `X-Forwarded-For` dengan `$remote_addr` (bukan append) pada lokasi `/api/`, `/stream/`, dan `/`; dokumentasi `set_real_ip_from`/`real_ip_header` ditambahkan untuk deployment dengan load balancer di depan Nginx.
+- Menambahkan regression test `config/fiber_test.go` dan memperluas `middleware/limiter_test.go` untuk membuktikan spoofing XFF tidak memecah bucket rate limit dan audit log memakai IP tervalidasi.
+- Memperjelas dokumentasi `TRUSTED_PROXY_IPS` di `backend/.env.example` dan `backend/.env.docker.example`, serta menambahkan manual test P0 #140.
+
+timestamp: 2026-10-27 22:55 UTC+8
+kategori: Tinggi, Backend + Infrastructure (Security / Rate Limit / Audit Log)
+file yang diubah:
+- backend/config/fiber.go
+- backend/config/fiber_test.go
+- backend/main.go
+- backend/middleware/limiter.go
+- backend/middleware/limiter_test.go
+- backend/utils/audit.go
+- backend/.env.example
+- backend/.env.docker.example
+- nginx/nginx.conf
+- backend/changelog.md
+- docs/04-manual-tests/manual-test-trusted-proxy-ip-hardening.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Menutup celah spoofing IP yang dapat mem-bypass rate limit dan mencemari audit log, serta memastikan hanya trusted proxy yang boleh menentukan IP klien.
+
+---
+
 ## [0.64.32] - 2026-10-27
 
 ### Isolasi log stream CCTV dan event WebSocket per site

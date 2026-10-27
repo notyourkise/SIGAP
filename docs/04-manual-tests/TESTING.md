@@ -106,7 +106,7 @@ npm run test:sw
 | `utils` | `notify_test.go` (Fase 5.1) | `persistNotification` (sukses, retry setelah kegagalan sementara, error setelah batas percobaan), guard clause `BroadcastToUser`/`BroadcastToRole` tanpa koneksi (tidak panic) |
 | `middleware` | `auth_test.go` | `Protected`: tanpa token 401, revoked 401, invalid, valid, token-version mismatch 401 → `Sesi telah dicabut...`; `RequireRole`: none/wrong/allowed |
 | `middleware` | `csrf_test.go` | metode aman dilewati, Bearer dilewati, tanpa cookie sesi dilewati, login/logout dengan sesi stale dilewati, mismatch/missing 403, matching lolos |
-| `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429, format key `limiter:{ip}:{endpoint}`, reset counter memory setelah window, isolasi counter per key |
+| `middleware` | `limiter_test.go` | batas bawah lolos, > 100/menit → 429, format key `limiter:{ip}:{endpoint}`, reset counter memory setelah window, isolasi counter per key; #140: XFF palsu dari klien langsung tidak memecah bucket, trusted proxy memakai IP tervalidasi, entri XFF invalid dilewati |
 | `middleware` | `security_test.go` | header dasar selalu ada; CSP/HSTS hanya saat `APP_ENV=production` |
 | `handlers` | `auth_test.go` (lama + fix) | `Login` (sukses, password salah, user tidak ditemukan, validasi) + `SetupTestDB` dengan `SkipDefaultTransaction: true` |
 | `handlers` | `auth_extra_test.go` | ChangePassword (sukses, password lama salah, validasi), GetMyProfile (sukses, not found, tanpa identitas), UpdateMyProfile, Logout idempotent (tanpa/invalid token), CreateUser (validasi, duplikat, sukses) |
@@ -127,6 +127,7 @@ npm run test:sw
 | `handlers` | `health_score_test.go` (Fase 6.1) | skor default tanpa riwayat, kombinasi lima faktor, ambang umur pemeliharaan, clamp 0, endpoint invalid UUID/sukses, persistence skor, dan kalkulator seluruh CCTV |
 | `models` | `setup_test.go`, `seeder_test.go` | UUID `BeforeCreate`, `SeedAdmin` tidak mengubah akun admin yang sudah ada |
 | `config` | `database_test.go`, `migrate_test.go` | DSN PostgreSQL dan resolusi legacy asset → CCTV |
+| `config` | `fiber_test.go` (#140) | `ParseTrustedProxies` (IPv4/IPv6/CIDR, normalisasi, dedupe, entri invalid dibuang); `NewFiberConfig` (validasi IP selalu aktif, header proxy hanya saat ada trusted proxy); `ExtractClientIP` mengabaikan XFF dari klien langsung dan memakai IP tervalidasi dari trusted proxy |
 | `config` | `versioned_migration_test.go` (Task 7.1) | embed FS migration (konvensi nama golang-migrate), kelengkapan 10 tabel di up/down, kolom kunci tiap tabel, CASCADE pada rollback FK sirkular, propagasi error driver (tanpa PostgreSQL) |
 | `routes` | `routes_test.go`, `websocket_test.go` | Bootstrap route terlindungi, logout tanpa sesi tetap dapat membersihkan cookie, route CCTV/maintenance/field-maintenance/dashboard digest wajib autentikasi, handshake WebSocket tanpa token dan token valid |
 | `handlers` | `helpers_test.go` | helper bersama: `withUserLocals`, `setupMockGORM`, `newUserMockRows`, `modelsUserRow`, `cctvMockRow`, `maintenanceMockRow` |
@@ -192,6 +193,17 @@ Ringkasan cakupan test multi-site isolation:
 (19 utils, 8 middleware, 39 handlers, 3 models, 3 config, 3 routes, 1 monitoring).
 Angka historis 64/67 di atas dibiarkan sebagai catatan sprint. Perubahan #139 menambah
 **1 file baru** (`utils/websocket_test.go`) dan memperluas 2 file yang sudah ada.
+
+### Matriks Hardening Trusted Proxy & Anti-Spoofing IP (P0 #140, 2026-10-27)
+
+| File Test | Task | Yang Diuji |
+|-----------|------|-----------|
+| `config/fiber_test.go` (baru) | #140 | `ParseTrustedProxies` menerima IPv4/IPv6/CIDR valid, menormalisasi bentuk (`10.0.0.42/8` → `10.0.0.0/8`, `::ffff:172.28.0.10` → `172.28.0.10`), membuang duplikat dan entri invalid; `NewFiberConfig` selalu mengaktifkan `EnableIPValidation` serta hanya memasang `ProxyHeader`/`TrustedProxies` bila daftar tidak kosong; `ExtractClientIP` mengabaikan XFF dari klien langsung, memakai XFF valid dari trusted proxy, dan melewati entri XFF invalid |
+| `middleware/limiter_test.go` (diperluas) | #140 | Klien langsung yang mengganti-ganti `X-Forwarded-For`/`X-Real-IP` tetap memakai satu bucket (percobaan ke-3 → 429); trusted proxy memakai bucket per IP klien tervalidasi dan melewati entri XFF invalid. Regression test Nginx `$proxy_add_x_forwarded_for` → `$remote_addr` diverifikasi manual (lihat `manual-test-trusted-proxy-ip-hardening.md`) |
+
+**Catatan (2026-10-27):** #140 menambah **1 file test baru** (`config/fiber_test.go`)
+dan memperluas `middleware/limiter_test.go`, sehingga total menjadi **77 file test**
+(19 utils, 8 middleware, 39 handlers, 3 models, 4 config, 3 routes, 1 monitoring).
 
 ### Matriks Streaming (Fase 9)
 
@@ -385,6 +397,7 @@ Prioritas lanjutan:
 **Testing-Manual-V2** (Formal Blackbox Testing):
 - `manual-test-multi-site-isolation-v2.md`: 344 lines — Multi-Site Isolation operational testing
 - `manual-test-backup-encryption-v2.md`: 329 lines — Backup encryption/decryption workflow validation
+- `manual-test-trusted-proxy-ip-hardening.md` (#140): verifikasi Nginx menimpa XFF, klien langsung tidak bisa spoofing, rate limit/audit memakai IP valid, dan deployment tanpa proxy
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):
