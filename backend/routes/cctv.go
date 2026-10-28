@@ -29,6 +29,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	protectedCCTV.Post("/scan", handlers.ScanCCTV)
 	protectedCCTV.Get("/:id/qrcode", handlers.GetCCTVQRCode)
 	protectedCCTV.Get("/:id/health-score", handlers.GetCCTVHealthScore)
+	protectedCCTV.Get("/:id/snapshot-status", handlers.GetCCTVSnapshotStatus)
 	protectedCCTV.Get("/:id/snapshot", handlers.GetCCTVSnapshot)
 	protectedCCTV.Get("/:id/timeline", handlers.GetCCTVTimeline)
 	protectedCCTV.Get("/:id/health-history", handlers.GetCCTVHealthHistory)

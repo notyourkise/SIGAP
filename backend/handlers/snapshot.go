@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -180,6 +181,75 @@ func GetCCTVSnapshot(c *fiber.Ctx) error {
 	c.Set("Content-Type", "image/jpeg")
 	c.Set("Content-Disposition", "inline; filename=snapshot.jpg")
 	return c.SendFile(snap.ImagePath)
+}
+
+// GetCCTVSnapshotStatus melaporkan apakah snapshot terbaru sebuah CCTV dapat
+// ditampilkan. Frontend memakai endpoint ini untuk menonaktifkan tombol
+// snapshot ketika MediaMTX tidak menyediakan endpoint snapshot (mis. v1.20)
+// atau belum ada file snapshot, sehingga UI tidak menampilkan tombol yang
+// selalu gagal.
+// @Summary      Status Snapshot CCTV
+// @Description  Mengembalikan ketersediaan snapshot terbaru, dukungan endpoint MediaMTX, waktu pengambilan, dan pesan alasan bila tidak tersedia.
+// @Tags         Snapshot
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "Status snapshot"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Router       /cctv/{id}/snapshot-status [get]
+func GetCCTVSnapshotStatus(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "ID CCTV tidak valid",
+		})
+	}
+
+	var cctv models.CCTV
+	if err := config.DB.Select("id").First(&cctv, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+
+	endpointSupported := !snapshotEndpointUnavailable.Load()
+	data := fiber.Map{
+		"available":          false,
+		"endpoint_supported": endpointSupported,
+		"snapshot_url":       snapshotURLFor(id.String()),
+		"message":            "",
+	}
+
+	if !endpointSupported {
+		data["message"] = "MediaMTX yang berjalan tidak menyediakan endpoint snapshot. Snapshot berkala dinonaktifkan."
+		return c.JSON(fiber.Map{"status": "success", "data": data})
+	}
+
+	var snap models.CCTVSnapshot
+	if err := config.DB.Where("cctv_id = ?", id).Order("created_at desc").First(&snap).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			data["message"] = "Belum ada snapshot tersimpan untuk CCTV ini."
+			return c.JSON(fiber.Map{"status": "success", "data": data})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Gagal memeriksa snapshot CCTV",
+		})
+	}
+
+	if _, err := os.Stat(snap.ImagePath); err != nil {
+		data["message"] = "File snapshot tidak ditemukan di penyimpanan."
+		return c.JSON(fiber.Map{"status": "success", "data": data})
+	}
+
+	data["available"] = true
+	data["captured_at"] = snap.CreatedAt
+	data["event_type"] = snap.EventType
+	data["message"] = "Snapshot tersedia."
+	return c.JSON(fiber.Map{"status": "success", "data": data})
 }
 
 // GetCCTVTimeline menampilkan riwayat event visual (timeline) sebuah CCTV

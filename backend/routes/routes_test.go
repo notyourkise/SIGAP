@@ -41,6 +41,7 @@ func TestCCTVRoutesRegisterProtectedPaths(t *testing.T) {
 		{"POST", "/cctv/scan"},
 		{"GET", "/cctv/" + id + "/qrcode"},
 		{"GET", "/cctv/" + id + "/health-score"},
+		{"GET", "/cctv/" + id + "/snapshot-status"},
 		{"GET", "/cctv/" + id + "/snapshot"},
 		{"GET", "/cctv/" + id + "/timeline"},
 		{"GET", "/cctv/" + id + "/health-history"},

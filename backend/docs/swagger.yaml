@@ -1425,6 +1425,54 @@ paths:
       summary: Tambah Data CCTV
       tags:
       - Master CCTV
+  /cctv-logs:
+    get:
+      description: Mengembalikan catatan event perubahan status live/offline kamera
+        CCTV secara terurut kronologis terbaru.
+      parameters:
+      - description: Nomor halaman (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Jumlah per halaman (default 20, maks 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter berdasarkan ID CCTV
+        in: query
+        name: cctv_id
+        type: string
+      - description: Filter tipe event ('online', 'offline', 'standby', 'unknown')
+        in: query
+        name: event_type
+        type: string
+      - description: Pencarian nama atau kode CCTV
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: event_type tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Daftar Log Event CCTV
+      tags:
+      - CCTV
   /cctv/{id}:
     delete:
       consumes:
@@ -1767,6 +1815,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Ambil Snapshot CCTV
+      tags:
+      - Snapshot
+  /cctv/{id}/snapshot-status:
+    get:
+      description: Mengembalikan ketersediaan snapshot terbaru, dukungan endpoint
+        MediaMTX, waktu pengambilan, dan pesan alasan bila tidak tersedia.
+      parameters:
+      - description: CCTV UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status snapshot
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: CCTV tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Status Snapshot CCTV
       tags:
       - Snapshot
   /cctv/{id}/timeline:
@@ -3104,8 +3185,12 @@ paths:
   /maintenance-logs/report-pdf:
     get:
       description: Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter
-        status dan rentang tanggal.
+        CCTV, status, dan rentang tanggal.
       parameters:
+      - description: Filter berdasarkan UUID CCTV (alias asset_id didukung)
+        in: query
+        name: cctv_id
+        type: string
       - description: Filter berdasarkan status log
         in: query
         name: status

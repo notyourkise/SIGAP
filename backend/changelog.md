@@ -1,5 +1,57 @@
 # Changelog - Backend SIGAP
 
+## [0.64.39] - 2026-10-28
+
+### Status snapshot CCTV dan penanganan endpoint MediaMTX yang tidak tersedia
+
+**Masalah**: Frontend selalu menampilkan tombol snapshot yang aktif. Ketika
+MediaMTX tidak menyediakan endpoint snapshot (mis. v1.20) atau file snapshot
+sudah terhapus, klik tombol membuka tab baru berisi 404/JSON error. Pengguna
+tidak mendapat alasan yang jelas dan UI terlihat rusak.
+
+**Perbaikan**:
+- Menambahkan endpoint `GET /api/cctv/:id/snapshot-status` (protected) yang
+  melaporkan `available`, `endpoint_supported`, `snapshot_url`, `captured_at`,
+  `event_type`, dan `message`.
+- `available=true` hanya bila MediaMTX mendukung endpoint snapshot **dan**
+  metadata snapshot terbaru **dan** file benar-benar ada di disk (`os.Stat`).
+- Endpoint status **tidak** memicu capture baru; membuka modal tidak menambah
+  beban MediaMTX atau kuota GSM.
+- UUID invalid → HTTP 400, CCTV tidak ditemukan → HTTP 404, kegagalan query
+  metadata → HTTP 500, sedangkan kondisi "belum ada snapshot"/"file hilang"
+  tetap HTTP 200 dengan pesan yang dapat ditampilkan UI.
+- Menambahkan 5 test handler (endpoint tidak tersedia, belum ada snapshot,
+  snapshot tersedia, file hilang, UUID invalid) dan memperbarui test registrasi
+  route protected.
+- Menambahkan dokumentasi `docs/01-documentation/cctv-codec-snapshot-limitations.md`
+  dan manual test `docs/04-manual-tests/manual-test-cctv-codec-snapshot.md`.
+
+**Hasil verifikasi** (dijalankan dari `backend/`, Go 1.26.5):
+- `gofmt -l` → tidak ada file yang perlu diformat
+- `go build ./...` → PASS
+- `go vet ./...` → PASS
+- `go test ./... -count=1` → PASS (seluruh paket)
+- `golangci-lint run ./...` (v2.12.2) → PASS, 0 issues
+
+timestamp: 2026-10-28 12:25 UTC+8
+kategori: Sedang, Backend (CCTV Snapshot / Status Endpoint / MediaMTX Compatibility)
+file yang diubah:
+- backend/handlers/snapshot.go
+- backend/handlers/snapshot_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/changelog.md
+- docs/01-documentation/cctv-codec-snapshot-limitations.md
+- docs/04-manual-tests/manual-test-cctv-codec-snapshot.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Memberikan status ketersediaan snapshot CCTV yang akurat (termasuk saat MediaMTX 1.20 tidak memiliki endpoint snapshot atau file hilang) agar tombol snapshot di UI tidak membuka halaman 404.
+
+---
+
 ## [0.64.38] - 2026-10-28
 
 ### Kebijakan event standby dan deduplikasi Log CCTV

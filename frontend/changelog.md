@@ -23,6 +23,60 @@ alasan perubahan: Menghilangkan reload storm dan flicker skeleton akibat event r
 
 ---
 
+## [1.55.38] - 2026-10-28
+
+### Deteksi codec H.265/HEVC dan tombol snapshot yang aman
+
+**Masalah**: Kamera yang mengirim H.265/HEVC tidak dapat diputar di browser
+yang tidak mengiklankan codec tersebut. Pemutar sebelumnya hanya menampilkan
+error generik dan terus mencoba ulang SDP yang sama. Tombol snapshot juga
+selalu aktif meskipun MediaMTX tidak menyediakan endpoint snapshot, sehingga
+membuka tab baru berisi error 404.
+
+**Perbaikan**:
+- Menambahkan `src/lib/hevc-support.ts`: deteksi dukungan HEVC via
+  `RTCRtpReceiver.getCapabilities('video')` sebagai sinyal utama, dengan
+  fallback `MediaSource.isTypeSupported` dan `HTMLVideoElement.canPlayType`.
+  Hasil negatif dari MSE tidak dipakai sebagai bukti mutlak (menghindari false
+  negative pada WebRTC).
+- `WHEPPlayer` menghentikan retry saat MediaMTX menolak codec, menampilkan
+  overlay **"Codec video tidak didukung"** yang dapat ditindaklanjuti, serta
+  menyediakan tombol ganti kualitas dan **Muat ulang**.
+- Bila sub-stream H.265 ditolak, pemutar otomatis mencoba **main stream (HD)
+  satu kali**. Bila main stream juga H.265, overlay final muncul tanpa loop
+  sub → main → sub.
+- `StreamModal` memuat `/cctv/:id/snapshot-status`; tombol **Snapshot** hanya
+  aktif bila `available=true`, menampilkan waktu snapshot terakhir pada tooltip,
+  dan menampilkan alasan di bawah tombol saat dinonaktifkan (endpoint tidak
+  tersedia, belum ada snapshot, atau file hilang).
+- Menambahkan `tests/hevc-support.test.mts` (10 test) dan script
+  `npm run test:hevc`.
+- Menambahkan dokumentasi batasan codec/snapshot dan manual test black-box.
+
+**Hasil verifikasi**:
+- `npm run test:hevc` → 10 PASS
+- `npm run test:whep` → 5 PASS
+- `npm run lint` → 0 error (78 warning lama/pattern React; tidak ada error baru)
+- `npm run build` → PASS (30 route, termasuk `/cctv`)
+
+timestamp: 2026-10-28 12:25 UTC+8
+kategori: Sedang, Frontend (WHEP Player / H.265 Codec Detection / Snapshot Status)
+file yang diubah:
+- frontend/src/lib/hevc-support.ts
+- frontend/tests/hevc-support.test.mts
+- frontend/src/components/WHEPPlayer.tsx
+- frontend/src/components/StreamModal.tsx
+- frontend/package.json
+- frontend/changelog.md
+- .github/workflows/ci.yml
+- docs/01-documentation/cctv-codec-snapshot-limitations.md
+- docs/04-manual-tests/manual-test-cctv-codec-snapshot.md
+- docs/04-manual-tests/TESTING.md
+
+alasan perubahan: Menghentikan loop retry tanpa henti pada stream kamera H.265/HEVC yang tidak didukung browser, menyediakan fallback otomatis sekali ke main stream dan panduan yang jelas, serta menonaktifkan tombol snapshot saat endpoint MediaMTX atau file snapshot belum tersedia.
+
+---
+
 ## [1.55.37] - 2026-10-27
 
 ### Perbaikan UX filter dan pencarian Log CCTV
