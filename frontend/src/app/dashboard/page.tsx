@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Pagination from '@/components/Pagination';
 import DashboardAnalytics, { type DashboardSummary } from '@/components/DashboardAnalytics';
@@ -29,8 +29,24 @@ interface CCTV {
   health_score?: number;
 }
 
+// Payload aman dari event CCTV_LIVE_STATUS_UPDATED (probe/verifikasi).
+// Event tidak membawa lokasi/status aset, jadi field tersebut dipertahankan
+// dari state yang sudah ada.
+interface CCTVLiveStatusPayload {
+  cctv_id?: string;
+  nama?: string;
+  kode_cctv?: string;
+  stream_live?: boolean | null;
+  stream_state?: StreamState | null;
+  stream_last_active_at?: string | null;
+  network_type?: 'metro-e' | 'gsm' | null;
+  stream_verified_state?: StreamState | null;
+  stream_verified_at?: string | null;
+}
+
 type CCTVFilter = 'all' | 'live' | 'idle' | 'offline' | 'maintenance';
 const CCTV_PAGE_SIZE = 6;
+const REALTIME_REFRESH_DEBOUNCE_MS = 800;
 
 interface MaintenanceLog {
   id: string;
@@ -121,11 +137,20 @@ export default function DashboardPage() {
   const [lowStock, setLowStock] = useState<LowStockSpare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const cctvsRef = useRef<CCTV[]>([]);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestSeqRef = useRef(0);
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    setHealth('Memeriksa');
+  const loadDashboard = useCallback(async (options: { silent?: boolean } = {}) => {
+    const { silent = false } = options;
+    const requestId = ++requestSeqRef.current;
+
+    if (!silent) {
+      setLoading(true);
+      setError('');
+      setHealth('Memeriksa');
+    }
+
     try {
       const [cctvResult, maintenanceResult, healthResult, summaryResult, tasksResult, lowStockResult] = await Promise.allSettled([
         apiRequest<PaginationPayload<CCTV>>('/cctv?page=1&limit=1000&sort_by=nama&order=asc'),
@@ -137,13 +162,19 @@ export default function DashboardPage() {
         isAdmin ? apiRequest<LowStockSpare[]>('/spare-parts/low-stock') : Promise.resolve(null),
       ]);
 
+      // Abaikan respons lama agar tidak menimpa data yang lebih baru.
+      if (requestId !== requestSeqRef.current) return;
+
+      let nextError = '';
+
       if (cctvResult.status === 'fulfilled') {
         const cctvData = cctvResult.value.data;
         const cctvRows = cctvData?.rows || [];
+        cctvsRef.current = cctvRows;
         setCctvs(cctvRows);
         setTotalCctv(cctvData?.pagination?.total_rows ?? cctvRows.length);
       } else {
-        setError(cctvResult.reason instanceof Error ? cctvResult.reason.message : 'Data CCTV belum dapat dimuat. Muat ulang dashboard.');
+        nextError = cctvResult.reason instanceof Error ? cctvResult.reason.message : 'Data CCTV belum dapat dimuat. Muat ulang dashboard.';
       }
 
       if (maintenanceResult.status === 'fulfilled') {
@@ -152,7 +183,7 @@ export default function DashboardPage() {
         setLogs(maintenanceRows);
         setTotalLogs(maintenanceData?.pagination?.total_rows ?? maintenanceRows.length);
       } else {
-        setError((current) => current || (maintenanceResult.reason instanceof Error ? maintenanceResult.reason.message : 'Data pemeliharaan belum dapat dimuat. Muat ulang dashboard.'));
+        nextError = nextError || (maintenanceResult.reason instanceof Error ? maintenanceResult.reason.message : 'Data pemeliharaan belum dapat dimuat. Muat ulang dashboard.');
       }
 
       if (summaryResult.status === 'fulfilled') {
@@ -168,25 +199,68 @@ export default function DashboardPage() {
         setLowStock(Array.isArray(data) ? data : []);
       }
 
+      setError(nextError);
       setHealth(healthResult.status === 'fulfilled' ? 'Terhubung' : 'Tidak terhubung');
     } finally {
-      setLoading(false);
+      if (requestId === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [isAdmin]);
 
   useEffect(() => {
-    const timer = setTimeout(loadDashboard, 0);
+    const timer = setTimeout(() => {
+      void loadDashboard();
+    }, 0);
     return () => clearTimeout(timer);
   }, [loadDashboard]);
 
   const { subscribe } = useWebSocket();
 
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      void loadDashboard({ silent: true });
+    }, REALTIME_REFRESH_DEBOUNCE_MS);
+  }, [loadDashboard]);
+
+  const applyLiveStatusUpdate = useCallback((payload?: CCTVLiveStatusPayload) => {
+    if (!payload?.cctv_id) {
+      scheduleRefresh();
+      return;
+    }
+
+    const cctvId = payload.cctv_id;
+    // Event dari site lain tidak ada di daftar; abaikan agar tidak memicu
+    // refresh dashboard yang tidak relevan.
+    if (!cctvsRef.current.some((item) => item.id === cctvId)) return;
+
+    const update: Partial<CCTV> = {};
+    if (payload.nama !== undefined) update.nama = payload.nama;
+    if (payload.kode_cctv !== undefined) update.kode_cctv = payload.kode_cctv;
+    if (payload.stream_live !== undefined) update.stream_live = payload.stream_live;
+    if (payload.stream_state !== undefined) update.stream_state = payload.stream_state;
+    if (payload.stream_last_active_at !== undefined) update.stream_last_active_at = payload.stream_last_active_at;
+    if (payload.network_type !== undefined) update.network_type = payload.network_type;
+    if (payload.stream_verified_state !== undefined) update.stream_verified_state = payload.stream_verified_state;
+    if (payload.stream_verified_at !== undefined) update.stream_verified_at = payload.stream_verified_at;
+
+    if (Object.keys(update).length === 0) return;
+
+    setCctvs((current) => current.map((item) => (item.id === cctvId ? { ...item, ...update } : item)));
+  }, [scheduleRefresh]);
+
   useEffect(() => {
-    const unsubCCTV = subscribe('CCTV_UPDATED', () => loadDashboard());
-    const unsubCCTVLive = subscribe('CCTV_LIVE_STATUS_UPDATED', () => loadDashboard());
-    const unsubMaintCreated = subscribe('MAINTENANCE_CREATED', () => loadDashboard());
-    const unsubMaintUpdated = subscribe('MAINTENANCE_UPDATED', () => loadDashboard());
-    const unsubStockLow = subscribe('STOCK_LOW', () => loadDashboard());
+    const unsubCCTV = subscribe('CCTV_UPDATED', scheduleRefresh);
+    const unsubCCTVLive = subscribe('CCTV_LIVE_STATUS_UPDATED', applyLiveStatusUpdate);
+    const unsubMaintCreated = subscribe('MAINTENANCE_CREATED', scheduleRefresh);
+    const unsubMaintUpdated = subscribe('MAINTENANCE_UPDATED', scheduleRefresh);
+    const unsubStockLow = subscribe('STOCK_LOW', () => {
+      if (isAdmin) scheduleRefresh();
+    });
 
     return () => {
       unsubCCTV();
@@ -194,8 +268,16 @@ export default function DashboardPage() {
       unsubMaintCreated();
       unsubMaintUpdated();
       unsubStockLow();
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
     };
-  }, [subscribe, loadDashboard]);
+  }, [subscribe, scheduleRefresh, applyLiveStatusUpdate, isAdmin]);
+
+  useEffect(() => {
+    cctvsRef.current = cctvs;
+  }, [cctvs]);
 
   const liveCount = cctvs.filter((item) => getEffectiveStreamState(item) === 'live').length;
   const idleCount = cctvs.filter((item) => getEffectiveStreamState(item) === 'idle').length;

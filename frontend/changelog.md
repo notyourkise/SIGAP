@@ -1,5 +1,28 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.39] - 2026-10-30
+
+### Optimasi refresh realtime dashboard (P1.1)
+
+**Masalah**: Setiap event WebSocket CCTV memicu pemuatan ulang seluruh dashboard (6 endpoint) sekaligus menampilkan skeleton. Probe dan verifikasi 35 kamera menghasilkan puluhan reload; log akses menunjukkan 64 pemuatan `/dashboard/summary` dalam 20 menit dan 12–14 pemuatan dalam satu detik.
+
+**Perbaikan**:
+- Event `CCTV_LIVE_STATUS_UPDATED` (probe/verifikasi) kini memperbarui baris CCTV di state berdasarkan `cctv_id`, tanpa fetch ulang.
+- Event `CCTV_UPDATED`, `MAINTENANCE_CREATED`, `MAINTENANCE_UPDATED`, dan `STOCK_LOW` di-debounce 800 ms lalu memakai silent refresh tanpa skeleton.
+- Skeleton dan status "Memeriksa" hanya muncul pada pemuatan awal atau pemuatan eksplisit; refresh latar belakang tidak mengganti seluruh konten.
+- Ditambahkan urutan request agar respons lama tidak menimpa data yang lebih baru.
+- Error data CCTV/pemeliharaan diperbarui setelah hasil terbaru dan dibersihkan saat refresh berhasil.
+
+timestamp: 2026-10-30 00:54 UTC+8
+kategori: Sedang, Frontend (Dashboard/Realtime)
+file yang diubah:
+- frontend/src/app/dashboard/page.tsx
+- frontend/changelog.md
+
+alasan perubahan: Menghilangkan reload storm dan flicker skeleton akibat event realtime, serta memastikan status kamera tetap diperbarui tanpa membebani API.
+
+---
+
 ## [1.55.37] - 2026-10-27
 
 ### Perbaikan UX filter dan pencarian Log CCTV
