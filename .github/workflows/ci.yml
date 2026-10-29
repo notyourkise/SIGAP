@@ -139,6 +139,10 @@ jobs:
         run: npm run test:whep
         working-directory: ./frontend
 
+      - name: Run HEVC Codec Support Tests
+        run: npm run test:hevc
+        working-directory: ./frontend
+
       - name: Run Monitor Selection Tests
         run: npm run test:monitor
         working-directory: ./frontend

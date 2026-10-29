@@ -906,6 +906,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/cctv-logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan catatan event perubahan status live/offline kamera CCTV secara terurut kronologis terbaru.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CCTV"
+                ],
+                "summary": "Daftar Log Event CCTV",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Nomor halaman (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Jumlah per halaman (default 20, maks 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan ID CCTV",
+                        "name": "cctv_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter tipe event ('online', 'offline', 'standby', 'unknown')",
+                        "name": "event_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pencarian nama atau kode CCTV",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "event_type tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/cctv/import": {
             "post": {
                 "security": [
@@ -1568,6 +1640,55 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "CCTV atau snapshot tidak ditemukan",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/cctv/{id}/snapshot-status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan ketersediaan snapshot terbaru, dukungan endpoint MediaMTX, waktu pengambilan, dan pesan alasan bila tidak tersedia.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Snapshot"
+                ],
+                "summary": "Status Snapshot CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CCTV UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status snapshot",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "UUID tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "CCTV tidak ditemukan",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -2871,7 +2992,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter status dan rentang tanggal.",
+                "description": "Mengunduh laporan riwayat pemeliharaan CCTV dalam format PDF, terfilter CCTV, status, dan rentang tanggal.",
                 "produces": [
                     "application/pdf"
                 ],
@@ -2880,6 +3001,12 @@ const docTemplate = `{
                 ],
                 "summary": "Laporan Pemeliharaan CCTV (PDF)",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter berdasarkan UUID CCTV (alias asset_id didukung)",
+                        "name": "cctv_id",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Filter berdasarkan status log",

@@ -27,12 +27,18 @@ import {
   VideoOff,
   Wifi,
   WifiOff,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   isUnsupportedCodecResponse,
   nextWhepStatus,
   type ConnectionStatus,
 } from '@/lib/whep-status';
+import {
+  buildHevcErrorMessage,
+  detectHevcSupport,
+} from '@/lib/hevc-support';
 
 export type { ConnectionStatus } from '@/lib/whep-status';
 
@@ -85,6 +91,9 @@ export default function WHEPPlayer({
   const frameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frameCleanupRef = useRef<(() => void) | null>(null);
   const retryCountRef = useRef(0);
+  // Fallback ke main stream hanya dicoba sekali per rangkaian koneksi agar
+  // browser yang sama tidak terjebak loop ketika kedua stream tetap H.265.
+  const codecFallbackAttemptedRef = useRef(false);
   // Referensi fungsi connect agar scheduleReconnect (yang dideklarasikan lebih
   // dulu) bisa memanggilnya tanpa referensi maju yang memicu peringatan lint.
   const connectRef = useRef<() => Promise<void>>(async () => {});
@@ -93,6 +102,9 @@ export default function WHEPPlayer({
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [isMuted, setIsMuted] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Pesan codec ditampilkan sebagai overlay actionable, bukan sekadar toast,
+  // karena pengguna perlu mengganti kualitas atau encoding kamera.
+  const [codecError, setCodecError] = useState<string | null>(null);
 
   // Sinkronkan ref dengan prop terbaru agar handler asinkron membaca nilai mutakhir.
   useEffect(() => {
@@ -175,6 +187,7 @@ export default function WHEPPlayer({
     if (!path) return;
 
     cleanupPc();
+    setCodecError(null);
     setStatus((current) => nextWhepStatus(current, 'start'));
 
     const pc = new RTCPeerConnection();
@@ -215,6 +228,8 @@ export default function WHEPPlayer({
         }
         clearFrameWait();
         retryCountRef.current = 0;
+        codecFallbackAttemptedRef.current = false;
+        setCodecError(null);
         setStatus((current) => nextWhepStatus(current, 'frame'));
       };
 
@@ -289,11 +304,29 @@ export default function WHEPPlayer({
     } catch (e) {
       if (unmountedRef.current || stoppedRef.current) return;
       if (e instanceof UnsupportedCodecError) {
+        const support = detectHevcSupport();
+        const message = buildHevcErrorMessage(support);
+        const canFallbackToMain =
+          qualityRef.current === 'sub' &&
+          Boolean(onQualityChange) &&
+          !codecFallbackAttemptedRef.current;
+
+        if (canFallbackToMain) {
+          // Sub-stream H.265: coba main stream sekali. Bila main juga H.265,
+          // percobaan berikutnya akan menampilkan panduan final.
+          codecFallbackAttemptedRef.current = true;
+          cleanupPc();
+          setStatus('reconnecting');
+          onQualityChange?.('main');
+          return;
+        }
+
         // Hentikan retry dan tampilkan penyebab yang bisa ditindaklanjuti.
         stoppedRef.current = true;
         cleanupPc();
+        setCodecError(message);
         setStatus('error');
-        emitError(e.message);
+        emitError(message);
         return;
       }
       emitError(
@@ -301,12 +334,25 @@ export default function WHEPPlayer({
       );
       scheduleReconnect();
     }
-  }, [cleanupPc, clearFrameWait, scheduleReconnect, emitError, autoPlay]);
+  }, [
+    cleanupPc,
+    clearFrameWait,
+    scheduleReconnect,
+    emitError,
+    autoPlay,
+    onQualityChange,
+  ]);
 
   // Simpan referensi connect terkini untuk dipakai scheduleReconnect.
   useEffect(() => {
     connectRef.current = connect;
   }, [connect]);
+
+  // Reset flag fallback codec hanya ketika streamPath berubah (sesi stream baru),
+  // bukan saat kualitas berganti dalam sesi yang sama.
+  useEffect(() => {
+    codecFallbackAttemptedRef.current = false;
+  }, [streamPath]);
 
   // Efek utama: bangun koneksi setiap kali streamPath / kualitas berubah.
   useEffect(() => {
@@ -390,9 +436,21 @@ export default function WHEPPlayer({
 
   // Toggle kualitas SD ↔ HD; parent akan me-restart stream dengan kualitas baru.
   const toggleQuality = () => {
+    setCodecError(null);
     const next: 'main' | 'sub' = quality === 'main' ? 'sub' : 'main';
     onQualityChange?.(next);
   };
+
+  // Coba ulang koneksi setelah error codec (mis. pengguna baru mengubah
+  // encoding kamera di NVR). Fallback main stream diizinkan lagi.
+  const retryConnection = useCallback(() => {
+    setCodecError(null);
+    codecFallbackAttemptedRef.current = false;
+    stoppedRef.current = false;
+    retryCountRef.current = 0;
+    clearRetryTimer();
+    connectRef.current();
+  }, [clearRetryTimer]);
 
   const isBusy =
     status === 'signaling' ||
@@ -417,41 +475,86 @@ export default function WHEPPlayer({
         onClick={showControls ? togglePlay : undefined}
       />
 
-      {/* Overlay status */}
-      {!isLive && (
-        <div
-          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-        >
-          {isBusy && (
-            <>
-              <LoaderCircle className="h-10 w-10 animate-spin text-accent" />
-              <span className="text-sm font-semibold text-white">
-                {status === 'reconnecting'
-                  ? 'Menyambung kembali…'
-                  : status === 'signaling'
-                    ? 'Menghubungi server streaming…'
-                    : status === 'waiting-frame'
-                      ? 'Koneksi tersambung, menunggu frame…'
-                      : 'Membangun koneksi media…'}
-              </span>
-            </>
-          )}
-          {isError && (
-            <>
-              <VideoOff className="h-10 w-10 text-error" />
-              <span className="text-sm font-semibold text-white">Streaming tidak tersedia</span>
-            </>
-          )}
-          {status === 'idle' && (
-            <>
-              <Video className="h-10 w-10 text-white/60" />
-              <span className="text-sm font-semibold text-white/80">Belum ada stream</span>
-            </>
-          )}
-        </div>
-      )}
+      {/* Overlay status / codec */}
+      {!isLive &&
+        (codecError ? (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 p-5 text-center"
+            role="alert"
+          >
+            <AlertTriangle className="h-10 w-10 text-amber-400" />
+            <span className="text-sm font-semibold text-white">
+              Codec video tidak didukung
+            </span>
+            <p className="max-w-md text-xs leading-relaxed text-white/80">
+              {codecError}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {onQualityChange && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Tandai fallback sudah dicoba agar pilihan manual sub-stream
+                    // tidak otomatis memantul kembali ke main stream bila gagal.
+                    codecFallbackAttemptedRef.current = true;
+                    setCodecError(null);
+                    setStatus('reconnecting');
+                    onQualityChange(isSub ? 'main' : 'sub');
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-black transition-colors hover:bg-white/85"
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  {isSub ? 'Coba main stream (HD)' : 'Coba sub-stream (SD)'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={retryConnection}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/25"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Muat ulang
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+          >
+            {isBusy && (
+              <>
+                <LoaderCircle className="h-10 w-10 animate-spin text-accent" />
+                <span className="text-sm font-semibold text-white">
+                  {status === 'reconnecting'
+                    ? 'Menyambung kembali…'
+                    : status === 'signaling'
+                      ? 'Menghubungi server streaming…'
+                      : status === 'waiting-frame'
+                        ? 'Koneksi tersambung, menunggu frame…'
+                        : 'Membangun koneksi media…'}
+                </span>
+              </>
+            )}
+            {isError && (
+              <>
+                <VideoOff className="h-10 w-10 text-error" />
+                <span className="text-sm font-semibold text-white">
+                  Streaming tidak tersedia
+                </span>
+              </>
+            )}
+            {status === 'idle' && (
+              <>
+                <Video className="h-10 w-10 text-white/60" />
+                <span className="text-sm font-semibold text-white/80">
+                  Belum ada stream
+                </span>
+              </>
+            )}
+          </div>
+        ))}
 
       {/* Badge LIVE */}
       {isLive && (

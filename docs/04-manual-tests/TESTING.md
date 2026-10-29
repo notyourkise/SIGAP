@@ -113,6 +113,8 @@ npm run test:sw
 | `handlers` | `user_test.go` | GetAllUsers, GetUserByID, UpdateUser (validasi role + token-version branch), DeleteUser (+ self-delete forbidden), ResetUserPassword |
 | `handlers` | `cctv_test.go` | GetCCTVByID, CreateCCTV (validasi, duplikat kode, sukses + `qr_payload` terisi), ScanCCTV (invalid, payload aktif sukses, payload lama setelah rotasi ditolak), RotateQRCode (ciphertext baru tetap mendekripsi ke ID CCTV yang sama), GetCCTVQRCode (`Cache-Control: no-store`), DownloadTemplateCCTV, ImportCCTV batas baris, Update/Delete sukses, not-found & invalid UUID, `cctvMockRowWithStatus` (varian status untuk test sinkronisasi), field `health_score` |
 | `frontend` | `tests/service-worker-cache.test.mjs` | Request gambar QR selalu network-only tanpa cache fallback; respons API dengan `Cache-Control: no-store` tidak ditulis ke runtime cache service worker |
+| `frontend` | `tests/hevc-support.test.mts` (#149) | `detectHevcSupport` memakai RTP capabilities sebagai sinyal utama, mengenali `video/H265`/`video/HEVC` tanpa membedakan kapitalisasi, fallback ke MediaSource/`canPlayType`, tahan terhadap API yang melempar error, dan tidak menghasilkan false negative dari MSE; `isHevcCodecError`/`buildHevcErrorMessage` menghasilkan panduan perangkat dan H.264 |
+| `frontend` | `tests/whep-status.test.mts` | Transisi status WHEP (`signaling` → `connecting` → `waiting-frame` → `live`), larangan regresi status setelah track diterima, disconnect tidak pernah tetap `live`, dan deteksi respons codec 400/415 |
 | `handlers` | `maintenance_test.go` | CreateMaintenanceLog (validasi, CCTV not found, sukses + reload), GetById, GetAll, Update/Delete sukses, not-found & invalid UUID, kepemilikan teknisi → 403, sinkronisasi status otomatis (Fase 5.2): complete 9/9 ok → CCTV `aktif`, complete gagal → CCTV `pemeliharaan`, complete pada CCTV `rusak`/`nonaktif` → status tidak berubah; assign/re-assign (Fase 5.3): assign normal → 200, re-assign log `ongoing` ke teknisi baru → 200, assign ke teknisi yang sama → 400, assign log `completed` → 400, re-assign oleh role `teknisi` → 403 (RequireRole admin) |
 | `handlers` | `field_maintenance_test.go` | CreateFieldMaintenance (validasi, tanpa foto, CCTV not found, sukses), GetAll scope teknisi, GetById (invalid UUID, not found), Delete not found, sinkronisasi status otomatis (Fase 5.2): field-check `attention` → CCTV `pemeliharaan`, field-check `ok` → CCTV `aktif`; GenerateFieldMaintenanceReportPDF (content-type/prefix PDF, teknisi pemilik/non-pemilik, not found) |
 | `handlers` | `dashboard_test.go` | DashboardTasks (tanpa identitas 401, teknisi ter-scope, admin), DashboardSummary (distribusi status, tren 6 bulan, overdue kosong), GetDailyDigests (admin paginasi/urutan terbaru) |
@@ -293,6 +295,7 @@ Ringkasan cakupan test snapshot & timeline:
 | File Test | Task | Yang Diuji |
 |-----------|------|-----------|
 | `handlers/snapshot_test.go` | 10.1 + 10.2 | `GetCCTVSnapshot` (sukses → JPEG, belum ada snapshot → 404, CCTV not found → 404, tanpa identitas → 401), `GetCCTVTimeline` (sukses + paginasi, CCTV not found → 404, tanpa identitas → 401), rotasi snapshot (hanya menyimpan 10 terbaru) |
+| `handlers/snapshot_test.go` (#149) | #149 | `GetCCTVSnapshotStatus`: endpoint MediaMTX tidak mendukung → `endpoint_supported=false`, belum ada snapshot → pesan jelas, metadata + file ada → `available=true` + `captured_at`/`event_type`, file hilang → `available=false`, UUID invalid → 400; `routes/cctv.go` mendaftarkan `/snapshot-status` di grup protected |
 
 ### Matriks Stream Health & Deteksi Status Stream (Fase 10, Task 10.4)
 
@@ -472,6 +475,7 @@ Prioritas lanjutan:
 - `manual-test-cctv-log-validation.md` (#145): verifikasi event type valid/invalid, pesan 400, filter `unknown`, konsistensi ringkasan, dan kegagalan query ringkasan
 - `manual-test-cctv-log-dedup.md` (#146): verifikasi standby nonaktif secara default, aktivasi via env, dedup 60 detik lintas probe/verifier, event penting tetap tercatat, fail-open, dan regresi retensi/UI
 - `manual-test-release-gate-bugs-4-8-21.md` (#147): gate manual filter kawasan CCTV, MediaMTX production/publik/seluler, dan edit CCTV + URL RTSP, termasuk format bukti dan sign-off
+- `manual-test-cctv-codec-snapshot.md` (#149): verifikasi overlay codec H.265, fallback sub → main satu kali, tombol snapshot nonaktif saat endpoint MediaMTX 1.20 tidak tersedia, snapshot tersedia/terhapus, akses kontrol, dan regresi timeline/pemutar
 - Format standar: Header Task/Branch/Versi → Prasyarat → Skenario Uji Tabel → Kriteria Lulus → Catatan
 
 **Testing-Manual-V1** (Legacy Documentation):

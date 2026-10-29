@@ -24,9 +24,11 @@ import {
   Maximize2,
   Video,
   LoaderCircle,
+  Camera,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { isHevcCodecError } from '@/lib/hevc-support';
 import type { ConnectionStatus } from '@/components/WHEPPlayer';
 
 export interface StreamModalCctv {
@@ -54,6 +56,27 @@ const LazyWHEPPlayer = dynamic(
 );
 
 type Quality = 'main' | 'sub';
+
+// Status snapshot dari backend. `available` hanya true bila metadata dan file
+// snapshot benar-benar ada sehingga tombol tidak pernah membuka URL rusak.
+interface SnapshotStatus {
+  available: boolean;
+  endpoint_supported: boolean;
+  snapshot_url: string;
+  captured_at?: string;
+  event_type?: string;
+  message?: string;
+}
+
+function formatSnapshotTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
 // Ekstrak path stream dari URL WHEP, mis. "/stream/cam-xxx/whep" -> "cam-xxx".
 function extractStreamPath(whepUrl: string): string {
@@ -89,6 +112,8 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [live, setLive] = useState(false);
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatus | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
 
   const isStreaming = Boolean(streamPath);
   const badge = statusBadge(cctv.status);
@@ -101,6 +126,47 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
+
+  // Periksa ketersediaan snapshot agar tombol bisa dinonaktifkan dengan alasan
+  // yang jelas (endpoint MediaMTX tidak tersedia / belum ada snapshot).
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSnapshotStatus = async () => {
+      try {
+        const response = await apiRequest<SnapshotStatus>(
+          `/cctv/${cctv.id}/snapshot-status`
+        );
+        if (cancelled) return;
+        if (response.status === 'success' && response.data) {
+          setSnapshotStatus(response.data);
+        } else {
+          setSnapshotStatus({
+            available: false,
+            endpoint_supported: false,
+            snapshot_url: '',
+            message: response.message || 'Status snapshot tidak tersedia.',
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSnapshotStatus({
+            available: false,
+            endpoint_supported: false,
+            snapshot_url: '',
+            message: 'Status snapshot tidak dapat dimuat.',
+          });
+        }
+      } finally {
+        if (!cancelled) setSnapshotLoading(false);
+      }
+    };
+
+    loadSnapshotStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [cctv.id]);
 
   // Mulai stream. qualityOverride memungkinkan restart dengan kualitas baru
   // tanpa mengubah state sebelum panggilan API selesai.
@@ -115,6 +181,7 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
         );
         if (response.status === 'success' && response.data?.whep_url) {
           const path = extractStreamPath(response.data.whep_url);
+          setQuality(q);
           setStreamPath(path);
           toast.info(`Jalur stream "${cctv.nama}" terdaftar. Menunggu video…`);
         } else {
@@ -153,13 +220,15 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   // Ditujukan dari tombol "Mulai Streaming" pada placeholder body.
   const handleStartFromPlaceholder = () => handleStart();
 
-  // Ditujukan dari WHEPPlayer saat pengguna mengganti kualitas: set state
-  // lalu restart stream dengan kualitas baru bila sedang streaming.
+  // Ditujukan dari WHEPPlayer saat pengguna mengganti kualitas: restart stream
+  // dengan kualitas baru bila sedang streaming (state quality diperbarui setelah
+  // backend mendaftarkan path baru agar WHEPPlayer tidak connect ke source lama).
   const handleQualityChange = useCallback(
     (q: Quality) => {
-      setQuality(q);
       if (streamPath) {
         handleStart(q);
+      } else {
+        setQuality(q);
       }
     },
     [streamPath, handleStart]
@@ -168,16 +237,36 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
   // Laporkan error dari WHEPPlayer ke toast.
   const handlePlayerError = useCallback(
     (message: string) => {
-      const isCodecError = /h\.?265|hevc|codec/i.test(message);
+      const isCodecError = isHevcCodecError(message);
       toast.error(message, {
         source: 'Pemutar video (WHEP)',
         reason: isCodecError
-          ? 'Penyebab: browser/perangkat ini tidak mendukung codec H.265/HEVC. Lokasi: negosiasi codec WebRTC/WHEP. Tindakan: gunakan browser yang mendukung HEVC atau ubah encoding stream kamera (main/sub) di NVR ke H.264, lalu mulai ulang stream.'
+          ? 'Penyebab: browser/perangkat ini tidak mendukung codec H.265/HEVC. Lokasi: negosiasi codec WebRTC/WHEP. Tindakan: gunakan browser yang mendukung HEVC, ubah encoding stream kamera (main/sub) di NVR ke H.264, atau coba kualitas lain dari overlay pemutar.'
           : 'Stream video gagal diputar atau koneksi WHEP terputus.',
       });
     },
     [toast]
   );
+
+  // Buka snapshot terbaru di tab baru. Endpoint memakai cookie sesi sehingga
+  // tetap terlindungi tanpa perlu menyisipkan token di URL.
+  const handleOpenSnapshot = useCallback(() => {
+    if (!snapshotStatus?.available) return;
+    window.open(
+      snapshotStatus.snapshot_url || `/api/cctv/${cctv.id}/snapshot`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  }, [cctv.id, snapshotStatus]);
+
+  const snapshotCapturedAt = formatSnapshotTime(snapshotStatus?.captured_at);
+  const snapshotTitle = snapshotLoading
+    ? 'Memeriksa ketersediaan snapshot…'
+    : snapshotStatus?.available
+      ? snapshotCapturedAt
+        ? `Buka snapshot terakhir (${snapshotCapturedAt})`
+        : 'Buka snapshot terakhir'
+      : snapshotStatus?.message || 'Snapshot belum tersedia';
 
   // Pantau status koneksi dari WHEPPlayer untuk menandai status 'live'.
   const handleStatusChange = useCallback((status: ConnectionStatus) => {
@@ -298,9 +387,9 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
             </span>
           </div>
 
-          {isStreaming && (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {isStreaming && (
                 <button
                   type="button"
                   onClick={handleStop}
@@ -314,8 +403,28 @@ export default function StreamModal({ cctv, onClose }: StreamModalProps) {
                   )}
                   {stopping ? 'Menghentikan…' : 'Hentikan Stream'}
                 </button>
-              </div>
+              )}
             </div>
+
+            <button
+              type="button"
+              onClick={handleOpenSnapshot}
+              disabled={snapshotLoading || !snapshotStatus?.available}
+              title={snapshotTitle}
+              aria-label={snapshotTitle}
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {snapshotLoading ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+              {snapshotLoading ? 'Memeriksa snapshot…' : 'Snapshot'}
+            </button>
+          </div>
+
+          {snapshotStatus && !snapshotStatus.available && !snapshotLoading && (
+            <p className="text-[11px] text-muted">{snapshotStatus.message}</p>
           )}
         </div>
       </div>
