@@ -153,6 +153,14 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			"errors":  errs,
 		})
 	}
+	for _, img := range req.Images {
+		if _, ok := normalizeUploadFilename(img.ImageUrl); !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Path foto bukti tidak valid",
+			})
+		}
+	}
 
 	// Validasi koordinat geotag (opsional). Menghasilkan 400 bila koordinat
 	// diisi tetapi tidak valid secara format maupun rentang.
