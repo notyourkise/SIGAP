@@ -101,6 +101,7 @@ services:
       # Alamat HLS internal dipakai untuk memicu path on-demand saat verifikasi
       # status aktif. Bukan URL yang diekspos ke browser.
       - MEDIAMTX_HLS_URL=http://mediamtx:8888
+      - MEDIAMTX_WEBRTC_URL=http://mediamtx:8889
       # Interval verifikasi aktif (menit) dan jumlah worker paralel. Nilai
       # default dibuat konservatif agar NVR/kamera tidak dibuka serentak.
       - CCTV_VERIFY_INTERVAL_MINUTES=${CCTV_VERIFY_INTERVAL_MINUTES:-15}

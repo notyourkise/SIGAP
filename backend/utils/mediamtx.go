@@ -19,9 +19,13 @@ import (
 type MediaMTXClient struct {
 	BaseURL string
 	// HLSURL adalah alamat HTTP HLS MediaMTX. Dipakai untuk memicu path
-	// on-demand sebelum verifikasi status. Bila kosong, diturunkan dari
-	// BaseURL (port 9997 -> 8888).
-	HLSURL     string
+	// on-demand sebelum verifikasi status serta proksi /hls/*. Bila kosong,
+	// diturunkan dari BaseURL (port 9997 -> 8888).
+	HLSURL string
+	// WebRTCURL adalah alamat HTTP WebRTC/WHEP MediaMTX (port 8889) untuk
+	// proksi jalur /stream/* yang terautentikasi. Bila kosong, diturunkan dari
+	// BaseURL (port 9997 -> 8889).
+	WebRTCURL  string
 	HTTPClient *http.Client
 }
 
@@ -65,9 +69,11 @@ const defaultMediaMTXURL = "http://127.0.0.1:9997"
 func NewMediaMTXClient() *MediaMTXClient {
 	baseURL := getenvOr("MEDIAMTX_API_URL", defaultMediaMTXURL)
 	hlsURL := getenvOr("MEDIAMTX_HLS_URL", "http://127.0.0.1:8888")
+	webrtcURL := getenvOr("MEDIAMTX_WEBRTC_URL", "http://127.0.0.1:8889")
 	return &MediaMTXClient{
 		BaseURL:    strings.TrimSuffix(baseURL, "/"),
 		HLSURL:     strings.TrimSuffix(hlsURL, "/"),
+		WebRTCURL:  strings.TrimSuffix(webrtcURL, "/"),
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -254,6 +260,23 @@ func (c *MediaMTXClient) hlsBaseURL() string {
 		return strings.TrimSuffix(c.HLSURL, "/")
 	}
 	return strings.Replace(strings.TrimSuffix(c.BaseURL, "/"), ":9997", ":8888", 1)
+}
+
+// HLSBaseURL mengembalikan alamat HLS MediaMTX untuk proksi jalur /hls/*.
+func (c *MediaMTXClient) HLSBaseURL() string {
+	return c.hlsBaseURL()
+}
+
+// WebRTCBaseURL mengembalikan alamat WebRTC/WHEP MediaMTX untuk proksi jalur
+// /stream/*. Bila WebRTCURL belum diset, diturunkan dari BaseURL (9997 -> 8889).
+func (c *MediaMTXClient) WebRTCBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	if c.WebRTCURL != "" {
+		return strings.TrimSuffix(c.WebRTCURL, "/")
+	}
+	return strings.Replace(strings.TrimSuffix(c.BaseURL, "/"), ":9997", ":8889", 1)
 }
 
 // TriggerHLS memicu path on-demand MediaMTX agar sumber RTSP mulai ditarik.

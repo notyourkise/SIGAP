@@ -61,18 +61,34 @@ func handlersStubGetStreamStatus(c *fiber.Ctx) error {
 }
 
 // TestSetupStreamRoutesRegistersVerify memastikan endpoint verifikasi manual
-// terdaftar sebagai POST admin-only dan tidak tertimpa rute dinamis lain.
+// dan endpoint otorisasi media (/api/streams/auth) terdaftar di bawah grup
+// admin-only, serta SetupStreamMediaRoutes melindungi /stream/* dan /hls/*.
 func TestSetupStreamRoutesRegistersVerify(t *testing.T) {
 	app := fiber.New()
 	SetupStreamRoutes(app.Group("/api"))
+	SetupStreamMediaRoutes(app)
 
 	verifyPath := "/api/streams/:id/verify"
-	found := false
+	authPath := "/api/streams/auth"
+	foundVerify := false
+	foundAuth := false
 	for _, route := range app.GetRoutes() {
 		if route.Method == "POST" && route.Path == verifyPath {
-			found = true
-			break
+			foundVerify = true
+		}
+		if route.Method == "GET" && route.Path == authPath {
+			foundAuth = true
 		}
 	}
-	assert.True(t, found, "rute %s belum terdaftar", verifyPath)
+	assert.True(t, foundVerify, "rute %s belum terdaftar", verifyPath)
+	assert.True(t, foundAuth, "rute %s belum terdaftar", authPath)
+
+	// Permintaan anonim langsung ke /stream/* dan /hls/* harus ditolak 401
+	whepResp, err := app.Test(httptest.NewRequest("POST", "/stream/cam-00000000-0000-0000-0000-000000000001/whep", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, whepResp.StatusCode)
+
+	hlsResp, err := app.Test(httptest.NewRequest("GET", "/hls/cam-00000000-0000-0000-0000-000000000001/index.m3u8", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, hlsResp.StatusCode)
 }

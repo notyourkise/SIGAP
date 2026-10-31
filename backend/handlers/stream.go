@@ -106,6 +106,15 @@ func loadCCTVByID(c *fiber.Ctx) (models.CCTV, bool) {
 		})
 		return models.CCTV{}, false
 	}
+	if siteIDStr, ok := c.Locals("site_id").(string); ok && siteIDStr != "" {
+		if cctv.SiteID == nil || cctv.SiteID.String() != siteIDStr {
+			_ = c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: CCTV berada di luar site aktif Anda",
+			})
+			return models.CCTV{}, false
+		}
+	}
 	return cctv, true
 }
 
