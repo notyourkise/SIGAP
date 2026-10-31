@@ -1,5 +1,29 @@
 # Changelog - Backend SIGAP
 
+## [0.64.44] - 2026-11-01
+
+### [High][H05] Pengurangan stok suku cadang secara atomik untuk mencegah lost update (#171)
+
+**Masalah**: Transaksi `RecordSparePartUsage` di `backend/handlers/spare_part.go` membaca `sparePart.Stok` tanpa row lock, menghitung `newStok := sparePart.Stok - req.Jumlah` di memori, lalu menulis nilai absolut tanpa kondisi `stok >= jumlah`. Saat dua request berjalan bersamaan (misalnya dua pemakaian masing-masing `4` dari stok awal `10`), kedua transaksi membaca nilai lama `10` dan menulis `6` (*lost update*) atau menyetujui total pemakaian melebihi stok.
+
+**Perbaikan**:
+- Menambahkan row-level lock `SELECT ... FOR UPDATE` (`clause.Locking{Strength: "UPDATE"}`) saat memuat `models.SparePart` di dalam transaksi `RecordSparePartUsage` serta sinkronisasi per-suku cadang (`lockSparePartUsage`).
+- Mengganti penulisan nilai stok absolut menjadi pengurangan atomik bersyarat di database (`Where("id = ? AND stok >= ?", sparePart.ID, req.Jumlah).Update("stok", gorm.Expr("stok - ?", req.Jumlah))`) disertai pemeriksaan `RowsAffected == 0` untuk menolak pemakaian yang melebihi stok secara atomik (`400 Bad Request` + rollback).
+- Menambahkan constraint database `CHECK (stok >= 0)` pada `models.SparePart.Stok` dan migration `000030_spare_parts_stock_check` (`chk_spare_parts_stok_nonnegative` dan `chk_spare_part_usages_jumlah_positive`).
+- Menambahkan regression test di `backend/handlers/spare_part_test.go` (`TestAudit_ConcurrentStockUsageMustDeductBothRequests`, `TestAudit_ConcurrentStockUsageRejectsOverdrawAtomically`, dan `TestAudit_PostgreSQLConcurrentStockUsageContention` yang terverifikasi pada skema sementara PostgreSQL).
+
+timestamp: 2026-11-01 01:45 UTC+8
+kategori: Tinggi, Backend (Database Concurrency & Inventory Atomicity)
+file yang diubah:
+- backend/handlers/spare_part.go
+- backend/handlers/spare_part_test.go
+- backend/models/spare_part.go
+- backend/migrations/000030_spare_parts_stock_check.up.sql
+- backend/migrations/000030_spare_parts_stock_check.down.sql
+
+alasan perubahan: Mencegah lost update maupun pemakaian berlebih (overdraw) pada stok suku cadang saat terjadi request bersamaan (Issue #171 / H05).
+
+---
 ## [0.64.43] - 2026-11-01
 
 ### [High][H04] Validasi canonical containment path lampiran dan penghapusan aman pasca-simpan (#170)

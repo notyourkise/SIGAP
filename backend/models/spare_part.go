@@ -30,7 +30,7 @@ type SparePart struct {
 	// Kategori mengelompokkan jenis komponen (Kabel, Konektor, Power Supply, dll.).
 	Kategori string `gorm:"type:varchar(50)" json:"kategori"`
 	// Stok adalah jumlah unit yang tersedia saat ini.
-	Stok int `gorm:"type:integer;not null;default:0" json:"stok"`
+	Stok int `gorm:"type:integer;not null;default:0;check:stok >= 0" json:"stok"`
 	// MinimumOrder adalah ambang batas stok minimum untuk peringatan (STOCK_LOW).
 	MinimumOrder int `gorm:"type:integer;not null;default:5" json:"minimum_order"`
 	// Satuan adalah unit penghitung stok (pcs, meter, rol, dll).
