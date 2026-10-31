@@ -867,6 +867,15 @@ func DeleteFieldMaintenance(c *fiber.Ctx) error {
 			"message": "Catatan pengecekan lapangan tidak ditemukan",
 		})
 	}
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		var cctv models.CCTV
+		if err := config.DB.First(&cctv, "id = ?", entry.CCTVID).Error; err != nil || !cctvMatchesActiveSite(c, cctv) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: catatan pengecekan berada di site lain",
+			})
+		}
+	}
 
 	if err := config.DB.Delete(&entry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

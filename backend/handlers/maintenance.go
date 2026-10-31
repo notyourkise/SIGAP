@@ -92,6 +92,12 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 			"message": "CCTV tidak ditemukan",
 		})
 	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
+		})
+	}
 
 	// Parsing Waktu
 	var schedDate *time.Time
@@ -264,6 +270,12 @@ func GetMaintenanceLogByID(c *fiber.Ctx) error {
 			"message": "Log pemeliharaan tidak ditemukan",
 		})
 	}
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
+		})
+	}
 
 	// SECURITY: Teknisi hanya boleh melihat detail log miliknya sendiri
 	userRole, _ := c.Locals("role").(string)
@@ -314,6 +326,12 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 			"message": "Log pemeliharaan tidak ditemukan",
 		})
 	}
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
+		})
+	}
 
 	// SECURITY: Ownership check — Teknisi hanya boleh mengubah log miliknya
 	// sendiri. Admin diperbolehkan mengubah semua log.
@@ -353,6 +371,12 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		if err == nil {
 			var cctv models.CCTV
 			if err := config.DB.First(&cctv, "id = ?", cctvUUID).Error; err == nil {
+				if !cctvMatchesActiveSite(c, cctv) {
+					return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+						"status":  "error",
+						"message": "Akses ditolak: CCTV berada di site lain",
+					})
+				}
 				logEntry.CCTVID = cctvUUID
 			}
 		}
@@ -439,6 +463,12 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Log pemeliharaan tidak ditemukan",
+		})
+	}
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
 		})
 	}
 
@@ -614,6 +644,12 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Log pemeliharaan tidak ditemukan",
+		})
+	}
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
 		})
 	}
 
@@ -836,6 +872,12 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 			"message": "Log pemeliharaan tidak ditemukan",
 		})
 	}
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
+		})
+	}
 
 	// AUTO-DELETE: Hapus file fisik jika ada image_url sebelum menghapus record DB
 	if logEntry.ImageUrl != "" {
@@ -1030,4 +1072,21 @@ func applyRoleScope(c *fiber.Ctx, query *gorm.DB) *gorm.DB {
 		return query.Where("1 = 0")
 	}
 	return query.Where("technician_id = ?", techUUID)
+}
+
+// ensureMaintenanceLogMatchesActiveSite memverifikasi apakah CCTV yang dirawat
+// pada log pemeliharaan berada di site aktif pengguna.
+func ensureMaintenanceLogMatchesActiveSite(c *fiber.Ctx, logEntry models.MaintenanceLog) bool {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return true
+	}
+	if logEntry.CCTV.ID != uuid.Nil {
+		return cctvMatchesActiveSite(c, logEntry.CCTV)
+	}
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", logEntry.CCTVID).Error; err != nil {
+		return false
+	}
+	return cctvMatchesActiveSite(c, cctv)
 }
