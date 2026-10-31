@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"math"
 	"time"
 
@@ -153,12 +154,12 @@ func recalculateCCTVHealthScoreAt(db *gorm.DB, cctvID uuid.UUID, now time.Time) 
 	// Task 12.3: dispatch event webhook health_score.changed bila skor berubah.
 	if cctv.HealthScore != result.HealthScore {
 		DispatchWebhook(db, models.EventWebhookHealthScoreChanged, map[string]interface{}{
-			"cctv_id":     cctvID.String(),
-			"kode_cctv":   cctv.KodeCCTV,
-			"nama":        cctv.Nama,
-			"old_score":   cctv.HealthScore,
-			"new_score":   result.HealthScore,
-			"timestamp":   now.Format(time.RFC3339),
+			"cctv_id":   cctvID.String(),
+			"kode_cctv": cctv.KodeCCTV,
+			"nama":      cctv.Nama,
+			"old_score": cctv.HealthScore,
+			"new_score": result.HealthScore,
+			"timestamp": now.Format(time.RFC3339),
 		})
 	}
 	return result, nil
@@ -271,6 +272,28 @@ func GetCCTVHealthHistory(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "ID CCTV tidak valid",
 		})
+	}
+
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		var cctv models.CCTV
+		if err := config.DB.First(&cctv, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Data CCTV tidak ditemukan",
+				})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal mengambil data CCTV",
+			})
+		}
+		if !cctvMatchesActiveSite(c, cctv) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: CCTV berada di site lain",
+			})
+		}
 	}
 
 	// Tentukan rentang hari dari query param.

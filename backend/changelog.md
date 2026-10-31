@@ -1,5 +1,31 @@
 # Changelog - Backend SIGAP
 
+## [0.64.41] - 2026-11-01
+
+### [High][H02] Penegakan isolasi site pada akses objek, turunan CCTV, pemeliharaan, dan zona (#168)
+
+**Masalah**: Isolasi kawasan (`site_id`) selama ini ditegakkan pada endpoint daftar (list), tetapi sejumlah endpoint akses objek berbasis ID atau QR (`GetCCTVByID`, `GetCCTVQRCode`, `ScanCCTV`, `RotateQRCode`, `UpdateCCTV`, `DeleteCCTV`, `GetCCTVSnapshot`, `GetCCTVSnapshotStatus`, `GetCCTVTimeline`, `GetCCTVHealthScore`, `GetCCTVHealthHistory`, `CreateMaintenanceLog`, `GetMaintenanceLogByID`, `UpdateMaintenanceLog`, `AssignMaintenanceLog`, `CompleteMaintenanceLog`, `DeleteMaintenanceLog`, serta `GetZoneByID`/`UpdateZone`/`DeleteZone`/`AssignCCTVToZone`/`AssignUsersToZone`) belum membandingkan `site_id` objek terhadap `site_id` aktif pengguna. Selain itu pada log pemeliharaan, pemeriksaan ownership teknisi saja tidak menutup akses apabila aset CCTV telah dipindahkan ke site lain.
+
+**Perbaikan**:
+- Menegakkan pemeriksaan `cctvMatchesActiveSite(c, cctv)` pada seluruh pembacaan detail, QR, scan, rotasi QR, pembaruan, penghapusan, snapshot, status snapshot, timeline, skor kesehatan, serta histori skor kesehatan CCTV.
+- Menegakkan pemeriksaan `cctvMatchesActiveSite` pada `CreateMaintenanceLog` dan `ensureMaintenanceLogMatchesActiveSite` pada `GetMaintenanceLogByID`, `UpdateMaintenanceLog`, `AssignMaintenanceLog`, `CompleteMaintenanceLog`, serta `DeleteMaintenanceLog` sehingga ownership dan site diperiksa bersama (termasuk menolak akses setelah CCTV dipindahkan ke site lain).
+- Menambahkan `zoneMatchesActiveSite(c, zone)` pada `GetZoneByID`, `UpdateZone`, `DeleteZone`, `AssignCCTVToZone`, dan `AssignUsersToZone`, serta mengaitkan `site_id` aktif saat `CreateZone`.
+- Menambahkan regression test lengkap dua site di `backend/handlers/site_isolation_h02_test.go` (`TestAudit_CCTVDetailMustDenyOtherSite`, `TestAudit_MaintenanceCreateMustDenyOtherSite`, `TestAudit_FieldCheckMustDenyOtherSite_Control`, `TestSiteIsolation_CCTVObjectAccessAndDerivativesDenyOtherSite`, `TestSiteIsolation_MaintenanceDeniesAccessAfterCCTVMovedToOtherSite`, dan `TestSiteIsolation_ZoneDetailAndWriteDenyOtherSite`).
+
+timestamp: 2026-11-01 01:11 UTC+8
+kategori: Tinggi, Backend (Security / Object-Level Site Isolation)
+file yang diubah:
+- backend/handlers/cctv.go
+- backend/handlers/snapshot.go
+- backend/handlers/health_score.go
+- backend/handlers/maintenance.go
+- backend/handlers/zone.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/site_isolation_h02_test.go
+
+alasan perubahan: Menutup celah akses dan penulisan objek lintas kawasan (IDOR lintas site) pada CCTV, pemeliharaan, dan zona (Issue #168 / H02).
+
+---
 ## [0.64.40] - 2026-11-01
 
 ### [High][H01] Enkapsulasi autentikasi & otorisasi Admin pada jalur media streaming (/stream/* & /hls/*) (#167)

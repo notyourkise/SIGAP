@@ -164,11 +164,31 @@ func GetZoneByID(c *fiber.Ctx) error {
 	}
 
 	var item models.Zone
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		if err := config.DB.First(&item, "id = ?", id).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Zona tidak ditemukan",
+			})
+		}
+		if !zoneMatchesActiveSite(c, item) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: zona berada di site lain",
+			})
+		}
+	}
 	if err := config.DB.Preload("CCTVs").Preload("Users").
 		First(&item, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Zona tidak ditemukan",
+		})
+	}
+	if !zoneMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: zona berada di site lain",
 		})
 	}
 
@@ -209,6 +229,11 @@ func CreateZone(c *fiber.Ctx) error {
 	item := models.Zone{
 		Nama:      strings.TrimSpace(req.Nama),
 		Deskripsi: req.Deskripsi,
+	}
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		if siteUUID, err := uuid.Parse(siteID); err == nil {
+			item.SiteID = &siteUUID
+		}
 	}
 
 	if err := config.DB.Create(&item).Error; err != nil {
@@ -257,6 +282,12 @@ func UpdateZone(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Zona tidak ditemukan",
+		})
+	}
+	if !zoneMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: zona berada di site lain",
 		})
 	}
 
@@ -328,6 +359,12 @@ func DeleteZone(c *fiber.Ctx) error {
 			"message": "Zona tidak ditemukan",
 		})
 	}
+	if !zoneMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: zona berada di site lain",
+		})
+	}
 
 	// Gunakan transaksi agar pelepasan CCTV dan penugasan teknisi berjalan
 	// bersama soft delete zona. Dengan ON DELETE SET NULL pada FK, menghapus
@@ -380,6 +417,12 @@ func AssignCCTVToZone(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Zona tidak ditemukan",
+		})
+	}
+	if !zoneMatchesActiveSite(c, zone) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: zona berada di site lain",
 		})
 	}
 
@@ -481,6 +524,12 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 			"message": "Zona tidak ditemukan",
 		})
 	}
+	if !zoneMatchesActiveSite(c, zone) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: zona berada di site lain",
+		})
+	}
 
 	var req AssignUsersRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -568,4 +617,14 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 			"user_count": len(req.UserIDs),
 		},
 	})
+}
+
+// zoneMatchesActiveSite memastikan objek zona yang diakses cocok dengan site
+// aktif yang ditetapkan middleware SiteContext.
+func zoneMatchesActiveSite(c *fiber.Ctx, zone models.Zone) bool {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return true
+	}
+	return zone.SiteID != nil && zone.SiteID.String() == siteID
 }

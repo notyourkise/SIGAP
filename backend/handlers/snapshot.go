@@ -160,6 +160,12 @@ func GetCCTVSnapshot(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
+		})
+	}
 
 	// Ambil snapshot terbaru (urutkan created_at desc).
 	var snap models.CCTVSnapshot
@@ -208,10 +214,20 @@ func GetCCTVSnapshotStatus(c *fiber.Ctx) error {
 	}
 
 	var cctv models.CCTV
-	if err := config.DB.Select("id").First(&cctv, "id = ?", id).Error; err != nil {
+	lookupQuery := config.DB.Select("id")
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		lookupQuery = config.DB
+	}
+	if err := lookupQuery.First(&cctv, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
@@ -277,10 +293,20 @@ func GetCCTVTimeline(c *fiber.Ctx) error {
 	}
 
 	var cctv models.CCTV
-	if err := config.DB.Select("id").First(&cctv, "id = ?", id).Error; err != nil {
+	lookupQuery := config.DB.Select("id")
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		lookupQuery = config.DB
+	}
+	if err := lookupQuery.First(&cctv, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 

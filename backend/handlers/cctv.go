@@ -518,6 +518,12 @@ func GetCCTVByID(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
+		})
+	}
 
 	// Kredensial RTSP tidak boleh bocor ke klien pada respons.
 	sanitizeCCTVForResponse(&cctv)
@@ -554,10 +560,20 @@ func GetCCTVHealthScore(c *fiber.Ctx) error {
 	}
 
 	var cctv models.CCTV
-	if err := config.DB.Select("id").First(&cctv, "id = ?", id).Error; err != nil {
+	lookupQuery := config.DB.Select("id")
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		lookupQuery = config.DB
+	}
+	if err := lookupQuery.First(&cctv, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
@@ -612,6 +628,12 @@ func UpdateCCTV(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
@@ -825,6 +847,12 @@ func DeleteCCTV(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
+		})
+	}
 
 	if err := config.DB.Delete(&cctv).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -907,6 +935,12 @@ func ScanCCTV(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "QR Code tidak aktif atau sudah dirotasi",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
@@ -1284,6 +1318,12 @@ func GetCCTVQRCode(c *fiber.Ctx) error {
 			"message": "Data CCTV tidak ditemukan",
 		})
 	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
+		})
+	}
 
 	// Konten QR adalah QrPayload terenkripsi AES-256 sehingga identitas perangkat
 	// tidak terekspos langsung saat label dipindai.
@@ -1337,6 +1377,12 @@ func RotateQRCode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Data CCTV tidak ditemukan",
+		})
+	}
+	if !cctvMatchesActiveSite(c, cctv) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: CCTV berada di site lain",
 		})
 	}
 
