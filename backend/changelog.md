@@ -1,5 +1,27 @@
 # Changelog - Backend SIGAP
 
+## [0.64.42] - 2026-11-01
+
+### [High][H03] Verifikasi ownership tugas, akses site, dan kecocokan site suku cadang pada GET/POST penggunaan stok (#169)
+
+**Masalah**: Endpoint `POST /api/maintenance-logs/:id/spare-parts` (`RecordSparePartUsage`) hanya memeriksa keberadaan `maintenance_logs` dan status `completed` tanpa memverifikasi apakah pengguna adalah teknisi pemilik tugas, apakah log berada pada site aktif pengguna, maupun apakah suku cadang (`spare_parts`) berasal dari site yang sesuai dengan lokasi CCTV tugas. Selain itu `GET /api/maintenance-logs/:id/spare-parts` (`GetSparePartUsageByLog`) tidak memeriksa hak akses terhadap log pemeliharaan.
+
+**Perbaikan**:
+- Menambahkan verifikasi ownership teknisi (`logEntry.TechnicianID == user_id` untuk non-admin) dan verifikasi site aktif (`cctvMatchesActiveSite`) pada `RecordSparePartUsage` sebelum memulai transaksi pengurangan stok.
+- Memvalidasi kesesuaian `sparePart.SiteID` terhadap `site_id` aktif dan terhadap `site_id` CCTV pada tugas pemeliharaan di dalam transaksi `RecordSparePartUsage`.
+- Menambahkan pemuatan `maintenance_logs` serta pemeriksaan ownership dan site aktif (`ensureMaintenanceLogMatchesActiveSite`) pada `GetSparePartUsageByLog`.
+- Menambahkan penegakan `sparePartMatchesActiveSite` pada `GetSparePartByID`, `UpdateSparePart`, dan `DeleteSparePart` serta fallback filter `site_id` aktif pada `GetAllSpareParts`.
+- Menambahkan regression test lengkap di `backend/handlers/spare_part_test.go` (`TestAudit_SparePartWriteMustDenyOtherTechnician`, `TestAudit_SparePartReadMustDenyOtherTechnician`, dan `TestSparePartUsage_SiteAndOwnershipBoundaries`).
+
+timestamp: 2026-11-01 01:20 UTC+8
+kategori: Tinggi, Backend (Security / Inventory & Maintenance Authorization)
+file yang diubah:
+- backend/handlers/spare_part.go
+- backend/handlers/spare_part_test.go
+
+alasan perubahan: Mencegah teknisi mengurangi stok atau membaca pemakaian suku cadang pada tugas teknisi/site lain (Issue #169 / H03).
+
+---
 ## [0.64.41] - 2026-11-01
 
 ### [High][H02] Penegakan isolasi site pada akses objek, turunan CCTV, pemeliharaan, dan zona (#168)

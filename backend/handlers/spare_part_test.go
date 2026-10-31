@@ -340,6 +340,8 @@ func TestGetSparePartUsageByLog_Success(t *testing.T) {
 	_, mock := setupMockGORM(t)
 	logID, spareID := uuid.New(), uuid.New()
 
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(maintenanceLogCompletedRow(logID, uuid.New()))
 	mock.ExpectQuery(`^SELECT \* FROM "spare_part_usages"`).
 		WillReturnRows(sparePartUsageRows(uuid.New(), logID, spareID, 2))
 	mock.ExpectQuery(`^SELECT \* FROM "spare_parts"`).
@@ -381,4 +383,219 @@ func TestGetLowStockSpareParts_Success(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "success", result["status"])
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func sparePartRowForSite(id, siteID uuid.UUID, nama, sku, kategori string, stok, minOrder int) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"site_id", "nama", "sku", "kategori", "stok", "minimum_order", "satuan", "harga_satuan", "keterangan",
+	}).AddRow(id, time.Now(), time.Now(), nil, siteID, nama, sku, kategori, stok, minOrder, "pcs", 15000, "Kabel UTP Cat6")
+}
+
+func maintenanceLogCompletedRowForTechnician(id, cctvID, techID uuid.UUID) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa", "Selesai", "completed", time.Now(), time.Now(), "")
+}
+
+// H03: Teknisi yang bukan pemilik tugas pemeliharaan wajib ditolak (403)
+// saat mencoba mencatat pemakaian suku cadang tanpa mengurangi stok.
+func TestAudit_SparePartWriteMustDenyOtherTechnician(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	logID, cctvID, spareID, ownerTechID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	otherTechID := uuid.New()
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/spare-parts",
+		withUserSiteLocals(otherTechID.String(), "teknisi", siteID.String()),
+		RecordSparePartUsage,
+	)
+
+	body := `{"spare_part_id":"` + spareID.String() + `","jumlah":2}`
+	req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// H03: Teknisi yang bukan pemilik tugas pemeliharaan wajib ditolak (403)
+// saat mencoba membaca daftar pemakaian suku cadang pada tugas teknisi lain.
+func TestAudit_SparePartReadMustDenyOtherTechnician(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	logID, cctvID, ownerTechID := uuid.New(), uuid.New(), uuid.New()
+	otherTechID := uuid.New()
+	siteID := uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+
+	app := newTestApp()
+	app.Get("/maintenance-logs/:id/spare-parts",
+		withUserSiteLocals(otherTechID.String(), "teknisi", siteID.String()),
+		GetSparePartUsageByLog,
+	)
+
+	req := httptest.NewRequest("GET", "/maintenance-logs/"+logID.String()+"/spare-parts", nil)
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// H03: Teknisi pemilik tugas di site yang sama diizinkan mencatat & membaca penggunaan
+// suku cadang dari site yang sesuai, sementara akses lintas site pada log maupun
+// suku cadang ditolak dengan 403.
+func TestSparePartUsage_SiteAndOwnershipBoundaries(t *testing.T) {
+	siteA := uuid.New()
+	siteB := uuid.New()
+	ownerTechID := uuid.New()
+	cctvID := uuid.New()
+	logID := uuid.New()
+	spareID := uuid.New()
+
+	t.Run("OwnerTechnicianAllowedWhenLogAndPartMatchSite", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(cctvRowForSite(cctvID, siteA))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts"`).
+			WillReturnRows(sparePartRowForSite(spareID, siteA, "Kabel UTP Site A", "KBL-A", "Kabel", 10, 2))
+		mock.ExpectExec(`^UPDATE "spare_parts" SET "stok"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec(`^INSERT INTO "spare_part_usages"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_part_usages"`).
+			WillReturnRows(sparePartUsageRows(uuid.New(), logID, spareID, 2))
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "nama", "sku"}).AddRow(spareID, "Kabel UTP Site A", "KBL-A"))
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts",
+			withUserSiteLocals(ownerTechID.String(), "teknisi", siteA.String()),
+			RecordSparePartUsage,
+		)
+
+		body := `{"spare_part_id":"` + spareID.String() + `","jumlah":2}`
+		req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusCreated, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("DenyWhenLogCCTVInOtherSiteEvenIfOwner", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(cctvRowForSite(cctvID, siteB))
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts",
+			withUserSiteLocals(ownerTechID.String(), "teknisi", siteA.String()),
+			RecordSparePartUsage,
+		)
+
+		body := `{"spare_part_id":"` + spareID.String() + `","jumlah":1}`
+		req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("DenyWhenSparePartBelongsToOtherSite", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(cctvRowForSite(cctvID, siteA))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts"`).
+			WillReturnRows(sparePartRowForSite(spareID, siteB, "Kabel UTP Site B", "KBL-B", "Kabel", 10, 2))
+		mock.ExpectRollback()
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts",
+			withUserSiteLocals(ownerTechID.String(), "teknisi", siteA.String()),
+			RecordSparePartUsage,
+		)
+
+		body := `{"spare_part_id":"` + spareID.String() + `","jumlah":1}`
+		req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("DenyAdminWhenSparePartSiteMismatchesTaskCCTVSite", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts"`).
+			WillReturnRows(sparePartRowForSite(spareID, siteB, "Kabel UTP Site B", "KBL-B", "Kabel", 10, 2))
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(cctvRowForSite(cctvID, siteA))
+		mock.ExpectRollback()
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts",
+			withUserLocals(uuid.New().String(), "admin"),
+			RecordSparePartUsage,
+		)
+
+		body := `{"spare_part_id":"` + spareID.String() + `","jumlah":1}`
+		req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("ReadUsageDeniedWhenLogCCTVInOtherSiteEvenIfOwner", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRowForTechnician(logID, cctvID, ownerTechID))
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(cctvRowForSite(cctvID, siteB))
+
+		app := newTestApp()
+		app.Get("/maintenance-logs/:id/spare-parts",
+			withUserSiteLocals(ownerTechID.String(), "teknisi", siteA.String()),
+			GetSparePartUsageByLog,
+		)
+
+		req := httptest.NewRequest("GET", "/maintenance-logs/"+logID.String()+"/spare-parts", nil)
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 }
