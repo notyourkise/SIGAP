@@ -419,8 +419,8 @@ func CleanupOrphanUploads(db *gorm.DB) {
 
 	referenced := make(map[string]bool, len(imageURLs))
 	for _, u := range imageURLs {
-		if strings.HasPrefix(u, uploadPrefix) {
-			referenced[strings.TrimPrefix(u, uploadPrefix)] = true
+		if filename, ok := normalizeUploadFilename(u); ok {
+			referenced[filename] = true
 		}
 	}
 
@@ -449,4 +449,140 @@ func CleanupOrphanUploads(db *gorm.DB) {
 	if removed > 0 {
 		utils.Log.Infof("🧹 Cleanup file upload selesai: %d file yatim dihapus", removed)
 	}
+}
+
+// normalizeUploadFilename mengekstrak nama file dari URL lampiran (/api/uploads/<file>
+// atau /uploads/<file>) serta memverifikasi bahwa nama file hanya berupa basename
+// aman tanpa path traversal ("..", "/", "\") dengan ekstensi gambar yang diizinkan.
+func normalizeUploadFilename(rawURL string) (string, bool) {
+	trimmed := strings.TrimSpace(rawURL)
+	var filename string
+	switch {
+	case strings.HasPrefix(trimmed, uploadPrefix):
+		filename = strings.TrimPrefix(trimmed, uploadPrefix)
+	case strings.HasPrefix(trimmed, "/uploads/"):
+		filename = strings.TrimPrefix(trimmed, "/uploads/")
+	default:
+		return "", false
+	}
+
+	if filename == "" ||
+		strings.Contains(filename, "..") ||
+		strings.Contains(filename, "/") ||
+		strings.Contains(filename, "\\") ||
+		filepath.Base(filename) != filename {
+		return "", false
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		return filename, true
+	default:
+		return "", false
+	}
+}
+
+// resolveSafeUploadFilePath memvalidasi URL lampiran dan mengembalikan path
+// absolut file di dalam direktori uploadsDir setelah memastikan containment
+// kanonikal (mencegah penghapusan atau akses file di luar folder unggahan).
+func resolveSafeUploadFilePath(rawURL string) (string, string, bool) {
+	filename, ok := normalizeUploadFilename(rawURL)
+	if !ok {
+		return "", "", false
+	}
+
+	baseAbs, err := filepath.Abs(uploadsDir)
+	if err != nil {
+		return "", "", false
+	}
+	baseClean := filepath.Clean(baseAbs)
+
+	targetAbs, err := filepath.Abs(filepath.Join(baseClean, filename))
+	if err != nil {
+		return "", "", false
+	}
+	targetClean := filepath.Clean(targetAbs)
+
+	rel, err := filepath.Rel(baseClean, targetClean)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.Dir(rel) != "." {
+		return "", "", false
+	}
+
+	return targetClean, filename, true
+}
+
+// isUploadStillReferenced memeriksa apakah file unggahan masih direferensikan
+// oleh record lain pada maintenance_logs, field_maintenance_images, atau users.
+// Bersifat fail-closed (mengembalikan true bila query gagal) agar file yang
+// masih terpakai tidak pernah terhapus secara tidak sengaja.
+func isUploadStillReferenced(db *gorm.DB, filename string, excludeMaintenanceLogID uuid.UUID) bool {
+	if db == nil {
+		return true
+	}
+	candidates := []string{
+		uploadPrefix + filename,
+		"/uploads/" + filename,
+	}
+
+	var logCount int64
+	logQuery := db.Model(&models.MaintenanceLog{}).Where("image_url IN ?", candidates)
+	if excludeMaintenanceLogID != uuid.Nil {
+		logQuery = logQuery.Where("id <> ?", excludeMaintenanceLogID)
+	}
+	if err := logQuery.Count(&logCount).Error; err != nil || logCount > 0 {
+		return true
+	}
+
+	var fieldImgCount int64
+	if err := db.Model(&models.FieldMaintenanceImage{}).
+		Where("image_url IN ?", candidates).
+		Count(&fieldImgCount).Error; err != nil || fieldImgCount > 0 {
+		return true
+	}
+
+	var userCount int64
+	if err := db.Model(&models.User{}).
+		Where("profile_photo_url IN ?", candidates).
+		Count(&userCount).Error; err != nil || userCount > 0 {
+		return true
+	}
+
+	return false
+}
+
+// removeUploadIfUnreferenced menghapus file unggahan lama secara aman hanya bila:
+// 1) path berada di dalam direktori uploadsDir (containment kanonikal),
+// 2) target adalah file reguler (bukan symlink atau direktori), dan
+// 3) tidak ada record lain di database yang masih mereferensikan file tersebut.
+func removeUploadIfUnreferenced(db *gorm.DB, rawURL string, excludeMaintenanceLogID uuid.UUID) {
+	targetPath, filename, ok := resolveSafeUploadFilePath(rawURL)
+	if !ok {
+		return
+	}
+
+	info, err := os.Lstat(targetPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+
+	if isUploadStillReferenced(db, filename, excludeMaintenanceLogID) {
+		return
+	}
+
+	if removeErr := os.Remove(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		utils.Log.Warnf("⚠️ Gagal menghapus file fisik lampiran: %v", removeErr)
+		return
+	}
+
+	// Hapus juga thumbnail terkait bila ada dan merupakan file reguler di dalam thumbDir.
+	if thumbBaseAbs, err := filepath.Abs(thumbDir); err == nil {
+		thumbTarget := filepath.Clean(filepath.Join(thumbBaseAbs, filename))
+		if rel, relErr := filepath.Rel(filepath.Clean(thumbBaseAbs), thumbTarget); relErr == nil && filepath.Dir(rel) == "." && rel != "." && rel != ".." {
+			if tInfo, tErr := os.Lstat(thumbTarget); tErr == nil && tInfo.Mode().IsRegular() {
+				_ = os.Remove(thumbTarget)
+			}
+		}
+	}
+	utils.Log.Infof("🗑️ File lampiran foto berhasil dihapus: %s", targetPath)
 }

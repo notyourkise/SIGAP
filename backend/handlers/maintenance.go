@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"sigap-backend/config"
@@ -74,6 +72,14 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 			"message": "Validasi input gagal",
 			"errors":  errs,
 		})
+	}
+	if req.ImageUrl != "" {
+		if _, ok := normalizeUploadFilename(req.ImageUrl); !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Path lampiran gambar tidak valid",
+			})
+		}
 	}
 
 	// Cek apakah cctv_id valid — CCTV adalah satu-satunya sumber kebenaran aset
@@ -364,6 +370,14 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 			"errors":  errs,
 		})
 	}
+	if req.ImageUrl != "" {
+		if _, ok := normalizeUploadFilename(req.ImageUrl); !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Path lampiran gambar tidak valid",
+			})
+		}
+	}
 
 	// Update field jika disediakan
 	if req.CCTVID != "" {
@@ -406,13 +420,11 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 
-	// Jika image_url baru diberikan, hapus file lama sebelum mengganti
+	oldImageURL := logEntry.ImageUrl
+	imageReplaced := false
 	if req.ImageUrl != "" && req.ImageUrl != logEntry.ImageUrl {
-		if logEntry.ImageUrl != "" {
-			oldPath := "." + logEntry.ImageUrl // /uploads/xxx.jpg -> ./uploads/xxx.jpg
-			_ = os.Remove(oldPath)             // Abaikan error jika file sudah tidak ada
-		}
 		logEntry.ImageUrl = req.ImageUrl
+		imageReplaced = true
 	}
 
 	if err := config.DB.Save(&logEntry).Error; err != nil {
@@ -420,6 +432,12 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Gagal memperbarui log pemeliharaan",
 		})
+	}
+
+	// Hapus file lampiran lama HANYA setelah penyimpanan DB berhasil, path berada
+	// di dalam folder uploads, dan tidak ada record lain yang masih memakainya.
+	if imageReplaced && oldImageURL != "" {
+		removeUploadIfUnreferenced(config.DB, oldImageURL, logEntry.ID)
 	}
 
 	utils.LogAudit(config.DB, c, "UPDATE_MAINTENANCE", "MAINTENANCE", "Memperbarui log pemeliharaan: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
@@ -702,6 +720,14 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 			"message": fmt.Sprintf("Minimal %d item checklist harus diisi", minItems),
 		})
 	}
+	for _, img := range req.Images {
+		if _, ok := normalizeUploadFilename(img.ImageUrl); !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Path foto bukti tidak valid",
+			})
+		}
+	}
 
 	// Status akhir: completed hanya bila semua item checklist berstatus ok
 	// Bug BB-13 Fix (2026-08-20): Tidak lagi terpaku pada exact count 9 items.
@@ -879,26 +905,19 @@ func DeleteMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// AUTO-DELETE: Hapus file fisik jika ada image_url sebelum menghapus record DB
-	if logEntry.ImageUrl != "" {
-		// Konversi URL path (/uploads/xxx.jpg) ke path filesystem (./uploads/xxx.jpg)
-		filePath := "." + logEntry.ImageUrl
-		// Keamanan: pastikan path tidak keluar dari direktori uploads
-		if strings.HasPrefix(logEntry.ImageUrl, "/uploads/") {
-			if removeErr := os.Remove(filePath); removeErr != nil && !os.IsNotExist(removeErr) {
-				// Log error tapi lanjutkan proses penghapusan record DB
-				utils.Log.Warnf("⚠️ Gagal menghapus file fisik lampiran: %v", removeErr)
-			} else {
-				utils.Log.Infof("🗑️ File lampiran foto berhasil dihapus: %s", filePath)
-			}
-		}
-	}
+	oldImageURL := logEntry.ImageUrl
 
 	if err := config.DB.Delete(&logEntry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menghapus log pemeliharaan",
 		})
+	}
+
+	// Hapus file fisik hanya setelah penghapusan record DB berhasil dan
+	// apabila file berada di dalam direktori uploads serta tidak direferensikan record lain.
+	if oldImageURL != "" {
+		removeUploadIfUnreferenced(config.DB, oldImageURL, logEntry.ID)
 	}
 
 	utils.LogAudit(config.DB, c, "DELETE_MAINTENANCE", "MAINTENANCE", "Menghapus log pemeliharaan: "+logEntry.ActionTaken, nil, "", "")

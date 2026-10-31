@@ -1,5 +1,29 @@
 # Changelog - Backend SIGAP
 
+## [0.64.43] - 2026-11-01
+
+### [High][H04] Validasi canonical containment path lampiran dan penghapusan aman pasca-simpan (#170)
+
+**Masalah**: `CreateMaintenanceLogRequest.ImageUrl` dan `UpdateMaintenanceLogRequest.ImageUrl` tidak memvalidasi bahwa URL lampiran menunjuk ke nama file aman di dalam direktori unggahan. Selain itu `UpdateMaintenanceLog` melakukan `os.Remove("." + logEntry.ImageUrl)` tanpa memverifikasi containment direktori, melakukannya sebelum penyimpanan database berhasil, dan tidak memeriksa apakah file masih direferensikan oleh record lain.
+
+**Perbaikan**:
+- Menambahkan `normalizeUploadFilename`, `resolveSafeUploadFilePath`, `isUploadStillReferenced`, dan `removeUploadIfUnreferenced` di `backend/handlers/upload.go` untuk memvalidasi format URL (`/api/uploads/<file>` atau `/uploads/<file>`), menolak path traversal (`..`, `/`, `\`), memverifikasi containment kanonikal terhadap `uploadsDir`, memastikan target adalah file reguler, serta memeriksa referensi aktif di `maintenance_logs`, `field_maintenance_images`, dan `users`.
+- Memvalidasi `image_url` dan `images[].image_url` pada `CreateMaintenanceLog`, `UpdateMaintenanceLog`, `CompleteMaintenanceLog`, `CreateFieldMaintenance`, serta `isSafeUploadPath` (`UpdateMyProfile`).
+- Memindahkan penghapusan lampiran lama pada `UpdateMaintenanceLog` dan `DeleteMaintenanceLog` agar dieksekusi hanya **setelah** operasi simpan/hapus database berhasil melalui `removeUploadIfUnreferenced`.
+- Menambahkan regression test lengkap di `backend/handlers/upload_test.go` (`TestAudit_UpdateImageMustNotDeleteOutsideUploads`, `TestAttachmentSecurity_RejectUnsafeUploadPaths`, dan `TestAttachmentSecurity_PreserveOnSaveFailureAndSharedReference`).
+
+timestamp: 2026-11-01 01:27 UTC+8
+kategori: Tinggi, Backend (Security / File Upload & Path Containment)
+file yang diubah:
+- backend/handlers/upload.go
+- backend/handlers/upload_test.go
+- backend/handlers/maintenance.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/auth.go
+
+alasan perubahan: Mencegah penghapusan file di luar direktori unggahan (arbitrary file deletion) maupun kehilangan file lampiran saat transaksi gagal atau saat file masih dipakai record lain (Issue #170 / H04).
+
+---
 ## [0.64.42] - 2026-11-01
 
 ### [High][H03] Verifikasi ownership tugas, akses site, dan kecocokan site suku cadang pada GET/POST penggunaan stok (#169)

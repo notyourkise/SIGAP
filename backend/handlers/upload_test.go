@@ -15,8 +15,15 @@ import (
 	"strconv"
 	"testing"
 
+	"strings"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // makeJPEG menghasilkan byte gambar JPEG kecil yang valid.
@@ -226,4 +233,211 @@ func TestUploadCompress(t *testing.T) {
 	// Bersihkan file hasil upload
 	_ = os.Remove(savePath)
 	_ = os.Remove(thumbPath)
+}
+
+// H04: Mengganti image_url pada log pemeliharaan yang berisi path di luar folder
+// uploads tidak boleh menghapus file di luar direktori unggahan.
+func TestAudit_UpdateImageMustNotDeleteOutsideUploads(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	sentinelName := "audit-owned-" + uuid.NewString() + ".txt"
+	file, err := os.OpenFile(sentinelName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	_, err = file.WriteString("audit sentinel only")
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	t.Cleanup(func() { _ = os.Remove(sentinelName) })
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "action_taken", "notes", "status",
+			"scheduled_date", "completed_at", "image_url",
+		}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa", "Catatan", "ongoing", nil, nil, "/"+sentinelName))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
+
+	app := newTestApp()
+	app.Put("/maintenance-logs/:id", withUserLocals(techID.String(), "teknisi"), UpdateMaintenanceLog)
+
+	req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"image_url":"/api/uploads/audit-new.jpg"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	_, statErr := os.Stat(sentinelName)
+	assert.NoError(t, statErr, "file di luar direktori uploads tidak boleh terhapus saat mengganti lampiran")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// H04: Input image_url dengan path bebas atau traversal wajib ditolak dengan 400.
+func TestAttachmentSecurity_RejectUnsafeUploadPaths(t *testing.T) {
+	app := newTestApp()
+	techID := uuid.New().String()
+	app.Post("/maintenance-logs", withUserLocals(techID, "teknisi"), CreateMaintenanceLog)
+	app.Put("/maintenance-logs/:id", withUserLocals(techID, "teknisi"), UpdateMaintenanceLog)
+	app.Post("/field-maintenance", withUserLocals(techID, "teknisi"), CreateFieldMaintenance)
+
+	t.Run("CreateMaintenanceLog_RejectsArbitraryAndTraversalPaths", func(t *testing.T) {
+		badURLs := []string{
+			"/etc/passwd",
+			"/api/uploads/../../secret.jpg",
+			"/api/uploads/bukan-gambar.txt",
+			"/uploads/../escape.jpg",
+		}
+		for _, badURL := range badURLs {
+			payload := `{"cctv_id":"` + uuid.NewString() + `","action_taken":"Bersihkan lensa kamera","image_url":"` + badURL + `"}`
+			req := httptest.NewRequest("POST", "/maintenance-logs", strings.NewReader(payload))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode, "harus menolak image_url=%s", badURL)
+		}
+	})
+
+	t.Run("UpdateMaintenanceLog_RejectsTraversalPath", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		id, cctvID := uuid.New(), uuid.New()
+		techUUID := uuid.MustParse(techID)
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(knownMaintenanceRows(id, techUUID, cctvID))
+
+		req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"image_url":"/api/uploads/../outside.jpg"}`))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("CreateFieldMaintenance_RejectsTraversalInsideUploadPrefix", func(t *testing.T) {
+		payload := `{"cctv_id":"` + uuid.NewString() + `","checks":[{"name":"Jaringan internet kamera","result":"ok","note":""}],"images":[{"image_url":"/api/uploads/../../outside.jpg"}]}`
+		req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+// H04: Lampiran lama di dalam ./uploads tidak boleh dihapus bila penyimpanan DB
+// gagal atau bila file masih direferensikan oleh record lain; dan hanya dihapus
+// setelah update berhasil serta tidak ada referensi lain.
+func TestAttachmentSecurity_PreserveOnSaveFailureAndSharedReference(t *testing.T) {
+	require.NoError(t, os.MkdirAll(uploadsDir, 0o755))
+	t.Cleanup(func() { _ = os.RemoveAll(uploadsDir) })
+
+	t.Run("PreserveOldFileWhenDBSaveFails", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+		oldFilename := "save-fail-" + uuid.NewString() + ".jpg"
+		oldFilePath := filepath.Join(uploadsDir, oldFilename)
+		require.NoError(t, os.WriteFile(oldFilePath, makeJPEG(t), 0o600))
+		t.Cleanup(func() { _ = os.Remove(oldFilePath) })
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at",
+				"cctv_id", "technician_id", "action_taken", "notes", "status",
+				"scheduled_date", "completed_at", "image_url",
+			}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa", "Catatan", "ongoing", nil, nil, "/api/uploads/"+oldFilename))
+		mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+			WillReturnError(gorm.ErrInvalidDB)
+
+		app := newTestApp()
+		app.Put("/maintenance-logs/:id", withUserLocals(techID.String(), "teknisi"), UpdateMaintenanceLog)
+
+		req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"image_url":"/api/uploads/new-photo.jpg"}`))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+		_, statErr := os.Stat(oldFilePath)
+		assert.NoError(t, statErr, "file lama tidak boleh dihapus bila penyimpanan DB gagal")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("PreserveOldFileWhenStillReferencedByOtherRecord", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+		sharedFilename := "shared-" + uuid.NewString() + ".jpg"
+		sharedFilePath := filepath.Join(uploadsDir, sharedFilename)
+		require.NoError(t, os.WriteFile(sharedFilePath, makeJPEG(t), 0o600))
+		t.Cleanup(func() { _ = os.Remove(sharedFilePath) })
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at",
+				"cctv_id", "technician_id", "action_taken", "notes", "status",
+				"scheduled_date", "completed_at", "image_url",
+			}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa", "Catatan", "ongoing", nil, nil, "/api/uploads/"+sharedFilename))
+		mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		// Masih direferensikan oleh 1 maintenance_log lain
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
+
+		app := newTestApp()
+		app.Put("/maintenance-logs/:id", withUserLocals(techID.String(), "teknisi"), UpdateMaintenanceLog)
+
+		req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"image_url":"/api/uploads/new-photo.jpg"}`))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		_, statErr := os.Stat(sharedFilePath)
+		assert.NoError(t, statErr, "file yang masih direferensikan record lain tidak boleh dihapus")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("DeleteOldFileWhenUnreferencedInsideUploads", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+		unrefFilename := "unref-" + uuid.NewString() + ".jpg"
+		unrefFilePath := filepath.Join(uploadsDir, unrefFilename)
+		require.NoError(t, os.WriteFile(unrefFilePath, makeJPEG(t), 0o600))
+		t.Cleanup(func() { _ = os.Remove(unrefFilePath) })
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at",
+				"cctv_id", "technician_id", "action_taken", "notes", "status",
+				"scheduled_date", "completed_at", "image_url",
+			}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa", "Catatan", "ongoing", nil, nil, "/api/uploads/"+unrefFilename))
+		mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "field_maintenance_images"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "users"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
+
+		app := newTestApp()
+		app.Put("/maintenance-logs/:id", withUserLocals(techID.String(), "teknisi"), UpdateMaintenanceLog)
+
+		req := httptest.NewRequest("PUT", "/maintenance-logs/"+id.String(), strings.NewReader(`{"image_url":"/api/uploads/new-photo.jpg"}`))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		_, statErr := os.Stat(unrefFilePath)
+		assert.True(t, os.IsNotExist(statErr), "file di dalam uploads yang sudah tidak direferensikan harus dihapus setelah update berhasil")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 }

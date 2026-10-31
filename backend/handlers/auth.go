@@ -436,14 +436,11 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 
 // isSafeUploadPath memastikan path hanya menunjuk ke file upload SIGAP yang aman.
 func isSafeUploadPath(path string) bool {
-	if !strings.HasPrefix(path, "/api/uploads/") {
+	if !strings.HasPrefix(strings.TrimSpace(path), uploadPrefix) {
 		return false
 	}
-	rest := strings.TrimPrefix(path, "/api/uploads/")
-	if rest == "" || strings.Contains(rest, "..") || strings.Contains(rest, "/") || strings.Contains(rest, "\\") {
-		return false
-	}
-	return true
+	_, ok := normalizeUploadFilename(path)
+	return ok
 }
 
 // CreateUser digunakan oleh Admin untuk meregistrasikan akun baru (Admin/Teknisi)
