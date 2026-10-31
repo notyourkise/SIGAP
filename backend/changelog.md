@@ -1,5 +1,36 @@
 # Changelog - Backend SIGAP
 
+## [0.64.40] - 2026-11-01
+
+### [High][H01] Enkapsulasi autentikasi & otorisasi Admin pada jalur media streaming (/stream/* & /hls/*) (#167)
+
+**Masalah**: Jalur media langsung (`/stream/*` untuk WebRTC WHEP dan `/hls/*` untuk HLS) diteruskan ke MediaMTX tanpa memvalidasi sesi JWT maupun peran Admin. Selain itu `mediamtx.yml` mengizinkan `read`/`playback` dari IP mana pun pada seluruh path.
+
+**Perbaikan**:
+- Menambahkan handler `AuthorizeStreamAccess` (`GET/HEAD/POST /api/streams/auth`) untuk subrequest `auth_request` Nginx yang memverifikasi JWT aktif (termasuk pencabutan token setelah logout dan `token_version`), peran `admin`, keberadaan kamera `cam-<uuid>`, status `stream_enabled=true`, serta cakupan `site_id` aktif.
+- Menambahkan `ProxyWHEPStream` (`/stream/*`) dan `ProxyHLSStream` (`/hls/*`) lewat `SetupStreamMediaRoutes(app)` agar akses melalui rewrite Next.js atau tanpa Nginx tetap melewati autentikasi/otorisasi Admin yang sama.
+- Memperketat `loadCCTVByID` pada kontrol stream agar menghormati isolasi `site_id` aktif.
+- Memperbarui `nginx/nginx.conf` dengan subrequest `auth_request /_stream_auth` pada `location /stream/` dan `location /hls/`.
+- Memperketat `mediamtx.yml` (`webrtcTrustedProxies: []`, `ips` internal, dan pembatasan path `~^cam-[0-9a-fA-F-]{36}$` pada `read`/`playback`).
+- Menambahkan regression test lengkap di `backend/handlers/stream_media_test.go` dan `backend/routes/stream_test.go`.
+
+timestamp: 2026-11-01 00:47 UTC+8
+kategori: Tinggi, Backend & Infra (Security / Streaming Auth)
+file yang diubah:
+- backend/handlers/stream_media.go
+- backend/handlers/stream_media_test.go
+- backend/handlers/stream.go
+- backend/routes/stream.go
+- backend/routes/stream_test.go
+- backend/utils/mediamtx.go
+- backend/main.go
+- nginx/nginx.conf
+- mediamtx.yml
+- docker-compose.yml
+
+alasan perubahan: Menutup celah bypass autentikasi pada jalur media video langsung (Issue #167 / H01).
+
+---
 ## [0.64.39] - 2026-10-28
 
 ### Status snapshot CCTV dan penanganan endpoint MediaMTX yang tidak tersedia

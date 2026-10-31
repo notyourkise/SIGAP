@@ -19,7 +19,9 @@ webrtcLocalTCPAddress: :8189
 # yang sah harus datang dari MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS atau STUN.
 webrtcIPsFromInterfaces: false
 webrtcAdditionalHosts: []
-webrtcTrustedProxies: [172.28.0.0/16]
+# Jangan percaya X-Forwarded-For pada MediaMTX agar pemeriksaan IP internal
+# pada authInternalUsers tetap mengikat ke proxy terautentikasi (Nginx/Backend).
+webrtcTrustedProxies: []
 webrtcICEServers2:
   - url: stun:stun.l.google.com:19302
 # HLS Fallback
@@ -33,19 +35,23 @@ hlsSegmentDuration: 1s
 api: yes
 apiAddress: :9997
 
-# Autentikasi internal (menggantikan readUser/readPass yang deprecated).
-#   - playback: boleh dari semua IP (browser menonton WHEP/WebRTC via proxy nginx).
-#   - api:      dibatasi hanya dari subnet Docker (172.28.0.0/16) tempat
-#               container backend (api) berada. Tanpa ini, panggilan API
-#               MediaMTX dari backend ditolak 401 (default hanya izinkan 127.0.0.1).
+# Autentikasi internal (H01 / #167):
+#   - read/playback: HANYA diizinkan dari jaringan internal (loopback / subnet
+#     Docker 172.28.0.0/16 tempat Nginx & Backend berada setelah memvalidasi
+#     sesi Admin via /api/streams/auth), dan dibatasi ke pola path kamera resmi.
+#   - api/metrics/pprof: dibatasi ke subnet internal Docker & loopback.
 authInternalUsers:
   - user: any
     pass: ""
+    ips:
+      - 127.0.0.1/32
+      - ::1/128
+      - 172.28.0.0/16
     permissions:
       - action: read
-        path: ""
+        path: "~^cam-[0-9a-fA-F-]{36}$"
       - action: playback
-        path: ""
+        path: "~^cam-[0-9a-fA-F-]{36}$"
   - user: any
     pass: ""
     ips:

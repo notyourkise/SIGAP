@@ -11,9 +11,9 @@ const nextConfig: NextConfig = {
     // Di dalam Docker container, service backend bernama 'api:3000'.
     // Pada environment standalone local (npm run dev), fallback ke 'localhost:3000'.
     const backendUrl = process.env.INTERNAL_BACKEND_URL || 'http://127.0.0.1:3000';
-    // Nginx menangani /stream pada deployment. Rewrite ini membuat mode lokal
-    // tanpa Nginx tetap dapat meneruskan WHEP ke MediaMTX native di port 8889.
-    const mediamtxWebrtcUrl = process.env.INTERNAL_MEDIAMTX_WEBRTC_URL || 'http://127.0.0.1:8889';
+    // H01 (#167): pada mode pengembangan tanpa Nginx, jalurkan /stream/* dan
+    // /hls/* melalui backend agar autentikasi sesi Admin tetap ditegakkan
+    // (tidak mem-bypass ke MediaMTX secara langsung).
     return [
       {
         source: '/api/:path*',
@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/stream/:path*',
-        destination: `${mediamtxWebrtcUrl}/:path*`,
+        destination: `${backendUrl}/stream/:path*`,
+      },
+      {
+        source: '/hls/:path*',
+        destination: `${backendUrl}/hls/:path*`,
       },
     ];
   },

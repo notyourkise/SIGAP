@@ -294,6 +294,7 @@ func main() {
 	routes.SetupPushRoutes(api)
 	routes.SetupMaintenanceScheduleRoutes(api)
 	routes.SetupStreamRoutes(api)
+	routes.SetupStreamMediaRoutes(app)
 	routes.SetupSparePartRoutes(api)
 	routes.SetupProfileRoutes(api)
 	routes.SetupReportRoutes(api)

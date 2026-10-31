@@ -1,5 +1,23 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.40] - 2026-11-01
+
+### [High][H01] Arahkan rewrite pengembangan /stream/* dan /hls/* melalui backend terautentikasi (#167)
+
+**Masalah**: Rewrite `next.config.ts` meneruskan `/stream/:path*` langsung ke MediaMTX (`:8889`) sehingga melewati pemeriksaan sesi Admin pada mode pengembangan tanpa Nginx.
+
+**Perbaikan**:
+- Mengarahkan rewrite `/stream/:path*` dan `/hls/:path*` di `frontend/next.config.ts` ke `${backendUrl}/stream/:path*` dan `${backendUrl}/hls/:path*`.
+
+timestamp: 2026-11-01 00:47 UTC+8
+kategori: Tinggi, Frontend (Security / Streaming Rewrite)
+file yang diubah:
+- frontend/next.config.ts
+- frontend/changelog.md
+
+alasan perubahan: Menjamin jalur media streaming selalu melewati autentikasi sesi Admin di backend (Issue #167 / H01).
+
+---
 ## [1.55.39] - 2026-10-30
 
 ### Optimasi refresh realtime dashboard (P1.1)
