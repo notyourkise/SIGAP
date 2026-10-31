@@ -84,6 +84,8 @@ func GetAllSpareParts(c *fiber.Ctx) error {
 			})
 		}
 		query = query.Where("site_id = ?", siteID)
+	} else if activeSiteID, ok := c.Locals("site_id").(string); ok && activeSiteID != "" {
+		query = query.Where("site_id = ?", activeSiteID)
 	}
 
 	// Filter kategori (opsional)
@@ -152,6 +154,12 @@ func GetSparePartByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Suku cadang tidak ditemukan",
+		})
+	}
+	if !sparePartMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: suku cadang berada di site lain",
 		})
 	}
 
@@ -283,6 +291,12 @@ func UpdateSparePart(c *fiber.Ctx) error {
 			"message": "Suku cadang tidak ditemukan",
 		})
 	}
+	if !sparePartMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: suku cadang berada di site lain",
+		})
+	}
 
 	var req UpdateSparePartRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -401,6 +415,12 @@ func DeleteSparePart(c *fiber.Ctx) error {
 			"message": "Suku cadang tidak ditemukan",
 		})
 	}
+	if !sparePartMatchesActiveSite(c, item) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: suku cadang berada di site lain",
+		})
+	}
 
 	if err := config.DB.Delete(&item).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -467,7 +487,7 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verifikasi maintenance log ada & berstatus completed.
+	// Verifikasi maintenance log ada, sesuai hak akses (ownership & site), & berstatus completed.
 	var logEntry models.MaintenanceLog
 	if err := config.DB.First(&logEntry, "id = ?", logID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -475,6 +495,34 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 			"message": "Log pemeliharaan tidak ditemukan",
 		})
 	}
+
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		techIDStr, ok := c.Locals("user_id").(string)
+		if !ok || techIDStr == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Sesi tidak valid, Teknisi tidak ditemukan",
+			})
+		}
+		if logEntry.TechnicianID == nil || techIDStr != logEntry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat mencatat penggunaan suku cadang pada tugas milik Anda sendiri",
+			})
+		}
+	}
+
+	var logCCTV models.CCTV
+	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+		if err := config.DB.First(&logCCTV, "id = ?", logEntry.CCTVID).Error; err != nil || !cctvMatchesActiveSite(c, logCCTV) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: log pemeliharaan berada di site lain",
+			})
+		}
+	}
+
 	if logEntry.Status != "completed" {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"status":  "error",
@@ -494,6 +542,19 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 				return fiber.NewError(fiber.StatusNotFound, "Suku cadang tidak ditemukan")
 			}
 			return err
+		}
+		if !sparePartMatchesActiveSite(c, sparePart) {
+			return fiber.NewError(fiber.StatusForbidden, "Akses ditolak: suku cadang berada di site lain")
+		}
+		if sparePart.SiteID != nil {
+			if logCCTV.ID == uuid.Nil {
+				if err := tx.First(&logCCTV, "id = ?", logEntry.CCTVID).Error; err != nil {
+					return fiber.NewError(fiber.StatusForbidden, "Akses ditolak: CCTV tugas pemeliharaan tidak ditemukan")
+				}
+			}
+			if logCCTV.SiteID == nil || logCCTV.SiteID.String() != sparePart.SiteID.String() {
+				return fiber.NewError(fiber.StatusForbidden, "Akses ditolak: suku cadang tidak sesuai dengan site lokasi tugas")
+			}
 		}
 
 		if req.Jumlah > sparePart.Stok {
@@ -590,6 +651,32 @@ func GetSparePartUsageByLog(c *fiber.Ctx) error {
 		})
 	}
 
+	var logEntry models.MaintenanceLog
+	if err := config.DB.First(&logEntry, "id = ?", logID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Log pemeliharaan tidak ditemukan",
+		})
+	}
+
+	userRole, _ := c.Locals("role").(string)
+	if userRole != "admin" {
+		techIDStr, ok := c.Locals("user_id").(string)
+		if !ok || techIDStr == "" || logEntry.TechnicianID == nil || techIDStr != logEntry.TechnicianID.String() {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Akses ditolak: Anda hanya dapat melihat penggunaan suku cadang pada tugas milik Anda sendiri",
+			})
+		}
+	}
+
+	if !ensureMaintenanceLogMatchesActiveSite(c, logEntry) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Akses ditolak: log pemeliharaan berada di site lain",
+		})
+	}
+
 	var usages []models.SparePartUsage
 	if err := config.DB.Preload("SparePart").
 		Where("maintenance_log_id = ?", logID).
@@ -636,4 +723,18 @@ func GetLowStockSpareParts(c *fiber.Ctx) error {
 		"status": "success",
 		"data":   items,
 	})
+}
+
+// sparePartMatchesActiveSite memastikan suku cadang berada pada site aktif
+// ketika konteks site aktif tersedia. Suku cadang global (SiteID == nil) tetap
+// diizinkan apabila belum terikat ke site tertentu.
+func sparePartMatchesActiveSite(c *fiber.Ctx, item models.SparePart) bool {
+	siteID, ok := c.Locals("site_id").(string)
+	if !ok || siteID == "" {
+		return true
+	}
+	if item.SiteID == nil {
+		return true
+	}
+	return item.SiteID.String() == siteID
 }
