@@ -1,6 +1,24 @@
 # Changelog - Frontend SIGAP
 
-## [1.55.42] - 2026-11-02
+## [1.55.43] - 2026-11-02
+
+### [Medium][M04] Sertakan `site_id` aktif saat membuat zona dan saring CCTV sesuai site zona (#177)
+
+**Masalah**: Form pembuatan zona di `frontend/src/app/zona/page.tsx` belum menyertakan `site_id` eksplisit dari cookie `sigap_site_id` pada body `POST /zones`, dan modal penugasan CCTV ke zona belum menyaring daftar CCTV berdasarkan `zone.site_id` ketika admin membuka modal pada mode lintas kawasan.
+
+**Perbaikan**:
+- Menambahkan properti `site_id` pada tipe `Zone` dan `CCTVItem` di `frontend/src/app/zona/page.tsx`.
+- Menyertakan `site_id` dari cookie `sigap_site_id` pada payload pembuatan zona baru (`POST /zones`).
+- Menyaring daftar opsi CCTV pada modal penugasan zona (`openAssign`) agar hanya menampilkan CCTV yang konsisten dengan `zone.site_id`.
+
+timestamp: 2026-11-02 01:33 UTC+8
+kategori: Sedang, Frontend (Zone Management / Multi-Site Consistency)
+file yang diubah:
+- frontend/src/app/zona/page.tsx
+
+alasan perubahan: Menjaga konsistensi pengiriman `site_id` saat membuat zona baru dan saat menugaskan CCTV ke zona pada halaman Zona Operasional (Issue #177 / M04).
+
+---## [1.55.42] - 2026-11-02
 
 ### [Medium][M03] Sesuaikan tipe dan rata-rata kepatuhan SLA dengan metrik tugas dinilai (`assessed`) (#176)
 
