@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"strings"
 	"time"
 
 	"sigap-backend/config"
@@ -105,21 +106,15 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Parsing Waktu
+	// Parsing Waktu pada zona waktu operasional aplikasi (default WITA / Asia/Makassar)
 	var schedDate *time.Time
 	if req.ScheduledDate != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", req.ScheduledDate)
+		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
 		if err != nil {
-			t, err = time.Parse(time.RFC3339, req.ScheduledDate)
-			if err != nil {
-				t, err = time.Parse("2006-01-02", req.ScheduledDate)
-				if err != nil {
-					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-						"status":  "error",
-						"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
-					})
-				}
-			}
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
+			})
 		}
 		schedDate = &t
 	}
@@ -149,12 +144,62 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 	if logEntry.CCTV.SiteID == nil && cctv.SiteID != nil {
 		logEntry.CCTV.SiteID = cctv.SiteID
 	}
+	if logEntry.ScheduledDate == nil && schedDate != nil {
+		logEntry.ScheduledDate = schedDate
+	}
+	normalizeMaintenanceLogTimezone(&logEntry)
 	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_CREATED", logEntry)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
 		"data":   logEntry,
 	})
+}
+
+func parseMaintenanceScheduledDate(raw string) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	loc := config.AppLocation()
+	if t, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return t.In(loc), nil
+	}
+	localLayouts := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04",
+		"2006-01-02",
+	}
+	for _, layout := range localLayouts {
+		if t, err := time.ParseInLocation(layout, trimmed, loc); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("format scheduled_date tidak valid: %s", raw)
+}
+
+func normalizeMaintenanceLogTimezone(logEntry *models.MaintenanceLog) {
+	if logEntry == nil {
+		return
+	}
+	loc := config.AppLocation()
+	if logEntry.ScheduledDate != nil {
+		t := logEntry.ScheduledDate.In(loc)
+		logEntry.ScheduledDate = &t
+	}
+	if logEntry.CompletedAt != nil {
+		t := logEntry.CompletedAt.In(loc)
+		logEntry.CompletedAt = &t
+	}
+	if logEntry.AssignedAt != nil {
+		t := logEntry.AssignedAt.In(loc)
+		logEntry.AssignedAt = &t
+	}
+	if !logEntry.CreatedAt.IsZero() {
+		logEntry.CreatedAt = logEntry.CreatedAt.In(loc)
+	}
+	if !logEntry.UpdatedAt.IsZero() {
+		logEntry.UpdatedAt = logEntry.UpdatedAt.In(loc)
+	}
 }
 
 // GetAllMaintenanceLogs mengambil semua log pemeliharaan (Admin & Teknisi)
@@ -239,6 +284,9 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 			"message": "Gagal mengambil daftar log pemeliharaan",
 		})
 	}
+	for i := range logs {
+		normalizeMaintenanceLogTimezone(&logs[i])
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -298,6 +346,7 @@ func GetMaintenanceLogByID(c *fiber.Ctx) error {
 		}
 	}
 
+	normalizeMaintenanceLogTimezone(&logEntry)
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   logEntry,
@@ -404,22 +453,22 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if req.Notes != "" {
 		logEntry.Notes = req.Notes
 	}
+	var updatedSchedDate *time.Time
 	if req.ScheduledDate != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", req.ScheduledDate)
+		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
 		if err != nil {
-			t, err = time.Parse(time.RFC3339, req.ScheduledDate)
-			if err != nil {
-				t, err = time.Parse("2006-01-02", req.ScheduledDate)
-			}
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
+			})
 		}
-		if err == nil {
-			logEntry.ScheduledDate = &t
-			// Jadwal baru di masa depan membuka kesempatan eskalasi baru bila
-			// tugas kembali terlambat setelah reschedule.
-			if t.After(time.Now()) {
-				logEntry.OverdueNotifiedAt = nil
-				logEntry.OverdueLevel = 0
-			}
+		updatedSchedDate = &t
+		logEntry.ScheduledDate = &t
+		// Jadwal baru di masa depan membuka kesempatan eskalasi baru bila
+		// tugas kembali terlambat setelah reschedule.
+		if t.After(time.Now()) {
+			logEntry.OverdueNotifiedAt = nil
+			logEntry.OverdueLevel = 0
 		}
 	}
 
@@ -446,6 +495,10 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	utils.LogAudit(config.DB, c, "UPDATE_MAINTENANCE", "MAINTENANCE", "Memperbarui log pemeliharaan: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	if logEntry.ScheduledDate == nil && updatedSchedDate != nil {
+		logEntry.ScheduledDate = updatedSchedDate
+	}
+	normalizeMaintenanceLogTimezone(&logEntry)
 	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{
@@ -1022,14 +1075,15 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 	}
 
 	// Baris data
+	loc := config.AppLocation()
 	for _, logEntry := range logs {
 		schedStr := ""
 		if logEntry.ScheduledDate != nil {
-			schedStr = logEntry.ScheduledDate.Format("2006-01-02 15:04:05")
+			schedStr = logEntry.ScheduledDate.In(loc).Format("2006-01-02 15:04:05")
 		}
 		compStr := ""
 		if logEntry.CompletedAt != nil {
-			compStr = logEntry.CompletedAt.Format("2006-01-02 15:04:05")
+			compStr = logEntry.CompletedAt.In(loc).Format("2006-01-02 15:04:05")
 		}
 		techIDStr := ""
 		techName := ""
@@ -1052,7 +1106,7 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 			logEntry.Status,
 			schedStr,
 			compStr,
-			logEntry.CreatedAt.Format("2006-01-02 15:04:05"),
+			logEntry.CreatedAt.In(loc).Format("2006-01-02 15:04:05"),
 		}
 		if err := writer.Write(row); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

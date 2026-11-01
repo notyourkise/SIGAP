@@ -10,6 +10,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"sigap-backend/config"
 )
 
 func expectTechnicianPerformanceQuery(mock sqlmock.Sqlmock, rows *sqlmock.Rows) {
@@ -59,8 +61,8 @@ func TestTechnicianPerformance_ResponseStructure(t *testing.T) {
 
 func TestTechnicianPerformance_DateFilter(t *testing.T) {
 	_, mock := setupMockGORM(t)
-	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, config.AppLocation())
+	endDate := time.Date(2026, 8, 1, 0, 0, 0, 0, config.AppLocation())
 	mock.ExpectQuery(`^SELECT\s+u\.id\s+AS user_id`).
 		WithArgs(sqlmock.AnyArg(), startDate, endDate, startDate, endDate).
 		WillReturnRows(sqlmock.NewRows([]string{

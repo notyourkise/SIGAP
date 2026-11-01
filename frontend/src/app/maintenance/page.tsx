@@ -95,18 +95,63 @@ interface SparePartUsage {
   catatan?: string;
 }
 
-// Waktu lokal "YYYY-MM-DD HH:MM:SS" (bukan UTC)
-const nowLocalDateTime = () => {
-  const date = new Date();
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+const APP_TIMEZONE = 'Asia/Makassar';
+
+const getWitaDateTimeParts = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') {
+      map[part.type] = part.value === '24' ? '00' : part.value;
+    }
+  }
+  return {
+    year: map.year,
+    month: map.month,
+    day: map.day,
+    hour: map.hour,
+    minute: map.minute,
+    second: map.second,
+  };
 };
 
-// "YYYY-MM-DD HH:MM:SS" → nilai input datetime-local "YYYY-MM-DDTHH:MM"
-const toDatetimeLocalInput = (value: string) => (value ? `${value.replace(' ', 'T').slice(0, 16)}` : '');
+// Waktu lokal operasional WITA "YYYY-MM-DD HH:MM:SS" (bukan UTC)
+const nowLocalDateTime = () => {
+  const p = getWitaDateTimeParts(new Date());
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+};
 
-// nilai input datetime-local "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM:SS"
-const fromDatetimeLocalInput = (value: string) => (value ? `${value}:00`.replace('T', ' ') : '');
+// Mengonversi string tanggal/waktu (baik "YYYY-MM-DD HH:MM:SS" tanpa zona maupun
+// ISO/RFC3339 berzona dari backend) → nilai input datetime-local "YYYY-MM-DDTHH:MM" (WITA)
+const toDatetimeLocalInput = (value: string | null | undefined) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+    return trimmed.replace(' ', 'T').slice(0, 16);
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed.replace(' ', 'T').slice(0, 16);
+  }
+  const p = getWitaDateTimeParts(parsed);
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
+
+// nilai input datetime-local "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM:SS" (WITA)
+const fromDatetimeLocalInput = (value: string) => {
+  if (!value) return '';
+  const normalized = value.trim().replace('T', ' ');
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(normalized) ? `${normalized}:00` : normalized;
+};
 
 // Ubah path gambar upload menjadi path thumbnail. Mendukung format baru
 // "/api/uploads/nama" dan format lama "/uploads/nama" → keduanya diarahkan ke
@@ -431,7 +476,7 @@ export default function MaintenanceLogsPage() {
         cctv_id: log.cctv_id,
         action_taken: log.action_taken,
         notes: log.notes || '',
-        scheduled_date: log.scheduled_date ? toDatetimeLocalInput(log.scheduled_date) : nowLocalDateTime(),
+        scheduled_date: log.scheduled_date ? fromDatetimeLocalInput(toDatetimeLocalInput(log.scheduled_date)) : nowLocalDateTime(),
         image_url: log.image_url || ''
       });
     } else {
@@ -648,13 +693,18 @@ export default function MaintenanceLogsPage() {
     }
   };
 
-  // Helper date formatter
+  // Helper date formatter (selalu menampilkan waktu dalam zona operasional WITA / Asia/Makassar)
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
-    const date = new Date(dateStr);
+    const trimmed = dateStr.trim();
+    const normalized = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(trimmed)
+      ? `${trimmed.replace(' ', 'T')}${trimmed.length === 16 ? ':00' : ''}+08:00`
+      : trimmed;
+    const date = new Date(normalized);
     if (Number.isNaN(date.getTime())) return dateStr;
 
     return date.toLocaleString('id-ID', {
+      timeZone: APP_TIMEZONE,
       day: 'numeric',
       month: 'short',
       year: 'numeric',

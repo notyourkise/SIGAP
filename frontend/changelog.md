@@ -1,5 +1,24 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.41] - 2026-11-01
+
+### [Medium][M01] Konsistensi konversi waktu WITA pada form dan tampilan log pemeliharaan (#174)
+
+**Masalah**: Helper 	oDatetimeLocalInput di rontend/src/app/maintenance/page.tsx sebelumnya langsung memotong string tanggal dengan .replace(' ', 'T').slice(0, 16) tanpa mengonversi nilai ISO/RFC3339 berzona dari backend ke zona waktu operasional WITA (Asia/Makassar), serta saat membuka modal edit (handleOpenModal) menyimpan format YYYY-MM-DDTHH:MM langsung ke ormData.scheduled_date.
+
+**Perbaikan**:
+- Menambahkan helper getWitaDateTimeParts berbasis Intl.DateTimeFormat (	imeZone: 'Asia/Makassar') di rontend/src/app/maintenance/page.tsx.
+- Memperbarui 
+owLocalDateTime, 	oDatetimeLocalInput, romDatetimeLocalInput, handleOpenModal, dan ormatDate agar selalu mengonversi dan menampilkan waktu secara konsisten dalam WITA (Asia/Makassar) tanpa pergeseran 8 jam.
+
+timestamp: 2026-11-01 15:43 UTC+8
+kategori: Sedang, Frontend (Timezone Consistency / Maintenance Form)
+file yang diubah:
+- frontend/src/app/maintenance/page.tsx
+
+alasan perubahan: Menjaga konsistensi waktu terjadwal antara form input/edit pemeliharaan dan respons API dalam zona waktu WITA (Issue #174 / M01).
+
+---
 ## [1.55.40] - 2026-11-01
 
 ### [High][H01] Arahkan rewrite pengembangan /stream/* dan /hls/* melalui backend terautentikasi (#167)

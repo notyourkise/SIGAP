@@ -1128,3 +1128,92 @@ func TestCompleteMaintenanceLog_DynamicChecklistTemplatesValidation(t *testing.T
 	assert.Equal(t, fiber.StatusOK, respValid.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// M01: Memastikan input scheduled_date tanpa offset ("YYYY-MM-DD HH:MM:SS" maupun
+// "YYYY-MM-DDTHH:MM") diparse menggunakan zona waktu aplikasi WITA (UTC+8), bukan
+// UTC, sehingga jadwal pukul 09:00 WITA tidak bergeser 8 jam menjadi 17:00 WITA.
+func TestAudit_MaintenanceDateMustUseWITA(t *testing.T) {
+	t.Setenv("APP_TIMEZONE", "Asia/Makassar")
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	logID := uuid.New()
+	techID := uuid.New()
+
+	cctvRows, _ := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvRows)
+	mock.ExpectExec(`^INSERT INTO "maintenance_logs"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	reload := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(logID, time.Now(), time.Now(), nil, cctvID, nil, "Bersihkan lensa kamera", "Rutin", "scheduled", nil, nil, "")
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(reload)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+
+	app := newTestApp()
+	app.Post("/maintenance-logs", withUserLocals(uuid.New().String(), "admin"), CreateMaintenanceLog)
+	app.Put("/maintenance-logs/:id", withUserLocals(techID.String(), "teknisi"), UpdateMaintenanceLog)
+
+	payload := `{"cctv_id":"` + cctvID.String() + `","action_taken":"Bersihkan lensa kamera","scheduled_date":"2026-10-31 09:00:00"}`
+	req := httptest.NewRequest("POST", "/maintenance-logs", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusCreated, resp.StatusCode)
+
+	var createBody map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&createBody))
+	data := createBody["data"].(map[string]interface{})
+	rawScheduled, ok := data["scheduled_date"].(string)
+	require.True(t, ok, "scheduled_date harus dikembalikan pada response")
+
+	parsed, err := time.Parse(time.RFC3339, rawScheduled)
+	require.NoError(t, err)
+
+	witaLoc := time.FixedZone("WITA", 8*60*60)
+	inWITA := parsed.In(witaLoc)
+	assert.Equal(t, 2026, inWITA.Year())
+	assert.Equal(t, time.October, inWITA.Month())
+	assert.Equal(t, 31, inWITA.Day())
+	assert.Equal(t, 9, inWITA.Hour(), "09:00 WITA harus tetap pukul 09:00 WITA, bukan 17:00 WITA")
+	assert.Equal(t, 0, inWITA.Minute())
+	assert.Equal(t, 1, parsed.UTC().Hour(), "09:00 WITA setara dengan 01:00 UTC")
+
+	// Uji juga UpdateMaintenanceLog dengan input lokal tanpa zona waktu
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(logID, techID, cctvID))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(logID, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	updatePayload := `{"scheduled_date":"2026-11-01 14:30:00"}`
+	reqUpdate := httptest.NewRequest("PUT", "/maintenance-logs/"+logID.String(), strings.NewReader(updatePayload))
+	reqUpdate.Header.Set("Content-Type", "application/json")
+	respUpdate, err := app.Test(reqUpdate)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, respUpdate.StatusCode)
+
+	var updateBody map[string]interface{}
+	require.NoError(t, json.NewDecoder(respUpdate.Body).Decode(&updateBody))
+	updateData := updateBody["data"].(map[string]interface{})
+	rawUpdatedScheduled, ok := updateData["scheduled_date"].(string)
+	require.True(t, ok)
+
+	parsedUpdate, err := time.Parse(time.RFC3339, rawUpdatedScheduled)
+	require.NoError(t, err)
+	assert.Equal(t, 14, parsedUpdate.In(witaLoc).Hour())
+	assert.Equal(t, 30, parsedUpdate.In(witaLoc).Minute())
+	assert.Equal(t, 6, parsedUpdate.UTC().Hour())
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
