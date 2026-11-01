@@ -309,3 +309,103 @@ func TestDeleteMaintenanceSchedule_Success(t *testing.T) {
 	assert.Equal(t, "success", result["status"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestAudit_ScheduleMustAcceptSLAPolicy menguji pembuatan dan pembaruan jadwal
+// pemeliharaan rutin dengan sla_policy_id melalui API (Issue #175 / M02).
+func TestAudit_ScheduleMustAcceptSLAPolicy(t *testing.T) {
+	t.Run("create schedule with valid sla_policy_id", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		cctvID, slaID, newID := uuid.New(), uuid.New(), uuid.New()
+
+		cctvRows, _ := cctvMockRow()
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(cctvRows)
+		mock.ExpectQuery(`^SELECT \* FROM "sla_policies"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "nama", "jenis_tugas", "target_jam_selesai", "aktif"}).
+				AddRow(slaID, "SLA Rutin Standar", "rutin", 24, true))
+		mock.ExpectExec(`^INSERT INTO "maintenance_schedules"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		reload := maintenanceScheduleRows(newID, cctvID, nil, "weekly", true)
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).WillReturnRows(reload)
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
+				AddRow(cctvID, "CAM-1", "Kamera", "Aktif"))
+
+		app := newTestApp()
+		app.Post("/maintenance-schedules", withUserLocals(uuid.New().String(), "admin"), CreateMaintenanceSchedule)
+
+		body := `{"cctv_id":"` + cctvID.String() + `","sla_policy_id":"` + slaID.String() + `","action_taken":"Inspeksi berkala lensa","frequency":"weekly"}`
+		req := httptest.NewRequest("POST", "/maintenance-schedules", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusCreated, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		data := result["data"].(map[string]interface{})
+		assert.Equal(t, slaID.String(), data["sla_policy_id"])
+		slaObj, ok := data["sla_policy"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "SLA Rutin Standar", slaObj["nama"])
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("create schedule with non-existent sla_policy_id returns 404", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		cctvID, slaID := uuid.New(), uuid.New()
+
+		cctvRows, _ := cctvMockRow()
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(cctvRows)
+		mock.ExpectQuery(`^SELECT \* FROM "sla_policies"`).
+			WillReturnError(gorm.ErrRecordNotFound)
+
+		app := newTestApp()
+		app.Post("/maintenance-schedules", withUserLocals(uuid.New().String(), "admin"), CreateMaintenanceSchedule)
+
+		body := `{"cctv_id":"` + cctvID.String() + `","sla_policy_id":"` + slaID.String() + `","action_taken":"Inspeksi berkala lensa","frequency":"weekly"}`
+		req := httptest.NewRequest("POST", "/maintenance-schedules", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("update schedule attaches and detaches sla_policy_id", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		id, cctvID, slaID := uuid.New(), uuid.New(), uuid.New()
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).
+			WillReturnRows(maintenanceScheduleRows(id, cctvID, nil, "weekly", true))
+		mock.ExpectQuery(`^SELECT \* FROM "sla_policies"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "nama", "jenis_tugas", "target_jam_selesai", "aktif"}).
+				AddRow(slaID, "SLA Rutin Standar", "rutin", 24, true))
+		mock.ExpectExec(`^UPDATE "maintenance_schedules" SET`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		reload := maintenanceScheduleRows(id, cctvID, nil, "weekly", true)
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).WillReturnRows(reload)
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+
+		app := newTestApp()
+		app.Put("/maintenance-schedules/:id", withUserLocals(uuid.New().String(), "admin"), UpdateMaintenanceSchedule)
+
+		req := httptest.NewRequest("PUT", "/maintenance-schedules/"+id.String(),
+			strings.NewReader(`{"sla_policy_id":"`+slaID.String()+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		var result map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		data := result["data"].(map[string]interface{})
+		assert.Equal(t, slaID.String(), data["sla_policy_id"])
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}

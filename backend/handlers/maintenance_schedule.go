@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"time"
 
 	"sigap-backend/config"
@@ -13,20 +14,27 @@ import (
 
 // CreateMaintenanceScheduleRequest adalah body pembuatan jadwal pemeliharaan
 // berulang. TechnicianID opsional — bila diisi wajib berperan "teknisi".
+// SLAPolicyID opsional — bila diisi wajib menunjuk ke master SLAPolicy aktif
+// (preventive / corrective / field_check) agar seluruh MaintenanceLog hasil
+// generator jadwal ini otomatis dipantau di dashboard dan pemeriksa SLA; bila
+// kosong, jadwal berjalan normal tanpa target SLA khusus.
 type CreateMaintenanceScheduleRequest struct {
 	CCTVID       string `json:"cctv_id" validate:"required,uuid4"`
 	TechnicianID string `json:"technician_id" validate:"omitempty,uuid4"`
+	SLAPolicyID  string `json:"sla_policy_id" validate:"omitempty,uuid4"`
 	ActionTaken  string `json:"action_taken" validate:"required,min=5"`
 	Frequency    string `json:"frequency" validate:"required,oneof=daily weekly monthly"`
 }
 
 // UpdateMaintenanceScheduleRequest adalah body pembaruan jadwal. TechnicianID
-// memakai pointer agar bisa dibedakan: nilai pointer non-nil "" berarti admin
-// ingin melepas teknisi (di-set nil di database), non-nil UUID berarti mengganti
-// teknisi, dan nil (field tidak dikirim) berarti tidak ada perubahan.
+// dan SLAPolicyID memakai pointer agar bisa dibedakan: nilai pointer non-nil ""
+// berarti admin ingin melepas relasi (di-set nil di database), non-nil UUID
+// berarti mengganti teknisi/kebijakan SLA, dan nil (field tidak dikirim) berarti
+// tidak ada perubahan.
 type UpdateMaintenanceScheduleRequest struct {
 	CCTVID       string  `json:"cctv_id" validate:"omitempty,uuid4"`
 	TechnicianID *string `json:"technician_id" validate:"omitempty"`
+	SLAPolicyID  *string `json:"sla_policy_id" validate:"omitempty"`
 	ActionTaken  string  `json:"action_taken" validate:"omitempty,min=5"`
 	Frequency    string  `json:"frequency" validate:"omitempty,oneof=daily weekly monthly"`
 }
@@ -135,11 +143,34 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 		technician = &techUUID
 	}
 
+	// Kebijakan SLA opsional: bila disertakan, wajib terdaftar di tabel sla_policies.
+	var slaPolicyID *uuid.UUID
+	var loadedSLAPolicy *models.SLAPolicy
+	if rawSLA := strings.TrimSpace(req.SLAPolicyID); rawSLA != "" {
+		slaUUID, err := uuid.Parse(rawSLA)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "ID kebijakan SLA tidak valid",
+			})
+		}
+		var slaPolicy models.SLAPolicy
+		if err := config.DB.First(&slaPolicy, "id = ?", slaUUID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Kebijakan SLA tidak ditemukan",
+			})
+		}
+		slaPolicyID = &slaUUID
+		loadedSLAPolicy = &slaPolicy
+	}
+
 	// Jadwal baru langsung aktif; NextRunAt dihitung dari waktu sekarang
 	// + interval frekuensi (generator mulai boleh membuat log setelah itu).
 	schedule := models.MaintenanceSchedule{
 		CCTVID:       cctvUUID,
 		TechnicianID: technician,
+		SLAPolicyID:  slaPolicyID,
 		ActionTaken:  req.ActionTaken,
 		Frequency:    req.Frequency,
 		NextRunAt:    nextRunForFrequency(req.Frequency, time.Now()),
@@ -178,6 +209,12 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 
 	// Muat ulang dengan relasi (CCTV & teknisi) untuk respon JSON
 	config.DB.Preload("CCTV").Preload("Technician").First(&schedule, schedule.ID)
+	if schedule.SLAPolicyID == nil && slaPolicyID != nil {
+		schedule.SLAPolicyID = slaPolicyID
+	}
+	if schedule.SLAPolicy == nil && loadedSLAPolicy != nil {
+		schedule.SLAPolicy = loadedSLAPolicy
+	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -204,14 +241,14 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 // @Router       /maintenance-schedules [get]
 func GetAllMaintenanceSchedules(c *fiber.Ctx) error {
 	var schedules []models.MaintenanceSchedule
-	query := config.DB.Model(&models.MaintenanceSchedule{}).Preload("CCTV").Preload("Technician")
+	query := config.DB.Model(&models.MaintenanceSchedule{}).Preload("CCTV").Preload("Technician").Preload("SLAPolicy")
 
 	// Filter status aktif/nonaktif jadwal (opsional)
 	if isActive := c.Query("is_active"); isActive != "" {
 		query = query.Where("is_active = ?", isActive == "true")
 	}
 
-	allowedSort := []string{"id", "cctv_id", "technician_id", "action_taken", "frequency", "next_run_at", "is_active", "last_generated_at", "created_at", "updated_at"}
+	allowedSort := []string{"id", "cctv_id", "technician_id", "sla_policy_id", "action_taken", "frequency", "next_run_at", "is_active", "last_generated_at", "created_at", "updated_at"}
 	limit, page, sort := utils.GetPaginationParams(c, allowedSort)
 
 	var totalRows int64
@@ -264,7 +301,7 @@ func GetMaintenanceScheduleByID(c *fiber.Ctx) error {
 	}
 
 	var schedule models.MaintenanceSchedule
-	if err := config.DB.Preload("CCTV").Preload("Technician").First(&schedule, "id = ?", id).Error; err != nil {
+	if err := config.DB.Preload("CCTV").Preload("Technician").Preload("SLAPolicy").First(&schedule, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Jadwal pemeliharaan tidak ditemukan",
@@ -383,6 +420,38 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 		}
 	}
 
+	// SLAPolicyID pointer: nil = tidak diubah; "" = lepas kebijakan SLA;
+	// UUID valid = ganti kebijakan SLA (wajib ada di tabel sla_policies).
+	var updatedSLAPolicyID *uuid.UUID
+	var updatedSLAPolicy *models.SLAPolicy
+	slaCleared := false
+	if req.SLAPolicyID != nil {
+		trimmedSLA := strings.TrimSpace(*req.SLAPolicyID)
+		if trimmedSLA == "" {
+			schedule.SLAPolicyID = nil
+			schedule.SLAPolicy = nil
+			slaCleared = true
+		} else {
+			slaUUID, err := uuid.Parse(trimmedSLA)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": "ID kebijakan SLA tidak valid",
+				})
+			}
+			var slaPolicy models.SLAPolicy
+			if err := config.DB.First(&slaPolicy, "id = ?", slaUUID).Error; err != nil {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Kebijakan SLA tidak ditemukan",
+				})
+			}
+			schedule.SLAPolicyID = &slaUUID
+			updatedSLAPolicyID = &slaUUID
+			updatedSLAPolicy = &slaPolicy
+		}
+	}
+
 	// Reset jadwal berikutnya bila frekuensi berubah — siklus baru dihitung
 	// mulai dari sekarang agar generator tidak langsung mengejar jadwal lama.
 	if frequencyChanged {
@@ -423,6 +492,17 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 
 	// Muat ulang dengan relasi untuk respon JSON
 	config.DB.Preload("CCTV").Preload("Technician").First(&schedule, schedule.ID)
+	if slaCleared {
+		schedule.SLAPolicyID = nil
+		schedule.SLAPolicy = nil
+	} else {
+		if schedule.SLAPolicyID == nil && updatedSLAPolicyID != nil {
+			schedule.SLAPolicyID = updatedSLAPolicyID
+		}
+		if schedule.SLAPolicy == nil && updatedSLAPolicy != nil {
+			schedule.SLAPolicy = updatedSLAPolicy
+		}
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",
