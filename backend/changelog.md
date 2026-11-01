@@ -1,5 +1,31 @@
 # Changelog - Backend SIGAP
 
+## [0.64.47] - 2026-11-01
+
+### [Medium][M01] Konsistensi zona waktu WITA pada jadwal dan filter tanggal pemeliharaan (#174)
+
+**Masalah**: CreateMaintenanceLog dan UpdateMaintenanceLog di ackend/handlers/maintenance.go serta ParseDateRangeParams di ackend/utils/pagination.go sebelumnya menggunakan 	ime.Parse tanpa lokasi untuk input tanggal/waktu tanpa offset (YYYY-MM-DD HH:MM:SS dan YYYY-MM-DD), sehingga Go mem-parse nilai tersebut sebagai UTC. Akibatnya, input jadwal 2026-10-31 09:00:00 dari form web tersimpan sebagai 2026-10-31T09:00:00Z (**17:00 WITA**, bergeser 8 jam), dan filter tanggal memotong batas hari menurut tengah malam UTC alih-alih WITA.
+
+**Perbaikan**:
+- Memindahkan penyedia lokasi operasional AppLocation() (Asia/Makassar / fallback WITA UTC+8) ke ackend/utils/pagination.go dan mendelegasikan config.AppLocation() ke utils.AppLocation().
+- Memperbarui ParseDateRangeParams di ackend/utils/pagination.go agar mem-parse start_date dan end_date menggunakan 	ime.ParseInLocation("2006-01-02", ..., AppLocation()).
+- Menambahkan parseMaintenanceScheduledDate dan 
+ormalizeMaintenanceLogTimezone di ackend/handlers/maintenance.go sehingga CreateMaintenanceLog, UpdateMaintenanceLog, GetAllMaintenanceLogs, GetMaintenanceLogByID, dan ExportMaintenanceLogs secara konsisten mem-parse dan mengembalikan waktu terjadwal pada zona aplikasi (WITA).
+- Menambahkan regression test TestAudit_MaintenanceDateMustUseWITA di ackend/handlers/maintenance_test.go dan memperbarui pengujian ParseDateRangeParams di ackend/utils/pagination_test.go.
+
+timestamp: 2026-11-01 15:43 UTC+8
+kategori: Sedang, Backend (Timezone Consistency / Maintenance Scheduling)
+file yang diubah:
+- backend/utils/pagination.go
+- backend/utils/pagination_test.go
+- backend/config/timezone.go
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
+
+alasan perubahan: Menghilangkan pergeseran waktu 8 jam antara input form pemeliharaan dan penyimpanan/pembacaan jadwal di backend (Issue #174 / M01).
+
+---
 ## [0.64.46] - 2026-11-01
 
 ### [High][H07] Validasi checklist terhadap template aktif/wajib dan verifikasi fisik foto bukti (#173)
@@ -26,6 +52,7 @@ file yang diubah:
 - backend/handlers/helpers_test.go
 - backend/handlers/field_maintenance_test.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 
 alasan perubahan: Mencegah penyelesaian tugas pemeliharaan dan pelaporan pengecekan lapangan menggunakan item checklist karangan atau foto bukti fiktif (Issue #173 / H07).
 
@@ -50,6 +77,7 @@ file yang diubah:
 - backend/utils/websocket_test.go
 - backend/handlers/maintenance.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/schedule_runner.go
 - backend/handlers/overdue_checker.go
 - backend/handlers/api_key.go
@@ -1312,6 +1340,7 @@ kategori: Sedang, Backend (Bug Fix + Reporting)
 file yang diubah:
 - backend/handlers/maintenance.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/report.go
 - backend/handlers/site.go
 - backend/handlers/site_test.go
@@ -2762,6 +2791,7 @@ file yang diubah:
 - backend/handlers/helpers_test.go
 - backend/handlers/maintenance.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/field_maintenance.go
 - backend/handlers/field_maintenance_test.go
 - backend/routes/cctv.go
@@ -2849,6 +2879,7 @@ kategori: Sedang, Backend
 file yang diubah:
 - backend/handlers/maintenance.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/docs/docs.go
 - backend/docs/swagger.json
 - backend/docs/swagger.yaml
@@ -2894,6 +2925,7 @@ kategori: Kecil, Backend
 file yang diubah:
 - backend/handlers/cctv_sync.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/changelog.md
 
 
@@ -2938,6 +2970,7 @@ file yang diubah:
 - backend/handlers/field_maintenance.go
 - backend/handlers/cctv_test.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/field_maintenance_test.go
 - backend/docs/ (swag init)
 - backend/changelog.md
@@ -3116,6 +3149,7 @@ file yang diubah:
 - backend/handlers/dashboard.go
 - backend/handlers/report.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/docs/* (regenerasi swag)
 - backend/changelog.md
 verifikasi:
@@ -3428,6 +3462,7 @@ file yang diubah:
 - backend/config/migrate_test.go
 - backend/handlers/cctv_test.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/routes/routes_test.go
 - backend/routes/websocket_test.go
 alasan teknis: Menutup coverage boundary dan jalur sukses yang tersisa sebelum masuk ke versioned database migration.
@@ -3449,6 +3484,7 @@ file yang diubah:
 - backend/config/database_test.go
 - backend/handlers/cctv_test.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/user_test.go
 - backend/models/seeder_test.go
 - backend/routes/routes_test.go
@@ -3474,6 +3510,7 @@ file yang diubah:
 - backend/models/setup_test.go
 - backend/handlers/cctv_test.go
 - backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go
 - backend/handlers/user_test.go
 alasan teknis: Mencegah kehilangan jejak audit saat gangguan database sementara dan memperkecil risiko regresi pada endpoint mutasi.
 
@@ -3505,7 +3542,8 @@ file yang diubah:
 - backend/handlers/auth_extra_test.go (baru)
 - backend/handlers/user_test.go (baru)
 - backend/handlers/cctv_test.go (baru)
-- backend/handlers/maintenance_test.go (baru)
+- backend/handlers/maintenance_test.go
+- backend/handlers/technician_performance_test.go (baru)
 - backend/handlers/dashboard_test.go (baru)
 - backend/handlers/audit_test.go (baru)
 - backend/handlers/upload_test.go (baru)

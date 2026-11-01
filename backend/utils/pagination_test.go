@@ -112,6 +112,7 @@ func TestCalculatePagination(t *testing.T) {
 }
 
 func TestParseDateRangeParams_Valid(t *testing.T) {
+	t.Setenv("APP_TIMEZONE", "Asia/Makassar")
 	app := fiber.New()
 	app.Get("/", dateRangeTestHandler)
 	req := httptest.NewRequest("GET", "/?start_date=2026-01-01&end_date=2026-01-15", nil)
@@ -120,13 +121,14 @@ func TestParseDateRangeParams_Valid(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	// Mulai dari tengah malam tanggal awal
-	assert.Equal(t, "2026-01-01T00:00:00Z", result["start"])
-	// Akhir di-increment satu hari agar mencakup seluruh tanggal 15 Januari
-	assert.Equal(t, "2026-01-16T00:00:00Z", result["end"])
+	// Mulai dari tengah malam WITA (+08:00) tanggal awal
+	assert.Equal(t, "2026-01-01T00:00:00+08:00", result["start"])
+	// Akhir di-increment satu hari agar mencakup seluruh tanggal 15 Januari WITA
+	assert.Equal(t, "2026-01-16T00:00:00+08:00", result["end"])
 }
 
 func TestParseDateRangeParams_InvalidAndMissing(t *testing.T) {
+	t.Setenv("APP_TIMEZONE", "Asia/Makassar")
 	app := fiber.New()
 	app.Get("/", dateRangeTestHandler)
 
@@ -150,10 +152,11 @@ func TestParseDateRangeParams_InvalidAndMissing(t *testing.T) {
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "", result["start"])
-	assert.Equal(t, "2026-01-02T00:00:00Z", result["end"])
+	assert.Equal(t, "2026-01-02T00:00:00+08:00", result["end"])
 }
 
 func TestParseDateRangeParams_OneSided(t *testing.T) {
+	t.Setenv("APP_TIMEZONE", "Asia/Makassar")
 	app := fiber.New()
 	app.Get("/", dateRangeTestHandler)
 	req := httptest.NewRequest("GET", "/?start_date=2026-05-20", nil)
@@ -162,6 +165,6 @@ func TestParseDateRangeParams_OneSided(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	assert.Equal(t, "2026-05-20T00:00:00Z", result["start"])
+	assert.Equal(t, "2026-05-20T00:00:00+08:00", result["start"])
 	assert.Equal(t, "", result["end"])
 }
