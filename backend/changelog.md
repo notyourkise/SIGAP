@@ -1,5 +1,35 @@
 # Changelog - Backend SIGAP
 
+## [0.64.46] - 2026-11-01
+
+### [High][H07] Validasi checklist terhadap template aktif/wajib dan verifikasi fisik foto bukti (#173)
+
+**Masalah**: Penyelesaian tugas pemeliharaan (CompleteMaintenanceLog di ackend/handlers/maintenance.go) dan pencatatan pengecekan lapangan (CreateFieldMaintenance di ackend/handlers/field_maintenance.go) sebelumnya hanya memeriksa bahwa array checks berisi minimal 1 item tanpa memvalidasi kelengkapan maupun kesesuaian terhadap template checklist aktif/wajib (models.ChecklistTemplate), serta hanya memeriksa awalan string /api/uploads/ pada images[].image_url tanpa memverifikasi keberadaan file fisik di direktori unggahan. Akibatnya teknisi dapat menyelesaikan tugas memakai 1 item checklist karangan dan URL foto bukti fiktif.
+
+**Perbaikan**:
+- Mengekstrak daftar template resmi bawaan ke fungsi models.DefaultChecklistTemplates() di ackend/models/seeder.go sebagai fallback aman apabila kueri checklist_templates tidak mengembalikan baris.
+- Menambahkan dukungan 	emplate_id (opsional, UUID) pada FieldCheckItem serta fungsi loadActiveChecklistTemplates, alidateChecklistItemsAgainstTemplates, dan alidateEvidenceImages di ackend/handlers/field_maintenance.go:
+  - Memastikan setiap item checks merujuk ke template checklist aktif (baik melalui 	emplate_id maupun pencocokan nama ternormalisasi) dan menolak item karangan di luar template aktif.
+  - Memastikan tidak ada duplikasi item template dalam satu pengiriman laporan.
+  - Memastikan seluruh template aktif yang bersifat wajib (wajib = true) terisi lengkap sebelum laporan atau penyelesaian tugas diterima, dengan tetap mendukung jumlah template dinamis beserta item opsional (wajib = false).
+  - Menyimpan nama kanonik template (NamaItem) serta status Wajib pada models.FieldMaintenanceCheck.
+  - Memverifikasi bahwa setiap images[].image_url merujuk ke file reguler non-kosong yang benar-benar ada di dalam uploadsDir dan bebas duplikasi.
+- Menerapkan validasi template checklist dan foto bukti fisik pada CompleteMaintenanceLog (ackend/handlers/maintenance.go) dan CreateFieldMaintenance (ackend/handlers/field_maintenance.go).
+- Menambahkan regression test TestAudit_CompletionMustRejectInventedChecklist, TestCompleteMaintenanceLog_DynamicChecklistTemplatesValidation (ackend/handlers/maintenance_test.go), dan TestAudit_FieldMaintenanceMustRejectInventedChecklistAndFakePhoto (ackend/handlers/field_maintenance_test.go).
+
+timestamp: 2026-11-01 12:22 UTC+8
+kategori: Tinggi, Backend (Business Logic Integrity / Input Validation)
+file yang diubah:
+- backend/models/seeder.go
+- backend/handlers/field_maintenance.go
+- backend/handlers/maintenance.go
+- backend/handlers/helpers_test.go
+- backend/handlers/field_maintenance_test.go
+- backend/handlers/maintenance_test.go
+
+alasan perubahan: Mencegah penyelesaian tugas pemeliharaan dan pelaporan pengecekan lapangan menggunakan item checklist karangan atau foto bukti fiktif (Issue #173 / H07).
+
+---
 ## [0.64.45] - 2026-11-01
 
 ### [High][H06] Pembatasan broadcast WebSocket pemeliharaan berdasarkan site dan ownership (#172)

@@ -61,7 +61,18 @@ func SeedChecklistTemplates(db *gorm.DB) {
 		return
 	}
 
-	defaults := []ChecklistTemplate{
+	defaults := DefaultChecklistTemplates()
+
+	if err := db.Create(&defaults).Error; err != nil {
+		log.Fatalf("❌ Gagal membuat template checklist default: %v", err)
+	}
+	log.Println("🚀 Template checklist pengecekan default berhasil dibuat (9 item)")
+}
+
+// DefaultChecklistTemplates mengembalikan 9 item template checklist resmi default
+// yang semuanya bersifat aktif dan wajib.
+func DefaultChecklistTemplates() []ChecklistTemplate {
+	return []ChecklistTemplate{
 		{NamaItem: "Pengecekan jaringan", Deskripsi: "Pastikan koneksi jaringan kamera ke NVR normal.", Urutan: 1, Wajib: true, Aktif: true},
 		{NamaItem: "Pengecekan pasokan listrik", Deskripsi: "Periksa adaptor/PoE/panel surya; pastikan tegangan stabil.", Urutan: 2, Wajib: true, Aktif: true},
 		{NamaItem: "Pembersihan lensa", Deskripsi: "Bersihkan lensa dari debu/kotoran/sarang laba-laba.", Urutan: 3, Wajib: true, Aktif: true},
@@ -72,11 +83,6 @@ func SeedChecklistTemplates(db *gorm.DB) {
 		{NamaItem: "Pemeriksaan kabel & konektor", Deskripsi: "Periksa kabel, konektor, jalur instalasi.", Urutan: 8, Wajib: true, Aktif: true},
 		{NamaItem: "Pengecekan lingkungan sekitar", Deskripsi: "Pastikan area sekitar kamera bersih, tidak ada halangan.", Urutan: 9, Wajib: true, Aktif: true},
 	}
-
-	if err := db.Create(&defaults).Error; err != nil {
-		log.Fatalf("❌ Gagal membuat template checklist default: %v", err)
-	}
-	log.Println("🚀 Template checklist pengecekan default berhasil dibuat (9 item)")
 }
 
 // EnsureDefaultSite memastikan site default "OIKN" selalu ada saat startup

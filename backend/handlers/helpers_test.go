@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -66,9 +68,30 @@ func newUserMockRows(rows []modelsUserRow) *sqlmock.Rows {
 // setupMockGORM menyiapkan GORM + sqlmock dan meng-inject ke config.DB.
 func setupMockGORM(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 	t.Helper()
+	ensureStandardTestUploadFixtures(t)
 	gormDB, mock := SetupTestDB(t)
 	config.DB = gormDB
 	return gormDB, mock
+}
+
+func ensureStandardTestUploadFixtures(t *testing.T) {
+	t.Helper()
+	_ = os.MkdirAll(uploadsDir, 0755)
+	fixtures := []string{"a.jpg", "b.jpg", "bukti1.jpg", "foto.jpg", "baru.jpg", "lama.jpg"}
+	var created []string
+	for _, name := range fixtures {
+		p := filepath.Join(uploadsDir, name)
+		if _, err := os.Lstat(p); os.IsNotExist(err) {
+			if writeErr := os.WriteFile(p, []byte{0xff, 0xd8, 0xff, 0xd9}, 0644); writeErr == nil {
+				created = append(created, p)
+			}
+		}
+	}
+	t.Cleanup(func() {
+		for _, p := range created {
+			_ = os.Remove(p)
+		}
+	})
 }
 
 // expectHealthScoreRecalculation menyiapkan ekspektasi query kalkulator yang

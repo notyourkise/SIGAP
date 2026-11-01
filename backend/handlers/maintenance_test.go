@@ -558,11 +558,11 @@ func TestAssignMaintenanceLog_InvalidUUID(t *testing.T) {
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
 
-// completeChecks membangun payload checklist 9 item; "allOK=false" membuat salah satu item not_ok.
+// completeChecks membangun payload checklist 9 item resmi; "allOK=false" membuat salah satu item not_ok.
 func completeChecks(allOK bool) string {
 	items := []string{
-		"Jaringan internet kamera", "Pasokan listrik", "Kebersihan lensa", "Kondisi fisik kamera",
-		"Kualitas gambar", "Fungsi perekaman", "Akses jarak jauh", "Kabel & konektor", "Lingkungan sekitar",
+		"Pengecekan jaringan", "Pengecekan pasokan listrik", "Pembersihan lensa", "Pemeriksaan fisik kamera",
+		"Pengecekan kualitas gambar", "Pengujian perekaman", "Pengecekan akses jarak jauh", "Pemeriksaan kabel & konektor", "Pengecekan lingkungan sekitar",
 	}
 	checks := make([]string, 0, 9)
 	for i, name := range items {
@@ -1006,4 +1006,125 @@ func TestBroadcastMaintenanceLogEvent_MinimalPayloadAndRecipientIsolation(t *tes
 	require.NoError(t, siteBConn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
 	_, _, err = siteBConn.ReadMessage()
 	assert.Error(t, err, "teknisi site-b tidak boleh menerima event tugas site-a")
+}
+
+// H07: Reproduksi eksploitasi dari laporan audit — penyelesaian tugas dengan
+// item checklist karangan dan foto bukti fiktif wajib ditolak dengan 400.
+func TestAudit_CompletionMustRejectInventedChecklist(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	// 1. Foto bukti fiktif + checklist karangan -> 400
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	fakePhotoBody := `{"checks":[{"name":"This is not an official checklist item","result":"ok","note":""}],"images":[{"image_url":"/api/uploads/does-not-exist.jpg"}],"notes":"Completed without active template checks"}`
+	reqFakePhoto := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(fakePhotoBody))
+	reqFakePhoto.Header.Set("Content-Type", "application/json")
+	respFakePhoto, err := app.Test(reqFakePhoto)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respFakePhoto.StatusCode)
+
+	// 2. Foto bukti valid tetapi checklist karangan / tidak mencakup seluruh template wajib -> 400
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "checklist_templates"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "nama_item", "urutan", "wajib", "aktif"}))
+	inventedCheckBody := `{"checks":[{"name":"This is not an official checklist item","result":"ok","note":""}],"images":[{"image_url":"/api/uploads/a.jpg"}],"notes":"Completed without active template checks"}`
+	reqInvented := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(inventedCheckBody))
+	reqInvented.Header.Set("Content-Type", "application/json")
+	respInvented, err := app.Test(reqInvented)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respInvented.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// H07: Menguji validasi template dinamis (jumlah item bervariasi, kombinasi wajib=true & wajib=false),
+// penolakan item wajib yang absen, penolakan duplikat item, serta pencocokan template_id.
+func TestCompleteMaintenanceLog_DynamicChecklistTemplatesValidation(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+	tpl1ID, tpl2ID, tplOptID := uuid.New(), uuid.New(), uuid.New()
+
+	templateRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"id", "nama_item", "urutan", "wajib", "aktif"}).
+			AddRow(tpl1ID, "Pengecekan PoE Switch", 1, true, true).
+			AddRow(tpl2ID, "Pembersihan Housing Outdoor", 2, true, true).
+			AddRow(tplOptID, "Pengecekan IR Illuminator Tambahan", 3, false, true)
+	}
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	// Kasus 1: Hanya mengirim 1 dari 2 item wajib -> 400
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "checklist_templates"`).
+		WillReturnRows(templateRows())
+
+	missingMandatory := `{"checks":[{"name":"Pengecekan PoE Switch","result":"ok"}],"images":[{"image_url":"/api/uploads/a.jpg"}]}`
+	reqMissing := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(missingMandatory))
+	reqMissing.Header.Set("Content-Type", "application/json")
+	respMissing, err := app.Test(reqMissing)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respMissing.StatusCode)
+
+	// Kasus 2: Mengirim duplikat item wajib -> 400
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "checklist_templates"`).
+		WillReturnRows(templateRows())
+
+	duplicateItem := `{"checks":[{"name":"Pengecekan PoE Switch","result":"ok"},{"name":"Pengecekan PoE Switch","result":"ok"},{"name":"Pembersihan Housing Outdoor","result":"ok"}],"images":[{"image_url":"/api/uploads/a.jpg"}]}`
+	reqDup := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(duplicateItem))
+	reqDup.Header.Set("Content-Type", "application/json")
+	respDup, err := app.Test(reqDup)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respDup.StatusCode)
+
+	// Kasus 3: Mengirim seluruh item wajib (2 item) tanpa item opsional, menggunakan template_id -> 200 OK
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectQuery(`^SELECT \* FROM "checklist_templates"`).
+		WillReturnRows(templateRows())
+	mock.ExpectBegin()
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "field_maintenance_checks"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "field_maintenance_checks"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "field_maintenance_images"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	syncRows, _ := cctvMockRowWithStatus("pemeliharaan")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(syncRows)
+	mock.ExpectExec(`^UPDATE "cctvs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	reload := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(id, time.Now(), time.Now(), nil, cctvID, techID, "Bersihkan lensa kamera", "Normal", "completed", nil, time.Now(), "")
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(reload)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+	expectHealthScoreRecalculation(mock)
+
+	validDynamic := `{"checks":[{"template_id":"` + tpl1ID.String() + `","name":"Pengecekan PoE Switch","result":"ok"},{"template_id":"` + tpl2ID.String() + `","name":"Pembersihan Housing Outdoor","result":"ok"}],"images":[{"image_url":"/api/uploads/a.jpg"}]}`
+	reqValid := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(validDynamic))
+	reqValid.Header.Set("Content-Type", "application/json")
+	respValid, err := app.Test(reqValid)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, respValid.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
