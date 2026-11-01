@@ -14,6 +14,13 @@ import (
 	"gorm.io/gorm"
 )
 
+func expectTwoActiveChecklistTemplates(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`^SELECT \* FROM "checklist_templates"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "nama_item", "urutan", "wajib", "aktif"}).
+			AddRow(uuid.New(), "Pengecekan jaringan", 1, true, true).
+			AddRow(uuid.New(), "Pengecekan listrik", 2, true, true))
+}
+
 func fieldMaintenanceValidPayload(cctvID string) string {
 	return `{"cctv_id":"` + cctvID + `","notes":"Pengecekan rutin",
 		"checks":[{"name":"Pengecekan jaringan","result":"ok","note":""},{"name":"Pengecekan listrik","result":"not_ok","note":"Adaptor longgar"}],
@@ -82,6 +89,7 @@ func TestCreateFieldMaintenance_Success(t *testing.T) {
 	cctvRows, _ := cctvMockRow()
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(cctvRows)
+	expectTwoActiveChecklistTemplates(mock)
 
 	// Transaksi: header + checks + images
 	mock.ExpectBegin()
@@ -147,6 +155,7 @@ func TestCreateFieldMaintenance_SyncCCTV_Attention(t *testing.T) {
 	cctvRows, _ := cctvMockRow()
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(cctvRows)
+	expectTwoActiveChecklistTemplates(mock)
 
 	// Transaksi: header + checks + images
 	mock.ExpectBegin()
@@ -212,6 +221,7 @@ func TestCreateFieldMaintenance_SyncCCTV_Ok(t *testing.T) {
 	cctvRows, _ := cctvMockRowWithStatus("pemeliharaan")
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(cctvRows)
+	expectTwoActiveChecklistTemplates(mock)
 
 	// Transaksi: header + checks + images
 	mock.ExpectBegin()
@@ -311,6 +321,7 @@ func TestCreateFieldMaintenance_WithValidGeotag(t *testing.T) {
 	cctvRows, _ := cctvMockRow()
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(cctvRows)
+	expectTwoActiveChecklistTemplates(mock)
 
 	// Transaksi: header (dengan geotag) + checks + images
 	mock.ExpectBegin()
@@ -627,4 +638,36 @@ func TestDeleteFieldMaintenance_NotFound(t *testing.T) {
 	resp, err := app.Test(req)
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// H07: Memastikan CreateFieldMaintenance juga menolak checklist karangan dan foto bukti fiktif.
+func TestAudit_FieldMaintenanceMustRejectInventedChecklistAndFakePhoto(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	techID := uuid.New()
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
+
+	// 1. Foto bukti fiktif (tidak ada di folder uploads) ditolak sebelum menyentuh DB
+	fakePhoto := `{"cctv_id":"` + cctvID.String() + `","checks":[{"name":"Pengecekan jaringan","result":"ok"}],"images":[{"image_url":"/api/uploads/does-not-exist.jpg"}]}`
+	reqFake := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(fakePhoto))
+	reqFake.Header.Set("Content-Type", "application/json")
+	respFake, err := app.Test(reqFake)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respFake.StatusCode)
+
+	// 2. Foto bukti valid tetapi checklist karangan / tidak mencakup seluruh template wajib -> 400
+	cctvRows, _ := cctvMockRow()
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvRows)
+	expectTwoActiveChecklistTemplates(mock)
+
+	inventedChecks := `{"cctv_id":"` + cctvID.String() + `","checks":[{"name":"Item Karangan","result":"ok"}],"images":[{"image_url":"/api/uploads/bukti1.jpg"}]}`
+	reqInvented := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(inventedChecks))
+	reqInvented.Header.Set("Content-Type", "application/json")
+	respInvented, err := app.Test(reqInvented)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, respInvented.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }

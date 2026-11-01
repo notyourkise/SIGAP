@@ -55,12 +55,152 @@ func cctvMatchesActiveSite(c *fiber.Ctx, cctv models.CCTV) bool {
 }
 
 type FieldCheckItem struct {
-	Name   string `json:"name" validate:"required,min=3,max=150"`
-	Result string `json:"result" validate:"required,oneof=ok not_ok"`
-	Note   string `json:"note" validate:"omitempty,max=500"`
+	TemplateID string `json:"template_id" validate:"omitempty,uuid4"`
+	Name       string `json:"name" validate:"required,min=3,max=150"`
+	Result     string `json:"result" validate:"required,oneof=ok not_ok"`
+	Note       string `json:"note" validate:"omitempty,max=500"`
 	// Wajib menandai apakah item ini bersifat wajib (Task 13.12). Nilai pointer
 	// memungkinkan membedakan field yang tidak dikirim (nil → default true).
 	Wajib *bool `json:"wajib"`
+}
+
+func normalizeChecklistItemName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))
+}
+
+// loadActiveChecklistTemplates memuat daftar template checklist aktif untuk
+// kawasan CCTV terkait (termasuk template global site_id IS NULL). Bila tabel
+// belum terisi atau query tidak mengembalikan baris aktif, fungsi jatuh ke
+// DefaultChecklistTemplates() resmi agar server selalu menegakkan item wajib.
+func loadActiveChecklistTemplates(db *gorm.DB, siteID *uuid.UUID) []models.ChecklistTemplate {
+	if db != nil {
+		var templates []models.ChecklistTemplate
+		query := db.Where("aktif = ?", true)
+		if siteID != nil && *siteID != uuid.Nil {
+			query = query.Where("site_id = ? OR site_id IS NULL", *siteID)
+		} else {
+			query = query.Where("site_id IS NULL")
+		}
+		if err := query.Order("urutan ASC").Find(&templates).Error; err == nil && len(templates) > 0 {
+			return templates
+		}
+	}
+	return models.DefaultChecklistTemplates()
+}
+
+// validateChecklistItemsAgainstTemplates memvalidasi bahwa setiap item kiriman:
+// 1) tidak kosong dan tidak duplikat (baik berdasarkan nama maupun template_id),
+// 2) terdaftar pada template aktif sesuai site, dan
+// 3) mencakup seluruh item yang berstatus wajib (wajib = true) pada template aktif.
+func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates []models.ChecklistTemplate) ([]FieldCheckItem, error) {
+	if len(checks) == 0 || len(checks) > maxFieldChecks {
+		return nil, fmt.Errorf("Checklist wajib diisi 1–%d item", maxFieldChecks)
+	}
+
+	byID := make(map[string]models.ChecklistTemplate, len(templates))
+	byName := make(map[string]models.ChecklistTemplate, len(templates))
+	for _, tpl := range templates {
+		if !tpl.Aktif {
+			continue
+		}
+		if tpl.ID != uuid.Nil {
+			byID[strings.ToLower(tpl.ID.String())] = tpl
+		}
+		nameKey := normalizeChecklistItemName(tpl.NamaItem)
+		if nameKey != "" {
+			byName[nameKey] = tpl
+		}
+	}
+
+	seenByName := make(map[string]bool, len(checks))
+	seenByID := make(map[string]bool, len(checks))
+	validated := make([]FieldCheckItem, 0, len(checks))
+
+	for _, chk := range checks {
+		nameKey := normalizeChecklistItemName(chk.Name)
+		if nameKey == "" {
+			return nil, errors.New("Nama item checklist tidak boleh kosong")
+		}
+		if seenByName[nameKey] {
+			return nil, fmt.Errorf("Item checklist duplikat tidak diizinkan: %s", strings.TrimSpace(chk.Name))
+		}
+
+		var matchedTpl models.ChecklistTemplate
+		rawTplID := strings.ToLower(strings.TrimSpace(chk.TemplateID))
+		if rawTplID != "" {
+			tpl, ok := byID[rawTplID]
+			if !ok {
+				return nil, fmt.Errorf("ID template checklist tidak aktif atau tidak sesuai site: %s", chk.TemplateID)
+			}
+			if seenByID[rawTplID] {
+				return nil, fmt.Errorf("Item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
+			}
+			tplNameKey := normalizeChecklistItemName(tpl.NamaItem)
+			if nameKey != tplNameKey {
+				return nil, fmt.Errorf("Nama item checklist tidak sesuai dengan template aktif: %s", strings.TrimSpace(chk.Name))
+			}
+			seenByID[rawTplID] = true
+			seenByName[tplNameKey] = true
+			matchedTpl = tpl
+		} else {
+			tpl, ok := byName[nameKey]
+			if !ok {
+				return nil, fmt.Errorf("Item checklist tidak terdaftar pada template aktif: %s", strings.TrimSpace(chk.Name))
+			}
+			if tpl.ID != uuid.Nil {
+				idKey := strings.ToLower(tpl.ID.String())
+				if seenByID[idKey] {
+					return nil, fmt.Errorf("Item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
+				}
+				seenByID[idKey] = true
+			}
+			seenByName[nameKey] = true
+			matchedTpl = tpl
+		}
+
+		wajib := matchedTpl.Wajib
+		chk.Name = matchedTpl.NamaItem
+		chk.Wajib = &wajib
+		validated = append(validated, chk)
+	}
+
+	for _, tpl := range templates {
+		if !tpl.Aktif || !tpl.Wajib {
+			continue
+		}
+		tplKey := normalizeChecklistItemName(tpl.NamaItem)
+		if tplKey != "" && !seenByName[tplKey] {
+			return nil, fmt.Errorf("Item checklist wajib belum dilengkapi: %s", tpl.NamaItem)
+		}
+	}
+
+	return validated, nil
+}
+
+// validateEvidenceImages memastikan setiap URL foto bukti berada di dalam
+// direktori uploads, tidak duplikat, dan file fisiknya benar-benar ada sebagai
+// file reguler tidak kosong di server.
+func validateEvidenceImages(images []FieldImageItem) error {
+	if len(images) == 0 || len(images) > maxFieldImages {
+		return fmt.Errorf("Minimal satu foto bukti wajib dilampirkan (maksimal %d foto)", maxFieldImages)
+	}
+
+	seen := make(map[string]bool, len(images))
+	for _, img := range images {
+		targetPath, filename, ok := resolveSafeUploadFilePath(img.ImageUrl)
+		if !ok {
+			return errors.New("Path foto bukti tidak valid")
+		}
+		if seen[filename] {
+			return errors.New("Foto bukti duplikat tidak diizinkan dalam satu laporan")
+		}
+		info, err := os.Lstat(targetPath)
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			return errors.New("File foto bukti tidak ditemukan atau tidak valid di server")
+		}
+		seen[filename] = true
+	}
+	return nil
 }
 
 type FieldImageItem struct {
@@ -153,13 +293,11 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			"errors":  errs,
 		})
 	}
-	for _, img := range req.Images {
-		if _, ok := normalizeUploadFilename(img.ImageUrl); !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Path foto bukti tidak valid",
-			})
-		}
+	if err := validateEvidenceImages(req.Images); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
+		})
 	}
 
 	// Validasi koordinat geotag (opsional). Menghasilkan 400 bila koordinat
@@ -208,6 +346,16 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 			"message": "Gagal membaca ID teknisi",
 		})
 	}
+
+	activeTemplates := loadActiveChecklistTemplates(config.DB, cctv.SiteID)
+	validatedChecks, err := validateChecklistItemsAgainstTemplates(req.Checks, activeTemplates)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
+	req.Checks = validatedChecks
 
 	// Ringkasan: seluruh item ok → "ok", ada satu saja tidak ok → "attention"
 	overall := "ok"

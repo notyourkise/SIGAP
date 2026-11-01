@@ -713,24 +713,30 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validasi minimum checklist items (minimal 1 item wajib diisi)
-	// Konstanta maintenanceCheckTotal = 9 adalah standar umum, tapi sistem sekarang
-	// mendukung jumlah variatif tergantung template aktif. Bug BB-13 Fix (2026-08-20).
-	minItems := 1 // Minimum requirement - bisa diubah jika diperlukan
-	if len(req.Checks) < minItems {
+	if err := validateEvidenceImages(req.Images); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": fmt.Sprintf("Minimal %d item checklist harus diisi", minItems),
+			"message": err.Error(),
 		})
 	}
-	for _, img := range req.Images {
-		if _, ok := normalizeUploadFilename(img.ImageUrl); !ok {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Path foto bukti tidak valid",
-			})
+
+	var logSiteID *uuid.UUID
+	if logEntry.CCTV.SiteID != nil && *logEntry.CCTV.SiteID != uuid.Nil {
+		logSiteID = logEntry.CCTV.SiteID
+	} else if rawSite, ok := c.Locals("site_id").(string); ok && rawSite != "" {
+		if parsedSite, parseErr := uuid.Parse(rawSite); parseErr == nil {
+			logSiteID = &parsedSite
 		}
 	}
+	activeTemplates := loadActiveChecklistTemplates(config.DB, logSiteID)
+	validatedChecks, err := validateChecklistItemsAgainstTemplates(req.Checks, activeTemplates)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
+	req.Checks = validatedChecks
 
 	// Status akhir: completed hanya bila semua item checklist berstatus ok
 	// Bug BB-13 Fix (2026-08-20): Tidak lagi terpaku pada exact count 9 items.
@@ -779,11 +785,16 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		}
 
 		for _, chk := range req.Checks {
+			wajib := true
+			if chk.Wajib != nil {
+				wajib = *chk.Wajib
+			}
 			item := models.FieldMaintenanceCheck{
 				FieldMaintenanceID: field.ID,
 				Name:               chk.Name,
 				Result:             chk.Result,
 				Note:               chk.Note,
+				Wajib:              wajib,
 			}
 			if err := tx.Create(&item).Error; err != nil {
 				return err
