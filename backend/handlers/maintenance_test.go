@@ -2,18 +2,25 @@ package handlers
 
 import (
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v2"
+	gws "github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"gorm.io/gorm"
 
 	"sigap-backend/middleware"
+	"sigap-backend/models"
+	"sigap-backend/utils"
 )
 
 func maintenanceMockRow() *sqlmock.Rows {
@@ -902,4 +909,101 @@ func TestCompleteMaintenanceLog_NotOngoing(t *testing.T) {
 	resp, err := app.Test(req)
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+// H06: Memastikan broadcastMaintenanceLogEvent hanya menyiarkan payload minimal
+// (tanpa notes rahasia atau rtsp_url) ke admin dan teknisi pemilik di site terkait,
+// serta menolak teknisi lain dalam site yang sama maupun teknisi di site berbeda.
+func TestBroadcastMaintenanceLogEvent_MinimalPayloadAndRecipientIsolation(t *testing.T) {
+	app := fiber.New()
+	app.Get("/ws", gws.New(func(c *gws.Conn) {
+		var sites []string
+		if raw := c.Query("sites"); raw != "" {
+			sites = strings.Split(raw, ",")
+		}
+		utils.Hub.Register(c, c.Query("user"), c.Query("role"), sites)
+		defer utils.Hub.Unregister(c)
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	go func() { _ = fasthttp.Serve(listener, app.Handler()) }()
+
+	dial := func(query string) *websocket.Conn {
+		conn, _, err := websocket.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws?"+query, nil)
+		require.NoError(t, err)
+		return conn
+	}
+
+	siteA := uuid.New()
+	siteB := uuid.New()
+	ownerTech := uuid.New()
+	otherSiteATech := uuid.New()
+	siteBTech := uuid.New()
+	adminID := uuid.New()
+
+	adminConn := dial("user=" + adminID.String() + "&role=admin")
+	defer func() { _ = adminConn.Close() }()
+	ownerConn := dial("user=" + ownerTech.String() + "&role=teknisi&sites=" + siteA.String())
+	defer func() { _ = ownerConn.Close() }()
+	otherSiteAConn := dial("user=" + otherSiteATech.String() + "&role=teknisi&sites=" + siteA.String())
+	defer func() { _ = otherSiteAConn.Close() }()
+	siteBConn := dial("user=" + siteBTech.String() + "&role=teknisi&sites=" + siteB.String())
+	defer func() { _ = siteBConn.Close() }()
+
+	require.Eventually(t, func() bool {
+		return utils.Hub.ActiveConnections() >= 4
+	}, time.Second, 10*time.Millisecond)
+
+	logID := uuid.New()
+	cctvID := uuid.New()
+	logEntry := models.MaintenanceLog{
+		Base:         models.Base{ID: logID},
+		CCTVID:       cctvID,
+		TechnicianID: &ownerTech,
+		ActionTaken:  "Penggantian konektor RJ45",
+		Notes:        "CATATAN RAHASIA INTERNAL SITE A",
+		Status:       "ongoing",
+		CCTV: models.CCTV{
+			Base:    models.Base{ID: cctvID},
+			SiteID:  &siteA,
+			RTSPURL: "enc:v1:rahasia-rtsp",
+		},
+	}
+
+	broadcastMaintenanceLogEvent(nil, "MAINTENANCE_UPDATED", logEntry)
+
+	readRaw := func(conn *websocket.Conn) string {
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+		_, raw, err := conn.ReadMessage()
+		require.NoError(t, err)
+		return string(raw)
+	}
+
+	adminBody := readRaw(adminConn)
+	ownerBody := readRaw(ownerConn)
+
+	for _, body := range []string{adminBody, ownerBody} {
+		assert.Contains(t, body, `"event":"MAINTENANCE_UPDATED"`)
+		assert.Contains(t, body, logID.String())
+		assert.Contains(t, body, siteA.String())
+		assert.Contains(t, body, ownerTech.String())
+		assert.NotContains(t, body, "CATATAN RAHASIA INTERNAL SITE A")
+		assert.NotContains(t, body, `"notes"`)
+		assert.NotContains(t, body, "enc:v1:rahasia-rtsp")
+	}
+
+	require.NoError(t, otherSiteAConn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	_, _, err = otherSiteAConn.ReadMessage()
+	assert.Error(t, err, "teknisi lain di site-a tidak boleh menerima event tugas teknisi pemilik")
+
+	require.NoError(t, siteBConn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	_, _, err = siteBConn.ReadMessage()
+	assert.Error(t, err, "teknisi site-b tidak boleh menerima event tugas site-a")
 }

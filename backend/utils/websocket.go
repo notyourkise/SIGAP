@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/websocket/v2"
@@ -37,6 +40,23 @@ func (i WSClientInfo) CanReceiveSiteEvent(siteID string) bool {
 	}
 	_, ok := i.SiteIDs[siteID]
 	return ok
+}
+
+// CanReceiveMaintenanceEvent menentukan apakah koneksi berhak menerima event
+// pemeliharaan (maintenance log). Admin selalu berhak menerima semua event;
+// non-admin hanya berhak bila terdaftar pada site terkait DAN merupakan
+// teknisi pemilik tugas (technicianID cocok dengan UserID).
+func (i WSClientInfo) CanReceiveMaintenanceEvent(siteID string, technicianID string) bool {
+	if i.Role == "admin" {
+		return true
+	}
+	if !i.CanReceiveSiteEvent(siteID) {
+		return false
+	}
+	if technicianID == "" || i.UserID == "" {
+		return false
+	}
+	return i.UserID == technicianID
 }
 
 // WSHubStore mengelola seluruh koneksi WebSocket aktif secara thread-safe
@@ -86,8 +106,75 @@ func (h *WSHubStore) ActiveConnections() int {
 	return len(h.clients)
 }
 
-// BroadcastEvent mempublikasikan event notifikasi JSON ke seluruh client WebSocket yang terhubung
+func extractBroadcastScope(eventType string, payload interface{}) (siteID string, technicianID string, isMaintenance bool) {
+	upperEvent := strings.ToUpper(strings.TrimSpace(eventType))
+	if strings.HasPrefix(upperEvent, "MAINTENANCE_") || strings.HasPrefix(upperEvent, "OVERDUE_") {
+		isMaintenance = true
+	}
+
+	switch v := payload.(type) {
+	case map[string]string:
+		siteID = strings.TrimSpace(v["site_id"])
+		if tech, ok := v["technician_id"]; ok {
+			technicianID = strings.TrimSpace(tech)
+			isMaintenance = true
+		}
+	case map[string]interface{}:
+		if rawSite, ok := v["site_id"]; ok && rawSite != nil {
+			siteID = strings.TrimSpace(fmt.Sprint(rawSite))
+		}
+		if rawTech, ok := v["technician_id"]; ok {
+			isMaintenance = true
+			if rawTech != nil {
+				technicianID = strings.TrimSpace(fmt.Sprint(rawTech))
+			}
+		}
+	default:
+		if payload != nil {
+			if raw, err := json.Marshal(payload); err == nil {
+				var m map[string]interface{}
+				if err := json.Unmarshal(raw, &m); err == nil {
+					if rawSite, ok := m["site_id"]; ok && rawSite != nil {
+						siteID = strings.TrimSpace(fmt.Sprint(rawSite))
+					} else if cctvMap, ok := m["cctv"].(map[string]interface{}); ok {
+						if nestedSite, ok := cctvMap["site_id"]; ok && nestedSite != nil {
+							siteID = strings.TrimSpace(fmt.Sprint(nestedSite))
+						}
+					}
+					if rawTech, ok := m["technician_id"]; ok {
+						isMaintenance = true
+						if rawTech != nil {
+							technicianID = strings.TrimSpace(fmt.Sprint(rawTech))
+						}
+					}
+				}
+			}
+		}
+	}
+	if siteID == "<nil>" || siteID == "00000000-0000-0000-0000-000000000000" {
+		siteID = ""
+	}
+	if technicianID == "<nil>" || technicianID == "00000000-0000-0000-0000-000000000000" {
+		technicianID = ""
+	}
+	return siteID, technicianID, isMaintenance
+}
+
+// BroadcastEvent mempublikasikan event notifikasi JSON dengan menerapkan
+// penyaringan site dan ownership secara defensif agar event pemeliharaan maupun
+// event bertarget site tidak pernah bocor lintas site atau antar-teknisi.
 func BroadcastEvent(eventType string, payload interface{}) {
+	siteID, technicianID, isMaintenance := extractBroadcastScope(eventType, payload)
+	if isMaintenance {
+		BroadcastMaintenanceEvent(siteID, technicianID, eventType, payload)
+		return
+	}
+	BroadcastToSite(siteID, eventType, payload)
+}
+
+// BroadcastMaintenanceEvent mempublikasikan event pemeliharaan hanya kepada
+// koneksi admin dan teknisi pemilik tugas yang berada pada site terkait.
+func BroadcastMaintenanceEvent(siteID string, technicianID string, eventType string, payload interface{}) {
 	Hub.mu.RLock()
 	defer Hub.mu.RUnlock()
 
@@ -100,7 +187,10 @@ func BroadcastEvent(eventType string, payload interface{}) {
 		Payload: payload,
 	}
 
-	for client := range Hub.clients {
+	for client, info := range Hub.clients {
+		if !info.CanReceiveMaintenanceEvent(siteID, technicianID) {
+			continue
+		}
 		err := client.WriteJSON(msg)
 		if err != nil {
 			Log.Warnf("⚠️ Gagal mengirim pesan WebSocket ke %s: %v", client.RemoteAddr(), err)

@@ -1,5 +1,32 @@
 # Changelog - Backend SIGAP
 
+## [0.64.45] - 2026-11-01
+
+### [High][H06] Pembatasan broadcast WebSocket pemeliharaan berdasarkan site dan ownership (#172)
+
+**Masalah**: Pembuatan, pembaruan, penugasan, penyelesaian log pemeliharaan (`CreateMaintenanceLog`, `UpdateMaintenanceLog`, `AssignMaintenanceLog`, `CompleteMaintenanceLog`), generator jadwal (`processDueSchedule`), dan pengecekan overdue (`overdue_checker.go`) sebelumnya memanggil `utils.BroadcastEvent` yang menyiarkan seluruh objek `models.MaintenanceLog` ke semua koneksi WebSocket aktif tanpa menyaring peran, site, maupun kepemilikan tugas. Akibatnya teknisi di site lain maupun teknisi lain di site yang sama dapat menerima catatan pekerjaan (`notes`) dan identitas tugas yang bukan miliknya.
+
+**Perbaikan**:
+- Menambahkan `WSClientInfo.CanReceiveMaintenanceEvent(siteID, technicianID)` dan `BroadcastMaintenanceEvent(siteID, technicianID, eventType, payload)` di `backend/utils/websocket.go` sehingga event pemeliharaan hanya dikirim ke koneksi `admin` serta teknisi pemilik tugas (`UserID == technicianID`) yang terdaftar pada site terkait (`CanReceiveSiteEvent(siteID)`).
+- Memperketat `BroadcastEvent` dengan `extractBroadcastScope` sebagai pengaman berlapis agar pemanggilan langsung untuk event `MAINTENANCE_*` / `OVERDUE_*` maupun payload bertarget tetap menerapkan batas site dan ownership.
+- Menambahkan `broadcastMaintenanceLogEvent` di `backend/handlers/maintenance.go` yang menyusun payload minimal (`id`, `cctv_id`, `site_id`, `technician_id`, `action_taken`, `status`, `scheduled_date`, `completed_at`, `updated_at` tanpa `notes` atau `rtsp_url`) dan menggunakannya pada `CreateMaintenanceLog`, `UpdateMaintenanceLog`, `AssignMaintenanceLog`, `CompleteMaintenanceLog`, serta `processDueSchedule` (`backend/handlers/schedule_runner.go`).
+- Memperbarui broadcast overdue (`backend/handlers/overdue_checker.go`) agar memakai `BroadcastMaintenanceEvent` dan broadcast regenerasi API key (`backend/handlers/api_key.go`) agar memakai `BroadcastToRole("admin", ...)`.
+- Menambahkan regression test di `backend/utils/websocket_test.go` (`TestWSClientInfo_CanReceiveMaintenanceEvent`, `TestAudit_MaintenanceBroadcastMustDenyOtherSite`, `TestBroadcastMaintenanceEvent_SiteAndOwnershipBoundaries`) dan `backend/handlers/maintenance_test.go` (`TestBroadcastMaintenanceLogEvent_MinimalPayloadAndRecipientIsolation`).
+
+timestamp: 2026-11-01 12:08 UTC+8
+kategori: Tinggi, Backend (WebSocket Security / Site & Ownership Isolation)
+file yang diubah:
+- backend/utils/websocket.go
+- backend/utils/websocket_test.go
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/schedule_runner.go
+- backend/handlers/overdue_checker.go
+- backend/handlers/api_key.go
+
+alasan perubahan: Mencegah kebocoran event dan catatan pemeliharaan lintas site maupun antar-teknisi melalui koneksi WebSocket real-time (Issue #172 / H06).
+
+---
 ## [0.64.44] - 2026-11-01
 
 ### [High][H05] Pengurangan stok suku cadang secara atomik untuk mencegah lost update (#171)

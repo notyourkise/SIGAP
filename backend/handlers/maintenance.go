@@ -146,7 +146,10 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 
 	// Muat ulang dengan data relasi (CCTV & User) untuk respon JSON
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
-	utils.BroadcastEvent("MAINTENANCE_CREATED", logEntry)
+	if logEntry.CCTV.SiteID == nil && cctv.SiteID != nil {
+		logEntry.CCTV.SiteID = cctv.SiteID
+	}
+	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_CREATED", logEntry)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -443,7 +446,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	utils.LogAudit(config.DB, c, "UPDATE_MAINTENANCE", "MAINTENANCE", "Memperbarui log pemeliharaan: "+logEntry.ActionTaken+" (Status: "+logEntry.Status+")", nil, "", "")
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
-	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
+	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -623,7 +626,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
-	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
+	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -849,7 +852,7 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 	if err := RecalculateCCTVHealthScore(config.DB, logEntry.CCTVID); err != nil {
 		utils.Log.Errorf("Gagal memperbarui skor kesehatan CCTV %s: %v", logEntry.CCTVID.String(), err)
 	}
-	utils.BroadcastEvent("MAINTENANCE_UPDATED", logEntry)
+	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
 	// Task 12.3: dispatch event webhook maintenance.completed (semua status terminal).
 	DispatchWebhook(config.DB, models.EventWebhookMaintenanceCompleted, fiber.Map{
@@ -1108,4 +1111,41 @@ func ensureMaintenanceLogMatchesActiveSite(c *fiber.Ctx, logEntry models.Mainten
 		return false
 	}
 	return cctvMatchesActiveSite(c, cctv)
+}
+
+// broadcastMaintenanceLogEvent menyiarkan event pemeliharaan dengan payload minimal
+// secara terarah hanya kepada admin dan teknisi pemilik tugas di site terkait (H06 #172).
+func broadcastMaintenanceLogEvent(db *gorm.DB, eventType string, logEntry models.MaintenanceLog) {
+	if utils.Hub.ActiveConnections() == 0 {
+		return
+	}
+
+	siteID := ""
+	if logEntry.CCTV.SiteID != nil && *logEntry.CCTV.SiteID != uuid.Nil {
+		siteID = logEntry.CCTV.SiteID.String()
+	} else if db != nil && logEntry.CCTVID != uuid.Nil {
+		var cctv models.CCTV
+		if err := db.Select("site_id").First(&cctv, "id = ?", logEntry.CCTVID).Error; err == nil && cctv.SiteID != nil {
+			siteID = cctv.SiteID.String()
+		}
+	}
+
+	techID := ""
+	if logEntry.TechnicianID != nil && *logEntry.TechnicianID != uuid.Nil {
+		techID = logEntry.TechnicianID.String()
+	}
+
+	payload := fiber.Map{
+		"id":             logEntry.ID,
+		"cctv_id":        logEntry.CCTVID,
+		"site_id":        siteID,
+		"technician_id":  techID,
+		"action_taken":   logEntry.ActionTaken,
+		"status":         logEntry.Status,
+		"scheduled_date": logEntry.ScheduledDate,
+		"completed_at":   logEntry.CompletedAt,
+		"updated_at":     logEntry.UpdatedAt,
+	}
+
+	utils.BroadcastMaintenanceEvent(siteID, techID, eventType, payload)
 }
