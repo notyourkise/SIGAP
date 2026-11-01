@@ -7,7 +7,7 @@ import Pagination from '@/components/Pagination';
 import SortableHeader from '@/components/SortableHeader';
 import { useSortableRows } from '@/hooks/useSortableRows';
 import { useAuth } from '@/context/AuthContext';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getCookie } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import {
@@ -28,6 +28,7 @@ interface Zone {
   id: string;
   nama: string;
   deskripsi: string;
+  site_id?: string | null;
   created_at: string;
   cctv_count?: number;
   user_count?: number;
@@ -54,6 +55,7 @@ interface CCTVItem {
   nama: string;
   lokasi_area?: string;
   zone_id?: string | null;
+  site_id?: string | null;
 }
 
 interface UserItem {
@@ -155,7 +157,9 @@ export default function ZonaPage() {
       ]);
 
       if (cctvResult.status === 'fulfilled') {
-        const rows = cctvResult.value.data?.rows || [];
+        const rows = (cctvResult.value.data?.rows || []).filter(
+          (c) => !zone.site_id || !c.site_id || c.site_id === zone.site_id,
+        );
         setCctvs(rows);
         // Preselect CCTV milik zona ini
         setSelectedCctvIds(rows.filter((c) => c.zone_id === zone.id).map((c) => c.id));
@@ -226,9 +230,17 @@ export default function ZonaPage() {
     try {
       const endpoint = current ? `/zones/${current.id}` : '/zones';
       const method = current ? 'PUT' : 'POST';
+      const activeSiteId = getCookie('sigap_site_id');
+      const payload: Record<string, string> = {
+        nama: formData.nama,
+        deskripsi: formData.deskripsi,
+      };
+      if (!current && activeSiteId) {
+        payload.site_id = activeSiteId;
+      }
       const response = await apiRequest<Zone>(endpoint, {
         method,
-        body: JSON.stringify({ nama: formData.nama, deskripsi: formData.deskripsi }),
+        body: JSON.stringify(payload),
       });
       if (response.status === 'success') {
         setIsFormOpen(false);

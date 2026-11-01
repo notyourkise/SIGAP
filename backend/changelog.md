@@ -1,6 +1,29 @@
 # Changelog - Backend SIGAP
 
-## [0.64.49] - 2026-11-02
+## [0.64.50] - 2026-11-02
+
+### [Medium][M04] Persistensi site pada pembuatan zona dan validasi konsistensi site zona-CCTV (#177)
+
+**Masalah**: `CreateZone` di `backend/handlers/zone.go` sebelumnya tidak menerima field `site_id` pada request body dan tidak memiliki fallback pembacaan header `X-Site-ID`/cookie `sigap_site_id`/query `site_id` ketika dipanggil langsung tanpa middleware `SiteContext`, sedangkan `GetAllZones` dan `GetAllZonesForSelect` memfilter `zones.site_id`. Selain itu, `AssignCCTVToZone` (`backend/handlers/zone.go`) serta `CreateCCTV`/`UpdateCCTV` (`backend/handlers/cctv.go`) belum memvalidasi konsistensi `site_id` antara zona dan CCTV.
+
+**Perbaikan**:
+- Menambahkan field `SiteID` (`utils.OptionalUUID`) pada `CreateZoneRequest` dan `UpdateZoneRequest` serta helper `resolveActiveSiteID` di `backend/handlers/zone.go`.
+- Memastikan `CreateZone` menetapkan `item.SiteID` dari konteks/header site aktif atau `req.SiteID` (untuk admin global) dan menolak `req.SiteID` yang bertentangan dengan site aktif (`400 Bad Request`).
+- Memvalidasi perubahan `SiteID` pada `UpdateZone` agar tidak memisahkan zona dari CCTV yang sudah terikat pada site berbeda.
+- Memvalidasi bahwa seluruh CCTV pada `AssignCCTVToZone` berasal dari site yang sama dengan `zone.SiteID` (termasuk saat dipanggil oleh admin global).
+- Memvalidasi konsistensi `site_id` dan `zone_id` pada `CreateCCTV` dan `UpdateCCTV` di `backend/handlers/cctv.go`.
+- Menambahkan regression test `TestAudit_ZoneCreateMustPersistSelectedSite` di `backend/handlers/zone_test.go`.
+
+timestamp: 2026-11-02 01:33 UTC+8
+kategori: Sedang, Backend (Multi-Site Consistency / Zone & CCTV Management)
+file yang diubah:
+- backend/handlers/zone.go
+- backend/handlers/cctv.go
+- backend/handlers/zone_test.go
+
+alasan perubahan: Memastikan zona baru selalu tersimpan pada site yang sedang dipilih dan menjaga konsistensi relasi site antara zona dan CCTV (Issue #177 / M04).
+
+---## [0.64.49] - 2026-11-02
 
 ### [Medium][M03] Pisahkan tugas pending sebelum deadline dari denominator kepatuhan SLA (#176)
 

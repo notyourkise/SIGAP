@@ -349,12 +349,55 @@ func CreateCCTV(c *fiber.Ctx) error {
 		cctv.RTSPURL = encryptedURL
 	}
 
-	// Set zone_id dan site_id hanya jika ada value (tidak null dan bukan zero)
-	if req.ZoneID.HasValue() {
-		cctv.ZoneID = req.ZoneID.Value
+	// Set site_id dari konteks site aktif atau body request, lalu validasi
+	// konsistensi terhadap zone_id bila zona dipilih.
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
 	}
-	if req.SiteID.HasValue() {
-		cctv.SiteID = req.SiteID.Value
+	if activeSiteID != nil {
+		if req.SiteID.Present && req.SiteID.Null {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "CCTV pada konteks site aktif tidak boleh memiliki site_id kosong",
+			})
+		}
+		if req.SiteID.HasValue() && *req.SiteID.Value != *activeSiteID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Site CCTV tidak sesuai dengan site aktif yang sedang dipilih",
+			})
+		}
+		siteCopy := *activeSiteID
+		cctv.SiteID = &siteCopy
+	} else if req.SiteID.HasValue() {
+		siteCopy := *req.SiteID.Value
+		cctv.SiteID = &siteCopy
+	}
+
+	if req.ZoneID.HasValue() {
+		var zone models.Zone
+		if err := config.DB.First(&zone, "id = ?", *req.ZoneID.Value).Error; err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Zona yang dipilih tidak ditemukan",
+			})
+		}
+		if cctv.SiteID != nil && zone.SiteID != nil && *cctv.SiteID != *zone.SiteID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Zona yang dipilih berada di site yang berbeda dengan CCTV",
+			})
+		}
+		if cctv.SiteID == nil && zone.SiteID != nil {
+			siteCopy := *zone.SiteID
+			cctv.SiteID = &siteCopy
+		}
+		zoneCopy := *req.ZoneID.Value
+		cctv.ZoneID = &zoneCopy
 	}
 
 	if req.RTSPPassword != "" {
@@ -786,6 +829,43 @@ func UpdateCCTV(c *fiber.Ctx) error {
 			cctv.SiteID = req.SiteID.Value // Update ke kawasan baru
 		}
 		// else: site_id tidak ada di JSON → biarkan nilai asli tanpa perubahan
+	}
+
+	if activeSiteID, ok := resolveActiveSiteID(c); ok && activeSiteID != nil {
+		if req.SiteID.Present && (cctv.SiteID == nil || *cctv.SiteID != *activeSiteID) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Site CCTV tidak sesuai dengan site aktif yang sedang dipilih",
+			})
+		}
+	}
+
+	if cctv.ZoneID != nil && (req.ZoneID.HasValue() || req.SiteID.Present) {
+		var zone models.Zone
+		if err := config.DB.First(&zone, "id = ?", *cctv.ZoneID).Error; err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Zona yang dipilih tidak ditemukan",
+			})
+		}
+		if zone.SiteID != nil {
+			if cctv.SiteID != nil && *cctv.SiteID != *zone.SiteID {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Zona yang dipilih berada di site yang berbeda dengan CCTV",
+				})
+			}
+			if cctv.SiteID == nil {
+				if req.SiteID.Present && req.SiteID.Null {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+						"status":  "error",
+						"message": "Tidak dapat mengosongkan site CCTV selama masih terikat pada zona bersite",
+					})
+				}
+				siteCopy := *zone.SiteID
+				cctv.SiteID = &siteCopy
+			}
+		}
 	}
 
 	if err := config.DB.Save(&cctv).Error; err != nil {

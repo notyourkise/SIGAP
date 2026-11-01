@@ -15,14 +15,43 @@ import (
 
 // CreateZoneRequest adalah body pembuatan zona baru (Admin saja).
 type CreateZoneRequest struct {
-	Nama      string `json:"nama" validate:"required,min=2,max=100"`
-	Deskripsi string `json:"deskripsi" validate:"omitempty"`
+	Nama      string             `json:"nama" validate:"required,min=2,max=100"`
+	Deskripsi string             `json:"deskripsi" validate:"omitempty"`
+	SiteID    utils.OptionalUUID `json:"site_id" validate:"omitempty"`
 }
 
 // UpdateZoneRequest adalah body pembaruan zona (Admin saja).
 type UpdateZoneRequest struct {
-	Nama      string `json:"nama" validate:"omitempty,min=2,max=100"`
-	Deskripsi string `json:"deskripsi" validate:"omitempty"`
+	Nama      string             `json:"nama" validate:"omitempty,min=2,max=100"`
+	Deskripsi string             `json:"deskripsi" validate:"omitempty"`
+	SiteID    utils.OptionalUUID `json:"site_id" validate:"omitempty"`
+}
+
+// resolveActiveSiteID membaca UUID site aktif dari c.Locals("site_id") (hasil
+// middleware SiteContext), atau fallback ke header X-Site-ID, cookie
+// sigap_site_id, dan query ?site_id= bila handler dipanggil langsung pada unit
+// test tanpa middleware SiteContext. Mengembalikan (nil, true) bila tidak ada
+// konteks site aktif, atau (nil, false) bila format UUID tidak valid.
+func resolveActiveSiteID(c *fiber.Ctx) (*uuid.UUID, bool) {
+	raw, _ := c.Locals("site_id").(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		raw = strings.TrimSpace(c.Get("X-Site-ID"))
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(c.Cookies("sigap_site_id"))
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(c.Query("site_id"))
+	}
+	if raw == "" {
+		return nil, true
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return nil, false
+	}
+	return &parsed, true
 }
 
 // AssignCCTVRequest adalah body bulk-assign CCTV ke sebuah zona (Admin saja).
@@ -65,10 +94,17 @@ func GetAllZones(c *fiber.Ctx) error {
 	var items []models.Zone
 	query := config.DB.Model(&models.Zone{})
 
-	// Filter site (multi-site, Task 12.2): hanya aktif bila X-Site-ID header
-	// valid disediakan dan diset oleh middleware SiteContext. Opsional.
-	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		query = query.Where("site_id = ?", siteID)
+	// Filter site (multi-site, Task 12.2): aktif bila c.Locals("site_id"),
+	// header X-Site-ID, cookie sigap_site_id, atau query ?site_id= diberikan.
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
+	}
+	if activeSiteID != nil {
+		query = query.Where("site_id = ?", activeSiteID.String())
 	}
 
 	if search := strings.TrimSpace(c.Query("search")); search != "" {
@@ -99,7 +135,11 @@ func GetAllZones(c *fiber.Ctx) error {
 	rows := make([]ZoneListRow, 0, len(items))
 	for _, z := range items {
 		var cctvCount, userCount int64
-		config.DB.Model(&models.CCTV{}).Where("zone_id = ?", z.ID).Count(&cctvCount)
+		cctvCountQuery := config.DB.Model(&models.CCTV{}).Where("zone_id = ?", z.ID)
+		if z.SiteID != nil {
+			cctvCountQuery = cctvCountQuery.Where("site_id = ?", *z.SiteID)
+		}
+		cctvCountQuery.Count(&cctvCount)
 		config.DB.Table("user_zones").Where("zone_id = ?", z.ID).Count(&userCount)
 		rows = append(rows, ZoneListRow{Zone: z, CCTVCount: cctvCount, UserCount: userCount})
 	}
@@ -127,8 +167,15 @@ func GetAllZones(c *fiber.Ctx) error {
 func GetAllZonesForSelect(c *fiber.Ctx) error {
 	var items []models.Zone
 	query := config.DB.Model(&models.Zone{})
-	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		query = query.Where("site_id = ?", siteID)
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
+	}
+	if activeSiteID != nil {
+		query = query.Where("site_id = ?", activeSiteID.String())
 	}
 	if err := query.Order("nama asc").Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -163,8 +210,16 @@ func GetZoneByID(c *fiber.Ctx) error {
 		})
 	}
 
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
+	}
+
 	var item models.Zone
-	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
+	if activeSiteID != nil {
 		if err := config.DB.First(&item, "id = ?", id).Error; err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"status":  "error",
@@ -226,14 +281,37 @@ func CreateZone(c *fiber.Ctx) error {
 		})
 	}
 
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
+	}
+
 	item := models.Zone{
 		Nama:      strings.TrimSpace(req.Nama),
 		Deskripsi: req.Deskripsi,
 	}
-	if siteID, ok := c.Locals("site_id").(string); ok && siteID != "" {
-		if siteUUID, err := uuid.Parse(siteID); err == nil {
-			item.SiteID = &siteUUID
+
+	if activeSiteID != nil {
+		if req.SiteID.Present && req.SiteID.Null {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Zona pada konteks site aktif tidak boleh memiliki site_id kosong",
+			})
 		}
+		if req.SiteID.HasValue() && *req.SiteID.Value != *activeSiteID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Site zona tidak sesuai dengan site aktif yang sedang dipilih",
+			})
+		}
+		siteCopy := *activeSiteID
+		item.SiteID = &siteCopy
+	} else if req.SiteID.HasValue() {
+		siteCopy := *req.SiteID.Value
+		item.SiteID = &siteCopy
 	}
 
 	if err := config.DB.Create(&item).Error; err != nil {
@@ -277,6 +355,14 @@ func UpdateZone(c *fiber.Ctx) error {
 		})
 	}
 
+	activeSiteID, validSite := resolveActiveSiteID(c)
+	if !validSite {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Format site_id tidak valid",
+		})
+	}
+
 	var item models.Zone
 	if err := config.DB.First(&item, "id = ?", id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -309,6 +395,59 @@ func UpdateZone(c *fiber.Ctx) error {
 	}
 	if req.Deskripsi != "" {
 		item.Deskripsi = req.Deskripsi
+	}
+
+	if req.SiteID.Present {
+		if req.SiteID.Null {
+			if activeSiteID != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Tidak dapat mengosongkan site zona saat konteks site aktif dipilih",
+				})
+			}
+			var boundCCTVs int64
+			if err := config.DB.Model(&models.CCTV{}).
+				Where("zone_id = ? AND site_id IS NOT NULL AND deleted_at IS NULL", item.ID).
+				Count(&boundCCTVs).Error; err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Gagal memvalidasi relasi CCTV pada zona",
+				})
+			}
+			if boundCCTVs > 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Zona masih memiliki CCTV terikat site; lepaskan CCTV terlebih dahulu",
+				})
+			}
+			item.SiteID = nil
+		} else if req.SiteID.HasValue() {
+			if activeSiteID != nil && *req.SiteID.Value != *activeSiteID {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Site zona tidak sesuai dengan site aktif yang sedang dipilih",
+				})
+			}
+			if item.SiteID == nil || *item.SiteID != *req.SiteID.Value {
+				var mismatchedCCTVs int64
+				if err := config.DB.Model(&models.CCTV{}).
+					Where("zone_id = ? AND (site_id IS NULL OR site_id <> ?) AND deleted_at IS NULL", item.ID, *req.SiteID.Value).
+					Count(&mismatchedCCTVs).Error; err != nil {
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+						"status":  "error",
+						"message": "Gagal memvalidasi relasi CCTV pada zona",
+					})
+				}
+				if mismatchedCCTVs > 0 {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+						"status":  "error",
+						"message": "Zona tidak dapat dipindahkan ke site lain karena masih memiliki CCTV dari site berbeda",
+					})
+				}
+			}
+			siteCopy := *req.SiteID.Value
+			item.SiteID = &siteCopy
+		}
 	}
 
 	if err := config.DB.Save(&item).Error; err != nil {
@@ -438,38 +577,55 @@ func AssignCCTVToZone(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verifikasi semua CCTV ada (dalam satu transaksi agar konsisten).
+	// Tentukan kumpulan ID unik terlebih dahulu.
+	seen := map[uuid.UUID]bool{}
+	uniqueIDs := make([]uuid.UUID, 0, len(req.CCTVIDs))
+	var ids []interface{}
+	for _, id := range req.CCTVIDs {
+		if !seen[id] {
+			seen[id] = true
+			uniqueIDs = append(uniqueIDs, id)
+			ids = append(ids, id)
+		}
+	}
+
+	// Konsistensi site zona dan CCTV: bila zona memiliki SiteID (atau ada site
+	// aktif pada request), seluruh CCTV yang ditugaskan wajib berasal dari site
+	// yang sama dengan zona tersebut.
+	var requiredSiteID *uuid.UUID
+	if zone.SiteID != nil {
+		requiredSiteID = zone.SiteID
+	} else if activeSiteID, ok := resolveActiveSiteID(c); ok && activeSiteID != nil {
+		requiredSiteID = activeSiteID
+	}
+
+	// Verifikasi semua CCTV ada dan berada pada site yang konsisten.
 	var found int64
-	if err := config.DB.Model(&models.CCTV{}).
-		Where("id IN ? AND deleted_at IS NULL", req.CCTVIDs).
-		Count(&found).Error; err != nil {
+	cctvCheckQuery := config.DB.Model(&models.CCTV{}).
+		Where("id IN ? AND deleted_at IS NULL", uniqueIDs)
+	if requiredSiteID != nil {
+		cctvCheckQuery = cctvCheckQuery.Where("site_id = ?", *requiredSiteID)
+	}
+	if err := cctvCheckQuery.Count(&found).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal memvalidasi daftar CCTV",
 		})
 	}
-	if found != int64(len(req.CCTVIDs)) {
+	if found != int64(len(uniqueIDs)) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Satu atau lebih CCTV pada daftar tidak ditemukan",
+			"message": "Satu atau lebih CCTV pada daftar tidak ditemukan atau berada di site yang berbeda dengan zona",
 		})
-	}
-
-	// Tentukan kumpulan ID unik.
-	seen := map[uuid.UUID]bool{}
-	var ids []interface{}
-	for _, id := range req.CCTVIDs {
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
 	}
 
 	// Set zone_id CCTV. Gunakan transaksi untuk memastikan konsistensi.
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&models.CCTV{}).
-			Where("id IN ?", ids).
-			Update("zone_id", zoneID).Error
+		updateQuery := tx.Model(&models.CCTV{}).Where("id IN ?", ids)
+		if requiredSiteID != nil {
+			updateQuery = updateQuery.Where("site_id = ?", *requiredSiteID)
+		}
+		return updateQuery.Update("zone_id", zoneID).Error
 	})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -620,11 +776,14 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 }
 
 // zoneMatchesActiveSite memastikan objek zona yang diakses cocok dengan site
-// aktif yang ditetapkan middleware SiteContext.
+// aktif yang ditetapkan middleware SiteContext atau header/cookie/query site.
 func zoneMatchesActiveSite(c *fiber.Ctx, zone models.Zone) bool {
-	siteID, ok := c.Locals("site_id").(string)
-	if !ok || siteID == "" {
+	activeSiteID, ok := resolveActiveSiteID(c)
+	if !ok {
+		return false
+	}
+	if activeSiteID == nil {
 		return true
 	}
-	return zone.SiteID != nil && zone.SiteID.String() == siteID
+	return zone.SiteID != nil && *zone.SiteID == *activeSiteID
 }

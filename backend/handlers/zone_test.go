@@ -316,3 +316,160 @@ func TestGetAllZonesForSelect_Success(t *testing.T) {
 	assert.Equal(t, "success", result["status"])
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestAudit_ZoneCreateMustPersistSelectedSite menguji persistensi site_id saat
+// pembuatan zona (baik melalui konteks/header site aktif maupun body site_id),
+// visibilitas pada list/dropdown site tersebut, serta konsistensi site antara
+// zona dan CCTV pada penugasan maupun pembuatan CCTV (Issue #177 / M04).
+func TestAudit_ZoneCreateMustPersistSelectedSite(t *testing.T) {
+	t.Run("create_zone_persists_active_site_and_appears_in_site_list_and_dropdown", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		siteID := uuid.New()
+		zoneID := uuid.New()
+
+		mock.ExpectExec(`^INSERT INTO "zones"`).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "Zona Inti KIPP", "Kawasan Inti", siteID).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		// GET /zones dengan site aktif yang sama
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "zones" WHERE site_id = \$1`).
+			WithArgs(siteID.String()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(`SELECT \* FROM "zones" WHERE site_id = \$1`).
+			WithArgs(siteID.String(), 10).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at", "nama", "deskripsi", "site_id",
+			}).AddRow(zoneID, time.Now(), time.Now(), nil, "Zona Inti KIPP", "Kawasan Inti", siteID))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctvs"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "user_zones"`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		// GET /zones/all dengan header X-Site-ID tanpa middleware SiteContext
+		mock.ExpectQuery(`SELECT \* FROM "zones" WHERE site_id = \$1`).
+			WithArgs(siteID.String()).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at", "nama", "deskripsi", "site_id",
+			}).AddRow(zoneID, time.Now(), time.Now(), nil, "Zona Inti KIPP", "Kawasan Inti", siteID))
+
+		app := newTestApp()
+		adminID := uuid.New().String()
+		app.Post("/zones", withUserSiteLocals(adminID, "admin", siteID.String()), CreateZone)
+		app.Get("/zones", withUserSiteLocals(adminID, "admin", siteID.String()), GetAllZones)
+		app.Get("/zones/all", withUserLocals(adminID, "admin"), GetAllZonesForSelect)
+
+		createReq := httptest.NewRequest("POST", "/zones", strings.NewReader(`{"nama":"Zona Inti KIPP","deskripsi":"Kawasan Inti"}`))
+		createReq.Header.Set("Content-Type", "application/json")
+		createResp, err := app.Test(createReq)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusCreated, createResp.StatusCode)
+
+		var createBody map[string]interface{}
+		assert.NoError(t, json.NewDecoder(createResp.Body).Decode(&createBody))
+		createdData := createBody["data"].(map[string]interface{})
+		assert.Equal(t, siteID.String(), createdData["site_id"])
+
+		listReq := httptest.NewRequest("GET", "/zones?page=1&limit=10", nil)
+		listResp, err := app.Test(listReq)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, listResp.StatusCode)
+
+		var listBody map[string]interface{}
+		assert.NoError(t, json.NewDecoder(listResp.Body).Decode(&listBody))
+		rows := listBody["data"].(map[string]interface{})["rows"].([]interface{})
+		assert.Len(t, rows, 1)
+		assert.Equal(t, siteID.String(), rows[0].(map[string]interface{})["site_id"])
+
+		selectReq := httptest.NewRequest("GET", "/zones/all", nil)
+		selectReq.Header.Set("X-Site-ID", siteID.String())
+		selectResp, err := app.Test(selectReq)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, selectResp.StatusCode)
+
+		var selectBody map[string]interface{}
+		assert.NoError(t, json.NewDecoder(selectResp.Body).Decode(&selectBody))
+		selectData := selectBody["data"].([]interface{})
+		assert.Len(t, selectData, 1)
+		assert.Equal(t, siteID.String(), selectData[0].(map[string]interface{})["site_id"])
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("global_admin_can_specify_site_id_in_body_and_conflicting_site_is_rejected", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		siteA := uuid.New()
+		siteB := uuid.New()
+
+		mock.ExpectExec(`^INSERT INTO "zones"`).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "Zona Timur", "", siteA).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		app := newTestApp()
+		adminID := uuid.New().String()
+		app.Post("/zones-global", withUserLocals(adminID, "admin"), CreateZone)
+		app.Post("/zones-scoped", withUserSiteLocals(adminID, "admin", siteA.String()), CreateZone)
+
+		// Global admin mengirim site_id di body -> tersimpan dengan siteA
+		req1 := httptest.NewRequest("POST", "/zones-global", strings.NewReader(`{"nama":"Zona Timur","site_id":"`+siteA.String()+`"}`))
+		req1.Header.Set("Content-Type", "application/json")
+		resp1, err := app.Test(req1)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusCreated, resp1.StatusCode)
+
+		var body1 map[string]interface{}
+		assert.NoError(t, json.NewDecoder(resp1.Body).Decode(&body1))
+		assert.Equal(t, siteA.String(), body1["data"].(map[string]interface{})["site_id"])
+
+		// Scoped admin (siteA) mengirim site_id berbeda (siteB) di body -> 400
+		req2 := httptest.NewRequest("POST", "/zones-scoped", strings.NewReader(`{"nama":"Zona Konflik","site_id":"`+siteB.String()+`"}`))
+		req2.Header.Set("Content-Type", "application/json")
+		resp2, err := app.Test(req2)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, resp2.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("assign_cctv_and_create_cctv_enforce_zone_site_consistency", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		siteA := uuid.New()
+		siteB := uuid.New()
+		zoneA := uuid.New()
+		cctvInSiteB := uuid.New()
+
+		// 1) AssignCCTVToZone oleh global admin ke zoneA (milik siteA) dengan CCTV dari siteB -> ditolak 400
+		mock.ExpectQuery(`SELECT \* FROM "zones"`).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at", "nama", "deskripsi", "site_id",
+			}).AddRow(zoneA, time.Now(), time.Now(), nil, "Zona A", "Kawasan A", siteA))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctvs" WHERE \(id IN \(\$1\) AND deleted_at IS NULL\) AND site_id = \$2`).
+			WithArgs(cctvInSiteB, siteA).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		// 2) CreateCCTV pada siteB tetapi memilih zoneA (milik siteA) -> ditolak 400
+		mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+			WillReturnError(gorm.ErrRecordNotFound)
+		mock.ExpectQuery(`^SELECT \* FROM "zones"`).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at", "nama", "deskripsi", "site_id",
+			}).AddRow(zoneA, time.Now(), time.Now(), nil, "Zona A", "Kawasan A", siteA))
+
+		app := newTestApp()
+		adminID := uuid.New().String()
+		app.Post("/zones/:id/assign-cctvs", withUserLocals(adminID, "admin"), AssignCCTVToZone)
+		app.Post("/cctv", withUserLocals(adminID, "admin"), CreateCCTV)
+
+		assignReq := httptest.NewRequest("POST", "/zones/"+zoneA.String()+"/assign-cctvs",
+			strings.NewReader(`{"cctv_ids":["`+cctvInSiteB.String()+`"]}`))
+		assignReq.Header.Set("Content-Type", "application/json")
+		assignResp, err := app.Test(assignReq)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, assignResp.StatusCode)
+
+		createCCTVBody := `{"kode_cctv":"CAM-CROSS-01","nama":"Kamera Lintas Site","status":"aktif","site_id":"` + siteB.String() + `","zone_id":"` + zoneA.String() + `"}`
+		createCCTVReq := httptest.NewRequest("POST", "/cctv", strings.NewReader(createCCTVBody))
+		createCCTVReq.Header.Set("Content-Type", "application/json")
+		createCCTVResp, err := app.Test(createCCTVReq)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, createCCTVResp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
