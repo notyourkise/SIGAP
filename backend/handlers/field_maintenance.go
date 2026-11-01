@@ -94,7 +94,7 @@ func loadActiveChecklistTemplates(db *gorm.DB, siteID *uuid.UUID) []models.Check
 // 3) mencakup seluruh item yang berstatus wajib (wajib = true) pada template aktif.
 func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates []models.ChecklistTemplate) ([]FieldCheckItem, error) {
 	if len(checks) == 0 || len(checks) > maxFieldChecks {
-		return nil, fmt.Errorf("Checklist wajib diisi 1–%d item", maxFieldChecks)
+		return nil, fmt.Errorf("checklist wajib diisi 1–%d item", maxFieldChecks)
 	}
 
 	byID := make(map[string]models.ChecklistTemplate, len(templates))
@@ -119,10 +119,10 @@ func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates [
 	for _, chk := range checks {
 		nameKey := normalizeChecklistItemName(chk.Name)
 		if nameKey == "" {
-			return nil, errors.New("Nama item checklist tidak boleh kosong")
+			return nil, errors.New("nama item checklist tidak boleh kosong")
 		}
 		if seenByName[nameKey] {
-			return nil, fmt.Errorf("Item checklist duplikat tidak diizinkan: %s", strings.TrimSpace(chk.Name))
+			return nil, fmt.Errorf("item checklist duplikat tidak diizinkan: %s", strings.TrimSpace(chk.Name))
 		}
 
 		var matchedTpl models.ChecklistTemplate
@@ -130,14 +130,14 @@ func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates [
 		if rawTplID != "" {
 			tpl, ok := byID[rawTplID]
 			if !ok {
-				return nil, fmt.Errorf("ID template checklist tidak aktif atau tidak sesuai site: %s", chk.TemplateID)
+				return nil, fmt.Errorf("template_id checklist tidak aktif atau tidak sesuai site: %s", chk.TemplateID)
 			}
 			if seenByID[rawTplID] {
-				return nil, fmt.Errorf("Item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
+				return nil, fmt.Errorf("item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
 			}
 			tplNameKey := normalizeChecklistItemName(tpl.NamaItem)
 			if nameKey != tplNameKey {
-				return nil, fmt.Errorf("Nama item checklist tidak sesuai dengan template aktif: %s", strings.TrimSpace(chk.Name))
+				return nil, fmt.Errorf("nama item checklist tidak sesuai dengan template aktif: %s", strings.TrimSpace(chk.Name))
 			}
 			seenByID[rawTplID] = true
 			seenByName[tplNameKey] = true
@@ -145,12 +145,12 @@ func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates [
 		} else {
 			tpl, ok := byName[nameKey]
 			if !ok {
-				return nil, fmt.Errorf("Item checklist tidak terdaftar pada template aktif: %s", strings.TrimSpace(chk.Name))
+				return nil, fmt.Errorf("item checklist tidak terdaftar pada template aktif: %s", strings.TrimSpace(chk.Name))
 			}
 			if tpl.ID != uuid.Nil {
 				idKey := strings.ToLower(tpl.ID.String())
 				if seenByID[idKey] {
-					return nil, fmt.Errorf("Item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
+					return nil, fmt.Errorf("item template checklist duplikat tidak diizinkan: %s", tpl.NamaItem)
 				}
 				seenByID[idKey] = true
 			}
@@ -170,7 +170,7 @@ func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates [
 		}
 		tplKey := normalizeChecklistItemName(tpl.NamaItem)
 		if tplKey != "" && !seenByName[tplKey] {
-			return nil, fmt.Errorf("Item checklist wajib belum dilengkapi: %s", tpl.NamaItem)
+			return nil, fmt.Errorf("item checklist wajib belum dilengkapi: %s", tpl.NamaItem)
 		}
 	}
 
@@ -182,21 +182,21 @@ func validateChecklistItemsAgainstTemplates(checks []FieldCheckItem, templates [
 // file reguler tidak kosong di server.
 func validateEvidenceImages(images []FieldImageItem) error {
 	if len(images) == 0 || len(images) > maxFieldImages {
-		return fmt.Errorf("Minimal satu foto bukti wajib dilampirkan (maksimal %d foto)", maxFieldImages)
+		return fmt.Errorf("minimal satu foto bukti wajib dilampirkan (maksimal %d foto)", maxFieldImages)
 	}
 
 	seen := make(map[string]bool, len(images))
 	for _, img := range images {
 		targetPath, filename, ok := resolveSafeUploadFilePath(img.ImageUrl)
 		if !ok {
-			return errors.New("Path foto bukti tidak valid")
+			return errors.New("path foto bukti tidak valid")
 		}
 		if seen[filename] {
-			return errors.New("Foto bukti duplikat tidak diizinkan dalam satu laporan")
+			return errors.New("foto bukti duplikat tidak diizinkan dalam satu laporan")
 		}
 		info, err := os.Lstat(targetPath)
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-			return errors.New("File foto bukti tidak ditemukan atau tidak valid di server")
+			return errors.New("file foto bukti tidak ditemukan atau tidak valid di server")
 		}
 		seen[filename] = true
 	}
