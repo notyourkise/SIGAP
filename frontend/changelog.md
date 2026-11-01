@@ -1,6 +1,23 @@
 # Changelog - Frontend SIGAP
 
-## [1.55.41] - 2026-11-01
+## [1.55.42] - 2026-11-02
+
+### [Medium][M03] Sesuaikan tipe dan rata-rata kepatuhan SLA dengan metrik tugas dinilai (`assessed`) (#176)
+
+**Masalah**: Rata-rata kepatuhan (`avgCompliance`) di `frontend/src/app/sla/page.tsx` sebelumnya merata-ratakan seluruh slot bulan termasuk bulan yang belum memiliki tugas SLA yang dinilai (`assessed = 0`).
+
+**Perbaikan**:
+- Menambahkan field opsional `assessed`, `pending`, dan `violated` pada tipe `MonthlyCompliance` dan `TechnicianRank` di `frontend/src/app/sla/page.tsx`.
+- Memperbarui perhitungan `avgCompliance` agar hanya merata-ratakan bulan yang memiliki tugas SLA yang sudah dinilai (`(m.assessed ?? m.total) > 0`).
+
+timestamp: 2026-11-02 01:08 UTC+8
+kategori: Sedang, Frontend (SLA Dashboard)
+file yang diubah:
+- frontend/src/app/sla/page.tsx
+
+alasan perubahan: Menyelaraskan tampilan ringkasan kepatuhan SLA dengan pemisahan tugas pending dan assessed di backend (Issue #176 / M03).
+
+---## [1.55.41] - 2026-11-01
 
 ### [Medium][M01] Konsistensi konversi waktu WITA pada form dan tampilan log pemeliharaan (#174)
 
@@ -17,7 +34,8 @@ file yang diubah:
 
 alasan perubahan: Menjaga konsistensi waktu terjadwal antara form input/edit pemeliharaan dan respons API dalam zona waktu WITA (Issue #174 / M01).
 
----## [1.55.40] - 2026-11-01
+---
+## [1.55.40] - 2026-11-01
 
 ### [High][H01] Arahkan rewrite pengembangan /stream/* dan /hls/* melalui backend terautentikasi (#167)
 

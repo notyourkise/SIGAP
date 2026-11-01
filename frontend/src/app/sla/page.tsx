@@ -30,7 +30,10 @@ import {
 interface MonthlyCompliance {
   month: string;
   total: number;
+  assessed?: number;
+  pending?: number;
   completed_in_target: number;
+  violated?: number;
   compliance_rate: number;
 }
 
@@ -52,7 +55,10 @@ interface TechnicianRank {
   user_id: string;
   full_name: string;
   total_tasks: number;
+  assessed?: number;
+  pending?: number;
   completed_in_target: number;
+  violated?: number;
   compliance_rate: number;
 }
 
@@ -183,7 +189,7 @@ export default function SLAPage() {
   }));
 
   const avgCompliance = (() => {
-    const list = data?.monthly_compliance || [];
+    const list = (data?.monthly_compliance || []).filter((m) => (m.assessed ?? m.total) > 0);
     if (list.length === 0) return 0;
     const sum = list.reduce((acc, m) => acc + m.compliance_rate, 0);
     return Math.round(sum / list.length);

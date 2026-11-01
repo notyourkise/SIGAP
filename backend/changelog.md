@@ -1,6 +1,26 @@
 # Changelog - Backend SIGAP
 
-## [0.64.48] - 2026-11-01
+## [0.64.49] - 2026-11-02
+
+### [Medium][M03] Pisahkan tugas pending sebelum deadline dari denominator kepatuhan SLA (#176)
+
+**Masalah**: `GetDashboardSLA` di `backend/handlers/sla.go` sebelumnya menambahkan `pt.Total` dan `tr.TotalTasks` untuk seluruh baris tugas ber-SLA (termasuk tugas `ongoing`/`scheduled` yang baru dibuat dan belum jatuh tempo) lalu membagi `CompletedInTarget` dengan total tersebut. Akibatnya, pekerjaan aktif yang belum melewati batas waktu SLA ikut dihitung sebagai kegagalan dalam denominator dan menurunkan persentase kepatuhan bulanan maupun ranking teknisi.
+
+**Perbaikan**:
+- Memperbarui `SLAMonthlyPoint` dan `SLATechnicianRank` di `backend/handlers/sla.go` dengan pemisahan eksplisit antara `total`/`total_tasks`, `assessed`, `pending`, `completed_in_target`, dan `violated`.
+- Mengklasifikasikan tugas aktif sebelum deadline sebagai `pending` (tidak masuk ke `assessed` maupun `violations`), sedangkan tugas terminal (`completed` tepat waktu / terlambat, `failed`) serta tugas aktif yang sudah melewati deadline masuk ke `assessed`.
+- Menghitung `ComplianceRate` dari `CompletedInTarget / Assessed * 100` (hanya ketika `Assessed > 0`) baik pada rekap bulanan maupun ranking teknisi, serta mengutamakan teknisi yang sudah memiliki tugas dinilai pada pengurutan ranking.
+- Menambahkan regression test `TestAudit_SLAComplianceMustExcludeUnfinishedBeforeDeadline` di `backend/handlers/sla_test.go`.
+
+timestamp: 2026-11-02 01:08 UTC+8
+kategori: Sedang, Backend (SLA Compliance Calculation)
+file yang diubah:
+- backend/handlers/sla.go
+- backend/handlers/sla_test.go
+
+alasan perubahan: Mencegah pekerjaan aktif yang belum jatuh tempo menurunkan persentase kepatuhan SLA bulanan dan ranking teknisi (Issue #176 / M03).
+
+---## [0.64.48] - 2026-11-01
 
 ### [Medium][M02] Dukungan pengikatan kebijakan SLA (`sla_policy_id`) pada API jadwal pemeliharaan rutin (#175)
 
