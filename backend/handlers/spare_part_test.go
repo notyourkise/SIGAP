@@ -1,16 +1,24 @@
 package handlers
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"sigap-backend/config"
+	"sigap-backend/models"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -597,5 +605,390 @@ func TestSparePartUsage_SiteAndOwnershipBoundaries(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+type h05StockDecrementCapture struct {
+	mu           *sync.Mutex
+	matched      *bool
+	currentStock *int64
+	history      *[]int64
+}
+
+func (c h05StockDecrementCapture) Match(value driver.Value) bool {
+	delta, ok := value.(int64)
+	if !ok || delta <= 0 {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if *c.matched {
+		return true
+	}
+	if *c.currentStock < delta {
+		return false
+	}
+	*c.matched = true
+	*c.currentStock -= delta
+	*c.history = append(*c.history, *c.currentStock)
+	return true
+}
+
+// H05: Dua pemakaian suku cadang bersamaan masing-masing 4 dari stok awal 10
+// wajib mengurangi stok secara berurutan/atomik menjadi 2 dengan 2 catatan penggunaan.
+func TestAudit_ConcurrentStockUsageMustDeductBothRequests(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	mock.MatchExpectationsInOrder(false)
+	logID, cctvID, spareID := uuid.New(), uuid.New(), uuid.New()
+
+	var mu sync.Mutex
+	currentStock := int64(10)
+	var balances []int64
+
+	// Transaksi 1 (membaca stok 10 dengan FOR UPDATE -> dikurangi 4 -> sisa 6).
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`^SELECT \* FROM "spare_parts".*FOR UPDATE`).
+		WillDelayFor(30 * time.Millisecond).
+		WillReturnRows(sparePartRows(spareID, "Kabel UTP Audit", "AUDIT-H05", "Kabel", 10, 0))
+	mock.ExpectExec(`^UPDATE "spare_parts" SET "stok"=stok - \$1`).
+		WithArgs(h05StockDecrementCapture{mu: &mu, matched: new(bool), currentStock: &currentStock, history: &balances}, sqlmock.AnyArg(), spareID, 4).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "spare_part_usages"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(`^SELECT \* FROM "spare_part_usages"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	// Transaksi 2 (terserialisasi oleh lock & FOR UPDATE -> membaca stok 6 -> dikurangi 4 -> sisa 2).
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`^SELECT \* FROM "spare_parts".*FOR UPDATE`).
+		WillDelayFor(30 * time.Millisecond).
+		WillReturnRows(sparePartRows(spareID, "Kabel UTP Audit", "AUDIT-H05", "Kabel", 6, 0))
+	mock.ExpectExec(`^UPDATE "spare_parts" SET "stok"=stok - \$1`).
+		WithArgs(h05StockDecrementCapture{mu: &mu, matched: new(bool), currentStock: &currentStock, history: &balances}, sqlmock.AnyArg(), spareID, 4).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "spare_part_usages"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(`^SELECT \* FROM "spare_part_usages"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/spare-parts", withUserLocals(uuid.NewString(), "admin"), RecordSparePartUsage)
+
+	statuses := make(chan int, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := `{"spare_part_id":"` + spareID.String() + `","jumlah":4}`
+			req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := app.Test(req, -1)
+			if err != nil {
+				statuses <- 0
+				return
+			}
+			statuses <- resp.StatusCode
+		}()
+	}
+	wg.Wait()
+	close(statuses)
+
+	for status := range statuses {
+		assert.Equal(t, fiber.StatusCreated, status)
+	}
+	assert.NoError(t, mock.ExpectationsWereMet())
+	assert.Equal(t, int64(2), currentStock, "stok awal 10 dikurangi dua pemakaian @4 wajib menyisakan 2")
+	assert.Equal(t, []int64{6, 2}, balances)
+}
+
+// H05: Pemakaian total yang melebihi stok wajib ditolak secara atomik (400 + Rollback),
+// baik ketika terserialisasi maupun ketika UPDATE bersyarat stok >= jumlah menghasilkan RowsAffected == 0.
+func TestAudit_ConcurrentStockUsageRejectsOverdrawAtomically(t *testing.T) {
+	t.Run("RejectWhenConditionalUpdateAffectsZeroRows", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		logID, cctvID, spareID := uuid.New(), uuid.New(), uuid.New()
+
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts".*FOR UPDATE`).
+			WillReturnRows(sparePartRows(spareID, "Kabel UTP Audit", "AUDIT-H05", "Kabel", 10, 0))
+		// Simulasi kondisi di mana stok di DB sudah terkuras oleh koneksi lain sehingga WHERE stok >= 6 mempengaruhi 0 baris.
+		mock.ExpectExec(`^UPDATE "spare_parts" SET "stok"=stok - \$1`).
+			WithArgs(6, sqlmock.AnyArg(), spareID, 6).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectRollback()
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts", withUserLocals(uuid.NewString(), "admin"), RecordSparePartUsage)
+
+		body := `{"spare_part_id":"` + spareID.String() + `","jumlah":6}`
+		req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.Test(req, -1)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("TwoConcurrentRequestsTotalExceedingStock", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		mock.MatchExpectationsInOrder(false)
+		logID, cctvID, spareID := uuid.New(), uuid.New(), uuid.New()
+
+		// Request pertama: stok 10 dikurangi 6 -> sisa 4 (berhasil 201).
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts".*FOR UPDATE`).
+			WillReturnRows(sparePartRows(spareID, "Kabel UTP Audit", "AUDIT-H05", "Kabel", 10, 0))
+		mock.ExpectExec(`^UPDATE "spare_parts" SET "stok"=stok - \$1`).
+			WithArgs(6, sqlmock.AnyArg(), spareID, 6).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec(`^INSERT INTO "spare_part_usages"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_part_usages"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+		// Request kedua: membaca sisa stok 4 (< 6) -> ditolak 400 dan di-rollback.
+		mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+			WillReturnRows(maintenanceLogCompletedRow(logID, cctvID))
+		mock.ExpectBegin()
+		mock.ExpectQuery(`^SELECT \* FROM "spare_parts".*FOR UPDATE`).
+			WillReturnRows(sparePartRows(spareID, "Kabel UTP Audit", "AUDIT-H05", "Kabel", 4, 0))
+		mock.ExpectRollback()
+
+		app := newTestApp()
+		app.Post("/maintenance-logs/:id/spare-parts", withUserLocals(uuid.NewString(), "admin"), RecordSparePartUsage)
+
+		statuses := make(chan int, 2)
+		var wg sync.WaitGroup
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				body := `{"spare_part_id":"` + spareID.String() + `","jumlah":6}`
+				req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := app.Test(req, -1)
+				if err != nil {
+					statuses <- 0
+					return
+				}
+				statuses <- resp.StatusCode
+			}()
+		}
+		wg.Wait()
+		close(statuses)
+
+		createdCount := 0
+		badRequestCount := 0
+		for status := range statuses {
+			switch status {
+			case fiber.StatusCreated:
+				createdCount++
+			case fiber.StatusBadRequest:
+				badRequestCount++
+			}
+		}
+		assert.Equal(t, 1, createdCount, "hanya satu pemakaian @6 dari stok 10 yang boleh berhasil")
+		assert.Equal(t, 1, badRequestCount, "pemakaian kedua @6 yang melebihi sisa stok 4 wajib ditolak 400")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// H05: Verifikasi transaksi terkontrol pada PostgreSQL nyata (bila SIGAP_TEST_POSTGRES_DSN diset).
+// Menggunakan skema sementara terisolasi yang dihapus otomatis pada t.Cleanup sehingga tidak menyentuh data operasional.
+func TestAudit_PostgreSQLConcurrentStockUsageContention(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SIGAP_TEST_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("SIGAP_TEST_POSTGRES_DSN tidak diset; lewati uji kontensi PostgreSQL langsung")
+	}
+
+	schemaName := fmt.Sprintf("h05_test_%s", strings.ReplaceAll(uuid.NewString()[:8], "-", ""))
+	adminDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("gagal membuka koneksi PostgreSQL: %v", err)
+	}
+	if err := adminDB.Exec("CREATE SCHEMA " + schemaName).Error; err != nil {
+		t.Fatalf("gagal membuat skema uji sementara: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = adminDB.Exec("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE").Error
+		if sqlDB, err := adminDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	scopedDSN := dsn + " search_path=" + schemaName
+	pgDB, err := gorm.Open(postgres.Open(scopedDSN), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("gagal membuka koneksi PostgreSQL dengan search_path: %v", err)
+	}
+	sqlDB, err := pgDB.DB()
+	if err != nil {
+		t.Fatalf("gagal mengambil sql.DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(5)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	ddl := `
+		CREATE TABLE maintenance_logs (
+			id uuid PRIMARY KEY,
+			created_at timestamptz NOT NULL,
+			updated_at timestamptz NOT NULL,
+			deleted_at timestamptz NULL,
+			cctv_id uuid NOT NULL,
+			technician_id uuid NULL,
+			action_taken text NULL,
+			notes text NULL,
+			status varchar(20) NOT NULL,
+			scheduled_date timestamptz NULL,
+			completed_at timestamptz NULL,
+			image_url text NULL
+		);
+		CREATE TABLE spare_parts (
+			id uuid PRIMARY KEY,
+			created_at timestamptz NOT NULL,
+			updated_at timestamptz NOT NULL,
+			deleted_at timestamptz NULL,
+			site_id uuid NULL,
+			nama varchar(100) NOT NULL,
+			sku varchar(50) NOT NULL UNIQUE,
+			kategori varchar(50) NULL,
+			stok integer NOT NULL DEFAULT 0 CHECK (stok >= 0),
+			minimum_order integer NOT NULL DEFAULT 5,
+			satuan varchar(20) NOT NULL DEFAULT 'pcs',
+			harga_satuan numeric(12,2) DEFAULT 0,
+			keterangan text NULL
+		);
+		CREATE TABLE spare_part_usages (
+			id uuid PRIMARY KEY,
+			created_at timestamptz NOT NULL,
+			updated_at timestamptz NOT NULL,
+			deleted_at timestamptz NULL,
+			maintenance_log_id uuid NOT NULL REFERENCES maintenance_logs(id) ON DELETE CASCADE,
+			spare_part_id uuid NOT NULL REFERENCES spare_parts(id) ON DELETE CASCADE,
+			jumlah integer NOT NULL CHECK (jumlah > 0),
+			catatan text NULL
+		);
+	`
+	if err := pgDB.Exec(ddl).Error; err != nil {
+		t.Fatalf("gagal membuat tabel uji di skema sementara: %v", err)
+	}
+
+	prevDB := config.DB
+	config.DB = pgDB
+	t.Cleanup(func() { config.DB = prevDB })
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/spare-parts", withUserLocals(uuid.NewString(), "admin"), RecordSparePartUsage)
+
+	t.Run("TwoConcurrentUsesOf4From10YieldStock2AndTwoRecords", func(t *testing.T) {
+		logID, cctvID, partID := uuid.New(), uuid.New(), uuid.New()
+		now := time.Now()
+		assert.NoError(t, pgDB.Exec(
+			`INSERT INTO maintenance_logs (id, created_at, updated_at, cctv_id, status, completed_at) VALUES (?, ?, ?, ?, 'completed', ?)`,
+			logID, now, now, cctvID, now,
+		).Error)
+		assert.NoError(t, pgDB.Exec(
+			`INSERT INTO spare_parts (id, created_at, updated_at, nama, sku, kategori, stok, minimum_order, satuan) VALUES (?, ?, ?, 'Kabel UTP PG', ?, 'Kabel', 10, 2, 'pcs')`,
+			partID, now, now, "SKU-"+partID.String()[:8],
+		).Error)
+
+		statuses := make(chan int, 2)
+		var wg sync.WaitGroup
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				body := `{"spare_part_id":"` + partID.String() + `","jumlah":4}`
+				req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := app.Test(req, -1)
+				if err != nil {
+					statuses <- 0
+					return
+				}
+				statuses <- resp.StatusCode
+			}()
+		}
+		wg.Wait()
+		close(statuses)
+
+		for st := range statuses {
+			assert.Equal(t, fiber.StatusCreated, st)
+		}
+
+		var part models.SparePart
+		assert.NoError(t, pgDB.First(&part, "id = ?", partID).Error)
+		assert.Equal(t, 2, part.Stok)
+
+		var usageCount int64
+		assert.NoError(t, pgDB.Model(&models.SparePartUsage{}).Where("spare_part_id = ?", partID).Count(&usageCount).Error)
+		assert.Equal(t, int64(2), usageCount)
+	})
+
+	t.Run("ConcurrentTotalExceedingStockRejectedAtomically", func(t *testing.T) {
+		logID, cctvID, partID := uuid.New(), uuid.New(), uuid.New()
+		now := time.Now()
+		assert.NoError(t, pgDB.Exec(
+			`INSERT INTO maintenance_logs (id, created_at, updated_at, cctv_id, status, completed_at) VALUES (?, ?, ?, ?, 'completed', ?)`,
+			logID, now, now, cctvID, now,
+		).Error)
+		assert.NoError(t, pgDB.Exec(
+			`INSERT INTO spare_parts (id, created_at, updated_at, nama, sku, kategori, stok, minimum_order, satuan) VALUES (?, ?, ?, 'Konektor RJ45 PG', ?, 'Konektor', 10, 2, 'pcs')`,
+			partID, now, now, "SKU-"+partID.String()[:8],
+		).Error)
+
+		statuses := make(chan int, 2)
+		var wg sync.WaitGroup
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				body := `{"spare_part_id":"` + partID.String() + `","jumlah":6}`
+				req := httptest.NewRequest("POST", "/maintenance-logs/"+logID.String()+"/spare-parts", strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := app.Test(req, -1)
+				if err != nil {
+					statuses <- 0
+					return
+				}
+				statuses <- resp.StatusCode
+			}()
+		}
+		wg.Wait()
+		close(statuses)
+
+		createdCount := 0
+		badRequestCount := 0
+		for st := range statuses {
+			switch st {
+			case fiber.StatusCreated:
+				createdCount++
+			case fiber.StatusBadRequest:
+				badRequestCount++
+			}
+		}
+		assert.Equal(t, 1, createdCount)
+		assert.Equal(t, 1, badRequestCount)
+
+		var part models.SparePart
+		assert.NoError(t, pgDB.First(&part, "id = ?", partID).Error)
+		assert.Equal(t, 4, part.Stok)
+
+		var usageCount int64
+		assert.NoError(t, pgDB.Model(&models.SparePartUsage{}).Where("spare_part_id = ?", partID).Count(&usageCount).Error)
+		assert.Equal(t, int64(1), usageCount)
 	})
 }

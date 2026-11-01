@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"sigap-backend/config"
 	"sigap-backend/models"
@@ -11,12 +12,22 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // EventStockLow adalah nama event WebSocket yang dipancarkan ketika stok suku
 // cadang jatuh di bawah ambang minimum_order. Dikonsumsi dashboard widget
 // "Suku Cadang Stok Rendah" di frontend.
 const EventStockLow = "STOCK_LOW"
+
+var sparePartUsageLocks sync.Map
+
+func lockSparePartUsage(sparePartID uuid.UUID) func() {
+	val, _ := sparePartUsageLocks.LoadOrStore(sparePartID, &sync.Mutex{})
+	mu := val.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 // CreateSparePartRequest adalah body pembuatan suku cadang baru (Admin saja).
 type CreateSparePartRequest struct {
@@ -536,8 +547,11 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 	stockLow := false
 	stockLowNewStok := 0
 
+	unlockPart := lockSparePartUsage(sparePartID)
+	defer unlockPart()
+
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&sparePart, "id = ?", sparePartID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sparePart, "id = ?", sparePartID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return fiber.NewError(fiber.StatusNotFound, "Suku cadang tidak ditemukan")
 			}
@@ -562,11 +576,17 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 				fmt.Sprintf("Stok tidak mencukupi. Tersedia %d %s", sparePart.Stok, sparePart.Satuan))
 		}
 
-		// Kurangi stok secara atomik.
+		// Kurangi stok secara atomik dengan syarat stok >= jumlah dan validasi RowsAffected.
 		newStok := sparePart.Stok - req.Jumlah
-		if err := tx.Model(&models.SparePart{}).Where("id = ?", sparePart.ID).
-			Update("stok", newStok).Error; err != nil {
-			return err
+		updateRes := tx.Model(&models.SparePart{}).
+			Where("id = ? AND stok >= ?", sparePart.ID, req.Jumlah).
+			Update("stok", gorm.Expr("stok - ?", req.Jumlah))
+		if updateRes.Error != nil {
+			return updateRes.Error
+		}
+		if updateRes.RowsAffected == 0 {
+			return fiber.NewError(fiber.StatusBadRequest,
+				fmt.Sprintf("Stok tidak mencukupi. Tersedia %d %s", sparePart.Stok, sparePart.Satuan))
 		}
 
 		// Buat catatan penggunaan.
@@ -612,7 +632,7 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 			"spare_part_id": sparePart.ID,
 			"nama":          sparePart.Nama,
 			"sku":           sparePart.SKU,
-			"stok":          sparePart.Stok - req.Jumlah,
+			"stok":          stockLowNewStok,
 			"minimum_order": sparePart.MinimumOrder,
 		})
 		// Task 11.3: kirim email peringatan stok rendah ke admin yang opt-in.
