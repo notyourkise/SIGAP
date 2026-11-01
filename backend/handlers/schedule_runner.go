@@ -133,7 +133,7 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 	}
 
 	// Broadcast agar halaman log pemeliharaan ter-refresh real-time.
-	utils.BroadcastEvent("MAINTENANCE_CREATED", logEntry)
+	broadcastMaintenanceLogEvent(db, "MAINTENANCE_CREATED", logEntry)
 
 	// Bila jadwal langsung menugaskan teknisi, tulis notifikasi secara sinkron.
 	// Helper ini juga memicu WebSocket dan Web Push sehingga jalur in-app dan

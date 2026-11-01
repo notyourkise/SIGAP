@@ -132,3 +132,162 @@ func TestBroadcastToSite_FiltersRecipients(t *testing.T) {
 	assert.True(t, errors.As(err, &netErr))
 	assert.True(t, netErr.Timeout())
 }
+
+func TestWSClientInfo_CanReceiveMaintenanceEvent(t *testing.T) {
+	admin := WSClientInfo{UserID: "admin-1", Role: "admin"}
+	techOwnerSiteA := WSClientInfo{
+		UserID:  "tech-a1",
+		Role:    "teknisi",
+		SiteIDs: map[string]struct{}{"site-a": {}},
+	}
+	techOtherSiteA := WSClientInfo{
+		UserID:  "tech-a2",
+		Role:    "teknisi",
+		SiteIDs: map[string]struct{}{"site-a": {}},
+	}
+	techSiteB := WSClientInfo{
+		UserID:  "tech-b1",
+		Role:    "teknisi",
+		SiteIDs: map[string]struct{}{"site-b": {}},
+	}
+
+	assert.True(t, admin.CanReceiveMaintenanceEvent("site-a", "tech-a1"))
+	assert.True(t, admin.CanReceiveMaintenanceEvent("site-a", ""))
+	assert.True(t, admin.CanReceiveMaintenanceEvent("", ""))
+
+	assert.True(t, techOwnerSiteA.CanReceiveMaintenanceEvent("site-a", "tech-a1"))
+	assert.False(t, techOwnerSiteA.CanReceiveMaintenanceEvent("site-a", "tech-a2"))
+	assert.False(t, techOwnerSiteA.CanReceiveMaintenanceEvent("site-a", ""))
+	assert.False(t, techOwnerSiteA.CanReceiveMaintenanceEvent("site-b", "tech-a1"))
+
+	assert.False(t, techOtherSiteA.CanReceiveMaintenanceEvent("site-a", "tech-a1"))
+	assert.False(t, techSiteB.CanReceiveMaintenanceEvent("site-a", "tech-a1"))
+	assert.False(t, techSiteB.CanReceiveMaintenanceEvent("site-a", "tech-b1"))
+}
+
+// H06: Reproduksi audit — koneksi teknisi site B wajib ditolak saat event pemeliharaan
+// site A disiarkan, baik melalui BroadcastEvent maupun BroadcastMaintenanceEvent.
+func TestAudit_MaintenanceBroadcastMustDenyOtherSite(t *testing.T) {
+	resetWebSocketHub(t)
+	app := fiber.New()
+	registered := make(chan struct{})
+	app.Get("/ws", gws.New(func(c *gws.Conn) {
+		Hub.Register(c, "tech-b", "teknisi", []string{"site-b"})
+		close(registered)
+		defer Hub.Unregister(c)
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	go func() { _ = fasthttp.Serve(listener, app.Handler()) }()
+
+	client, _, err := websocket.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws", nil)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	select {
+	case <-registered:
+	case <-time.After(time.Second):
+		t.Fatal("koneksi tidak terdaftar")
+	}
+
+	BroadcastEvent("MAINTENANCE_UPDATED", map[string]string{
+		"site_id": "site-a",
+		"notes":   "site A confidential work order",
+	})
+	require.NoError(t, client.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	_, body, err := client.ReadMessage()
+	if err == nil {
+		t.Errorf("teknisi site-b tidak boleh menerima event pemeliharaan site-a: %s", body)
+	}
+}
+
+// H06: Menguji pengiriman event pemeliharaan pada 4 kategori koneksi sekaligus:
+// 1. Admin (menerima)
+// 2. Teknisi pemilik di site yang sama (menerima)
+// 3. Teknisi lain di site yang sama (ditolak)
+// 4. Teknisi di site lain (ditolak)
+func TestBroadcastMaintenanceEvent_SiteAndOwnershipBoundaries(t *testing.T) {
+	resetWebSocketHub(t)
+
+	app := fiber.New()
+	app.Get("/ws", gws.New(func(c *gws.Conn) {
+		var sites []string
+		if raw := c.Query("sites"); raw != "" {
+			sites = strings.Split(raw, ",")
+		}
+		Hub.Register(c, c.Query("user"), c.Query("role"), sites)
+		defer Hub.Unregister(c)
+
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	go func() { _ = fasthttp.Serve(listener, app.Handler()) }()
+
+	dial := func(query string) *websocket.Conn {
+		conn, _, err := websocket.DefaultDialer.Dial(
+			"ws://"+listener.Addr().String()+"/ws?"+query, nil,
+		)
+		require.NoError(t, err)
+		return conn
+	}
+
+	adminConn := dial("user=admin-1&role=admin")
+	defer func() { _ = adminConn.Close() }()
+	ownerSiteAConn := dial("user=tech-a1&role=teknisi&sites=site-a")
+	defer func() { _ = ownerSiteAConn.Close() }()
+	otherTechSiteAConn := dial("user=tech-a2&role=teknisi&sites=site-a")
+	defer func() { _ = otherTechSiteAConn.Close() }()
+	techSiteBConn := dial("user=tech-b1&role=teknisi&sites=site-b")
+	defer func() { _ = techSiteBConn.Close() }()
+
+	require.Eventually(t, func() bool {
+		return Hub.ActiveConnections() == 4
+	}, time.Second, 10*time.Millisecond)
+
+	BroadcastMaintenanceEvent("site-a", "tech-a1", "MAINTENANCE_UPDATED", map[string]string{
+		"id":            "log-1",
+		"site_id":       "site-a",
+		"technician_id": "tech-a1",
+		"status":        "ongoing",
+	})
+
+	readEvent := func(conn *websocket.Conn) EventMessage {
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+		_, raw, err := conn.ReadMessage()
+		require.NoError(t, err)
+		var event EventMessage
+		require.NoError(t, json.Unmarshal(raw, &event))
+		return event
+	}
+
+	assertNoEvent := func(conn *websocket.Conn, label string) {
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+		_, raw, err := conn.ReadMessage()
+		require.Error(t, err, "%s tidak boleh menerima event pemeliharaan milik teknisi lain: %s", label, string(raw))
+		var netErr net.Error
+		assert.True(t, errors.As(err, &netErr))
+		assert.True(t, netErr.Timeout())
+	}
+
+	adminMsg := readEvent(adminConn)
+	assert.Equal(t, "MAINTENANCE_UPDATED", adminMsg.Event)
+
+	ownerMsg := readEvent(ownerSiteAConn)
+	assert.Equal(t, "MAINTENANCE_UPDATED", ownerMsg.Event)
+
+	assertNoEvent(otherTechSiteAConn, "teknisi lain dalam site-a")
+	assertNoEvent(techSiteBConn, "teknisi site-b")
+}

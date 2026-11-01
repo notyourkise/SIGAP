@@ -164,14 +164,22 @@ func sendEscalationNotification(db *gorm.DB, logEntry *models.MaintenanceLog, le
 		}
 	}
 
-	// Broadcast event via WebSocket untuk eskalasi tingkat lanjut.
+	// Broadcast event via WebSocket secara terarah (admin + teknisi pemilik di site terkait).
+	siteID := ""
+	if logEntry.CCTV.SiteID != nil {
+		siteID = logEntry.CCTV.SiteID.String()
+	}
+	techID := ""
+	if logEntry.Status == "ongoing" && logEntry.TechnicianID != nil {
+		techID = logEntry.TechnicianID.String()
+	}
 	if level >= OverdueLevelCritical {
-		utils.BroadcastEvent(EventOverdueCritical, fiber.Map{
-			"log_id": logEntry.ID.String(), "cctv_name": logEntry.CCTV.Nama, "level": level,
+		utils.BroadcastMaintenanceEvent(siteID, techID, EventOverdueCritical, fiber.Map{
+			"log_id": logEntry.ID.String(), "site_id": siteID, "technician_id": techID, "cctv_name": logEntry.CCTV.Nama, "level": level,
 		})
 	} else if level >= OverdueLevelHigh {
-		utils.BroadcastEvent(EventOverdueHigh, fiber.Map{
-			"log_id": logEntry.ID.String(), "cctv_name": logEntry.CCTV.Nama, "level": level,
+		utils.BroadcastMaintenanceEvent(siteID, techID, EventOverdueHigh, fiber.Map{
+			"log_id": logEntry.ID.String(), "site_id": siteID, "technician_id": techID, "cctv_name": logEntry.CCTV.Nama, "level": level,
 		})
 	}
 

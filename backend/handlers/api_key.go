@@ -126,13 +126,13 @@ func CreateAPIKey(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
-			"id":        item.ID,
-			"name":      item.Name,
+			"id":         item.ID,
+			"name":       item.Name,
 			"key_prefix": item.KeyPrefix,
-			"scopes":    item.Scopes,
+			"scopes":     item.Scopes,
 			"expires_at": item.ExpiresAt,
-			"api_key":   rawKey, // hanya tampil sekali
-			"message":   "Simpan API key ini sekarang; tidak akan ditampilkan lagi.",
+			"api_key":    rawKey, // hanya tampil sekali
+			"message":    "Simpan API key ini sekarang; tidak akan ditampilkan lagi.",
 		},
 	})
 }
@@ -282,9 +282,9 @@ func RegenerateAPIKey(c *fiber.Ctx) error {
 
 	// Perbarui hash, prefix, dan reset last_used_at (key baru belum terpakai).
 	updates := map[string]interface{}{
-		"key_hash":      string(hash),
-		"key_prefix":    prefix,
-		"last_used_at":  nil,
+		"key_hash":     string(hash),
+		"key_prefix":   prefix,
+		"last_used_at": nil,
 	}
 	if err := config.DB.Model(&models.APIKey{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -295,7 +295,7 @@ func RegenerateAPIKey(c *fiber.Ctx) error {
 
 	utils.LogAudit(config.DB, c, "REGENERATE_API_KEY", "API_KEY",
 		"Merregenerasi API key: "+item.Name, nil, "", "")
-	utils.BroadcastEvent("API_KEY_REGENERATED", fiber.Map{
+	utils.BroadcastToRole("admin", "API_KEY_REGENERATED", fiber.Map{
 		"id":         item.ID,
 		"name":       item.Name,
 		"key_prefix": prefix,
