@@ -1,17 +1,37 @@
 # Changelog - Backend SIGAP
 
+## [0.64.48] - 2026-11-01
+
+### [Medium][M02] Dukungan pengikatan kebijakan SLA (`sla_policy_id`) pada API jadwal pemeliharaan rutin (#175)
+
+**Masalah**: Model `MaintenanceSchedule` (`backend/models/maintenance_schedule.go`) dan scheduler (`GenerateDueMaintenanceTasks` di `backend/handlers/maintenance_schedule.go`) telah mendukung penggunaan `SLAPolicyID` untuk menentukan tenggat waktu SLA spesifik jadwal, namun `CreateMaintenanceScheduleRequest` dan `UpdateMaintenanceScheduleRequest` tidak menyediakan field `sla_policy_id`, serta `GetAllMaintenanceSchedules` dan `GetMaintenanceScheduleByID` belum memuat relasi `SLAPolicy`. Akibatnya, administrator tidak dapat mengaitkan kebijakan SLA ke jadwal pemeliharaan rutin melalui API normal.
+
+**Perbaikan**:
+- Menambahkan field `SLAPolicyID` (`sla_policy_id`) pada `CreateMaintenanceScheduleRequest` (`validate:"omitempty,uuid4"`) dan `UpdateMaintenanceScheduleRequest` (`*string`, mendukung pemasangan, penggantian, maupun pelepasan kebijakan SLA dengan `""`).
+- Memvalidasi keberadaan `models.SLAPolicy` pada `CreateMaintenanceSchedule` dan `UpdateMaintenanceSchedule`, menyimpan `schedule.SLAPolicyID`, serta menyertakan `sla_policy_id` dan objek `sla_policy` pada respons API.
+- Menambahkan `.Preload("SLAPolicy")` dan dukungan pengurutan `sla_policy_id` pada `GetAllMaintenanceSchedules` serta `.Preload("SLAPolicy")` pada `GetMaintenanceScheduleByID`.
+- Menambahkan regression test `TestAudit_ScheduleMustAcceptSLAPolicy` di `backend/handlers/maintenance_schedule_test.go`.
+
+timestamp: 2026-11-01 15:58 UTC+8
+kategori: Sedang, Backend (Maintenance Schedule / SLA Policy Binding)
+file yang diubah:
+- backend/handlers/maintenance_schedule.go
+- backend/handlers/maintenance_schedule_test.go
+
+alasan perubahan: Memungkinkan kebijakan SLA dihubungkan dan diperbarui pada jadwal pemeliharaan rutin melalui API standar (Issue #175 / M02).
+
+---
 ## [0.64.47] - 2026-11-01
 
 ### [Medium][M01] Konsistensi zona waktu WITA pada jadwal dan filter tanggal pemeliharaan (#174)
 
-**Masalah**: CreateMaintenanceLog dan UpdateMaintenanceLog di ackend/handlers/maintenance.go serta ParseDateRangeParams di ackend/utils/pagination.go sebelumnya menggunakan 	ime.Parse tanpa lokasi untuk input tanggal/waktu tanpa offset (YYYY-MM-DD HH:MM:SS dan YYYY-MM-DD), sehingga Go mem-parse nilai tersebut sebagai UTC. Akibatnya, input jadwal 2026-10-31 09:00:00 dari form web tersimpan sebagai 2026-10-31T09:00:00Z (**17:00 WITA**, bergeser 8 jam), dan filter tanggal memotong batas hari menurut tengah malam UTC alih-alih WITA.
+**Masalah**: `CreateMaintenanceLog` dan `UpdateMaintenanceLog` di `backend/handlers/maintenance.go` serta `ParseDateRangeParams` di `backend/utils/pagination.go` sebelumnya menggunakan `time.Parse` tanpa lokasi untuk input tanggal/waktu tanpa offset (`YYYY-MM-DD HH:MM:SS` dan `YYYY-MM-DD`), sehingga Go mem-parse nilai tersebut sebagai UTC. Akibatnya, input jadwal `2026-10-31 09:00:00` dari form web tersimpan sebagai `2026-10-31T09:00:00Z` (**17:00 WITA**, bergeser 8 jam), dan filter tanggal memotong batas hari menurut tengah malam UTC alih-alih WITA.
 
 **Perbaikan**:
-- Memindahkan penyedia lokasi operasional AppLocation() (Asia/Makassar / fallback WITA UTC+8) ke ackend/utils/pagination.go dan mendelegasikan config.AppLocation() ke utils.AppLocation().
-- Memperbarui ParseDateRangeParams di ackend/utils/pagination.go agar mem-parse start_date dan end_date menggunakan 	ime.ParseInLocation("2006-01-02", ..., AppLocation()).
-- Menambahkan parseMaintenanceScheduledDate dan 
-ormalizeMaintenanceLogTimezone di ackend/handlers/maintenance.go sehingga CreateMaintenanceLog, UpdateMaintenanceLog, GetAllMaintenanceLogs, GetMaintenanceLogByID, dan ExportMaintenanceLogs secara konsisten mem-parse dan mengembalikan waktu terjadwal pada zona aplikasi (WITA).
-- Menambahkan regression test TestAudit_MaintenanceDateMustUseWITA di ackend/handlers/maintenance_test.go dan memperbarui pengujian ParseDateRangeParams di ackend/utils/pagination_test.go.
+- Memindahkan penyedia lokasi operasional `AppLocation()` (`Asia/Makassar` / fallback WITA UTC+8) ke `backend/utils/pagination.go` dan mendelegasikan `config.AppLocation()` ke `utils.AppLocation()`.
+- Memperbarui `ParseDateRangeParams` di `backend/utils/pagination.go` agar mem-parse `start_date` dan `end_date` menggunakan `time.ParseInLocation("2006-01-02", ..., AppLocation())`.
+- Menambahkan `parseMaintenanceScheduledDate` dan `normalizeMaintenanceLogTimezone` di `backend/handlers/maintenance.go` sehingga `CreateMaintenanceLog`, `UpdateMaintenanceLog`, `GetAllMaintenanceLogs`, `GetMaintenanceLogByID`, dan `ExportMaintenanceLogs` secara konsisten mem-parse dan mengembalikan waktu terjadwal pada zona aplikasi (WITA).
+- Menambahkan regression test `TestAudit_MaintenanceDateMustUseWITA` di `backend/handlers/maintenance_test.go` dan memperbarui pengujian `ParseDateRangeParams` di `backend/utils/pagination_test.go`.
 
 timestamp: 2026-11-01 15:43 UTC+8
 kategori: Sedang, Backend (Timezone Consistency / Maintenance Scheduling)
@@ -30,18 +50,18 @@ alasan perubahan: Menghilangkan pergeseran waktu 8 jam antara input form pemelih
 
 ### [High][H07] Validasi checklist terhadap template aktif/wajib dan verifikasi fisik foto bukti (#173)
 
-**Masalah**: Penyelesaian tugas pemeliharaan (CompleteMaintenanceLog di ackend/handlers/maintenance.go) dan pencatatan pengecekan lapangan (CreateFieldMaintenance di ackend/handlers/field_maintenance.go) sebelumnya hanya memeriksa bahwa array checks berisi minimal 1 item tanpa memvalidasi kelengkapan maupun kesesuaian terhadap template checklist aktif/wajib (models.ChecklistTemplate), serta hanya memeriksa awalan string /api/uploads/ pada images[].image_url tanpa memverifikasi keberadaan file fisik di direktori unggahan. Akibatnya teknisi dapat menyelesaikan tugas memakai 1 item checklist karangan dan URL foto bukti fiktif.
+**Masalah**: Penyelesaian tugas pemeliharaan (`CompleteMaintenanceLog` di `backend/handlers/maintenance.go`) dan pencatatan pengecekan lapangan (`CreateFieldMaintenance` di `backend/handlers/field_maintenance.go`) sebelumnya hanya memeriksa bahwa array `checks` berisi minimal 1 item tanpa memvalidasi kelengkapan maupun kesesuaian terhadap template checklist aktif/wajib (`models.ChecklistTemplate`), serta hanya memeriksa awalan string `/api/uploads/` pada `images[].image_url` tanpa memverifikasi keberadaan file fisik di direktori unggahan. Akibatnya teknisi dapat menyelesaikan tugas memakai 1 item checklist karangan dan URL foto bukti fiktif.
 
 **Perbaikan**:
-- Mengekstrak daftar template resmi bawaan ke fungsi models.DefaultChecklistTemplates() di ackend/models/seeder.go sebagai fallback aman apabila kueri checklist_templates tidak mengembalikan baris.
-- Menambahkan dukungan 	emplate_id (opsional, UUID) pada FieldCheckItem serta fungsi loadActiveChecklistTemplates, alidateChecklistItemsAgainstTemplates, dan alidateEvidenceImages di ackend/handlers/field_maintenance.go:
-  - Memastikan setiap item checks merujuk ke template checklist aktif (baik melalui 	emplate_id maupun pencocokan nama ternormalisasi) dan menolak item karangan di luar template aktif.
+- Mengekstrak daftar template resmi bawaan ke fungsi `models.DefaultChecklistTemplates()` di `backend/models/seeder.go` sebagai fallback aman apabila kueri `checklist_templates` tidak mengembalikan baris.
+- Menambahkan dukungan `template_id` (opsional, UUID) pada `FieldCheckItem` serta fungsi `loadActiveChecklistTemplates`, `validateChecklistItemsAgainstTemplates`, dan `validateEvidenceImages` di `backend/handlers/field_maintenance.go`:
+  - Memastikan setiap item `checks` merujuk ke template checklist aktif (baik melalui `template_id` maupun pencocokan nama ternormalisasi) dan menolak item karangan di luar template aktif.
   - Memastikan tidak ada duplikasi item template dalam satu pengiriman laporan.
-  - Memastikan seluruh template aktif yang bersifat wajib (wajib = true) terisi lengkap sebelum laporan atau penyelesaian tugas diterima, dengan tetap mendukung jumlah template dinamis beserta item opsional (wajib = false).
-  - Menyimpan nama kanonik template (NamaItem) serta status Wajib pada models.FieldMaintenanceCheck.
-  - Memverifikasi bahwa setiap images[].image_url merujuk ke file reguler non-kosong yang benar-benar ada di dalam uploadsDir dan bebas duplikasi.
-- Menerapkan validasi template checklist dan foto bukti fisik pada CompleteMaintenanceLog (ackend/handlers/maintenance.go) dan CreateFieldMaintenance (ackend/handlers/field_maintenance.go).
-- Menambahkan regression test TestAudit_CompletionMustRejectInventedChecklist, TestCompleteMaintenanceLog_DynamicChecklistTemplatesValidation (ackend/handlers/maintenance_test.go), dan TestAudit_FieldMaintenanceMustRejectInventedChecklistAndFakePhoto (ackend/handlers/field_maintenance_test.go).
+  - Memastikan seluruh template aktif yang bersifat wajib (`wajib = true`) terisi lengkap sebelum laporan atau penyelesaian tugas diterima, dengan tetap mendukung jumlah template dinamis beserta item opsional (`wajib = false`).
+  - Menyimpan nama kanonik template (`NamaItem`) serta status `Wajib` pada `models.FieldMaintenanceCheck`.
+  - Memverifikasi bahwa setiap `images[].image_url` merujuk ke file reguler non-kosong yang benar-benar ada di dalam `uploadsDir` dan bebas duplikasi.
+- Menerapkan validasi template checklist dan foto bukti fisik pada `CompleteMaintenanceLog` (`backend/handlers/maintenance.go`) dan `CreateFieldMaintenance` (`backend/handlers/field_maintenance.go`).
+- Menambahkan regression test `TestAudit_CompletionMustRejectInventedChecklist`, `TestCompleteMaintenanceLog_DynamicChecklistTemplatesValidation` (`backend/handlers/maintenance_test.go`), dan `TestAudit_FieldMaintenanceMustRejectInventedChecklistAndFakePhoto` (`backend/handlers/field_maintenance_test.go`).
 
 timestamp: 2026-11-01 12:22 UTC+8
 kategori: Tinggi, Backend (Business Logic Integrity / Input Validation)
@@ -56,8 +76,7 @@ file yang diubah:
 
 alasan perubahan: Mencegah penyelesaian tugas pemeliharaan dan pelaporan pengecekan lapangan menggunakan item checklist karangan atau foto bukti fiktif (Issue #173 / H07).
 
----
-## [0.64.45] - 2026-11-01
+---## [0.64.45] - 2026-11-01
 
 ### [High][H06] Pembatasan broadcast WebSocket pemeliharaan berdasarkan site dan ownership (#172)
 
