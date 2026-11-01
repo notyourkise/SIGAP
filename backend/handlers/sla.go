@@ -292,34 +292,40 @@ func DeleteSLAPolicy(c *fiber.Ctx) error {
 
 // SLAMonthlyPoint adalah compliance SLA per bulan untuk chart bar.
 type SLAMonthlyPoint struct {
-	Month            string  `json:"month"`
-	Total            int64   `json:"total"`
-	CompletedInTarget int64  `json:"completed_in_target"`
-	ComplianceRate   float64 `json:"compliance_rate"`
+	Month             string  `json:"month"`
+	Total             int64   `json:"total"`
+	Assessed          int64   `json:"assessed"`
+	Pending           int64   `json:"pending"`
+	CompletedInTarget int64   `json:"completed_in_target"`
+	Violated          int64   `json:"violated"`
+	ComplianceRate    float64 `json:"compliance_rate"`
 }
 
 // SLAViolationItem adalah satu pelanggaran SLA (tugas melewati target waktu).
 type SLAViolationItem struct {
-	ID             string  `json:"id"`
-	CCTVName       string  `json:"cctv_name"`
-	CCTVCode       string  `json:"cctv_kode"`
-	TechnicianName string  `json:"technician_name"`
-	ActionTaken    string  `json:"action_taken"`
-	Status         string  `json:"status"`
-	TargetJamSelesai int   `json:"target_jam_selesai"`
-	Deadline       *string `json:"deadline"`
-	CompletedAt    *string `json:"completed_at"`
-	OverdueHours   float64 `json:"overdue_hours"`
-	JenisTugas     string  `json:"jenis_tugas"`
+	ID               string  `json:"id"`
+	CCTVName         string  `json:"cctv_name"`
+	CCTVCode         string  `json:"cctv_kode"`
+	TechnicianName   string  `json:"technician_name"`
+	ActionTaken      string  `json:"action_taken"`
+	Status           string  `json:"status"`
+	TargetJamSelesai int     `json:"target_jam_selesai"`
+	Deadline         *string `json:"deadline"`
+	CompletedAt      *string `json:"completed_at"`
+	OverdueHours     float64 `json:"overdue_hours"`
+	JenisTugas       string  `json:"jenis_tugas"`
 }
 
 // SLATechnicianRank adalah ranking teknisi berdasarkan kepatuhan SLA.
 type SLATechnicianRank struct {
-	UserID          string  `json:"user_id"`
-	FullName        string  `json:"full_name"`
-	TotalTasks      int64   `json:"total_tasks"`
-	CompletedInTarget int64 `json:"completed_in_target"`
-	ComplianceRate  float64 `json:"compliance_rate"`
+	UserID            string  `json:"user_id"`
+	FullName          string  `json:"full_name"`
+	TotalTasks        int64   `json:"total_tasks"`
+	Assessed          int64   `json:"assessed"`
+	Pending           int64   `json:"pending"`
+	CompletedInTarget int64   `json:"completed_in_target"`
+	Violated          int64   `json:"violated"`
+	ComplianceRate    float64 `json:"compliance_rate"`
 }
 
 // slaLogRow adalah baris gabungan log + jadwal + kebijakan SLA untuk perhitungan.
@@ -408,22 +414,43 @@ func GetDashboardSLA(c *fiber.Ctx) error {
 		}
 		deadline := row.CreatedAt.Add(time.Duration(row.TargetJamSelesai) * time.Hour)
 		completed := row.CompletedAt != nil
+		status := strings.ToLower(strings.TrimSpace(row.Status))
 
-		// Termasuk dalam compliance hanya log yang sudah terminal (completed/failed)
-		// ATAU masih aktif namun sudah melewati deadline (dihitung pelanggaran).
+		// Termasuk dalam basis evaluasi (assessed) hanya log yang sudah terminal
+		// (completed/failed) ATAU masih aktif namun sudah melewati deadline
+		// (dihitung pelanggaran). Tugas aktif yang belum jatuh tempo dipisahkan
+		// sebagai pending agar tidak menurunkan persentase kepatuhan (Issue #176 / M03).
+		isCompliant := false
 		isViolation := false
-		if completed {
-			isViolation = row.CompletedAt.After(deadline)
-		} else if row.Status == "ongoing" || row.Status == "scheduled" {
-			isViolation = now.After(deadline)
+		isPending := false
+
+		if status == "failed" {
+			isViolation = true
+		} else if completed {
+			if row.CompletedAt.After(deadline) {
+				isViolation = true
+			} else {
+				isCompliant = true
+			}
+		} else if now.After(deadline) {
+			isViolation = true
+		} else {
+			isPending = true
 		}
 
 		// Catat ke bulan sesuai created_at.
-		monthKey := row.CreatedAt.Format("2006-01")
+		monthKey := row.CreatedAt.In(now.Location()).Format("2006-01")
 		if pt, ok := monthly[monthKey]; ok {
 			pt.Total++
-			if completed && !isViolation {
-				pt.CompletedInTarget++
+			if isPending {
+				pt.Pending++
+			} else {
+				pt.Assessed++
+				if isCompliant {
+					pt.CompletedInTarget++
+				} else if isViolation {
+					pt.Violated++
+				}
 			}
 		}
 
@@ -436,8 +463,15 @@ func GetDashboardSLA(c *fiber.Ctx) error {
 				techMap[tid] = tr
 			}
 			tr.TotalTasks++
-			if completed && !isViolation {
-				tr.CompletedInTarget++
+			if isPending {
+				tr.Pending++
+			} else {
+				tr.Assessed++
+				if isCompliant {
+					tr.CompletedInTarget++
+				} else if isViolation {
+					tr.Violated++
+				}
 			}
 		}
 
@@ -445,8 +479,10 @@ func GetDashboardSLA(c *fiber.Ctx) error {
 		if isViolation {
 			overdueHours := float64(0)
 			if completed {
-				overdueHours = row.CompletedAt.Sub(deadline).Hours()
-			} else {
+				if row.CompletedAt.After(deadline) {
+					overdueHours = row.CompletedAt.Sub(deadline).Hours()
+				}
+			} else if now.After(deadline) {
 				overdueHours = now.Sub(deadline).Hours()
 			}
 			deadlineStr := deadline.Format("2006-01-02 15:04:05")
@@ -478,25 +514,27 @@ func GetDashboardSLA(c *fiber.Ctx) error {
 	}
 
 	// Bangun hasil bulanan & ranking.
+	// Persentase kepatuhan dihitung terhadap tugas yang sudah dinilai (Assessed),
+	// bukan seluruh tugas termasuk yang masih pending sebelum deadline.
 	monthlyResult := make([]SLAMonthlyPoint, 0, months)
 	for _, key := range monthKeys {
 		pt := monthly[key]
-		if pt.Total > 0 {
-			pt.ComplianceRate = roundDashboardMetric(float64(pt.CompletedInTarget) / float64(pt.Total) * 100)
+		if pt.Assessed > 0 {
+			pt.ComplianceRate = roundDashboardMetric(float64(pt.CompletedInTarget) / float64(pt.Assessed) * 100)
 		}
 		monthlyResult = append(monthlyResult, *pt)
 	}
 
 	ranking := make([]SLATechnicianRank, 0, len(techMap))
 	for _, tr := range techMap {
-		if tr.TotalTasks > 0 {
-			tr.ComplianceRate = roundDashboardMetric(float64(tr.CompletedInTarget) / float64(tr.TotalTasks) * 100)
+		if tr.Assessed > 0 {
+			tr.ComplianceRate = roundDashboardMetric(float64(tr.CompletedInTarget) / float64(tr.Assessed) * 100)
 		}
 		ranking = append(ranking, *tr)
 	}
 	// Urutkan ranking dari kepatuhan tertinggi.
 	for i := 1; i < len(ranking); i++ {
-		for j := i; j > 0 && ranking[j-1].ComplianceRate < ranking[j].ComplianceRate; j-- {
+		for j := i; j > 0 && shouldSwapTechnicianRank(ranking[j-1], ranking[j]); j-- {
 			ranking[j-1], ranking[j] = ranking[j], ranking[j-1]
 		}
 	}
@@ -509,6 +547,21 @@ func GetDashboardSLA(c *fiber.Ctx) error {
 			"technician_ranking": ranking,
 		},
 	})
+}
+
+// shouldSwapTechnicianRank mengembalikan true bila b harus ditempatkan sebelum a
+// pada urutan ranking kepatuhan teknisi (descending).
+func shouldSwapTechnicianRank(a, b SLATechnicianRank) bool {
+	if a.Assessed == 0 && b.Assessed > 0 {
+		return true
+	}
+	if a.Assessed > 0 && b.Assessed == 0 {
+		return false
+	}
+	if a.ComplianceRate != b.ComplianceRate {
+		return a.ComplianceRate < b.ComplianceRate
+	}
+	return a.CompletedInTarget < b.CompletedInTarget
 }
 
 // sortSLAViolations mengurutkan pelanggaran SLA dari yang paling lama overdue.
