@@ -468,11 +468,12 @@ func fetchFieldMaintenanceReportRows(filters map[string]interface{}) ([]map[stri
 	if result := filterString(filters, "overall_status"); result != "" {
 		query = query.Where("overall_status = ?", result)
 	} else if status := filterString(filters, "status"); status != "" {
-		if status == "failed" || status == "attention" {
+		switch status {
+		case "failed", "attention":
 			query = query.Where("overall_status = ?", "attention")
-		} else if status == "completed" || status == "ok" {
+		case "completed", "ok":
 			query = query.Where("overall_status = ?", "ok")
-		} else {
+		default:
 			query = query.Where("overall_status = ?", status)
 		}
 	}
