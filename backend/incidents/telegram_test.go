@@ -25,7 +25,7 @@ func TestTelegramSenderChecksAPIResultAndChat(t *testing.T) {
 					t.Error("expected POST")
 				}
 				w.WriteHeader(tc.status)
-				fmt.Fprint(w, tc.body)
+				_, _ = fmt.Fprint(w, tc.body)
 			}))
 			defer server.Close()
 			sender := TelegramSender{Token: "test", Client: server.Client(), baseURL: server.URL}

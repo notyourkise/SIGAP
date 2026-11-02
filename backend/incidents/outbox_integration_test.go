@@ -17,7 +17,7 @@ func TestPostgresOutboxPersistsTelegramReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"ok":true,"result":{"message_id":99,"chat":{"id":-100}}}`)
+		_, _ = fmt.Fprint(w, `{"ok":true,"result":{"message_id":99,"chat":{"id":-100}}}`)
 	}))
 	defer receiver.Close()
 	sender := TelegramSender{Token: "test", Client: receiver.Client(), baseURL: receiver.URL}

@@ -24,7 +24,7 @@ func integrationDB(t *testing.T) (*gorm.DB, models.CCTV) {
 		t.Fatal(err)
 	}
 	sqlDB, _ := db.DB()
-	t.Cleanup(func() { sqlDB.Close() })
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	// Safety: this fixture only accepts the dedicated test database.
 	var name string
 	db.Raw("SELECT current_database()").Scan(&name)

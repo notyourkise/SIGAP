@@ -65,7 +65,8 @@ func (d *demo) action(action string) error {
 		d.Events = []string{}
 		return nil
 	}
-	if action == "assign" {
+	switch action {
+	case "assign":
 		if d.IncidentID == "" || d.Status == "resolved" {
 			return fmt.Errorf("belum ada insiden terbuka")
 		}
@@ -77,14 +78,14 @@ func (d *demo) action(action string) error {
 			d.Status = "in_progress"
 		}
 		d.send("Admin menugaskan Teknisi Demo. Teknisi tidak perlu menautkan akun Telegram.")
-	} else if action == "resolve" {
+	case "resolve":
 		if d.Status != "pending_verification" || d.Member.ConnectionState != "recovered" {
 			return fmt.Errorf("belum ada bukti pemulihan stabil 5 menit")
 		}
 		d.Status = "resolved"
 		d.Member.IsActiveMember = false
 		d.send("Admin memverifikasi dan menutup insiden.")
-	} else {
+	default:
 		state := "live"
 		switch action {
 		case "offline":
@@ -137,7 +138,7 @@ func main() {
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sequence++
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"chat":{"id":-100}}}`, sequence)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"chat":{"id":-100}}}`, sequence)
 	}))
 	defer receiver.Close()
 	target, _ := url.Parse(receiver.URL)
@@ -150,36 +151,36 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(page)
+		_, _ = w.Write(page)
 	})
 	mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(d)
+		_ = json.NewEncoder(w).Encode(d)
 	})
 	mux.HandleFunc("/action", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			w.WriteHeader(405)
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		// Requests must originate from this loopback demo page, not arbitrary sites.
 		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://127.0.0.1:8095" && origin != "http://localhost:8095" {
-			http.Error(w, "origin ditolak", 403)
+			http.Error(w, "origin ditolak", http.StatusForbidden)
 			return
 		}
 		if r.Header.Get("X-SIGAP-Demo") != "1" {
-			http.Error(w, "header demo wajib", 403)
+			http.Error(w, "header demo wajib", http.StatusForbidden)
 			return
 		}
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if err := d.action(r.URL.Query().Get("type")); err != nil {
-			http.Error(w, err.Error(), 409)
+			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(d)
+		_ = json.NewEncoder(w).Encode(d)
 	})
 	log.Println("Demo SIGAP: http://127.0.0.1:8095 — kamera, waktu, dan Telegram adalah simulasi; tanpa database operasional")
 	server := &http.Server{Addr: "127.0.0.1:8095", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
