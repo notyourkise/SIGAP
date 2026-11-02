@@ -1,5 +1,24 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.45] - 2026-11-02
+
+### [Medium][M06] Tampilkan filter tanggal dan hasil pengecekan untuk entitas pengecekan lapangan (#179)
+
+**Masalah**: Halaman laporan kustom (`frontend/src/app/laporan-kustom/page.tsx`) sebelumnya menyembunyikan input rentang tanggal (`Dari tanggal` dan `Sampai tanggal`) ketika entitas pengecekan lapangan (`field_maintenance`) dipilih, dan opsi filter status pengecekan lapangan belum disesuaikan dengan nilai status `ok`/`attention`.
+
+**Perbaikan**:
+- Menampilkan filter input tanggal (`start_date` dan `end_date`) ketika entitas `field_maintenance` dipilih bersama dengan `maintenance_log`.
+- Menyesuaikan dropdown status untuk entitas `field_maintenance` menjadi "Hasil Pengecekan" dengan opsi "Semua", "OK (Normal)", dan "Perlu Tindak Lanjut".
+- Menambahkan validasi lokal di frontend pada `handleDownload` agar memunculkan pesan peringatan bila tanggal mulai melebihi tanggal akhir.
+- Mereset filter saat pengguna berpindah entitas agar filter antar entitas tidak saling bercampur.
+
+timestamp: 2026-11-02 04:22 UTC+8
+kategori: Sedang, Frontend (Custom Report Builder)
+file yang diubah:
+- frontend/src/app/laporan-kustom/page.tsx
+
+alasan perubahan: Menyediakan antarmuka filter periode tanggal dan status hasil pengecekan yang lengkap pada pembuatan laporan kustom pengecekan lapangan (Issue #179 / M06).
+
 ## [1.55.44] - 2026-11-02
 
 ### [Medium][M05] Sinkronisasi filter tanggal scheduled_date dan pengambilan seluruh halaman pada kalender (#178)

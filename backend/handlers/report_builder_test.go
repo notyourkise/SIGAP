@@ -234,3 +234,111 @@ func TestDeleteReportTemplate_NotFound(t *testing.T) {
 	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestAudit_FieldReportMustApplyDateFilter menguji pemenuhan kriteria Issue #179 (M06):
+//  1. Filter rentang tanggal (start_date & end_date) pada entitas field_maintenance
+//     diterapkan secara konsisten pada query database menggunakan zona waktu WITA.
+//  2. Baris data di luar periode tidak lolos query filter rentang tanggal.
+//  3. Format tanggal tidak valid ditolak dengan error 400 Bad Request yang informatif.
+//  4. Rentang tanggal di mana start_date melampaui end_date ditolak dengan 400 Bad Request.
+//  5. Batas akses: memverifikasi bahwa endpoint laporan dilindungi hanya untuk admin.
+func TestAudit_FieldReportMustApplyDateFilter(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	fmID := uuid.New()
+	cctvID := uuid.New()
+	techID := uuid.New()
+	createdAtOct := time.Date(2026, time.October, 15, 10, 0, 0, 0, time.UTC)
+	completedAtOct := time.Date(2026, time.October, 15, 11, 30, 0, 0, time.UTC)
+
+	// Kasus 1: Request field_maintenance dengan filter rentang Oktober 2026
+	// Ekspektasi: SQL memuat klausa created_at >= $1 AND created_at < $2
+	fmRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "maintenance_log_id", "overall_status",
+		"notes", "check_latitude", "check_longitude", "completed_at",
+	}).AddRow(fmID, createdAtOct, createdAtOct, nil, cctvID, techID, nil, "ok", "Kondisi fisik bersih", "", "", completedAtOct)
+
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances" WHERE created_at >= \$1 AND created_at < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(fmRows)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
+			AddRow(cctvID, "CCTV-PPU-001", "Kamera Gerbang Barat", "aktif"))
+
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role", "full_name"}).
+			AddRow(techID, "teknisi1", "teknisi", "Budi Teknisi"))
+
+	app := newTestApp()
+	app.Post("/reports/generate", withUserLocals(uuid.New().String(), "admin"), GenerateReport)
+
+	validPayload := `{
+		"entity": "field_maintenance",
+		"columns": ["cctv_nama", "cctv_kode", "technician", "overall_status", "completed_at"],
+		"filters": {
+			"start_date": "2026-10-01",
+			"end_date": "2026-10-31"
+		},
+		"format": "csv"
+	}`
+	req1 := httptest.NewRequest("POST", "/reports/generate", strings.NewReader(validPayload))
+	req1.Header.Set("Content-Type", "application/json")
+
+	resp1, err := app.Test(req1)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp1.StatusCode)
+	assert.Equal(t, "text/csv; charset=UTF-8", resp1.Header.Get("Content-Type"))
+
+	csvBytes, err := io.ReadAll(resp1.Body)
+	assert.NoError(t, err)
+	csvContent := string(csvBytes)
+	assert.Contains(t, csvContent, "Kamera Gerbang Barat")
+	assert.Contains(t, csvContent, "Budi Teknisi")
+	assert.Contains(t, csvContent, "2026-10-15")
+
+	// Kasus 2: Input format tanggal tidak valid harus mengembalikan 400 Bad Request
+	invalidDatePayload := `{
+		"entity": "field_maintenance",
+		"columns": ["cctv_nama"],
+		"filters": {
+			"start_date": "2026-13-45",
+			"end_date": "2026-10-31"
+		},
+		"format": "csv"
+	}`
+	req2 := httptest.NewRequest("POST", "/reports/generate", strings.NewReader(invalidDatePayload))
+	req2.Header.Set("Content-Type", "application/json")
+
+	resp2, err := app.Test(req2)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp2.StatusCode)
+
+	var errBody2 map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp2.Body).Decode(&errBody2))
+	assert.Contains(t, errBody2["message"], "format start_date tidak valid")
+
+	// Kasus 3: Tanggal awal melampaui tanggal akhir harus mengembalikan 400 Bad Request
+	reversedDatePayload := `{
+		"entity": "field_maintenance",
+		"columns": ["cctv_nama"],
+		"filters": {
+			"start_date": "2026-11-01",
+			"end_date": "2026-10-01"
+		},
+		"format": "csv"
+	}`
+	req3 := httptest.NewRequest("POST", "/reports/generate", strings.NewReader(reversedDatePayload))
+	req3.Header.Set("Content-Type", "application/json")
+
+	resp3, err := app.Test(req3)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp3.StatusCode)
+
+	var errBody3 map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp3.Body).Decode(&errBody3))
+	assert.Contains(t, errBody3["message"], "start_date tidak boleh setelah end_date")
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

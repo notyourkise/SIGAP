@@ -1,5 +1,25 @@
 # Changelog - Backend SIGAP
 
+## [0.64.52] - 2026-11-02
+
+### [Medium][M06] Terapkan filter rentang tanggal pada laporan pengecekan lapangan dan validasi tanggal kustom (#179)
+
+**Masalah**: Fungsi `fetchFieldMaintenanceReportRows` di `backend/handlers/report_builder.go` sebelumnya mengabaikan filter `start_date` dan `end_date`, sehingga ekspor laporan pengecekan lapangan selalu mengambil seluruh data historis (termasuk data lama di luar periode yang diminta). Selain itu, fungsi `parseReportDateRange` sebelumnya mengabaikan zona waktu aplikasi dan membiarkan string tanggal yang tidak valid lolos ke query database tanpa validasi.
+
+**Perbaikan**:
+- Memperbarui `parseReportDateRange` di `backend/handlers/report_builder.go` menggunakan zona waktu operasional aplikasi (WITA / Asia/Makassar) dengan validasi format tanggal `YYYY-MM-DD` dan batas awal/akhir yang konsisten (`start` 00:00:00 WITA, `end` ditambah 1 hari untuk komparasi `< end`).
+- Menambahkan validasi filter tanggal di `GenerateReport` sehingga parameter `start_date` atau `end_date` yang tidak valid atau `start_date` yang lebih besar dari `end_date` langsung menghasilkan error `400 Bad Request` yang informatif.
+- Menerapkan filter `created_at >= ? AND created_at < ?` pada `fetchFieldMaintenanceReportRows` dan `fetchCCTVReportRows`, serta mendukung pemetaan status/overall_status (`ok`/`attention`).
+- Menambahkan regression test komprehensif `TestAudit_FieldReportMustApplyDateFilter` di `backend/handlers/report_builder_test.go` untuk memverifikasi isolasi periode, penolakan format tanggal tidak valid, dan penolakan rentang terbalik.
+
+timestamp: 2026-11-02 04:22 UTC+8
+kategori: Sedang, Backend (Report Builder / Date Range Filtering)
+file yang diubah:
+- backend/handlers/report_builder.go
+- backend/handlers/report_builder_test.go
+
+alasan perubahan: Memastikan ekspor laporan pengecekan lapangan hanya memuat data dalam rentang tanggal yang dipilih dan memvalidasi input tanggal sebelum eksekusi query (Issue #179 / M06).
+
 ## [0.64.51] - 2026-11-02
 
 ### [Medium][M05] Dukung filter tanggal `date_field=scheduled_date` pada log pemeliharaan dan laporan (#178)
