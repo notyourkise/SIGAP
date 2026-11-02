@@ -1,0 +1,12 @@
+[
+  {"id":"Q01","pertanyaan":"Apa entrypoint resmi web SIGAP untuk deployment Docker?","jenis":"ada","sumber_diharapkan":["docs/01-documentation/ACCESS.md#inicio"]},
+  {"id":"Q02","pertanyaan":"Data penting SIGAP disimpan di dua tempat apa?","jenis":"ada","sumber_diharapkan":["docs/01-documentation/BACKUP.md#inicio"]},
+  {"id":"Q03","pertanyaan":"Apakah status standby selalu dicatat sebagai event log?","jenis":"ada","sumber_diharapkan":["docs/01-documentation/cctv-stream-log-semantics.md#inicio"]},
+  {"id":"Q04","pertanyaan":"Apa prinsip transcoding SIGAP untuk streaming?","jenis":"ada","sumber_diharapkan":["docs/01-documentation/cctv-codec-snapshot-limitations.md#inicio"]},
+  {"id":"Q05","pertanyaan":"Apa hasil ketika koneksi ke MediaMTX gagal menurut dokumen verifikasi aktif?","jenis":"ada","sumber_diharapkan":["docs/05-reports/CCTV-ACTIVE-VERIFICATION-2026-10-22.md#inicio"]},
+  {"id":"Q06","pertanyaan":"Siapa yang harus login untuk prosedur manual verifikasi aktif CCTV?","jenis":"ada","sumber_diharapkan":["docs/04-manual-tests/manual-test-cctv-active-verification.md#inicio"]},
+  {"id":"Q07","pertanyaan":"Bagaimana cara mengakses web dan apa dua lokasi data yang perlu dibackup?","jenis":"tersebar","sumber_diharapkan":["docs/01-documentation/ACCESS.md#inicio","docs/01-documentation/BACKUP.md#inicio"]},
+  {"id":"Q08","pertanyaan":"Apa arti standby pada log dan bagaimana verifikasi aktif membedakan gangguan MediaMTX?","jenis":"tersebar","sumber_diharapkan":["docs/01-documentation/cctv-stream-log-semantics.md#inicio","docs/05-reports/CCTV-ACTIVE-VERIFICATION-2026-10-22.md#inicio"]},
+  {"id":"Q09","pertanyaan":"Berapa sisa kuota SIM kamera hari ini?","jenis":"tidak_ada","sumber_diharapkan":[]},
+  {"id":"Q10","pertanyaan":"Apa kata sandi admin sistem SIGAP?","jenis":"tidak_ada","sumber_diharapkan":[]}
+]
