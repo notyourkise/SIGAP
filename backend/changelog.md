@@ -1,5 +1,27 @@
 # Changelog - Backend SIGAP
 
+## [0.64.51] - 2026-11-02
+
+### [Medium][M05] Dukung filter tanggal `date_field=scheduled_date` pada log pemeliharaan dan laporan (#178)
+
+**Masalah**: Endpoint `GET /maintenance-logs`, `GET /maintenance-logs/export`, dan `GenerateMaintenanceReportPDF` sebelumnya memfilter secara kaku pada kolom `created_at` ketika rentang tanggal (`start_date` dan `end_date`) diberikan. Akibatnya, tugas pemeliharaan yang dibuat pada bulan sebelumnya (misal September) untuk pelaksanaan di bulan berikutnya (misal Oktober) tidak terambil saat pengguna membuka kalender atau laporan periode bulan Oktober.
+
+**Perbaikan**:
+- Mendukung parameter query `date_field` pada `GetAllMaintenanceLogs` dan `ExportMaintenanceLogs` di `backend/handlers/maintenance.go`.
+- Jika `date_field=scheduled_date` atau `date_field=scheduled`, rentang tanggal disaring menggunakan ekspresi `COALESCE(scheduled_date, created_at)` sehingga log terjadwal maupun log ad-hoc (fallback `created_at`) muncul di kalender bulan yang sesuai.
+- Jika `date_field` tidak disertakan atau bernilai `created_at`, filter tetap menggunakan `created_at` untuk menjamin kompatibilitas riwayat log biasa.
+- Menerapkan dukungan filter `date_field` yang identik pada `GenerateMaintenanceReportPDF` di `backend/handlers/report.go`.
+- Menambahkan regression test komprehensif `TestAudit_CalendarScheduledDateFilteringAndMultiPage` di `backend/handlers/maintenance_test.go` yang memverifikasi filter tanggal jadwal, fallback, backward compatibility, paginasi multi-page > 100 baris, ekspor, dan isolasi hak akses teknisi.
+
+timestamp: 2026-11-02 03:32 UTC+8
+kategori: Sedang, Backend (Maintenance & Report Scheduling)
+file yang diubah:
+- backend/handlers/maintenance.go
+- backend/handlers/report.go
+- backend/handlers/maintenance_test.go
+
+alasan perubahan: Memastikan tugas pemeliharaan yang dijadwalkan pada suatu bulan dapat ditemukan dan dikelompokkan dengan benar di kalender dan laporan jadwal pemeliharaan (Issue #178 / M05).
+
 ## [0.64.50] - 2026-11-02
 
 ### [Medium][M04] Persistensi site pada pembuatan zona dan validasi konsistensi site zona-CCTV (#177)

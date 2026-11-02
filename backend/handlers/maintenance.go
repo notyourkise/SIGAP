@@ -250,13 +250,19 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 
-	// Filter rentang tanggal (created_at)
+	// Filter rentang tanggal (created_at atau scheduled_date)
 	if start, end := utils.ParseDateRangeParams(c); start != nil || end != nil {
+		dateField := strings.ToLower(strings.TrimSpace(c.Query("date_field")))
+		columnExpr := "created_at"
+		if dateField == "scheduled_date" || dateField == "scheduled" {
+			columnExpr = "COALESCE(scheduled_date, created_at)"
+		}
+
 		if start != nil {
-			query = query.Where("created_at >= ?", *start)
+			query = query.Where(columnExpr+" >= ?", *start)
 		}
 		if end != nil {
-			query = query.Where("created_at < ?", *end)
+			query = query.Where(columnExpr+" < ?", *end)
 		}
 	}
 
@@ -1037,13 +1043,19 @@ func ExportMaintenanceLogs(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 
-	// Filter rentang tanggal (created_at)
+	// Filter rentang tanggal (created_at atau scheduled_date)
 	if start, end := utils.ParseDateRangeParams(c); start != nil || end != nil {
+		dateField := strings.ToLower(strings.TrimSpace(c.Query("date_field")))
+		columnExpr := "created_at"
+		if dateField == "scheduled_date" || dateField == "scheduled" {
+			columnExpr = "COALESCE(scheduled_date, created_at)"
+		}
+
 		if start != nil {
-			query = query.Where("created_at >= ?", *start)
+			query = query.Where(columnExpr+" >= ?", *start)
 		}
 		if end != nil {
-			query = query.Where("created_at < ?", *end)
+			query = query.Where(columnExpr+" < ?", *end)
 		}
 	}
 
