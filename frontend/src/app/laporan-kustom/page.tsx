@@ -82,6 +82,7 @@ const FORMATS = [
 
 const EMPTY_FILTERS: Record<string, string> = {
   status: '',
+  overall_status: '',
   kategori: '',
   low_stock: '',
   start_date: '',
@@ -164,6 +165,7 @@ export default function ReportBuilderPage() {
   const handleEntityChange = (next: string) => {
     setEntity(next);
     setColumns(ENTITIES[next].columns.map((c) => c.key));
+    setFilters(EMPTY_FILTERS);
   };
 
   // Muat daftar template.
@@ -197,6 +199,10 @@ export default function ReportBuilderPage() {
   const handleDownload = async () => {
     if (columns.length === 0) {
       toast.error('Pilih minimal satu kolom untuk laporan.');
+      return;
+    }
+    if (filters.start_date && filters.end_date && filters.start_date > filters.end_date) {
+      toast.error('Tanggal mulai tidak boleh setelah tanggal akhir.');
       return;
     }
     setDownloading(true);
@@ -432,7 +438,7 @@ export default function ReportBuilderPage() {
                 <h2 id="filters-heading" className="text-base font-bold">3 · Filter</h2>
               </div>
               <div className="grid gap-4 p-5 sm:grid-cols-2">
-                {(entity === 'maintenance_log' || entity === 'field_maintenance') && (
+                {entity === 'maintenance_log' && (
                   <div>
                     <label htmlFor="filter-status" className="mb-1.5 block text-xs font-semibold text-muted">Status</label>
                     <select
@@ -446,6 +452,21 @@ export default function ReportBuilderPage() {
                       <option value="ongoing">Dalam proses</option>
                       <option value="completed">Selesai</option>
                       <option value="failed">Perlu Tindak Lanjut</option>
+                    </select>
+                  </div>
+                )}
+                {entity === 'field_maintenance' && (
+                  <div>
+                    <label htmlFor="filter-status-fm" className="mb-1.5 block text-xs font-semibold text-muted">Hasil Pengecekan</label>
+                    <select
+                      id="filter-status-fm"
+                      value={filters.overall_status || filters.status}
+                      onChange={(e) => setFilters({ ...filters, overall_status: e.target.value, status: e.target.value })}
+                      className="w-full rounded-xl border border-input-border bg-input px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">Semua</option>
+                      <option value="ok">OK (Normal)</option>
+                      <option value="attention">Perlu Tindak Lanjut</option>
                     </select>
                   </div>
                 )}
@@ -495,7 +516,7 @@ export default function ReportBuilderPage() {
                     </select>
                   </div>
                 )}
-                {(entity === 'maintenance_log') && (
+                {(entity === 'maintenance_log' || entity === 'field_maintenance') && (
                   <>
                     <div>
                       <label htmlFor="filter-start" className="mb-1.5 block text-xs font-semibold text-muted">Dari tanggal</label>

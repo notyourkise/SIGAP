@@ -166,6 +166,14 @@ func GenerateReport(c *fiber.Ctx) error {
 		})
 	}
 
+	// Validasi filter tanggal sebelum eksekusi query
+	if _, _, err := parseReportDateRange(req.Filters); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
+
 	rows, err := fetchReportRows(req.Entity, req.Filters)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -378,6 +386,16 @@ func fetchCCTVReportRows(filters map[string]interface{}) ([]map[string]interface
 		like := "%" + search + "%"
 		query = query.Where("nama ILIKE ? OR kode_cctv ILIKE ?", like, like)
 	}
+	start, end, err := parseReportDateRange(filters)
+	if err != nil {
+		return nil, err
+	}
+	if start != nil {
+		query = query.Where("created_at >= ?", *start)
+	}
+	if end != nil {
+		query = query.Where("created_at < ?", *end)
+	}
 	if err := query.Order("created_at desc").Find(&items).Error; err != nil {
 		return nil, err
 	}
@@ -404,12 +422,15 @@ func fetchMaintenanceReportRows(filters map[string]interface{}) ([]map[string]in
 	if status := filterString(filters, "status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
-	if start, end := parseReportDateRange(filters); start != "" && end != "" {
-		query = query.Where("created_at >= ? AND created_at < ?", start, end)
-	} else if start != "" {
-		query = query.Where("created_at >= ?", start)
-	} else if end != "" {
-		query = query.Where("created_at < ?", end)
+	start, end, err := parseReportDateRange(filters)
+	if err != nil {
+		return nil, err
+	}
+	if start != nil {
+		query = query.Where("created_at >= ?", *start)
+	}
+	if end != nil {
+		query = query.Where("created_at < ?", *end)
 	}
 	if err := query.Order("created_at desc").Find(&logs).Error; err != nil {
 		return nil, err
@@ -446,6 +467,24 @@ func fetchFieldMaintenanceReportRows(filters map[string]interface{}) ([]map[stri
 	query := config.DB.Model(&models.FieldMaintenance{}).Preload("CCTV").Preload("User")
 	if result := filterString(filters, "overall_status"); result != "" {
 		query = query.Where("overall_status = ?", result)
+	} else if status := filterString(filters, "status"); status != "" {
+		if status == "failed" || status == "attention" {
+			query = query.Where("overall_status = ?", "attention")
+		} else if status == "completed" || status == "ok" {
+			query = query.Where("overall_status = ?", "ok")
+		} else {
+			query = query.Where("overall_status = ?", status)
+		}
+	}
+	start, end, err := parseReportDateRange(filters)
+	if err != nil {
+		return nil, err
+	}
+	if start != nil {
+		query = query.Where("created_at >= ?", *start)
+	}
+	if end != nil {
+		query = query.Where("created_at < ?", *end)
 	}
 	if err := query.Order("created_at desc").Find(&items).Error; err != nil {
 		return nil, err
@@ -499,21 +538,39 @@ func fetchSparePartReportRows(filters map[string]interface{}) ([]map[string]inte
 	return rows, nil
 }
 
-// parseReportDateRange membaca filter tanggal (start_date/end_date YYYY-MM-DD).
-func parseReportDateRange(filters map[string]interface{}) (string, string) {
-	start := filterString(filters, "start_date")
-	end := filterString(filters, "end_date")
-	if start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
-			start = t.Format("2006-01-02 00:00:00")
-		}
+// parseReportDateRange membaca filter tanggal (start_date/end_date YYYY-MM-DD)
+// menggunakan zona waktu operasional SIGAP (WITA / Asia/Makassar).
+// Batas start diatur pada awal hari (00:00:00 WITA), dan end diatur pada awal
+// hari berikutnya (00:00:00 WITA keesokan hari) agar komparasi `< end` mencakup seluruh hari end_date.
+func parseReportDateRange(filters map[string]interface{}) (*time.Time, *time.Time, error) {
+	if filters == nil {
+		return nil, nil, nil
 	}
-	if end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
-			end = t.AddDate(0, 0, 1).Format("2006-01-02 00:00:00")
+	startStr := strings.TrimSpace(filterString(filters, "start_date"))
+	endStr := strings.TrimSpace(filterString(filters, "end_date"))
+
+	loc := utils.AppLocation()
+	var start, end *time.Time
+
+	if startStr != "" {
+		t, err := time.ParseInLocation("2006-01-02", startStr, loc)
+		if err != nil {
+			return nil, nil, fmt.Errorf("format start_date tidak valid (harus YYYY-MM-DD)")
 		}
+		start = &t
 	}
-	return start, end
+	if endStr != "" {
+		t, err := time.ParseInLocation("2006-01-02", endStr, loc)
+		if err != nil {
+			return nil, nil, fmt.Errorf("format end_date tidak valid (harus YYYY-MM-DD)")
+		}
+		tEnd := t.AddDate(0, 0, 1)
+		end = &tEnd
+	}
+	if start != nil && end != nil && end.Before(*start) {
+		return nil, nil, fmt.Errorf("rentang tanggal tidak valid: start_date tidak boleh setelah end_date")
+	}
+	return start, end, nil
 }
 
 func cellString(v interface{}) string {
