@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"errors"
 	"encoding/csv"
 	"fmt"
 	"strings"
@@ -16,6 +17,8 @@ import (
 	"gorm.io/gorm"
 )
 
+
+var errMaintenanceNotOngoing = errors.New("maintenance log is not in ongoing status")
 type CreateMaintenanceLogRequest struct {
 	CCTVID      string `json:"cctv_id" validate:"required,uuid4"`
 	ActionTaken string `json:"action_taken" validate:"required,min=5"`
@@ -870,15 +873,31 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 			}
 		}
 
-		// Tautkan ID hasil pengecekan ke log & perbarui status tugas
+		// Tautkan ID hasil pengecekan ke log & perbarui status tugas secara atomik.
+		// Menggunakan conditional update (WHERE status = 'ongoing') untuk melindungi
+		// dari race condition / concurrent completion / double-submit. Bila tugas
+		// telah diselesaikan oleh transaksi lain yang menang race, RowsAffected == 0.
+		res := tx.Model(&models.MaintenanceLog{}).
+			Where("id = ? AND status = ?", id, "ongoing").
+			Updates(map[string]interface{}{
+				"maintenance_result_id": field.ID,
+				"status":                newStatus,
+				"completed_at":          &now,
+				"overdue_level":         0,
+				"updated_at":            now,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errMaintenanceNotOngoing
+		}
+
 		logEntry.MaintenanceResultID = &field.ID
 		logEntry.Status = newStatus
 		logEntry.CompletedAt = &now
 		// Tugas selesai/gagal tidak lagi overdue → reset level eskalasi (Task 13.11).
 		logEntry.OverdueLevel = 0
-		if err := tx.Save(&logEntry).Error; err != nil {
-			return err
-		}
 
 		// Fase 5.2: sinkronisasi status CCTV otomatis (konservatif) dalam
 		// transaksi yang sama — completed (semua checklist OK) mengembalikan CCTV ke
@@ -895,6 +914,19 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errMaintenanceNotOngoing) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Hanya tugas berstatus dalam proses yang dapat diselesaikan",
+			})
+		}
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "unique") || strings.Contains(errLower, "duplicate") || strings.Contains(errLower, "23505") {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Hanya tugas berstatus dalam proses yang dapat diselesaikan",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menyimpan hasil pengecekan",
