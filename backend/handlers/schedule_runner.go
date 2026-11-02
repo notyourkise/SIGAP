@@ -110,7 +110,9 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 	}
 
 	// Geser jadwal berikutnya sesuai frekuensi & catat waktu generate terakhir.
-	nextRun := nextRunForFrequency(schedule.Frequency, now)
+	// Gunakan waktu rencana (schedule.NextRunAt) sebagai anchor, bukan waktu aktual,
+	// agar keterlambatan worker tidak menimbulkan drift kumulatif.
+	nextRun := calculateNextRun(schedule.Frequency, schedule.NextRunAt, now)
 	schedule.NextRunAt = nextRun
 	schedule.LastGeneratedAt = &now
 	if err := db.Save(schedule).Error; err != nil {
@@ -154,4 +156,27 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 
 	utils.Log.Infof("✅ Generator jadwal %s: log pemeliharaan dibuat (status: %s, next_run_at: %s)",
 		schedule.ID.String(), status, nextRun.Format(time.RFC3339))
+}
+
+// calculateNextRun menghitung waktu eksekusi berikutnya berdasarkan anchor waktu
+// rencana sebelumnya (anchor/planned time), bukan waktu eksekusi aktual (now),
+// sehingga keterlambatan worker/scheduler tidak menggeser jam maupun interval jadwal.
+//
+// Kebijakan Catch-up (setelah downtime):
+// Bila server sempat mati atau worker tertunda lebih lama dari satu interval frekuensi
+// sehingga target berikutnya masih berada di masa lalu (<= now), fungsi ini akan
+// memajukan jadwal langkah demi langkah sesuai frekuensinya hingga jadwal berikutnya
+// berada di masa depan (> now), sambil tetap mempertahankan jam dan menit anchor aslinya.
+// Hal ini mencegah jadwal tertahan di masa lalu atau menghasilkan rentetan tugas duplikat.
+func calculateNextRun(freq string, anchor time.Time, now time.Time) time.Time {
+	if anchor.IsZero() {
+		anchor = now
+	}
+	next := nextRunForFrequency(freq, anchor)
+	// Jika anchor sudah sangat lampau (misal server down lama),
+	// majukan terus dengan interval jadwalnya sampai berada di masa depan (> now).
+	for !next.After(now) {
+		next = nextRunForFrequency(freq, next)
+	}
+	return next
 }

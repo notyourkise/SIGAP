@@ -409,3 +409,143 @@ func TestAudit_ScheduleMustAcceptSLAPolicy(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// TestAudit_MonthlyScheduleMustNotSkipFebruary memverifikasi perbaikan M07:
+// tanggal bulanan 31 Januari tidak boleh melompat ke 3 Maret, melainkan di-clamp
+// secara eksplisit ke akhir Februari (28 atau 29 Februari).
+func TestAudit_MonthlyScheduleMustNotSkipFebruary(t *testing.T) {
+	from := time.Date(2027, 1, 31, 9, 0, 0, 0, time.UTC)
+	actual := nextRunForFrequency("monthly", from)
+	assert.Equal(t, time.February, actual.Month(), "monthly from %s skips February: actual %s", from.Format(time.RFC3339), actual.Format(time.RFC3339))
+	assert.Equal(t, 28, actual.Day(), "non-leap year Feb should clamp to day 28")
+	assert.Equal(t, 9, actual.Hour())
+	assert.Equal(t, 0, actual.Minute())
+}
+
+// TestNextRunForFrequency_EndOfMonthClamping menguji kebijakan akhir bulan
+// di berbagai bulan dan tahun (termasuk tahun kabisat dan pergantian tahun).
+func TestNextRunForFrequency_EndOfMonthClamping(t *testing.T) {
+	tests := []struct {
+		name      string
+		freq      string
+		from      time.Time
+		wantYear  int
+		wantMonth time.Month
+		wantDay   int
+		wantHour  int
+		wantMin   int
+	}{
+		{
+			name:      "Jan 31 non-kabisat (2027) -> Feb 28",
+			freq:      "monthly",
+			from:      time.Date(2027, 1, 31, 14, 30, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.February,
+			wantDay:   28,
+			wantHour:  14,
+			wantMin:   30,
+		},
+		{
+			name:      "Jan 31 kabisat (2028) -> Feb 29",
+			freq:      "monthly",
+			from:      time.Date(2028, 1, 31, 10, 0, 0, 0, time.UTC),
+			wantYear:  2028,
+			wantMonth: time.February,
+			wantDay:   29,
+			wantHour:  10,
+			wantMin:   0,
+		},
+		{
+			name:      "Mar 31 -> Apr 30",
+			freq:      "monthly",
+			from:      time.Date(2027, 3, 31, 8, 15, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.April,
+			wantDay:   30,
+			wantHour:  8,
+			wantMin:   15,
+		},
+		{
+			name:      "May 31 -> Jun 30",
+			freq:      "monthly",
+			from:      time.Date(2027, 5, 31, 8, 0, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.June,
+			wantDay:   30,
+			wantHour:  8,
+			wantMin:   0,
+		},
+		{
+			name:      "Aug 31 -> Sep 30",
+			freq:      "monthly",
+			from:      time.Date(2027, 8, 31, 11, 0, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.September,
+			wantDay:   30,
+			wantHour:  11,
+			wantMin:   0,
+		},
+		{
+			name:      "Oct 31 -> Nov 30",
+			freq:      "monthly",
+			from:      time.Date(2027, 10, 31, 16, 45, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.November,
+			wantDay:   30,
+			wantHour:  16,
+			wantMin:   45,
+		},
+		{
+			name:      "Dec 31 pergantian tahun -> Jan 31 tahun berikutnya",
+			freq:      "monthly",
+			from:      time.Date(2027, 12, 31, 23, 59, 0, 0, time.UTC),
+			wantYear:  2028,
+			wantMonth: time.January,
+			wantDay:   31,
+			wantHour:  23,
+			wantMin:   59,
+		},
+		{
+			name:      "Tanggal tengah bulan (Jan 15 -> Feb 15)",
+			freq:      "monthly",
+			from:      time.Date(2027, 1, 15, 9, 0, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.February,
+			wantDay:   15,
+			wantHour:  9,
+			wantMin:   0,
+		},
+		{
+			name:      "Frekuensi mingguan (tambah 7 hari)",
+			freq:      "weekly",
+			from:      time.Date(2027, 1, 25, 9, 0, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.February,
+			wantDay:   1,
+			wantHour:  9,
+			wantMin:   0,
+		},
+		{
+			name:      "Frekuensi harian (tambah 1 hari)",
+			freq:      "daily",
+			from:      time.Date(2027, 1, 31, 9, 0, 0, 0, time.UTC),
+			wantYear:  2027,
+			wantMonth: time.February,
+			wantDay:   1,
+			wantHour:  9,
+			wantMin:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nextRunForFrequency(tt.freq, tt.from)
+			assert.Equal(t, tt.wantYear, got.Year())
+			assert.Equal(t, tt.wantMonth, got.Month())
+			assert.Equal(t, tt.wantDay, got.Day())
+			assert.Equal(t, tt.wantHour, got.Hour())
+			assert.Equal(t, tt.wantMin, got.Minute())
+		})
+	}
+}
+
