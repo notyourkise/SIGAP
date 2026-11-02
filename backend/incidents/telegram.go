@@ -51,7 +51,7 @@ func (s TelegramSender) Send(ctx context.Context, chatID, text string) (int64, e
 	if err != nil {
 		return 0, &DeliveryError{Ambiguous: true, Reason: "Telegram: hasil pengiriman belum dapat dipastikan"}
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	var result struct {
 		OK     bool `json:"ok"`
 		Result struct {

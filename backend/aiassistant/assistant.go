@@ -62,7 +62,8 @@ func Validate(r Response, docs []Document) error {
 
 func (c Client) post(ctx context.Context, path string, body interface{}, out interface{}) error {
 	u, err := url.Parse(c.BaseURL)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) {
+	isLocalHTTP := u != nil && u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
+	if err != nil || u.Host == "" || (u.Scheme != "https" && !isLocalHTTP) {
 		return errors.New("alamat model gateway tidak aman")
 	}
 	if c.APIKey == "" || c.Model == "" || c.EmbeddingModel == "" {
@@ -86,7 +87,7 @@ func (c Client) post(ctx context.Context, path string, body interface{}, out int
 	if err != nil {
 		return errors.New("model gateway tidak tersedia")
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		return fmt.Errorf("model gateway gagal (HTTP %d)", res.StatusCode)
 	}
