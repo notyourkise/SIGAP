@@ -1217,3 +1217,142 @@ func TestAudit_MaintenanceDateMustUseWITA(t *testing.T) {
 	assert.Equal(t, 6, parsedUpdate.UTC().Hour())
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestAudit_CalendarScheduledDateFilteringAndMultiPage menguji pemenuhan kriteria Issue #178 (M05):
+//  1. Memastikan query rentang tanggal kalender menggunakan COALESCE(scheduled_date, created_at)
+//     saat parameter date_field=scheduled_date diberikan.
+//  2. Tugas yang dibuat bulan sebelumnya (created_at September) dengan scheduled_date di bulan
+//     Oktober dapat terambil pada rentang bulan Oktober.
+//  3. Fallback ke created_at tetap berlaku jika scheduled_date bernilai NULL.
+//  4. Default query tanpa date_field tetap memakai created_at untuk menjaga kompatibilitas log biasa.
+//  5. Paginasi multi-page mengembalikan metadata total_pages dan total_rows yang akurat untuk data > 100 baris.
+//  6. Endpoint export juga mendukung date_field=scheduled_date.
+//  7. Batas akses: memverifikasi isolasi role teknisi (technician_id) tetap aktif berdampingan dengan filter jadwal kalender.
+func TestAudit_CalendarScheduledDateFilteringAndMultiPage(t *testing.T) {
+	_, mock := setupMockGORM(t)
+
+	adminID := uuid.New()
+	techID := uuid.New()
+	logID1 := uuid.New()
+	logID2 := uuid.New()
+	cctvID := uuid.New()
+
+	createdAtSept := time.Date(2026, time.September, 20, 10, 0, 0, 0, time.UTC)
+	scheduledOct := time.Date(2026, time.October, 15, 9, 0, 0, 0, time.UTC)
+	createdAtOct := time.Date(2026, time.October, 5, 8, 0, 0, 0, time.UTC)
+
+	// Kasus 1: Admin memuat kalender bulan Oktober dengan date_field=scheduled_date (Page 1)
+	rowsLog := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).
+		AddRow(logID1, createdAtSept, createdAtSept, nil, cctvID, techID, "Cek berkala Oktober", "Dibuat September", "scheduled", &scheduledOct, nil, "").
+		AddRow(logID2, createdAtOct, createdAtOct, nil, cctvID, techID, "Tugas ad-hoc tanpa scheduled_date", "Fallback created_at", "scheduled", nil, nil, "")
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "maintenance_logs" WHERE COALESCE\(scheduled_date, created_at\) >= \$1 AND COALESCE\(scheduled_date, created_at\) < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(150))
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE COALESCE\(scheduled_date, created_at\) >= \$1 AND COALESCE\(scheduled_date, created_at\) < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 100).
+		WillReturnRows(rowsLog)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Get("/maintenance-logs", withUserLocals(adminID.String(), "admin"), GetAllMaintenanceLogs)
+	app.Get("/maintenance-logs/export", withUserLocals(adminID.String(), "admin"), ExportMaintenanceLogs)
+
+	req1 := httptest.NewRequest("GET", "/maintenance-logs?start_date=2026-10-01&end_date=2026-10-31&date_field=scheduled_date&page=1&limit=100", nil)
+	resp1, err := app.Test(req1)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp1.StatusCode)
+
+	var result1 map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp1.Body).Decode(&result1))
+	data1 := result1["data"].(map[string]interface{})
+	pagination1 := data1["pagination"].(map[string]interface{})
+
+	// Memastikan pagination mengembalikan total_rows = 150 dan total_pages = 2 (multi-page)
+	assert.Equal(t, float64(150), pagination1["total_rows"])
+	assert.Equal(t, float64(2), pagination1["total_pages"])
+	assert.Equal(t, float64(1), pagination1["page"])
+	assert.Equal(t, float64(100), pagination1["limit"])
+
+	rows1 := data1["rows"].([]interface{})
+	assert.Len(t, rows1, 2)
+
+	// Kasus 2: Request default tanpa date_field harus tetap memfilter created_at
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "maintenance_logs" WHERE created_at >= \$1 AND created_at < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE created_at >= \$1 AND created_at < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 10).
+		WillReturnRows(maintenanceMockRow())
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	req2 := httptest.NewRequest("GET", "/maintenance-logs?start_date=2026-10-01&end_date=2026-10-31&page=1&limit=10", nil)
+	resp2, err := app.Test(req2)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp2.StatusCode)
+
+	// Kasus 3: ExportMaintenanceLogs dengan date_field=scheduled_date
+	exportRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(logID1, createdAtSept, createdAtSept, nil, cctvID, techID, "Cek berkala Oktober", "Dibuat September", "scheduled", &scheduledOct, nil, "")
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE COALESCE\(scheduled_date, created_at\) >= \$1 AND COALESCE\(scheduled_date, created_at\) < \$2`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(exportRows)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	req3 := httptest.NewRequest("GET", "/maintenance-logs/export?start_date=2026-10-01&end_date=2026-10-31&date_field=scheduled_date", nil)
+	resp3, err := app.Test(req3)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp3.StatusCode)
+
+	// Kasus 4: Batas akses teknisi — memverifikasi teknisi hanya dapat melihat jadwal yang ditugaskan kepadanya
+	techRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "notes", "status",
+		"scheduled_date", "completed_at", "image_url",
+	}).AddRow(logID1, createdAtSept, createdAtSept, nil, cctvID, techID, "Cek berkala Oktober", "Dibuat September", "scheduled", &scheduledOct, nil, "")
+
+	appTech := newTestApp()
+	appTech.Get("/maintenance-logs", withUserLocals(techID.String(), "teknisi"), GetAllMaintenanceLogs)
+
+	mock.ExpectQuery(`^SELECT count\(\*\) FROM "maintenance_logs" WHERE technician_id = \$1 AND COALESCE\(scheduled_date, created_at\) >= \$2 AND COALESCE\(scheduled_date, created_at\) < \$3`).
+		WithArgs(techID, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs" WHERE technician_id = \$1 AND COALESCE\(scheduled_date, created_at\) >= \$2 AND COALESCE\(scheduled_date, created_at\) < \$3`).
+		WithArgs(techID, sqlmock.AnyArg(), sqlmock.AnyArg(), 100).
+		WillReturnRows(techRows)
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	req4 := httptest.NewRequest("GET", "/maintenance-logs?start_date=2026-10-01&end_date=2026-10-31&date_field=scheduled_date&page=1&limit=100", nil)
+	resp4, err := appTech.Test(req4)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp4.StatusCode)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

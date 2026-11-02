@@ -62,10 +62,27 @@ interface MaintenanceLogsResponse {
 
 const PAGE_SIZE = 100;
 
-// Ubah "YYYY-MM-DD" atau timestamp menjadi kunci hari "YYYY-MM-DD".
+// Ubah "YYYY-MM-DD" atau timestamp menjadi kunci hari "YYYY-MM-DD" dalam zona waktu WITA (Asia/Makassar).
 function toDayKeyOfLog(value: string | null): string | null {
   if (!value) return null;
-  return value.slice(0, 10);
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) {
+    return trimmed.slice(0, 10);
+  }
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Makassar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  } catch {
+    return toDayKey(d);
+  }
 }
 
 // Konversi objek Date menjadi nilai input datetime-local "YYYY-MM-DDTHH:mm".
@@ -137,15 +154,32 @@ export default function CalendarPage() {
     };
   }, [month]);
 
-  // Ambil log pemeliharaan untuk rentang bulan ini.
+  // Ambil log pemeliharaan untuk rentang bulan ini (seluruh halaman multi-page).
   const loadLogs = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await apiRequest<MaintenanceLogsResponse>(
-        `/maintenance-logs?start_date=${range.startKey}&end_date=${range.endKey}&page=1&limit=${PAGE_SIZE}`
-      );
-      setLogs(response.data?.rows ?? []);
+      let currentPage = 1;
+      let totalPages = 1;
+      const accumulated: MaintenanceLog[] = [];
+      const MAX_PAGES = 50; // Pengaman batas halaman kalender bulanan
+
+      do {
+        const response = await apiRequest<MaintenanceLogsResponse>(
+          `/maintenance-logs?start_date=${range.startKey}&end_date=${range.endKey}&date_field=scheduled_date&page=${currentPage}&limit=${PAGE_SIZE}`
+        );
+        const rows = response.data?.rows ?? [];
+        accumulated.push(...rows);
+
+        const pagination = response.data?.pagination;
+        totalPages =
+          pagination?.total_pages && pagination.total_pages > 0
+            ? pagination.total_pages
+            : 1;
+        currentPage++;
+      } while (currentPage <= totalPages && currentPage <= MAX_PAGES);
+
+      setLogs(accumulated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Kalender belum dapat dimuat. Coba lagi.");
     } finally {

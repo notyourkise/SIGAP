@@ -1,5 +1,23 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.44] - 2026-11-02
+
+### [Medium][M05] Sinkronisasi filter tanggal scheduled_date dan pengambilan seluruh halaman pada kalender (#178)
+
+**Masalah**: Halaman kalender (`frontend/src/app/kalender/page.tsx`) sebelumnya memanggil `/maintenance-logs?start_date=...&end_date=...&page=1&limit=100` tanpa menyertakan `date_field=scheduled_date`. Akibatnya, tugas yang dibuat bulan sebelumnya untuk jadwal bulan aktif tidak dimuat. Selain itu, kalender hanya memuat halaman pertama (`limit=100`) sehingga tugas ke-101 dan seterusnya pada bulan dengan aktivitas padat hilang dari tampilan kalender. Pemotongan substring pada helper hari juga berpotensi meleset lintas zona waktu jika string timestamp serialisasi berformat UTC.
+
+**Perbaikan**:
+- Menambahkan parameter query `date_field=scheduled_date` pada URL request `/maintenance-logs`.
+- Mengimplementasikan loop multi-page fetching di `loadLogs` (`currentPage <= totalPages`) untuk mengakumulasi seluruh data tugas dalam rentang bulan yang dipilih.
+- Memperbaiki helper `toDayKeyOfLog` agar menggunakan `Intl.DateTimeFormat` dengan zona waktu operasional `Asia/Makassar` (WITA) sehingga konversi hari selalu akurat.
+
+timestamp: 2026-11-02 03:32 UTC+8
+kategori: Sedang, Frontend (Calendar & Schedule View)
+file yang diubah:
+- frontend/src/app/kalender/page.tsx
+
+alasan perubahan: Memastikan seluruh tugas pemeliharaan bulanan (termasuk tugas terjadwal dari bulan lalu dan lebih dari 100 tugas) tertampil lengkap pada kalender pos komando (Issue #178 / M05).
+
 ## [1.55.43] - 2026-11-02
 
 ### [Medium][M04] Sertakan `site_id` aktif saat membuat zona dan saring CCTV sesuai site zona (#177)
