@@ -284,6 +284,7 @@ func main() {
 	routes.SetupAuthRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
 	routes.SetupIncidentRoutes(api)
+	routes.SetupAIAssistantRoutes(api)
 	routes.SetupFieldMaintenanceRoutes(api)
 	routes.SetupChecklistTemplateRoutes(api)
 	routes.SetupUserRoutes(api)

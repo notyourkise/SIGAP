@@ -119,6 +119,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         { name: 'Log CCTV', href: '/cctv/logs', icon: Activity },
         { name: 'Aset CCTV', href: '/cctv', icon: Database },
         { name: 'Pemeliharaan CCTV', href: '/maintenance', icon: Wrench },
+        { name: 'Asisten Operasional AI', href: '/ai-assistant', icon: Activity },
         ...(isAdmin ? [{ name: 'Tiket Gangguan', href: '/incidents', icon: Activity }] : []),
         ...(isAdmin ? [{ name: 'Monitor CCTV', href: '/monitor', icon: MonitorPlay }] : []),
       ],

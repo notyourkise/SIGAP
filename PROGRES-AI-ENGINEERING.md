@@ -32,9 +32,17 @@ Buka `http://127.0.0.1:8095`, kemudian tekan **Simulasikan offline**, **Tugaskan
 
 `go test ./...` dan `go vet ./...` lulus pada workspace pengembangan. Tes juga dijalankan dengan PostgreSQL khusus yang terisolasi, termasuk pemeriksaan pembuatan insiden secara paralel, pemulihan, penolakan penutupan lintas site, dan antrean pengiriman dengan server HTTP tiruan. Pengujian TypeScript dan ESLint pada halaman baru lulus. Pengujian kamera/NVR dan grup Telegram nyata belum dilakukan.
 
+## Progres AI Engineering sampai Week 9
+
+Halaman `/ai-assistant` menyediakan antarmuka tanya-jawab untuk pengguna SIGAP yang sudah login. Backend menggunakan gateway yang kompatibel dengan `embeddings` dan `chat/completions`, menghitung kemiripan embedding, memilih dokumen kebutuhan, menawarkan dua tool baca-saja kepada model, dan meminta jawaban JSON terstruktur. Kutipan diperiksa terhadap teks sumber; jika tidak valid, sistem menyatakan jawaban tidak dapat ditentukan.
+
+Sumber awal adalah lima potongan **kebutuhan rancangan proyek**, bukan SOP resmi atau data CCTV terkini. Gunakan hanya pertanyaan yang boleh dikirim ke penyedia gateway. Konfigurasi `AI_GATEWAY_URL`, `AI_GATEWAY_KEY`, `AI_CHAT_MODEL`, dan `AI_EMBEDDING_MODEL` di server; jangan commit kunci. Tanpa konfigurasi tersebut sistem memberikan pesan layanan tidak tersedia.
+
+Tes menggunakan gateway HTTP tiruan. Koneksi ke model nyata, kualitas retrieval pada korpus lengkap, serta validasi dosen belum diuji. Modul 1–9 juga memuat tugas dan laporan proses individu (termasuk lembar tema, eksperimen before/after, evaluasi dan presentasi UTS) yang belum otomatis selesai hanya dengan kode ini; cakupan personal bergantung pada kode peserta K dan dokumen masing-masing.
+
 ## Batas progres dan langkah selanjutnya
 
-- Belum ada integrasi LLM, RAG/SOP, tool calling, atau evaluasi agent AI; ini adalah fondasi operasional yang akan digunakan oleh agent.
+- Gateway, retrieval embedding, dua tool baca-saja, dan validasi kutipan sudah dibuat sebagai prototipe. Korpus SOP sebenarnya, evaluasi menyeluruh, penggunaan tool operasional secara langsung, dan agent multi-langkah masih perlu dilengkapi.
 - Pengelompokan insiden multi-kamera, pengingat penugasan, pengukuran GSM, dan pengaturan monitoring terpisah masih perlu implementasi.
 - Target notifikasi maksimal lima menit merupakan kebutuhan yang belum dibuktikan pada perangkat dan jaringan nyata.
 - Fitur insiden pada aplikasi disiapkan melalui feature flag dan belum diaktifkan pada lingkungan operasional.
