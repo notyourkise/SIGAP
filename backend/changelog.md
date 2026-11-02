@@ -1,5 +1,15 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-02 — MVP tiket gangguan dan Telegram
+
+- Menambah state machine pemulihan dengan bukti segar selama minimal 5 menit; unknown, flapping, dan celah pengamatan membatalkan observasi.
+- Menambah insiden persisten, keanggotaan kamera aktif yang unik, serta transactional outbox melalui migration 000031. Migration hanya diuji pada database terisolasi.
+- Menambah API admin dengan scope site untuk daftar, penugasan, dan verifikasi penutupan. Tugas maintenance baru dibuat saat penugasan; maintenance rutin tidak diubah.
+- Menyambungkan hasil verifier ke engine insiden melalui feature flag yang default-nya nonaktif. Pengiriman Telegram membutuhkan konfigurasi tujuan eksplisit per site.
+- Menambah demo lokal tanpa kamera/Telegram nyata pada `go run ./cmd/incident-demo` (port 8095).
+- Ini MVP: pengelompokan insiden, reminder, pemetaan SIM, pengaturan monitoring terpisah, dan AI/RAG belum diimplementasikan. Target 5 menit pada perangkat nyata belum dibuktikan.
+- Verifikasi: seluruh paket backend lulus, integrasi PostgreSQL terisolasi lulus, TypeScript serta ESLint halaman baru lulus. Bukti ada di `docs/05-reports/2026-11-02-monitoring-progress/`.
+
 ## [0.64.52] - 2026-11-02
 
 ### [Medium][M06] Terapkan filter rentang tanggal pada laporan pengecekan lapangan dan validasi tanggal kustom (#179)

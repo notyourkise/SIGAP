@@ -22,6 +22,8 @@
 
 ---
 
+> **Progres Kapita Selekta AI Engineering:** lihat [progres monitoring, tiket otomatis, dan rencana agent AI](PROGRES-AI-ENGINEERING.md). Fitur monitoring insiden tersedia sebagai prototipe dan sedang diuji.
+
 > **SIGAP** adalah sistem internal OIKN untuk monitoring, inventarisasi, dan pemeliharaan seluruh aset CCTV di Kawasan IKN Nusantara secara terpusat. Sistem ini menyediakan live streaming, deteksi status kamera secara real-time, dan manajemen gangguan aset berbasis web.
 
 ---

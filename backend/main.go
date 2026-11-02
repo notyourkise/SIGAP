@@ -178,6 +178,7 @@ func main() {
 	// concurrency terbatas agar status live/offline memiliki bukti sumber
 	// stream, bukan hanya kondisi path on-demand yang sedang idle.
 	go handlers.RunStreamVerifier(config.DB)
+	go handlers.RunIncidentNotifications(config.DB)
 	utils.Log.Info("🔎 Verifikasi stream aktif diaktifkan (default interval: 15 menit)")
 
 	// Jalankan scheduler snapshot otomatis (Task 10.1). Percobaan pertama
@@ -282,6 +283,7 @@ func main() {
 	api := app.Group("/api", middleware.GlobalLimiter(), middleware.CSRFProtection())
 	routes.SetupAuthRoutes(api)
 	routes.SetupMaintenanceRoutes(api)
+	routes.SetupIncidentRoutes(api)
 	routes.SetupFieldMaintenanceRoutes(api)
 	routes.SetupChecklistTemplateRoutes(api)
 	routes.SetupUserRoutes(api)

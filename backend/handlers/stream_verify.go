@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"sigap-backend/config"
+	"sigap-backend/incidents"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
@@ -79,6 +81,13 @@ func RunStreamVerifier(db *gorm.DB) {
 // 5–30 menit diabaikan agar status terverifikasi tidak lebih lama dari masa
 // berlakunya (30 menit) dan probe tidak membebani NVR/kamera.
 func streamVerifyInterval() time.Duration {
+	if IncidentMonitoringEnabled() {
+		seconds, err := strconv.Atoi(os.Getenv("CCTV_INCIDENT_INTERVAL_SECONDS"))
+		if err != nil || seconds < 30 || seconds > 120 {
+			seconds = 60
+		}
+		return time.Duration(seconds) * time.Second
+	}
 	raw := strings.TrimSpace(os.Getenv("CCTV_VERIFY_INTERVAL_MINUTES"))
 	if raw == "" {
 		return defaultStreamVerifyInterval
@@ -292,6 +301,12 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 
 	if err := db.Model(&models.CCTV{}).Where("id = ?", result.CCTV.ID).Updates(updates).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal menyimpan hasil verifikasi stream CCTV %s: %v", result.CCTV.ID, err)
+		return result
+	}
+	if IncidentMonitoringEnabled() {
+		if err := (incidents.Service{DB: db}).Observe(context.Background(), result.CCTV, result.State, result.VerifiedAt); err != nil {
+			utils.Log.Errorf("Gagal memproses insiden CCTV %s: %v", result.CCTV.ID, err)
+		}
 	}
 
 	siteID := cctvSiteIDStr(result.CCTV)
