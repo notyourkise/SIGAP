@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"time"
 
 	"sigap-backend/models"
@@ -72,12 +73,29 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 	// dalam sehari (mis. restart server di hari yang sama atau ticker dobel).
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	endOfDay := startOfDay.AddDate(0, 0, 1)
+	// IDEMPOTENSI: lewati bila sudah ada log dari jadwal ini pada tanggal yang
+	// sama. Unscoped digunakan agar log yang di-soft-delete tetap dihormati dan
+	// tidak membangkitkan tugas duplikat (M09).
 	var existing models.MaintenanceLog
-	err := db.Where("maintenance_schedule_id = ? AND scheduled_date >= ? AND scheduled_date < ?",
+	err := db.Unscoped().Where("maintenance_schedule_id = ? AND scheduled_date >= ? AND scheduled_date < ?",
 		schedule.ID, startOfDay, endOfDay).First(&existing).Error
 	if err == nil {
 		// Log untuk hari ini sudah ada — jangan buat duplikat.
 		utils.Log.Infof("⏰ Jadwal %s: log hari ini sudah ada, lewati (idempotent)", schedule.ID.String())
+		// PEMULIHAN (Recovery): Bila log hari ini sudah ada tetapi jadwal belum
+		// sempat digeser ke masa depan (misal kegagalan/crash antara pembuatan log
+		// dan pembaruan jadwal pada siklus sebelumnya), pulihkan NextRunAt sekarang.
+		if existing.ScheduledDate != nil && !schedule.NextRunAt.After(*existing.ScheduledDate) && schedule.NextRunAt.Before(now) {
+			nextRun := calculateNextRun(schedule.Frequency, schedule.NextRunAt, now)
+			schedule.NextRunAt = nextRun
+			schedule.LastGeneratedAt = &existing.CreatedAt
+			if saveErr := db.Save(schedule).Error; saveErr != nil {
+				utils.Log.Errorf("⚠️ Gagal memulihkan jadwal %s: %v", schedule.ID.String(), saveErr)
+			} else {
+				utils.Log.Infof("🔄 Jadwal %s: berhasil dipulihkan (next_run_at: %s)",
+					schedule.ID.String(), nextRun.Format(time.RFC3339))
+			}
+		}
 		return
 	}
 	if err != gorm.ErrRecordNotFound {
@@ -105,6 +123,13 @@ func processDueSchedule(db *gorm.DB, schedule *models.MaintenanceSchedule, now t
 		MaintenanceScheduleID: &schedule.ID,
 	}
 	if err := db.Create(&logEntry).Error; err != nil {
+		// Bila dua worker memproses jadwal bersamaan dan keduanya lolos pengecekan awal,
+		// unique constraint uq_maintenance_logs_schedule_day pada database menolak insert kedua.
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "unique") || strings.Contains(errLower, "duplicate") || strings.Contains(errLower, "23505") {
+			utils.Log.Infof("⏰ Jadwal %s: log hari ini sudah dibuat oleh worker lain (unique constraint), lewati secara aman", schedule.ID.String())
+			return
+		}
 		utils.Log.Errorf("⚠️ Gagal membuat log otomatis untuk jadwal %s: %v", schedule.ID.String(), err)
 		return
 	}

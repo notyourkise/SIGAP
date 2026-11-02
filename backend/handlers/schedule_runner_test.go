@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"testing"
 
 	"sigap-backend/models"
@@ -179,5 +180,95 @@ func TestCalculateNextRun_AntiDriftAndCatchUp(t *testing.T) {
 		want := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
 		assert.True(t, got.Equal(want), "expected %v, got %v", want, got)
 	})
+}
+
+
+// TestProcessDueSchedules_SoftDeletedLogPreventsDuplicate memverifikasi mitigasi M09:
+// bila log pemeliharaan pada hari yang sama pernah dibuat lalu di-soft-delete,
+// generator menggunakan Unscoped() sehingga log soft-deleted tetap terdeteksi
+// dan generator menolak membuat tugas duplikat.
+func TestProcessDueSchedules_SoftDeletedLogPreventsDuplicate(t *testing.T) {
+	db, mock := setupMockGORM(t)
+	scheduleID, cctvID, techID := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+	deletedAt := now.Add(-1 * time.Hour)
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).
+		WillReturnRows(maintenanceScheduleRows(scheduleID, cctvID, &techID, "daily", true))
+	// Log soft-deleted SUDAH ADA (deleted_at != nil) -> generator harus tetap skip (idempotent)
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "action_taken", "status",
+			"scheduled_date", "completed_at", "image_url",
+		}).AddRow(uuid.New(), now, now, deletedAt, cctvID, techID,
+			"Bersihkan lensa kamera", "ongoing", now, nil, ""))
+
+	ProcessDueSchedulesAt(db, now)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestProcessDueSchedules_ConcurrentWorkerUniqueConstraintHandled memverifikasi mitigasi M09:
+// bila dua worker memproses jadwal secara bersamaan dan keduanya lolos pengecekan awal,
+// unique constraint database uq_maintenance_logs_schedule_day menolak insert kedua.
+// Worker kedua menangkap error ini secara aman (idempotent skip) tanpa panik atau error fatal.
+func TestProcessDueSchedules_ConcurrentWorkerUniqueConstraintHandled(t *testing.T) {
+	db, mock := setupMockGORM(t)
+	scheduleID, cctvID, techID := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).
+		WillReturnRows(maintenanceScheduleRows(scheduleID, cctvID, &techID, "daily", true))
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnError(gorm.ErrRecordNotFound)
+	// Worker kedua kalah race: PostgreSQL melempar unique constraint violation (SQLSTATE 23505)
+	mock.ExpectExec(`^INSERT INTO "maintenance_logs"`).
+		WillReturnError(errors.New("ERROR: duplicate key value violates unique constraint \"uq_maintenance_logs_schedule_day\" (SQLSTATE 23505)"))
+
+	ProcessDueSchedulesAt(db, now)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestProcessDueSchedules_RecoveryAfterCrash memverifikasi pemulihan (recovery) M09:
+// bila log pemeliharaan berhasil dibuat pada siklus sebelumnya namun server terhenti
+// sebelum jadwal berhasil digeser (NextRunAt <= ScheduledDate dan NextRunAt < now),
+// generator memulihkan NextRunAt ke jadwal berikutnya tanpa membuat log duplikat.
+func TestProcessDueSchedules_RecoveryAfterCrash(t *testing.T) {
+	db, mock := setupMockGORM(t)
+	scheduleID, cctvID, techID := uuid.New(), uuid.New(), uuid.New()
+
+	// Waktu rencana jadwal sebelumnya: jam 09.00
+	plannedTime := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+	// Server hidup kembali pada jam 11.00 (setelah crash sebelum update NextRunAt)
+	resumedNow := time.Date(2026, 10, 30, 11, 0, 0, 0, time.UTC)
+
+	// NextRunAt pada jadwal di database masih jam 09.00 (belum pernah bergeser)
+	scheduleRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "action_taken", "frequency",
+		"next_run_at", "is_active", "last_generated_at",
+	}).AddRow(scheduleID, plannedTime, plannedTime, nil, cctvID, techID,
+		"Bersihkan lensa dan periksa konektor RJ45", "daily", plannedTime, true, nil)
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_schedules"`).
+		WillReturnRows(scheduleRows)
+	// Log untuk tanggal 30 Okt sudah ada di database dari eksekusi sebelum crash
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at",
+			"cctv_id", "technician_id", "action_taken", "status",
+			"scheduled_date", "completed_at", "image_url",
+		}).AddRow(uuid.New(), plannedTime, plannedTime, nil, cctvID, techID,
+			"Bersihkan lensa dan periksa konektor RJ45", "ongoing", plannedTime, nil, ""))
+
+	// Recovery: generator TIDAK melakukan INSERT log baru, melainkan mengupdate NextRunAt jadwal
+	mock.ExpectExec(`^UPDATE "maintenance_schedules" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	ProcessDueSchedulesAt(db, resumedNow)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
