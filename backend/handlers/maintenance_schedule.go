@@ -42,12 +42,32 @@ type UpdateMaintenanceScheduleRequest struct {
 // nextRunForFrequency menghitung NextRunAt berikutnya dari titik waktu tertentu
 // sesuai frekuensi jadwal. Dipakai saat pembuatan jadwal, saat frekuensi diubah
 // (reset jadwal berikutnya), dan oleh generator untuk menggeser jadwal.
+//
+// Kebijakan Akhir Bulan (End-of-Month Clamping):
+// Pada frekuensi bulanan, penambahan 1 bulan kalender dilakukan dengan mempertahankan tanggal (day).
+// Jika tanggal asal melebihi jumlah hari pada bulan target (misalnya 31 Januari -> target Februari),
+// tanggal secara eksplisit di-clamp ke hari terakhir bulan target (28 atau 29 Februari),
+// dan TIDAK melompat melewati bulan ke Maret (perilaku default time.AddDate).
 func nextRunForFrequency(freq string, from time.Time) time.Time {
 	switch freq {
 	case models.FrequencyWeekly:
 		return from.AddDate(0, 0, 7)
 	case models.FrequencyMonthly:
-		return from.AddDate(0, 1, 0)
+		year, month, day := from.Date()
+		targetYear := year
+		targetMonth := month + 1
+		if targetMonth > 12 {
+			targetYear++
+			targetMonth = 1
+		}
+		// Cari hari terakhir pada targetMonth dengan time.Date:
+		// Hari ke-0 pada (targetMonth + 1) adalah hari terakhir targetMonth.
+		lastDayOfTargetMonth := time.Date(targetYear, targetMonth+1, 0, 0, 0, 0, 0, from.Location()).Day()
+		targetDay := day
+		if targetDay > lastDayOfTargetMonth {
+			targetDay = lastDayOfTargetMonth
+		}
+		return time.Date(targetYear, targetMonth, targetDay, from.Hour(), from.Minute(), from.Second(), from.Nanosecond(), from.Location())
 	case models.FrequencyDaily:
 		fallthrough
 	default:

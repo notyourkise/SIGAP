@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"testing"
+
+	"sigap-backend/models"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -101,3 +103,81 @@ func TestProcessDueSchedules_ActiveWithTechnician(t *testing.T) {
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestAudit_GeneratorMustNotDriftFromPlannedTime memverifikasi perbaikan M07:
+// keterlambatan worker/generator (misal tertunda 45 menit) tidak boleh menggeser
+// jam rencana tugas berikutnya. Anchor harus tetap berpatokan pada waktu rencana
+// sebelumnya (planned nextRunAt).
+func TestAudit_GeneratorMustNotDriftFromPlannedTime(t *testing.T) {
+	db, mock := setupMockGORM(t)
+	due := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+	now := due.Add(45 * time.Minute)
+	schedule := models.MaintenanceSchedule{
+		Base:      models.Base{ID: uuid.New()},
+		CCTVID:    uuid.New(),
+		Frequency: "daily",
+		NextRunAt: due,
+		IsActive:  true,
+	}
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnError(gorm.ErrRecordNotFound)
+	mock.ExpectExec(`^INSERT INTO "maintenance_logs"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^UPDATE "maintenance_schedules" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`^INSERT INTO "audit_logs"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	processDueSchedule(db, &schedule, now)
+
+	want := due.AddDate(0, 0, 1)
+	assert.True(t, schedule.NextRunAt.Equal(want), "planned next=%s actual=%s: scheduler delay shifts future schedule", want, schedule.NextRunAt)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCalculateNextRun_AntiDriftAndCatchUp menguji anti-drift dan catch-up
+// setelah downtime pada berbagai frekuensi.
+func TestCalculateNextRun_AntiDriftAndCatchUp(t *testing.T) {
+	t.Run("worker delayed does not drift anchor time", func(t *testing.T) {
+		planned := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+		delayedNow := planned.Add(45 * time.Minute) // worker tertunda 45 menit
+		got := calculateNextRun("daily", planned, delayedNow)
+
+		want := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+		assert.True(t, got.Equal(want), "expected %v, got %v", want, got)
+	})
+
+	t.Run("server downtime multi-day catch-up", func(t *testing.T) {
+		// Server mati 4 hari: jadwal rencana 2026-10-25 09:00:00
+		// Server hidup kembali pada 2026-10-29 14:00:00
+		planned := time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
+		resumedNow := time.Date(2026, 10, 29, 14, 0, 0, 0, time.UTC)
+
+		got := calculateNextRun("daily", planned, resumedNow)
+		// Jadwal berikutnya harus langsung berada di masa depan (> resumedNow)
+		// yaitu 2026-10-30 09:00:00, dengan jam anchor 09:00 tetap terjaga.
+		want := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+		assert.True(t, got.Equal(want), "expected catch-up next run %v, got %v", want, got)
+	})
+
+	t.Run("server downtime monthly catch-up", func(t *testing.T) {
+		// Server mati 2 bulan: jadwal rencana 2027-01-31 09:00:00
+		// Server hidup kembali pada 2027-03-15 10:00:00
+		planned := time.Date(2027, 1, 31, 9, 0, 0, 0, time.UTC)
+		resumedNow := time.Date(2027, 3, 15, 10, 0, 0, 0, time.UTC)
+
+		got := calculateNextRun("monthly", planned, resumedNow)
+		// Jan 31 -> Feb 28 (<= now) -> Mar 28 (> now)
+		want := time.Date(2027, 3, 28, 9, 0, 0, 0, time.UTC)
+		assert.True(t, got.Equal(want), "expected monthly catch-up %v, got %v", want, got)
+	})
+
+	t.Run("zero anchor falls back to now", func(t *testing.T) {
+		now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+		got := calculateNextRun("daily", time.Time{}, now)
+		want := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+		assert.True(t, got.Equal(want), "expected %v, got %v", want, got)
+	})
+}
+
