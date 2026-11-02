@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http/httptest"
 	"strings"
@@ -1356,3 +1357,85 @@ func TestAudit_CalendarScheduledDateFilteringAndMultiPage(t *testing.T) {
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+
+// TestCompleteMaintenanceLog_ConcurrentConflict memverifikasi mitigasi M08:
+// jika dua request completion datang bersamaan (atau double-submit), transisi status
+// log dilakukan secara kondisional (WHERE id = ? AND status = 'ongoing').
+// Bila request pertama sudah menyelesaikan tugas, request kedua mendapati RowsAffected == 0,
+// transaksi di-rollback (tidak ada field_maintenance duplikat yang tersisa), dan dibalas HTTP 400.
+func TestCompleteMaintenanceLog_ConcurrentConflict(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	// 1. Initial query menemukan status ongoing
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectBegin()
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	for i := 0; i < 9; i++ {
+		mock.ExpectExec(`^INSERT INTO "field_maintenance_checks"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+	for i := 0; i < 2; i++ {
+		mock.ExpectExec(`^INSERT INTO "field_maintenance_images"`).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+	// 2. Race condition: row sudah diubah oleh request lain yang selesai duluan -> RowsAffected = 0
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	payload := `{` + completeChecks(true) + `,"images":[{"image_url":"/api/uploads/a.jpg"},{"image_url":"/api/uploads/b.jpg"}],"notes":"Selesai bersamaan"}`
+	req := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "error", result["status"])
+	assert.Equal(t, "Hanya tugas berstatus dalam proses yang dapat diselesaikan", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCompleteMaintenanceLog_UniqueConstraintViolation memverifikasi mitigasi database M08:
+// jika terjadi double-submit atau race condition yang lolos ke level insert,
+// unique constraint uq_field_maintenances_maintenance_log_id menolak pembuatan
+// field_maintenance kedua, transaksi di-rollback, dan dibalas HTTP 400.
+func TestCompleteMaintenanceLog_UniqueConstraintViolation(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	id, techID, cctvID := uuid.New(), uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+		WillReturnRows(knownMaintenanceRows(id, techID, cctvID))
+	mock.ExpectBegin()
+	// Simulasi PostgreSQL 23505 unique constraint violation
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnError(errors.New("ERROR: duplicate key value violates unique constraint \"uq_field_maintenances_maintenance_log_id\" (SQLSTATE 23505)"))
+	mock.ExpectRollback()
+
+	app := newTestApp()
+	app.Post("/maintenance-logs/:id/complete", withUserLocals(techID.String(), "teknisi"), CompleteMaintenanceLog)
+
+	payload := `{` + completeChecks(true) + `,"images":[{"image_url":"/api/uploads/a.jpg"},{"image_url":"/api/uploads/b.jpg"}],"notes":"Duplicate submission"}`
+	req := httptest.NewRequest("POST", "/maintenance-logs/"+id.String()+"/complete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "error", result["status"])
+	assert.Equal(t, "Hanya tugas berstatus dalam proses yang dapat diselesaikan", result["message"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS uq_field_maintenances_maintenance_log_id;
