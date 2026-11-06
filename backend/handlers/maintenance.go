@@ -619,11 +619,31 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 
+	// Muat CCTV untuk memvalidasi kesesuaian site serta nama kamera pada notifikasi (Issue #184 / M11)
+	var cctv models.CCTV
+	if err := config.DB.First(&cctv, "id = ?", logEntry.CCTVID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "CCTV tugas tidak ditemukan",
+		})
+	}
+
+	// Pastikan teknisi terdaftar pada site tempat CCTV tugas berada
+	if status, msg := validateTechnicianSiteAssignment(config.DB, techUUID, cctv.SiteID); status != 0 {
+		return c.Status(status).JSON(fiber.Map{
+			"status":  "error",
+			"message": msg,
+		})
+	}
+
 	now := time.Now()
 	logEntry.TechnicianID = &techUUID
 	logEntry.AssignedAt = &now
 	logEntry.Status = "ongoing"
 	logEntry.UpdatedAt = now
+	if logEntry.SiteID == nil && cctv.SiteID != nil {
+		logEntry.SiteID = cctv.SiteID
+	}
 
 	if err := config.DB.Save(&logEntry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -646,11 +666,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	// Nama CCTV dipakai pada pesan notifikasi re-assign
-	var cctvName string
-	var cctv models.CCTV
-	if err := config.DB.First(&cctv, "id = ?", logEntry.CCTVID).Error; err == nil {
-		cctvName = cctv.Nama
-	}
+	cctvName := cctv.Nama
 	if cctvName == "" {
 		cctvName = logEntry.ActionTaken
 	}

@@ -497,8 +497,14 @@ func AssignUsersToSite(c *fiber.Ctx) error {
 		}
 	}
 
-	// Timpa penugasan site: hapus semua lalu sisipkan daftar baru.
+	// Timpa penugasan site: hapus semua lalu sisipkan daftar baru,
+	// serta rekonsiliasi tugas aktif teknisi yang dicabut (Issue #184 / M11).
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
+		var previousUserIDs []uuid.UUID
+		if err := tx.Model(&models.UserSite{}).Where("site_id = ?", siteID).Pluck("user_id", &previousUserIDs).Error; err != nil {
+			return err
+		}
+
 		if err := tx.Where("site_id = ?", siteID).Delete(&models.UserSite{}).Error; err != nil {
 			return err
 		}
@@ -508,6 +514,23 @@ func AssignUsersToSite(c *fiber.Ctx) error {
 				return err
 			}
 		}
+
+		// Deteksi teknisi yang dicabut dari site ini
+		newUserSet := make(map[uuid.UUID]bool, len(req.UserIDs))
+		for _, uid := range req.UserIDs {
+			newUserSet[uid] = true
+		}
+		var removedUserIDs []uuid.UUID
+		for _, prevID := range previousUserIDs {
+			if !newUserSet[prevID] {
+				removedUserIDs = append(removedUserIDs, prevID)
+			}
+		}
+
+		if err := reconcileRevokedTechnicianSiteAssignments(tx, removedUserIDs, siteID); err != nil {
+			return err
+		}
+
 		return nil
 	})
 	if err != nil {
