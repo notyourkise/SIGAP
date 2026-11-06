@@ -623,8 +623,8 @@ func RecordSparePartUsage(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "RECORD_SPARE_PART_USAGE", "INVENTORY",
-		fmt.Sprintf("Mencatat penggunaan suku cadang %s (%s) sebanyak %d pada maintenance log", sparePart.Nama, sparePart.SKU, req.Jumlah),
-		&logID, "", "")
+		fmt.Sprintf("Mencatat penggunaan suku cadang %s (%s) sebanyak %d pada maintenance log %s", sparePart.Nama, sparePart.SKU, req.Jumlah, logID.String()),
+		nil, "", "")
 
 	// Broadcast event stok rendah ke seluruh admin bila ambang minimum terlampaui.
 	if stockLow {
