@@ -1,12 +1,43 @@
 package middleware
 
 import (
+	"strings"
+
 	"sigap-backend/config"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// isAllowedWhenMustChangePassword memeriksa apakah path request diizinkan untuk
+// pengguna dengan status must_change_password = true.
+// Pengguna hanya diizinkan mengakses profil (/auth/me, /auth/profile),
+// penggantian kata sandi (/auth/change-password), dan logout (/auth/logout).
+func isAllowedWhenMustChangePassword(path string) bool {
+	cleanPath := strings.TrimRight(path, "/")
+	if cleanPath == "" {
+		cleanPath = "/"
+	}
+
+	allowedPaths := []string{
+		"/auth/me",
+		"/api/auth/me",
+		"/auth/change-password",
+		"/api/auth/change-password",
+		"/auth/logout",
+		"/api/auth/logout",
+		"/auth/profile",
+		"/api/auth/profile",
+	}
+
+	for _, allowed := range allowedPaths {
+		if cleanPath == allowed {
+			return true
+		}
+	}
+	return false
+}
 
 // Protected adalah middleware untuk memvalidasi token JWT.
 // Token diambil dari cookie httpOnly sigap_session (mode web), dengan
@@ -48,7 +79,8 @@ func Protected() fiber.Handler {
 		// SECURITY: Pastikan versi token cocok dengan versi token terbaru pengguna.
 		// Versi token dinaikkan saat password di-reset atau role diubah, sehingga
 		// seluruh token lama langsung dicabut.
-		if err := utils.ValidateTokenVersion(config.DB, token); err != nil {
+		mustChangePassword, err := utils.ValidateTokenVersionAndMustChange(config.DB, token)
+		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"status":  "error",
 				"message": "Sesi telah dicabut. Silakan login kembali.",
@@ -58,6 +90,16 @@ func Protected() fiber.Handler {
 		// Simpan data user ke Locals context agar bisa dibaca di handler berikutnya
 		c.Locals("user_id", claims["user_id"])
 		c.Locals("role", claims["role"])
+		c.Locals("must_change_password", mustChangePassword)
+
+		// SECURITY: Pengguna yang berstatus must_change_password wajib mengganti sandi
+		// terlebih dahulu sebelum dapat mengakses API operasional.
+		if mustChangePassword && !isAllowedWhenMustChangePassword(c.Path()) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Anda wajib mengganti password sebelum dapat mengakses resource ini",
+			})
+		}
 
 		return c.Next()
 	}

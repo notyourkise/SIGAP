@@ -40,9 +40,9 @@ func TestWebSocketHandshakeAcceptsValidToken(t *testing.T) {
 	config.DB = gormDB
 
 	userID := "22222222-2222-2222-2222-222222222222"
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	token, err := utils.GenerateToken(userID, "admin", 1)
 	assert.NoError(t, err)
 
@@ -75,9 +75,9 @@ func TestWebSocketHandshakeLoadsTechnicianSiteMembership(t *testing.T) {
 
 	userID := "33333333-3333-3333-3333-333333333333"
 	siteID := uuid.New()
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`^SELECT "site_id" FROM "user_sites" WHERE user_id = \$1`).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"site_id"}).AddRow(siteID.String()))
@@ -108,5 +108,33 @@ func TestWebSocketHandshakeLoadsTechnicianSiteMembership(t *testing.T) {
 	if err == nil {
 		_ = conn.Close()
 	}
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestWebSocketHandshakeRejectsMustChangePassword(t *testing.T) {
+	t.Setenv("JWT_SECRET", "websocket-test-secret")
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{SkipDefaultTransaction: true})
+	assert.NoError(t, err)
+	config.DB = gormDB
+
+	userID := "44444444-4444-4444-4444-444444444444"
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WithArgs(userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, true))
+
+	token, err := utils.GenerateToken(userID, "teknisi", 1)
+	assert.NoError(t, err)
+
+	app := fiber.New()
+	SetupWebSocketRoutes(app)
+
+	req := httptest.NewRequest("GET", "/ws?token="+token, nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
