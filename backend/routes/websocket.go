@@ -67,10 +67,19 @@ func SetupWebSocketRoutes(api fiber.Router) {
 
 		// SECURITY: Pastikan versi token cocok dengan versi terbaru pengguna
 		// (token dicabut saat password di-reset / role diubah).
-		if err := utils.ValidateTokenVersion(config.DB, token); err != nil {
+		mustChangePassword, err := utils.ValidateTokenVersionAndMustChange(config.DB, token)
+		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"status":  "error",
 				"message": "Sesi telah dicabut. Silakan login kembali.",
+			})
+		}
+
+		// Pengguna yang wajib ganti sandi tidak boleh mengakses stream WebSocket operasional
+		if mustChangePassword {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Anda wajib mengganti password sebelum dapat mengakses resource ini",
 			})
 		}
 

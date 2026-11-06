@@ -56,26 +56,33 @@ func ValidateToken(tokenString string) (*jwt.Token, error) {
 // versi token pengguna di database. Jika tidak cocok, token dianggap dicabut
 // (mis. saat password di-reset atau role diubah oleh Admin).
 func ValidateTokenVersion(db *gorm.DB, token *jwt.Token) error {
+	_, err := ValidateTokenVersionAndMustChange(db, token)
+	return err
+}
+
+// ValidateTokenVersionAndMustChange memastikan versi token pada klaim ("tv") cocok dengan
+// versi token pengguna di database dan mengembalikan status must_change_password.
+func ValidateTokenVersionAndMustChange(db *gorm.DB, token *jwt.Token) (bool, error) {
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return errors.New("klaim token tidak valid")
+		return false, errors.New("klaim token tidak valid")
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok || userID == "" {
-		return errors.New("user_id tidak ditemukan dalam token")
+		return false, errors.New("user_id tidak ditemukan dalam token")
 	}
 
 	tokenVersion, _ := claims["tv"].(float64)
 
 	var user models.User
-	if err := db.Select("token_version").First(&user, "id = ?", userID).Error; err != nil {
-		return errors.New("pengguna tidak ditemukan")
+	if err := db.Select("token_version", "must_change_password").First(&user, "id = ?", userID).Error; err != nil {
+		return false, errors.New("pengguna tidak ditemukan")
 	}
 
 	if int64(tokenVersion) != user.TokenVersion {
-		return errors.New("token telah dicabut")
+		return false, errors.New("token telah dicabut")
 	}
 
-	return nil
+	return user.MustChangePassword, nil
 }

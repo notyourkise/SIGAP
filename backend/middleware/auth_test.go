@@ -98,9 +98,9 @@ func TestProtected_ValidToken(t *testing.T) {
 	userID := "user-123"
 
 	// Ekspektasi query validasi versi token di database
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 
 	token, err := utils.GenerateToken(userID, "admin")
 	assert.NoError(t, err)
@@ -132,9 +132,9 @@ func TestProtected_TokenVersionMismatch(t *testing.T) {
 	userID := "user-456"
 
 	// Token lama tv=1, namun versi terbaru di DB adalah 2 (password sudah di-reset)
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(2))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(2, false))
 
 	token, err := utils.GenerateToken(userID, "admin")
 	assert.NoError(t, err)
@@ -151,6 +151,92 @@ func TestProtected_TokenVersionMismatch(t *testing.T) {
 	var result map[string]interface{}
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, "Sesi telah dicabut. Silakan login kembali.", result["message"])
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestProtected_MustChangePassword_RestrictsOperationalRoute(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	gormDB, mock := setupMockDB(t)
+	config.DB = gormDB
+
+	userID := "user-must-change"
+
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WithArgs(userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, true))
+
+	token, err := utils.GenerateToken(userID, "admin")
+	assert.NoError(t, err)
+
+	app := fiber.New()
+	app.Get("/operational", Protected(), RequireRole("admin"), func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest("GET", "/operational", nil)
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "error", result["status"])
+	assert.Equal(t, "Anda wajib mengganti password sebelum dapat mengakses resource ini", result["message"])
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestProtected_MustChangePassword_AllowsProfileAndChangePassword(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	gormDB, mock := setupMockDB(t)
+	config.DB = gormDB
+
+	userID := "user-must-change-allowed"
+
+	// Mock 3 kali panggilan untuk 3 endpoint yang diizinkan
+	for i := 0; i < 3; i++ {
+		mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+			WithArgs(userID, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, true))
+	}
+
+	token, err := utils.GenerateToken(userID, "admin")
+	assert.NoError(t, err)
+
+	app := fiber.New()
+	app.Get("/api/auth/me", Protected(), func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "profile_ok"})
+	})
+	app.Post("/api/auth/change-password", Protected(), func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "password_changed"})
+	})
+	app.Put("/api/auth/profile", Protected(), func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "profile_updated"})
+	})
+
+	// 1. Tes GET /api/auth/me
+	req1 := httptest.NewRequest("GET", "/api/auth/me", nil)
+	req1.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp1, err := app.Test(req1)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp1.StatusCode)
+
+	// 2. Tes POST /api/auth/change-password
+	req2 := httptest.NewRequest("POST", "/api/auth/change-password", nil)
+	req2.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp2, err := app.Test(req2)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp2.StatusCode)
+
+	// 3. Tes PUT /api/auth/profile
+	req3 := httptest.NewRequest("PUT", "/api/auth/profile", nil)
+	req3.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp3, err := app.Test(req3)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp3.StatusCode)
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

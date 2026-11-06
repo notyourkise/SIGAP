@@ -107,8 +107,8 @@ func TestStreamMedia_RejectsAnonymousAndTechnician(t *testing.T) {
 		{method: "GET", path: hlsPath},
 		{method: "GET", path: "/api/streams/auth", header: map[string]string{"X-Original-URI": hlsPath}},
 	} {
-		mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
-			WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+			WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader("v=0"))
 		req.Header.Set("Authorization", "Bearer "+techToken)
@@ -168,8 +168,8 @@ func TestStreamMedia_AllowsValidAdminAndRejectsAfterLogout(t *testing.T) {
 	require.NoError(t, err)
 
 	// 1. Subrequest auth_request (/api/streams/auth) sukses untuk Admin
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(streamMediaCCTVRow(camID, siteID, true))
 
@@ -182,8 +182,8 @@ func TestStreamMedia_AllowsValidAdminAndRejectsAfterLogout(t *testing.T) {
 	assert.Equal(t, streamName, authResp.Header.Get("X-Stream-Path"))
 
 	// 2. WHEP signaling sukses untuk Admin
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(streamMediaCCTVRow(camID, siteID, true))
 
@@ -198,8 +198,8 @@ func TestStreamMedia_AllowsValidAdminAndRejectsAfterLogout(t *testing.T) {
 	assert.Contains(t, string(whepBody), "s=MediaMTX")
 
 	// 3. HLS playlist sukses untuk Admin
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(streamMediaCCTVRow(camID, siteID, true))
 

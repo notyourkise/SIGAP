@@ -89,9 +89,9 @@ func TestReportRoutesRejectTechnician(t *testing.T) {
 	config.DB = gormDB
 
 	userID := "technician-report-test"
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	token, err := utils.GenerateToken(userID, "teknisi", 1)
 	assert.NoError(t, err)
 
@@ -115,9 +115,9 @@ func TestSparePartInventoryRoutesRejectTechnician(t *testing.T) {
 	config.DB = gormDB
 
 	userID := "technician-spare-part-test"
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	token, err := utils.GenerateToken(userID, "teknisi", 1)
 	assert.NoError(t, err)
 
@@ -150,9 +150,9 @@ func TestDashboardSummaryRejectsUnassignedTechnician(t *testing.T) {
 	config.DB = gormDB
 
 	userID := uuid.NewString()
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`FROM "sites" JOIN user_sites`).
 		WillReturnError(gorm.ErrRecordNotFound)
 	token, err := utils.GenerateToken(userID, "teknisi", 1)
@@ -178,9 +178,9 @@ func TestFieldMaintenanceRejectsUnassignedTechnician(t *testing.T) {
 	config.DB = gormDB
 
 	userID := uuid.NewString()
-	mock.ExpectQuery(`^SELECT "token_version" FROM "users"`).
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
 		WithArgs(userID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"token_version"}).AddRow(1))
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
 	mock.ExpectQuery(`FROM "sites" JOIN user_sites`).
 		WillReturnError(gorm.ErrRecordNotFound)
 	token, err := utils.GenerateToken(userID, "teknisi", 1)
