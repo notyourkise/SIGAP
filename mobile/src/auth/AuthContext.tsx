@@ -23,6 +23,25 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+/**
+ * Mengekstrak objek User dari respons /auth/me secara tahan banting (resilien).
+ * Mendukung baik bentuk nested { user: User } maupun bentuk direct User.
+ */
+export function extractUser(data: unknown): User | null {
+  if (!data || typeof data !== 'object') return null;
+  const obj = data as Record<string, unknown>;
+  if (obj.user && typeof obj.user === 'object') {
+    const u = obj.user as Record<string, unknown>;
+    if (typeof u.id === 'string' && typeof u.username === 'string') {
+      return obj.user as User;
+    }
+  }
+  if (typeof obj.id === 'string' && typeof obj.username === 'string') {
+    return obj as unknown as User;
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,10 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Ambil profil terbaru dari /auth/me (auto-login / refresh sesi).
   const refresh = useCallback(async () => {
     try {
-      const res = await apiGet<{ user: User }>('/auth/me');
+      const res = await apiGet<unknown>('/auth/me');
       if (res.status === 'success' && res.data) {
-        setUser(res.data.user);
-        await storeUser(res.data.user);
+        const u = extractUser(res.data);
+        if (u) {
+          setUser(u);
+          await storeUser(u);
+        }
       }
     } catch {
       // Token tidak valid / sesi kedaluwarsa — biarkan user null.
@@ -62,8 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateUser = useCallback(async (next: User) => {
-    setUser(next);
-    await storeUser(next);
+    if (next && typeof next === 'object') {
+      setUser(next);
+      await storeUser(next);
+    }
   }, []);
 
   // Auto-login: muat profil dari secure-store, lalu validasi via /auth/me.
@@ -80,10 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(cached);
       }
       try {
-        const res = await apiGet<{ user: User }>('/auth/me');
+        const res = await apiGet<unknown>('/auth/me');
         if (!cancelled && res.status === 'success' && res.data) {
-          setUser(res.data.user);
-          await storeUser(res.data.user);
+          const u = extractUser(res.data);
+          if (u) {
+            setUser(u);
+            await storeUser(u);
+          }
         }
       } catch {
         // Token kedaluwarsa — bersihkan sesi.

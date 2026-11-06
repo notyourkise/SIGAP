@@ -25,14 +25,19 @@ export async function clearSessionToken(): Promise<void> {
 
 /** Menyimpan profil user yang sedang login (untuk auto-login). */
 export async function storeUser(user: unknown): Promise<void> {
+  if (!user || typeof user !== 'object') {
+    return;
+  }
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
 }
 
 export async function getUser<T = unknown>(): Promise<T | null> {
   const raw = await SecureStore.getItemAsync(USER_KEY);
-  if (!raw) return null;
+  if (!raw || raw === 'undefined' || raw === 'null') return null;
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as T;
   } catch {
     return null;
   }
