@@ -333,6 +333,21 @@ func GetMyProfile(c *fiber.Ctx) error {
 		})
 	}
 
+	userMap := fiber.Map{
+		"id":                   user.ID,
+		"username":             user.Username,
+		"full_name":            user.FullName,
+		"email":                user.Email,
+		"role":                 user.Role,
+		"created_at":           user.CreatedAt,
+		"must_change_password": user.MustChangePassword,
+		"profile_photo_url":    user.ProfilePhotoURL,
+		"email_notifications":  user.EmailNotifications,
+		"email_daily_digest":   user.EmailDailyDigest,
+		"email_overdue":        user.EmailOverdue,
+		"email_stock_low":      user.EmailStockLow,
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data": fiber.Map{
@@ -348,6 +363,7 @@ func GetMyProfile(c *fiber.Ctx) error {
 			"email_daily_digest":   user.EmailDailyDigest,
 			"email_overdue":        user.EmailOverdue,
 			"email_stock_low":      user.EmailStockLow,
+			"user":                 userMap,
 		},
 	})
 }
