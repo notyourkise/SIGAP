@@ -105,6 +105,8 @@ func TestAuditActor_AssignUsersToSite(t *testing.T) {
 
 	// 3. Transaction delete + insert user_sites
 	mock.ExpectBegin()
+	mock.ExpectQuery(`^SELECT "user_id" FROM "user_sites"`).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
 	mock.ExpectExec(`^DELETE FROM "user_sites"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`^INSERT INTO "user_sites"`).

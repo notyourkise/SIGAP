@@ -160,6 +160,13 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 				"message": "User tujuan bukan berperan teknisi",
 			})
 		}
+		// Pastikan teknisi terdaftar di site tempat CCTV jadwal berada (Issue #184 / M11)
+		if status, msg := validateTechnicianSiteAssignment(config.DB, techUUID, cctv.SiteID); status != 0 {
+			return c.Status(status).JSON(fiber.Map{
+				"status":  "error",
+				"message": msg,
+			})
+		}
 		technician = &techUUID
 	}
 
@@ -411,7 +418,7 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 	}
 
 	// TechnicianID pointer: nil = tidak diubah; "" = lepas teknisi;
-	// UUID valid = ganti teknisi (wajib berperan teknisi).
+	// UUID valid = ganti teknisi (wajib berperan teknisi dan anggota site CCTV, Issue #184 / M11).
 	if req.TechnicianID != nil {
 		if *req.TechnicianID == "" {
 			schedule.TechnicianID = nil
@@ -436,7 +443,38 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 					"message": "User tujuan bukan berperan teknisi",
 				})
 			}
+
+			// Validasi keanggotaan site terhadap CCTV jadwal yang sedang aktif / diperbarui
+			targetCCTVID := schedule.CCTVID
+			var targetCCTV models.CCTV
+			if err := config.DB.Select("id", "site_id").First(&targetCCTV, "id = ?", targetCCTVID).Error; err != nil {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"status":  "error",
+					"message": "CCTV jadwal tidak ditemukan",
+				})
+			}
+			if status, msg := validateTechnicianSiteAssignment(config.DB, techUUID, targetCCTV.SiteID); status != 0 {
+				return c.Status(status).JSON(fiber.Map{
+					"status":  "error",
+					"message": msg,
+				})
+			}
+
 			schedule.TechnicianID = &techUUID
+		}
+	} else if req.CCTVID != "" && schedule.TechnicianID != nil {
+		// Jika CCTV diubah tetapi teknisi tidak diubah, pastikan teknisi lama juga berhak di site CCTV baru
+		cctvUUID, err := uuid.Parse(req.CCTVID)
+		if err == nil {
+			var newCCTV models.CCTV
+			if err := config.DB.Select("id", "site_id").First(&newCCTV, "id = ?", cctvUUID).Error; err == nil {
+				if status, msg := validateTechnicianSiteAssignment(config.DB, *schedule.TechnicianID, newCCTV.SiteID); status != 0 {
+					return c.Status(status).JSON(fiber.Map{
+						"status":  "error",
+						"message": msg,
+					})
+				}
+			}
 		}
 	}
 

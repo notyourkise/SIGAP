@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // UpdateUserRequest mendefinisikan skema validasi untuk memperbarui data user oleh Admin
@@ -171,6 +172,7 @@ func UpdateUser(c *fiber.Ctx) error {
 
 	// Update bidang-bidang jika diisi
 	roleChanged := false
+	oldRole := user.Role
 	if req.FullName != "" {
 		user.FullName = req.FullName
 	}
@@ -196,7 +198,18 @@ func UpdateUser(c *fiber.Ctx) error {
 		user.TokenVersion++
 	}
 
-	if err := config.DB.Save(&user).Error; err != nil {
+	// Jika peran diubah dari teknisi ke non-teknisi, rekonsiliasi tugas & jadwal aktif (Issue #184 / M11)
+	if roleChanged && oldRole == "teknisi" && user.Role != "teknisi" {
+		err = config.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Save(&user).Error; err != nil {
+				return err
+			}
+			return reconcileRevokedTechnicianGlobalAssignments(tx, user.ID)
+		})
+	} else {
+		err = config.DB.Save(&user).Error
+	}
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal memperbarui pengguna",
@@ -253,7 +266,18 @@ func DeleteUser(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := config.DB.Delete(&user).Error; err != nil {
+	// Jika pengguna yang dihapus adalah teknisi, rekonsiliasi tugas & jadwal aktif (Issue #184 / M11)
+	if user.Role == "teknisi" {
+		err = config.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Delete(&user).Error; err != nil {
+				return err
+			}
+			return reconcileRevokedTechnicianGlobalAssignments(tx, user.ID)
+		})
+	} else {
+		err = config.DB.Delete(&user).Error
+	}
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menghapus pengguna",

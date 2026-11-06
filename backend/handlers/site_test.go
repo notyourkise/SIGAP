@@ -291,8 +291,11 @@ func TestAssignUsersToSite_Success(t *testing.T) {
 	// Hitung jumlah user teknisi pada daftar.
 	mock.ExpectQuery(`^SELECT count\(\*\) FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	// Transaksi: hapus penugasan lama + sisipkan baru.
+	// Transaksi: muat penugasan lama + hapus penugasan lama + sisipkan baru.
 	mock.ExpectBegin()
+	mock.ExpectQuery(`^SELECT "user_id" FROM "user_sites" WHERE site_id = \$1`).
+		WithArgs(siteID).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
 	mock.ExpectExec(`^DELETE FROM "user_sites"`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`^INSERT INTO "user_sites"`).

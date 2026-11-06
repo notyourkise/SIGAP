@@ -360,13 +360,12 @@ func TestAssignMaintenanceLog_Success(t *testing.T) {
 		WillReturnRows(scheduledMaintenanceRows(id, cctvID))
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(userRow(techID, "teknisi1", "teknisi"))
-	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// Nama CCTV untuk pesan notifikasi ke teknisi yang ditugaskan
+	// Muat CCTV untuk validasi site dan notifikasi
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
 			AddRow(cctvID, "CCTV-01", "Kamera Gerbang", "aktif"))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// Reload dengan relasi (Preload CCTV & User)
 	reload := sqlmock.NewRows([]string{
@@ -437,13 +436,12 @@ func TestAssignMaintenanceLog_ReassignSuccess(t *testing.T) {
 	// Teknisi lama dimuat untuk audit & notifikasi "dialihkan"
 	mock.ExpectQuery(`^SELECT \* FROM "users"`).
 		WillReturnRows(userRow(oldTechID, "teknisi1", "teknisi"))
-	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// Nama CCTV untuk pesan notifikasi re-assign
+	// Muat CCTV untuk validasi site dan notifikasi
 	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}).
 			AddRow(cctvID, "CCTV-01", "Kamera Gerbang", "aktif"))
+	mock.ExpectExec(`^UPDATE "maintenance_logs" SET`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// Reload dengan relasi — teknisi kini teknisi baru, status tetap ongoing
 	reload := sqlmock.NewRows([]string{
