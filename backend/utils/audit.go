@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"sigap-backend/models"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +15,24 @@ const (
 	auditWriteAttempts = 3
 	auditRetryDelay    = 100 * time.Millisecond
 )
+
+var (
+	auditHookMu sync.RWMutex
+	auditHook   func(models.AuditLog)
+)
+
+// SetAuditHookForTest mendaftarkan hook pengujian untuk menginspeksi AuditLog yang dibangun.
+// Mengembalikan fungsi cleanup untuk memulihkan state semula.
+func SetAuditHookForTest(fn func(models.AuditLog)) func() {
+	auditHookMu.Lock()
+	auditHook = fn
+	auditHookMu.Unlock()
+	return func() {
+		auditHookMu.Lock()
+		auditHook = nil
+		auditHookMu.Unlock()
+	}
+}
 
 // ExtractClientIP mengembalikan IP address klien (proxy-aware).
 // Hanya membaca header X-Forwarded-For bila koneksi datang dari trusted proxy
@@ -29,25 +48,28 @@ func LogAudit(db *gorm.DB, c *fiber.Ctx, action string, module string, descripti
 	if db == nil {
 		return
 	}
-	ipAddress := ExtractClientIP(c)
-	userAgent := c.Get("User-Agent")
+	var ipAddress, userAgent string
+	if c != nil {
+		ipAddress = ExtractClientIP(c)
+		userAgent = c.Get("User-Agent")
 
-	if len(userAgent) > 255 {
-		userAgent = userAgent[:255]
-	}
+		if len(userAgent) > 255 {
+			userAgent = userAgent[:255]
+		}
 
-	// Auto-extract dari c.Locals jika tidak dipassing secara eksplisit
-	if userID == nil {
-		if uidStr, ok := c.Locals("user_id").(string); ok && uidStr != "" {
-			if parsedID, err := uuid.Parse(uidStr); err == nil {
-				userID = &parsedID
+		// Auto-extract dari c.Locals jika tidak dipassing secara eksplisit
+		if userID == nil {
+			if uidStr, ok := c.Locals("user_id").(string); ok && uidStr != "" {
+				if parsedID, err := uuid.Parse(uidStr); err == nil {
+					userID = &parsedID
+				}
 			}
 		}
-	}
 
-	if role == "" {
-		if r, ok := c.Locals("role").(string); ok {
-			role = r
+		if role == "" {
+			if r, ok := c.Locals("role").(string); ok {
+				role = r
+			}
 		}
 	}
 
@@ -60,6 +82,13 @@ func LogAudit(db *gorm.DB, c *fiber.Ctx, action string, module string, descripti
 		Description: description,
 		IPAddress:   ipAddress,
 		UserAgent:   userAgent,
+	}
+
+	auditHookMu.RLock()
+	hook := auditHook
+	auditHookMu.RUnlock()
+	if hook != nil {
+		hook(audit)
 	}
 
 	// Eksekusi penulisan di goroutine non-blocking. Retry terbatas menangani

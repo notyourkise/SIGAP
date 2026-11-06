@@ -518,7 +518,7 @@ func AssignUsersToSite(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "ASSIGN_USER_SITE", "SITE",
-		fmt.Sprintf("Menetapkan %d teknisi ke site %s", len(req.UserIDs), site.Nama), &siteID, "", "")
+		fmt.Sprintf("Menetapkan %d teknisi ke site %s (%s)", len(req.UserIDs), site.Nama, siteID.String()), nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",

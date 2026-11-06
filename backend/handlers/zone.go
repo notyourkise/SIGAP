@@ -635,7 +635,7 @@ func AssignCCTVToZone(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "ASSIGN_CCTV_ZONE", "ZONE",
-		fmt.Sprintf("Menetapkan %d CCTV ke zona %s", len(ids), zone.Nama), &zoneID, "", "")
+		fmt.Sprintf("Menetapkan %d CCTV ke zona %s (%s)", len(ids), zone.Nama, zoneID.String()), nil, "", "")
 
 	return c.JSON(fiber.Map{
 		"status":  "success",
@@ -746,7 +746,7 @@ func AssignUsersToZone(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "ASSIGN_USER_ZONE", "ZONE",
-		fmt.Sprintf("Menetapkan %d teknisi ke zona %s", len(req.UserIDs), zone.Nama), &zoneID, "", "")
+		fmt.Sprintf("Menetapkan %d teknisi ke zona %s (%s)", len(req.UserIDs), zone.Nama, zoneID.String()), nil, "", "")
 
 	for _, userID := range req.UserIDs {
 		if _, alreadyAssigned := previousUserIDs[userID]; alreadyAssigned {
