@@ -1,5 +1,53 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-07 - Penyempurnaan Review Revisi 3 Monitoring CCTV & Telegram
+
+### Tiga Koreksi Review Revisi 3 beserta Uji Regresi
+
+**Cakupan Perubahan**:
+- **Temuan #1 (High) — Verifikasi Manual & Reaktivasi Memakai Batas Sesi Gate yang Sama (`handlers/stream_verify_gate.go`, `handlers/stream_verify.go`, `handlers/cctv_monitoring.go`)**:
+  - Menambahkan antrean interaktif (`GatePriorityInteractive`) dan `ExecuteInteractive` berbatas waktu tunggu (`manualVerifyGateWaitTimeout`) pada `UnifiedNVRSessionGate`.
+  - Mengarahkan `VerifyStream` (`POST /api/streams/:id/verify`) dan `ReactivateAndVerifyCCTV` (`POST /api/cctv/:id/reactivate-verify`) melalui gate sesi terpadu yang sama dengan pemeriksaan terjadwal, mempertahankan batas sesi gabungan (`MaxUpstreamSlots`), batas konkurensi GSM (`MaxGSMConcurrent`), otorisasi Admin, dan isolasi site.
+  - Memastikan saat gate penuh melebihi batas waktu tunggu, permintaan dibatalkan (`503 Service Unavailable`) tanpa mendaftarkan atau membuka stream baru, dan `ReactivateAndVerifyCCTV` hanya mengubah status kamera menjadi `aktif` setelah verifikasi `live` terbukti berhasil.
+- **Temuan #2 (High) — Bukti `unknown` Tidak Menyelesaikan Evaluasi Pasca-Maintenance (`incidents/planned_outage.go`, `incidents/store.go`, `migrations/000034_*`)**:
+  - Menambahkan kolom `post_window_retry_count` dan `post_window_next_retry_at` pada `cctv_planned_outage_cameras` serta backoff retry terkendali (`PostMaintenanceUnknownRetryDelay`).
+  - Mempertahankan evaluasi pasca-maintenance tetap tertunda (`post_window_processed_at IS NULL`) ketika bukti terakhir masih `unknown` pada kamera yang sempat terkonfirmasi offline selama jendela; menyelesaikan tanpa tiket saat bukti `live` diterima; dan membuka tepat satu tiket `post_planned_maintenance` dengan `sla_clock_start_at = effective_ends_at` serta pelestarian `first_failed_observed_at` dan `confirmed_offline_at` saat bukti `offline` terkonfirmasi.
+  - Menambahkan penjaga preempsi (`resolvePendingPostMaintenanceObservationTx`) pada `ObserveDetailed` dan `ObserveSharedCorrelatedWave` agar jalur monitoring berkala biasa tidak mendahului evaluasi yang tertunda dengan tiket `unplanned_outage`.
+- **Temuan #3 (Medium) — Konfirmasi Penutupan Sumber GSM Berbasis Bukti MediaMTX (`handlers/stream_verify.go`, `handlers/incidents.go`, `incidents/models.go`, `migrations/000034_*`)**:
+  - Mencatat terpisah hasil pelepasan path (`remove_path_status`, `remove_path_error`), hasil registrasi ulang (`reregister_status`, `reregister_error`), dan hasil verifikasi penutupan (`close_verify_status`, `close_unconfirmed_reason`) pada `cctv_probe_telemetry`.
+  - Menyetel `source_closed_confirmed = true` hanya apabila pemeriksaan MediaMTX memberikan bukti positif bahwa sumber telah berhenti (`!SourceReady()` atau path terkonfirmasi tidak ada pasca-pelepasan).
+
+timestamp: 2026-11-07 16:40 UTC+8
+kategori: Sedang, Backend (Session Gate, Post-Maintenance Evaluation, GSM Telemetry, Regression Tests)
+file yang diubah:
+- backend/migrations/000034_enhance_cctv_incidents_and_telemetry.up.sql
+- backend/incidents/models.go
+- backend/incidents/planned_outage.go
+- backend/incidents/store.go
+- backend/incidents/store_integration_test.go
+- backend/handlers/stream_verify_gate.go
+- backend/handlers/stream_verify_gate_test.go
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_test.go
+- backend/handlers/cctv_monitoring.go
+- backend/handlers/incidents.go
+- docs/05-reports/DESAIN-TEKNIS-MONITORING-TIKET-TELEGRAM-2026-11-07.md
+
+alasan perubahan: Menindaklanjuti tiga temuan review Revisi 3 agar batas sesi NVR/GSM tetap terjaga pada jalur manual/reaktivasi, evaluasi pasca-pemeliharaan tidak tertutup dini oleh status unknown, dan konfirmasi penutupan sesi GSM tercatat berdasarkan bukti MediaMTX.
+
+## [Unreleased] - 2026-11-07 - Monitoring CCTV, Tiket Gangguan Otomatis & Telegram (Revisi 3 Lengkap)
+
+### Implementasi Desain Teknis Revisi 3 (7 Keputusan Bisnis + 5 Koreksi Teknis)
+
+**Cakupan Perubahan**:
+- **Migrasi 3-Langkah & Backfill Tiket Lama (`000034_enhance_cctv_incidents_and_telemetry`)**:
+  - Menambahkan kolom waktu observasi terpisah (`physical_fault_at`, `first_failed_observed_at`, `confirmed_offline_at`, `timestamp_source`, `sla_clock_start_at`, `sla_clock_basis`), status penggabungan (`merged_into_incident_id`), penanda waktu antrean pengingat & eskalasi, serta rincian hasil per kamera pada `cctv_incident_cameras` (`member_outcome`, `damage_findings`, `replacement_maintenance_log_id`, `source_ticket_number`).
+  - Melakukan backfill deterministik untuk tiket lama dari skema `000031` (`INC-LEGACY-YYYYMMDD-XXXX` dan `timestamp_source = 'legacy_backfill_opened_at'`) sebelum memasang constraint `NOT NULL` dan indeks unik parsial.
+  - Menambahkan tabel `cctv_planned_outages`, `cctv_planned_outage_cameras`, `monitor_health_episodes`, dan `cctv_probe_telemetry`, serta kolom `cctvs.monitoring_enabled` dan `maintenance_logs.(incident_id, work_scope)`.
+- **Unified NVR Session Gate & Verifier 4-Lapis (`handlers/stream_verify_gate.go`, `handlers/stream_verify.go`, `mediamtx.yml`)**:
+  - Menyatukan antrean prioritas di bawah satu pacer `1,25s`, batas sesi gabungan `active_verifications + closing_tail_leases <= 10` (`sourceOnDemandCloseAfter: 5s`), dan batas konkurensi GSM `<= 2`.
+- **Siklus Insiden, Jendela Pemeliharaan Terjadwal, & Outbox Telegram (`incidents/*`, `handlers/incidents.go`, `handlers/cctv_monitoring.go`)**:
+  - Mendukung penahanan tiket selama jendela pemeliharaan terjadwal, penutupan Pulih Mandiri (`self_recovered`), penggabungan manual ke tiket bersama (`POST /api/incidents/:id/merge`), tugas perbaikan bersama vs tugas lapangan kamera tanpa mengubah alur `routine` maintenance, eskalasi penggantian perangkat multi-kamera, dan pemisahan status antrean/pengiriman/SLA breach Telegram beserta deduplikasi gangguan pemantau `unknown`.
 ## [Unreleased] - 2026-11-02 — MVP tiket gangguan dan Telegram
 
 - Menambah state machine pemulihan dengan bukti segar selama minimal 5 menit; unknown, flapping, dan celah pengamatan membatalkan observasi.

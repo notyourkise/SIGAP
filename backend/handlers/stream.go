@@ -23,7 +23,14 @@ var streamClient = utils.NewMediaMTXClient()
 // sumber RTSP setelah penonton terakhir pergi. Nilai 10 detik cukup untuk
 // reconnects singkat dan membatasi jumlah stream bersamaan saat verifikasi
 // periodik, sehingga NVR tidak mengembalikan 453 Not Enough Bandwidth.
-const streamOnDemandCloseAfter = "10s"
+const streamOnDemandCloseAfter = "5s"
+
+func queryRegistrableStreamCCTVs(db *gorm.DB) *gorm.DB {
+	if IncidentMonitoringEnabled() {
+		return db.Where("LOWER(status) <> 'nonaktif' AND (stream_enabled = ? OR monitoring_enabled = ?)", true, true)
+	}
+	return db.Where("stream_enabled = ?", true)
+}
 
 // setStreamClient mengganti klien MediaMTX global — khusus dipakai pada
 // pengujian untuk menyuntikkan mock yang tidak benar-benar memanggil server.
@@ -635,7 +642,7 @@ func RegisterActiveStreams(db *gorm.DB) {
 	}
 
 	var cctvs []models.CCTV
-	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
+	if err := queryRegistrableStreamCCTVs(db).Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV aktif untuk auto-register: %v", err)
 		return
 	}
@@ -721,7 +728,7 @@ func ReRegisterFailedStreams(db *gorm.DB) {
 		return
 	}
 	var cctvs []models.CCTV
-	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
+	if err := queryRegistrableStreamCCTVs(db).Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV untuk re-register: %v", err)
 		return
 	}
@@ -801,7 +808,7 @@ func runStreamHealthCycle(db *gorm.DB) {
 // transisi down/restored dapat disimulasikan secara deterministik.
 func runStreamHealthOnce(db *gorm.DB, readyMap map[string]bool) {
 	var cctvs []models.CCTV
-	if err := db.Where("stream_enabled = ?", true).Find(&cctvs).Error; err != nil {
+	if err := queryRegistrableStreamCCTVs(db).Find(&cctvs).Error; err != nil {
 		utils.Log.Errorf("❌ Gagal memuat CCTV untuk monitor status stream: %v", err)
 		return
 	}
