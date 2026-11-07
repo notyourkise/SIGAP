@@ -80,6 +80,11 @@ interface CCTV {
   stream_verify_failures?: number;
   stream_verify_error?: string | null;
   network_type?: 'metro-e' | 'gsm' | null;
+  monitoring_enabled?: boolean;
+  planned_outage_active?: boolean;
+  planned_outage_id?: string | null;
+  planned_outage_reason?: string;
+  planned_outage_ends_at?: string | null;
   // Zona operasional & kawasan (site) — opsional (Task 11.4 & 12.2).
   zone_id?: string | null;
   site_id?: string | null;
@@ -198,6 +203,7 @@ export default function CCTVPage() {
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [reactivateLoading, setReactivateLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   // Id CCTV yang menu aksinya (detail/edit/hapus) sedang terbuka.
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
@@ -262,6 +268,7 @@ export default function CCTVPage() {
     ip_camera: '',
     keterangan: '',
     stream_enabled: false,
+    monitoring_enabled: true,
     rtsp_url: '',
     zone_id: '',
     site_id: ''
@@ -389,7 +396,7 @@ export default function CCTVPage() {
     setLoading(true);
     setError('');
     try {
-      const queryParams = [`page=${page}`, 'limit=10'];
+      const queryParams = [`page=${page}`, 'limit=10', 'include_planned_outage=true'];
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (statusFilter) queryParams.push(`status=${encodeURIComponent(statusFilter)}`);
       if (ioFilter) queryParams.push(`indoor_outdoor=${encodeURIComponent(ioFilter)}`);
@@ -525,7 +532,7 @@ export default function CCTVPage() {
   const handleOpenDetail = async (id: string) => {
     setActionLoading(`detail-${id}`);
     try {
-      const response = await apiRequest<CCTV>(`/cctv/${id}`);
+      const response = await apiRequest<CCTV>(`/cctv/${id}?include_planned_outage=true`, siteRequestOptions);
       if (response.data) {
         setCurrentCCTV(response.data);
         setIsDetailModalOpen(true);
@@ -556,6 +563,35 @@ export default function CCTVPage() {
       toast.error('Verifikasi status streaming gagal. Coba lagi.', err);
     } finally {
       setVerifyLoading(false);
+    }
+  };
+
+  // Reaktivasi terverifikasi setelah penggantian unit rusak (Keputusan #5):
+  // mendaftarkan path RTSP, memverifikasi kemajuan byte RTP, lalu mengaktifkan kembali
+  // status='aktif', stream_enabled=true, dan monitoring_enabled=true.
+  const handleReactivateVerify = async () => {
+    if (!currentCCTV) return;
+    setReactivateLoading(true);
+    try {
+      const response = await apiRequest<CCTV>(`/cctv/${currentCCTV.id}/reactivate-verify`, {
+        method: 'POST',
+      });
+      if (response.data) {
+        const updated: CCTV = { ...currentCCTV, ...response.data };
+        setCurrentCCTV(updated);
+        setCctvs((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+        toast.success(response.message || 'Stream terverifikasi live; CCTV kembali aktif dan masuk cakupan pemantauan.');
+        fetchCCTVs();
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Stream kamera pengganti belum terbukti live. Periksa koneksi/RTSP lalu coba lagi.',
+        err
+      );
+    } finally {
+      setReactivateLoading(false);
     }
   };
 
@@ -682,6 +718,7 @@ export default function CCTVPage() {
         ip_camera: cctv.ip_camera || '',
         keterangan: cctv.keterangan || '',
         stream_enabled: !!cctv.stream_enabled,
+        monitoring_enabled: cctv.monitoring_enabled ?? (toStatusValue(cctv.status) !== 'nonaktif'),
         // Jangan pernah mengisi input dengan URL mentah. Kosong berarti
         // pertahankan URL tersimpan; isi hanya bila ingin menggantinya.
         rtsp_url: '',
@@ -710,6 +747,7 @@ export default function CCTVPage() {
         ip_camera: '',
         keterangan: '',
         stream_enabled: false,
+        monitoring_enabled: true,
         rtsp_url: '',
         zone_id: '',
         site_id: ''
@@ -746,6 +784,7 @@ export default function CCTVPage() {
       // tipe data backend (double precision).
       const payload = {
         ...formData,
+        monitoring_enabled: formData.status === 'nonaktif' ? false : formData.monitoring_enabled,
         // undefined dihilangkan JSON.stringify → backend mempertahankan URL
         // yang sudah tersimpan. String kosong berarti hapus URL.
         rtsp_url: preserveStoredRtspUrl ? undefined : (clearRtspUrl ? '' : rtspUrl),
@@ -1522,12 +1561,14 @@ export default function CCTVPage() {
                         {(() => {
                           const badge = getLiveBadge(cctv);
                           const isAktif = isStatus(cctv.status, ['ACTIVE', 'AKTIF']);
+                          const isNonaktif = isStatus(cctv.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK']);
                           const isPemeliharaan = isStatus(cctv.status, ['MAINTENANCE', 'PEMELIHARAAN']);
+                          const isPlannedOutage = !!cctv.planned_outage_active;
                           const isOffline = badge.label.toLowerCase().includes('offline');
                           const isLive = badge.label.toLowerCase().includes('online');
 
-                          // Anomali: Kamera tercatat Aktif tetapi fisik/stream Offline
-                          const isAnomaly = isAktif && isOffline;
+                          // Anomali: Kamera tercatat Aktif tetapi fisik/stream Offline di luar pemeliharaan terjadwal
+                          const isAnomaly = isAktif && isOffline && !isPlannedOutage;
                           // Pulih: Kamera dalam masa Pemeliharaan tetapi stream sudah kembali Online
                           const isRecovered = isPemeliharaan && isLive;
 
@@ -1548,6 +1589,26 @@ export default function CCTVPage() {
                                 />
                                 <span>{badge.label}</span>
                               </span>
+                              {isPlannedOutage && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-600 dark:text-sky-400"
+                                  title={
+                                    cctv.planned_outage_reason
+                                      ? `Sedang pemeliharaan terjadwal: ${cctv.planned_outage_reason}`
+                                      : 'Sedang pemeliharaan terjadwal — tiket & Telegram ditahan selama jendela aktif'
+                                  }
+                                >
+                                  <span>Sedang pemeliharaan terjadwal</span>
+                                </span>
+                              )}
+                              {isNonaktif || cctv.monitoring_enabled === false ? (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted"
+                                  title="Kamera dinonaktifkan atau dikecualikan dari cakupan monitoring gangguan otomatis"
+                                >
+                                  <span>Nonaktif (Tidak Dipantau)</span>
+                                </span>
+                              ) : null}
                               {isAnomaly && (
                                 <span
                                   className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400"
@@ -1828,7 +1889,7 @@ export default function CCTVPage() {
                   <CCTVTextField label="Kode CCTV *" required value={formData.kode_cctv} onChange={(value) => setFormData({ ...formData, kode_cctv: value })} placeholder="Contoh: IKN-THD-01" />
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-muted">Status *</label>
-                    <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                    <select value={formData.status} onChange={(e) => { const nextStatus = e.target.value; setFormData({ ...formData, status: nextStatus, monitoring_enabled: nextStatus === 'nonaktif' ? false : (formData.status === 'nonaktif' ? true : formData.monitoring_enabled), stream_enabled: nextStatus === 'nonaktif' ? false : formData.stream_enabled }); }} className="w-full rounded-lg border border-input-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary">
                       <option value="aktif">Aktif</option>
                       <option value="nonaktif">Nonaktif</option>
                       <option value="pemeliharaan">Pemeliharaan</option>
@@ -1968,11 +2029,36 @@ export default function CCTVPage() {
                         <input
                           type="checkbox"
                           checked={formData.stream_enabled}
+                          disabled={formData.status === 'nonaktif'}
                           onChange={(e) => setFormData({ ...formData, stream_enabled: e.target.checked })}
-                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-not-allowed"
                         />
                         Aktifkan Streaming
                       </label>
+
+                      <div className="space-y-1 border-t border-border/60 pt-2.5">
+                        <label
+                          className={`flex items-center gap-2 text-sm font-medium ${
+                            formData.status === 'nonaktif'
+                              ? 'cursor-not-allowed text-muted opacity-65'
+                              : 'cursor-pointer text-foreground'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.status === 'nonaktif' ? false : formData.monitoring_enabled}
+                            disabled={formData.status === 'nonaktif'}
+                            onChange={(e) => setFormData({ ...formData, monitoring_enabled: e.target.checked })}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-not-allowed"
+                          />
+                          Masuk Cakupan Monitoring Otomatis
+                        </label>
+                        <p className="text-[11px] text-muted">
+                          {formData.status === 'nonaktif'
+                            ? 'Kamera berstatus Nonaktif otomatis dikecualikan dari tiket gangguan otomatis dan pemberitahuan Telegram.'
+                            : 'Jika dicentang, gangguan koneksi terkonfirmasi akan otomatis membuka tiket insiden dan mengirim pemberitahuan Telegram.'}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </details>
@@ -2356,22 +2442,63 @@ export default function CCTVPage() {
                         {currentCCTV.stream_verify_error}
                       </p>
                     )}
+                    {currentCCTV.planned_outage_active && (
+                      <div className="mt-1.5 max-w-md rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
+                        <p className="font-semibold">Sedang pemeliharaan terjadwal</p>
+                        {currentCCTV.planned_outage_reason && (
+                          <p className="mt-0.5 opacity-90">Alasan: {currentCCTV.planned_outage_reason}</p>
+                        )}
+                        {currentCCTV.planned_outage_ends_at && (
+                          <p className="mt-0.5 opacity-80">
+                            Berakhir:{' '}
+                            {new Date(currentCCTV.planned_outage_ends_at).toLocaleString('id-ID', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {(isStatus(currentCCTV.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK']) ||
+                      currentCCTV.monitoring_enabled === false) && (
+                      <p className="text-xs font-medium text-muted">
+                        Status pemantauan: Nonaktif (Tidak Dipantau dalam cakupan tiket otomatis).
+                      </p>
+                    )}
                   </div>
-                  {isAdmin && currentCCTV.stream_enabled && (
-                    <button
-                      type="button"
-                      onClick={handleVerifyStream}
-                      disabled={verifyLoading}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20 disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {verifyLoading ? (
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      )}
-                      {verifyLoading ? 'Memverifikasi…' : 'Cek Status Live'}
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isAdmin && isStatus(currentCCTV.status, ['INACTIVE', 'NONAKTIF', 'BROKEN', 'RUSAK']) && (
+                      <button
+                        type="button"
+                        onClick={handleReactivateVerify}
+                        disabled={reactivateLoading}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-600 transition-colors hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-400"
+                        title="Daftarkan ulang path RTSP, verifikasi kemajuan byte RTP, lalu aktifkan kembali kamera & monitoring otomatis"
+                      >
+                        {reactivateLoading ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        )}
+                        {reactivateLoading ? 'Memverifikasi pengganti…' : 'Aktifkan & Verifikasi Stream'}
+                      </button>
+                    )}
+                    {isAdmin && currentCCTV.stream_enabled && (
+                      <button
+                        type="button"
+                        onClick={handleVerifyStream}
+                        disabled={verifyLoading}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {verifyLoading ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        )}
+                        {verifyLoading ? 'Memverifikasi…' : 'Cek Status Live'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

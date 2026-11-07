@@ -70,7 +70,7 @@ authInternalUsers:
 pathDefaults:
   sourceOnDemand: yes
   sourceOnDemandStartTimeout: 10s
-  sourceOnDemandCloseAfter: 30s
+  sourceOnDemandCloseAfter: 5s
   rtspTransport: tcp
 # Path dikonfigurasi DINAMIS via REST API
 paths: {}

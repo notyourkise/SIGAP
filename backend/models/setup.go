@@ -93,4 +93,20 @@ type MaintenanceLog struct {
 	// SiteID menunjuk ke kawasan operasional (multi-site, Task 12.2). Opsional
 	// — data existing otomatis masuk ke site default "OIKN" saat migrasi.
 	SiteID *uuid.UUID `gorm:"type:uuid;index" json:"site_id,omitempty"`
+	// IncidentID menautkan tugas lapangan/perbaikan bersama/penggantian unit ke
+	// tiket gangguan otomatis CCTV. Nil untuk seluruh pemeliharaan rutin.
+	IncidentID *uuid.UUID `gorm:"type:uuid;index" json:"incident_id,omitempty"`
+	// WorkScope membedakan alur tugas: routine (default pemeliharaan rutin),
+	// incident_camera, shared_infrastructure, camera_field_check, unit_replacement.
+	WorkScope string `gorm:"type:varchar(32);not null;default:'routine'" json:"work_scope"`
+}
+
+func (m *MaintenanceLog) BeforeCreate(tx *gorm.DB) error {
+	if err := m.Base.BeforeCreate(tx); err != nil {
+		return err
+	}
+	if m.WorkScope == "" {
+		m.WorkScope = "routine"
+	}
+	return nil
 }

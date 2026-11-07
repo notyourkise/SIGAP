@@ -122,7 +122,8 @@ type CreateCCTVRequest struct {
 	Keterangan    string   `json:"keterangan" validate:"omitempty"`
 	ChannelPort   int      `json:"channel_port"`
 	RTSPPassword  string   `json:"rtsp_password"`
-	StreamEnabled bool     `json:"stream_enabled"`
+	StreamEnabled     bool     `json:"stream_enabled"`
+	MonitoringEnabled *bool    `json:"monitoring_enabled"`
 	RTSPURL       string   `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
 	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
@@ -149,7 +150,8 @@ type UpdateCCTVRequest struct {
 	Keterangan    string   `json:"keterangan" validate:"omitempty"`
 	ChannelPort   *int     `json:"channel_port"`
 	RTSPPassword  string   `json:"rtsp_password"`
-	StreamEnabled *bool    `json:"stream_enabled"`
+	StreamEnabled     *bool    `json:"stream_enabled"`
+	MonitoringEnabled *bool    `json:"monitoring_enabled"`
 	RTSPURL       *string  `json:"rtsp_url" validate:"omitempty,max=500"`
 	// ZoneID menunjuk zona operasional (Task 11.4) — opsional.
 	ZoneID utils.OptionalUUID `json:"zone_id" validate:"omitempty"`
@@ -338,6 +340,14 @@ func CreateCCTV(c *fiber.Ctx) error {
 
 	cctv.ChannelPort = req.ChannelPort
 	cctv.StreamEnabled = req.StreamEnabled
+	cctv.MonitoringEnabled = true
+	if req.MonitoringEnabled != nil {
+		cctv.MonitoringEnabled = *req.MonitoringEnabled
+	}
+	if cctv.Status == "nonaktif" {
+		cctv.MonitoringEnabled = false
+		cctv.StreamEnabled = false
+	}
 	if rawURL := strings.TrimSpace(req.RTSPURL); rawURL != "" {
 		encryptedURL, err := utils.EncryptRTSPURL(rawURL)
 		if err != nil {
@@ -521,6 +531,7 @@ func GetAllCCTV(c *fiber.Ctx) error {
 		// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
 		cctvs[i].SnapshotURL = snapshotURLFor(cctvs[i].ID.String())
 	}
+	enrichCCTVsWithPlannedOutage(c, cctvs)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -572,6 +583,9 @@ func GetCCTVByID(c *fiber.Ctx) error {
 	sanitizeCCTVForResponse(&cctv)
 	// SnapshotURL adalah field computed — sertakan path snapshot terbaru.
 	cctv.SnapshotURL = snapshotURLFor(cctv.ID.String())
+	tmpSlice := []models.CCTV{cctv}
+	enrichCCTVsWithPlannedOutage(c, tmpSlice)
+	cctv = tmpSlice[0]
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -795,6 +809,14 @@ func UpdateCCTV(c *fiber.Ctx) error {
 	}
 	if req.StreamEnabled != nil {
 		cctv.StreamEnabled = *req.StreamEnabled
+	}
+	if req.MonitoringEnabled != nil {
+		cctv.MonitoringEnabled = *req.MonitoringEnabled
+	}
+	if cctv.Status == "nonaktif" {
+		cctv.MonitoringEnabled = false
+		cctv.StreamEnabled = false
+		_ = streamClient.RemovePath(utils.BuildStreamPath(cctv.ID.String()))
 	}
 	if req.RTSPURL != nil {
 		rawURL := strings.TrimSpace(*req.RTSPURL)

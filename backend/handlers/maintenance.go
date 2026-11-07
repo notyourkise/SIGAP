@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"sigap-backend/config"
+	"sigap-backend/incidents"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 
@@ -783,54 +784,74 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		return sendBodyParseError(c, &req, err)
 	}
 
-	if errs := utils.ValidateStruct(&req); len(errs) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Validasi input gagal",
-			"errors":  errs,
-		})
-	}
+	isSharedOrReplacementNoChecklist := (logEntry.WorkScope == incidents.WorkScopeSharedInfrastructure || logEntry.WorkScope == incidents.WorkScopeUnitReplacement) && len(req.Checks) == 0
 
-	if err := validateEvidenceImages(req.Images); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": err.Error(),
-		})
-	}
-
-	var logSiteID *uuid.UUID
-	if logEntry.CCTV.SiteID != nil && *logEntry.CCTV.SiteID != uuid.Nil {
-		logSiteID = logEntry.CCTV.SiteID
-	} else if rawSite, ok := c.Locals("site_id").(string); ok && rawSite != "" {
-		if parsedSite, parseErr := uuid.Parse(rawSite); parseErr == nil {
-			logSiteID = &parsedSite
-		}
-	}
-	activeTemplates := loadActiveChecklistTemplates(config.DB, logSiteID)
-	validatedChecks, err := validateChecklistItemsAgainstTemplates(req.Checks, activeTemplates)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": err.Error(),
-		})
-	}
-	req.Checks = validatedChecks
-
-	// Status akhir: completed hanya bila semua item checklist berstatus ok
-	// Bug BB-13 Fix (2026-08-20): Tidak lagi terpaku pada exact count 9 items.
-	// Status "completed" diberikan bila ALL items OK, berapa pun jumlah itemsnya.
 	allOk := true
-	for _, chk := range req.Checks {
-		if chk.Result != "ok" {
-			allOk = false
-			break
-		}
-	}
 	newStatus := "failed"
-	if allOk && len(req.Checks) > 0 {
-		// Semua item checklist diisi dan semua OK -> completed
-		// Jumlah items bisa bervariasi tergantung template yang aktif
+
+	if isSharedOrReplacementNoChecklist {
+		if strings.TrimSpace(req.Notes) == "" || len(req.Notes) > 2000 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Catatan pekerjaan wajib diisi (maksimal 2000 karakter) untuk tugas perbaikan bersama atau penggantian unit",
+			})
+		}
+		if len(req.Images) == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Lampirkan minimal 1 foto bukti pekerjaan perangkat",
+			})
+		}
+		if err := validateEvidenceImages(req.Images); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": err.Error(),
+			})
+		}
 		newStatus = "completed"
+	} else {
+		if errs := utils.ValidateStruct(&req); len(errs) > 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Validasi input gagal",
+				"errors":  errs,
+			})
+		}
+
+		if err := validateEvidenceImages(req.Images); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": err.Error(),
+			})
+		}
+
+		var logSiteID *uuid.UUID
+		if logEntry.CCTV.SiteID != nil && *logEntry.CCTV.SiteID != uuid.Nil {
+			logSiteID = logEntry.CCTV.SiteID
+		} else if rawSite, ok := c.Locals("site_id").(string); ok && rawSite != "" {
+			if parsedSite, parseErr := uuid.Parse(rawSite); parseErr == nil {
+				logSiteID = &parsedSite
+			}
+		}
+		activeTemplates := loadActiveChecklistTemplates(config.DB, logSiteID)
+		validatedChecks, err := validateChecklistItemsAgainstTemplates(req.Checks, activeTemplates)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": err.Error(),
+			})
+		}
+		req.Checks = validatedChecks
+
+		for _, chk := range req.Checks {
+			if chk.Result != "ok" {
+				allOk = false
+				break
+			}
+		}
+		if allOk && len(req.Checks) > 0 {
+			newStatus = "completed"
+		}
 	}
 
 	now := time.Now()
@@ -924,8 +945,10 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 			targetStatus = "aktif"
 			syncReason = "semua checklist pemeliharaan berhasil"
 		}
-		if err := syncCCTVStatus(tx, c, logEntry.CCTVID, targetStatus, syncReason); err != nil {
-			return err
+		if logEntry.WorkScope != incidents.WorkScopeSharedInfrastructure && logEntry.WorkScope != incidents.WorkScopeUnitReplacement {
+			if err := syncCCTVStatus(tx, c, logEntry.CCTVID, targetStatus, syncReason); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -950,6 +973,14 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	utils.LogAudit(config.DB, c, "COMPLETE_MAINTENANCE", "MAINTENANCE", "Menyelesaikan tugas pemeliharaan: "+logEntry.ActionTaken+" (Status: "+newStatus+")", nil, "", "")
+	if logEntry.IncidentID != nil {
+		var actorPtr *uuid.UUID
+		if techUUID != uuid.Nil {
+			uCopy := techUUID
+			actorPtr = &uCopy
+		}
+		_ = (incidents.Service{DB: config.DB}).RecordTechWorkReported(c.UserContext(), *logEntry.IncidentID, logEntry.ID, actorPtr, logEntry.WorkScope, newStatus, req.Notes, time.Now().UTC())
+	}
 
 	// Notifikasi in-app ke seluruh admin: hasil selesai (semua OK) atau perlu
 	// tindak lanjut (failed karena ada item tidak ok) — Fase 5.1.

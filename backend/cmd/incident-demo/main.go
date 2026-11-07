@@ -54,6 +54,39 @@ func (d *demo) send(text string) {
 	}
 	d.Messages = append(d.Messages, fmt.Sprintf("Pesan #%d · %s", id, text))
 }
+
+func (d *demo) recordSample(state string) {
+	d.Now = d.Now.Add(time.Millisecond)
+	if state == "offline" && (d.IncidentID == "" || d.Status == "resolved") {
+		d.IncidentID = uuid.NewString()
+		d.Status = "open"
+		d.Assigned = false
+		d.Member = incidents.Member{CameraName: "CCTV Gerbang · Data Demo", ConnectionState: "offline", IsActiveMember: true}
+		d.send("CCTV Gerbang offline terkonfirmasi. Tiket " + d.IncidentID[:8] + " dibuat otomatis.")
+	}
+	if d.IncidentID != "" && d.Status != "resolved" {
+		old := d.Member.ConnectionState
+		recovered := incidents.Advance(&d.Member, state, d.Now)
+		if recovered {
+			d.Status = "pending_verification"
+			d.send("CCTV stabil online 5 menit (6 sampel berturut-turut, celah <= 105s). Menunggu verifikasi Admin.")
+		} else if d.Member.ConnectionState != "recovered" {
+			if d.Assigned {
+				d.Status = "in_progress"
+			} else {
+				d.Status = "open"
+			}
+			if state == "offline" && old != "offline" {
+				d.send("CCTV kembali offline. Tiket yang sama tetap digunakan.")
+			}
+		}
+		if state == "unknown" {
+			d.Events = append(d.Events, "Pemantau terganggu: kondisi belum dapat dipastikan, tanpa tiket offline baru.")
+		}
+	}
+	d.Events = append(d.Events, d.Now.In(time.FixedZone("WITA", 8*3600)).Format("15:04:05")+" · Bukti: "+state)
+}
+
 func (d *demo) action(action string) error {
 	if action == "reset" {
 		d.Now = time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
@@ -77,58 +110,35 @@ func (d *demo) action(action string) error {
 		if d.Status != "pending_verification" {
 			d.Status = "in_progress"
 		}
-		d.send("Admin menugaskan Teknisi Demo. Teknisi tidak perlu menautkan akun Telegram.")
+		d.send("Admin menugaskan Teknisi Demo melalui website. Teknisi tidak perlu menautkan akun Telegram.")
 	case "resolve":
 		if d.Status != "pending_verification" || d.Member.ConnectionState != "recovered" {
 			return fmt.Errorf("belum ada bukti pemulihan stabil 5 menit")
 		}
 		d.Status = "resolved"
 		d.Member.IsActiveMember = false
-		d.send("Admin memverifikasi dan menutup insiden.")
-	default:
-		state := "live"
-		switch action {
-		case "offline":
-			state = "offline"
-		case "unknown":
-			state = "unknown"
-		case "live":
-		case "plus120":
-			d.Now = d.Now.Add(120 * time.Second)
-		case "plus60":
+		if d.Assigned {
+			d.send("Admin memverifikasi dan menutup insiden (Pulih Setelah Penanganan).")
+		} else {
+			d.send("Admin memverifikasi dan menutup insiden (Pulih Mandiri tanpa penugasan teknisi).")
+		}
+	case "offline":
+		d.recordSample("offline")
+	case "unknown":
+		d.recordSample("unknown")
+	case "live":
+		d.recordSample("live")
+	case "plus60":
+		d.Now = d.Now.Add(60 * time.Second)
+		d.recordSample("live")
+	case "fast5min":
+		d.recordSample("live")
+		for i := 0; i < 5; i++ {
 			d.Now = d.Now.Add(60 * time.Second)
-		default:
-			return fmt.Errorf("aksi tidak dikenal")
+			d.recordSample("live")
 		}
-		d.Now = d.Now.Add(time.Millisecond)
-		if state == "offline" && (d.IncidentID == "" || d.Status == "resolved") {
-			d.IncidentID = uuid.NewString()
-			d.Status = "open"
-			d.Assigned = false
-			d.Member = incidents.Member{CameraName: "CCTV Gerbang · Data Demo", ConnectionState: "offline", IsActiveMember: true}
-			d.send("CCTV Gerbang offline terkonfirmasi. Tiket " + d.IncidentID[:8] + " dibuat otomatis.")
-		}
-		if d.IncidentID != "" && d.Status != "resolved" {
-			old := d.Member.ConnectionState
-			recovered := incidents.Advance(&d.Member, state, d.Now)
-			if recovered {
-				d.Status = "pending_verification"
-				d.send("CCTV stabil online 5 menit berdasarkan pemeriksaan berkala. Menunggu verifikasi admin.")
-			} else if d.Member.ConnectionState != "recovered" {
-				if d.Assigned {
-					d.Status = "in_progress"
-				} else {
-					d.Status = "open"
-				}
-				if state == "offline" && old != "offline" {
-					d.send("CCTV kembali offline. Tiket yang sama tetap digunakan.")
-				}
-			}
-			if state == "unknown" {
-				d.Events = append(d.Events, "Pemantau terganggu: kondisi belum dapat dipastikan, tanpa tiket offline baru.")
-			}
-		}
-		d.Events = append(d.Events, d.Now.In(time.FixedZone("WITA", 8*3600)).Format("15:04:05")+" · Bukti: "+state)
+	default:
+		return fmt.Errorf("aksi tidak dikenal")
 	}
 	return nil
 }

@@ -3,16 +3,18 @@ package routes
 import (
 	"sigap-backend/handlers"
 	"sigap-backend/middleware"
+	"sigap-backend/models"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 // SetupStreamRoutes mendefinisikan rute modul Streaming CCTV (Task 9.3).
-// Seluruh endpoint streaming bersifat ADMIN-ONLY (Protected + RequireRole + SiteContext)
-// sesuai keputusan arsitektur ROADMAP ("Akses Viewer: Admin Only") dan aturan
-// AGENTS.md. Jalur media langsung (/stream/* dan /hls/*) juga memverifikasi
-// sesi Admin melalui subrequest /api/streams/auth maupun proksi SetupStreamMediaRoutes.
+// Seluruh endpoint streaming bersifat ADMIN-ONLY (Protected + RequireRole + SiteContext),
+// kecuali /streams/monitor-heartbeat yang juga menerima API key eksternal ber-scope health:read
+// untuk pemantauan liveness di luar server SIGAP (Keputusan #6).
 func SetupStreamRoutes(router fiber.Router) {
+	router.Get("/streams/monitor-heartbeat", middleware.APIKeyOrProtected(models.ScopeHealthRead), handlers.GetStreamMonitorHeartbeat)
+
 	streamGroup := router.Group("/streams", middleware.Protected(), middleware.RequireRole("admin"), middleware.SiteContext())
 
 	// Rute validasi akses media (dipakai Nginx auth_request pada /stream/* dan /hls/*).
@@ -37,8 +39,6 @@ func SetupStreamRoutes(router fiber.Router) {
 
 // SetupStreamMediaRoutes mendaftarkan jalur media langsung (/stream/* untuk WHEP
 // dan /hls/* untuk HLS) dengan proteksi autentikasi Admin + isolasi Site.
-// Menutup celah akses langsung tanpa Nginx (mis. rewrite Next.js / akses API)
-// sekaligus menyediakan jalur terautentikasi end-to-end.
 func SetupStreamMediaRoutes(router fiber.Router) {
 	mediaChain := []fiber.Handler{
 		middleware.GlobalLimiter(),

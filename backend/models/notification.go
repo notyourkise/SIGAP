@@ -7,16 +7,23 @@ import (
 // Konstanta tipe notifikasi in-app (Fase 5.1). Nilai disimpan apa adanya di
 // kolom "type" sehingga mudah dipetakan ke ikon/label pada komponen frontend.
 const (
-	NotificationTypeAssigned         = "MAINTENANCE_ASSIGNED"
-	NotificationTypeReassigned       = "MAINTENANCE_REASSIGNED"
-	NotificationTypeUnassigned       = "MAINTENANCE_UNASSIGNED"
-	NotificationTypeCompleted        = "MAINTENANCE_COMPLETED"
-	NotificationTypeOverdue          = "MAINTENANCE_OVERDUE"
-	NotificationTypeOverdueCritical  = "OVERDUE_CRITICAL"
-	NotificationTypeFieldCheck       = "FIELD_CHECK_ATTENTION"
-	NotificationTypeDailyDigest      = "DAILY_DIGEST_AVAILABLE"
-	NotificationTypeZoneAssigned     = "ZONE_ASSIGNED"
-	NotificationTypeScheduleAssigned = "SCHEDULE_ASSIGNED"
+	NotificationTypeAssigned                 = "MAINTENANCE_ASSIGNED"
+	NotificationTypeReassigned               = "MAINTENANCE_REASSIGNED"
+	NotificationTypeUnassigned               = "MAINTENANCE_UNASSIGNED"
+	NotificationTypeCompleted                = "MAINTENANCE_COMPLETED"
+	NotificationTypeOverdue                  = "MAINTENANCE_OVERDUE"
+	NotificationTypeOverdueCritical          = "OVERDUE_CRITICAL"
+	NotificationTypeFieldCheck               = "FIELD_CHECK_ATTENTION"
+	NotificationTypeDailyDigest              = "DAILY_DIGEST_AVAILABLE"
+	NotificationTypeZoneAssigned             = "ZONE_ASSIGNED"
+	NotificationTypeScheduleAssigned         = "SCHEDULE_ASSIGNED"
+	NotificationTypeIncidentMonitorDegraded  = "MONITOR_DEGRADED"
+	NotificationTypeIncidentMonitorRecovered = "MONITOR_RECOVERED"
+	NotificationTypeIncidentAssignReminder   = "INCIDENT_ASSIGN_REMINDER"
+	NotificationTypeIncidentEscalation       = "INCIDENT_UNRECOVERED_ESCALATION"
+	NotificationTypeIncidentSLABreached      = "INCIDENT_SLA_BREACHED"
+	NotificationTypeIncidentDeliveryFailed   = "INCIDENT_DELIVERY_FAILED"
+	NotificationTypeIncidentTechReported     = "INCIDENT_TECH_REPORTED"
 )
 
 // Notification adalah notifikasi in-app per-pengguna (bell icon). Satu notifikasi

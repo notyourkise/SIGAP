@@ -39,9 +39,16 @@ type CCTV struct {
 	HealthScore int `gorm:"type:integer;not null;default:100" json:"health_score"`
 	// === Field Streaming RTSP (Task 9.1) ===
 	// ChannelPort adalah nomor channel kamera pada NVR (mis. 19 untuk CH 19).
-	ChannelPort   int    `gorm:"type:integer" json:"channel_port"`
-	RTSPPassword  string `gorm:"type:text" json:"rtsp_password,omitempty"`
-	StreamEnabled bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
+	ChannelPort       int    `gorm:"type:integer" json:"channel_port"`
+	RTSPPassword      string `gorm:"type:text" json:"rtsp_password,omitempty"`
+	StreamEnabled     bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
+	MonitoringEnabled bool   `gorm:"column:monitoring_enabled;type:boolean;not null;default:true" json:"monitoring_enabled"`
+	// PlannedOutage* adalah metadata computed saat CCTV sedang berada dalam
+	// jendela pemeliharaan terjadwal yang dibuat Admin ("Sedang pemeliharaan terjadwal").
+	PlannedOutageActive bool       `gorm:"-" json:"planned_outage_active,omitempty"`
+	PlannedOutageID     *uuid.UUID `gorm:"-" json:"planned_outage_id,omitempty"`
+	PlannedOutageReason string     `gorm:"-" json:"planned_outage_reason,omitempty"`
+	PlannedOutageEndsAt *time.Time `gorm:"-" json:"planned_outage_ends_at,omitempty"`
 	// RTSPURL adalah URL RTSP penuh per-CCTV, mis.
 	//   rtsp://USER:PASSWORD@NVR_HOST:554/Streaming/channels/1901
 	// Bila diisi, URL ini dipakai langsung oleh MediaMTX sebagai sumber stream,
