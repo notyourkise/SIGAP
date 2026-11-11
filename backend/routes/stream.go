@@ -26,6 +26,7 @@ func SetupStreamRoutes(router fiber.Router) {
 	streamGroup.Get("/status", handlers.GetStreamStatus)
 	streamGroup.Get("/readiness", handlers.GetMediaMTXReadiness)
 	streamGroup.Get("/health", handlers.GetStreamHealth)
+	streamGroup.Get("/diagnostics", handlers.GetStreamDiagnostics)
 	streamGroup.Get("/live-status", handlers.GetLiveStatus)
 	streamGroup.Post("/start-all", handlers.StartAllStreams)
 	streamGroup.Post("/stop-all", handlers.StopAllStreams)

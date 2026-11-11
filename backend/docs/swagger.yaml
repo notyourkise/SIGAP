@@ -122,6 +122,8 @@ definitions:
         type: string
       longitude:
         type: number
+      monitoring_enabled:
+        type: boolean
       nama:
         maxLength: 100
         minLength: 3
@@ -197,6 +199,9 @@ definitions:
           $ref: '#/definitions/handlers.FieldCheckItem'
         minItems: 1
         type: array
+      client_request_id:
+        maxLength: 100
+        type: string
       images:
         items:
           $ref: '#/definitions/handlers.FieldImageItem'
@@ -250,6 +255,8 @@ definitions:
         - daily
         - weekly
         - monthly
+        type: string
+      sla_policy_id:
         type: string
       technician_id:
         type: string
@@ -395,6 +402,8 @@ definitions:
         maxLength: 100
         minLength: 2
         type: string
+      site_id:
+        $ref: '#/definitions/utils.OptionalUUID'
     required:
     - nama
     type: object
@@ -422,6 +431,8 @@ definitions:
         enum:
         - ok
         - not_ok
+        type: string
+      template_id:
         type: string
       wajib:
         description: |-
@@ -584,6 +595,8 @@ definitions:
         type: string
       longitude:
         type: number
+      monitoring_enabled:
+        type: boolean
       nama:
         maxLength: 100
         minLength: 3
@@ -668,6 +681,8 @@ definitions:
         - daily
         - weekly
         - monthly
+        type: string
+      sla_policy_id:
         type: string
       technician_id:
         type: string
@@ -798,6 +813,8 @@ definitions:
         maxLength: 100
         minLength: 2
         type: string
+      site_id:
+        $ref: '#/definitions/utils.OptionalUUID'
     type: object
   utils.OptionalUUID:
     properties:
@@ -4998,9 +5015,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Memicu pembacaan singkat melalui MediaMTX lalu memeriksa apakah
-        sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu
-        verifikasi.
+      description: Memicu pembacaan singkat melalui MediaMTX via UnifiedNVRSessionGate
+        lalu memeriksa apakah sumber benar-benar siap. Hasil live/offline/unknown
+        disimpan beserta waktu verifikasi.
       parameters:
       - description: CCTV UUID
         in: path
@@ -5040,9 +5057,47 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "503":
+          description: Antrean sesi verifikasi NVR/GSM sedang penuh atau tidak tersedia
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - BearerAuth: []
       summary: Verifikasi Status Stream CCTV
+      tags:
+      - Streaming
+  /streams/diagnostics:
+    get:
+      description: Mengembalikan indikator diagnostik Metro-E (10.20.105.x), mode
+        fallback pasif, keterjangkauan MediaMTX, heartbeat StreamVerifier, ringkasan
+        status bebas false offline, serta parameter observabilitas (hanya Admin).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ringkasan diagnostik streaming
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Akses ditolak: hanya Admin'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal memuat data diagnostik
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Diagnostik Streaming & Metro-E
       tags:
       - Streaming
   /streams/health:

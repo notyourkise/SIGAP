@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+var rtspCredentialURLPattern = regexp.MustCompile(`(?i)rtsps?://[^\s"'<>\]\)]+`)
 
 // StreamType menunjukkan jenis aliran (stream) yang diminta dari NVR.
 // NVR Hikvision membedakan channel ID berdasarkan kombinasi channel_port
@@ -133,6 +136,18 @@ func redactUserInfoFallback(raw string) string {
 		userinfo = userinfo[:colon] + ":xxxxx"
 	}
 	return raw[:start] + userinfo + raw[at:]
+}
+
+// RedactRTSPCredentialsInText menyamarkan seluruh URI RTSP/RTSPS berkredensial
+// yang mungkin terbawa di pesan error, respons MediaMTX, maupun output log
+// agar password RTSP tidak pernah bocor ke file log atau respons API.
+func RedactRTSPCredentialsInText(text string) string {
+	if text == "" || !strings.Contains(strings.ToLower(text), "rtsp") {
+		return text
+	}
+	return rtspCredentialURLPattern.ReplaceAllStringFunc(text, func(match string) string {
+		return MaskRTSPURL(match)
+	})
 }
 
 // BuildStreamPath membangun path stream yang dipakai untuk mengidentifikasi

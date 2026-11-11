@@ -154,3 +154,55 @@ func TestFormatFloat_NoExponent(t *testing.T) {
 	assert.Equal(t, "0", formatFloat(0))
 	assert.Equal(t, "5", formatFloat(5))
 }
+
+func TestStreamObservabilityMetrics_EventsVerifyAndCameraStates(t *testing.T) {
+	c := newTestCollector()
+
+	c.ObserveCCTVStreamEvent("online")
+	c.ObserveCCTVStreamEvent("online")
+	c.ObserveCCTVStreamEvent("offline")
+	c.ObserveCCTVStreamEvent("unknown")
+
+	c.ObserveStreamVerification(true, 0.2)
+	c.ObserveStreamVerification(true, 0.8)
+	c.ObserveStreamVerification(false, 2.0)
+	c.ObserveStreamOfflineAlert()
+	c.SetCCTVCameraStates(12, 3, 2, 1)
+
+	out := c.Render()
+
+	for _, name := range []string{
+		"sigap_cctv_stream_events_total",
+		"sigap_stream_verify_total",
+		"sigap_stream_verify_success_rate",
+		"sigap_stream_verify_duration_seconds",
+		"sigap_cctv_offline_cameras",
+		"sigap_cctv_cameras_state",
+		"sigap_cctv_offline_alerts_total",
+	} {
+		assert.Contains(t, out, "# HELP "+name)
+		assert.Contains(t, out, "# TYPE "+name)
+	}
+
+	assert.Contains(t, out, `sigap_cctv_stream_events_total{event_type="online"} 2`)
+	assert.Contains(t, out, `sigap_cctv_stream_events_total{event_type="offline"} 1`)
+	assert.Contains(t, out, `sigap_cctv_stream_events_total{event_type="standby"} 0`)
+	assert.Contains(t, out, `sigap_cctv_stream_events_total{event_type="unknown"} 1`)
+
+	assert.Contains(t, out, `sigap_stream_verify_total{outcome="success"} 2`)
+	assert.Contains(t, out, `sigap_stream_verify_total{outcome="failure"} 1`)
+	assert.Contains(t, out, `sigap_stream_verify_success_rate 0.666666`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_bucket{le="0.25"} 1`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_bucket{le="1"} 2`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_bucket{le="2.5"} 3`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_bucket{le="+Inf"} 3`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_sum 3`)
+	assert.Contains(t, out, `sigap_stream_verify_duration_seconds_count 3`)
+
+	assert.Contains(t, out, `sigap_cctv_offline_cameras 2`)
+	assert.Contains(t, out, `sigap_cctv_cameras_state{state="online"} 12`)
+	assert.Contains(t, out, `sigap_cctv_cameras_state{state="idle"} 3`)
+	assert.Contains(t, out, `sigap_cctv_cameras_state{state="offline"} 2`)
+	assert.Contains(t, out, `sigap_cctv_cameras_state{state="unknown"} 1`)
+	assert.Contains(t, out, `sigap_cctv_offline_alerts_total 1`)
+}

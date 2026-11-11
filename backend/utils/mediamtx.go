@@ -133,8 +133,9 @@ func (c *MediaMTXClient) doRequestWithLog(method, endpoint string, body []byte, 
 
 	req, err := http.NewRequest(method, c.BaseURL+endpoint, bytes.NewReader(body))
 	if err != nil {
-		Log.Errorf("❌ Gagal membuat request MediaMTX %s %s: %v", method, endpoint, err)
-		return 0, nil, fmt.Errorf("gagal membuat request MediaMTX: %w", err)
+		safeErr := RedactRTSPCredentialsInText(err.Error())
+		Log.Errorf("❌ Gagal membuat request MediaMTX %s %s: %s", method, endpoint, safeErr)
+		return 0, nil, fmt.Errorf("gagal membuat request MediaMTX: %s", safeErr)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -142,8 +143,9 @@ func (c *MediaMTXClient) doRequestWithLog(method, endpoint string, body []byte, 
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		Log.Errorf("❌ Gagal melakukan request MediaMTX %s %s: %v", method, endpoint, err)
-		return 0, nil, fmt.Errorf("gagal melakukan request MediaMTX: %w", err)
+		safeErr := RedactRTSPCredentialsInText(err.Error())
+		Log.Errorf("❌ Gagal melakukan request MediaMTX %s %s: %s", method, endpoint, safeErr)
+		return 0, nil, fmt.Errorf("gagal melakukan request MediaMTX: %s", safeErr)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -151,15 +153,17 @@ func (c *MediaMTXClient) doRequestWithLog(method, endpoint string, body []byte, 
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		Log.Errorf("❌ Gagal membaca body respon MediaMTX %s %s: %v", method, endpoint, err)
-		return 0, nil, fmt.Errorf("gagal membaca body respon MediaMTX: %w", err)
+		safeErr := RedactRTSPCredentialsInText(err.Error())
+		Log.Errorf("❌ Gagal membaca body respon MediaMTX %s %s: %s", method, endpoint, safeErr)
+		return 0, nil, fmt.Errorf("gagal membaca body respon MediaMTX: %s", safeErr)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		safeBody := RedactRTSPCredentialsInText(string(respBody))
 		if logError {
-			Log.Errorf("❌ MediaMTX %s %s mengembalikan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
+			Log.Errorf("❌ MediaMTX %s %s mengembalikan status %d: %s", method, endpoint, resp.StatusCode, safeBody)
 		}
-		return resp.StatusCode, respBody, fmt.Errorf("MediaMTX %s %s gagal dengan status %d: %s", method, endpoint, resp.StatusCode, string(respBody))
+		return resp.StatusCode, respBody, fmt.Errorf("MediaMTX %s %s gagal dengan status %d: %s", method, endpoint, resp.StatusCode, safeBody)
 	}
 
 	return resp.StatusCode, respBody, nil
@@ -360,7 +364,7 @@ func (c *MediaMTXClient) TriggerRTSP(name string, timeout time.Duration) error {
 	}
 	u, err := url.Parse(base)
 	if err != nil || u.Hostname() == "" {
-		return fmt.Errorf("alamat RTSP MediaMTX tidak valid: %s", base)
+		return fmt.Errorf("alamat RTSP MediaMTX tidak valid: %s", RedactRTSPCredentialsInText(base))
 	}
 	port := u.Port()
 	if port == "" {

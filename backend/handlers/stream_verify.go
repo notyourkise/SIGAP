@@ -13,6 +13,7 @@ import (
 	"sigap-backend/config"
 	"sigap-backend/incidents"
 	"sigap-backend/models"
+	"sigap-backend/monitoring"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -896,6 +897,7 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 }
 
 func persistStreamVerification(db *gorm.DB, result streamVerificationResult) streamVerificationResult {
+	monitoring.GetCollector().ObserveStreamVerification(result.State == models.StreamStateLive, result.Duration.Seconds())
 	if db == nil {
 		return result
 	}
@@ -987,6 +989,8 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 			eventMsg = "Hasil verifikasi stream tidak diketahui: " + result.Error
 		}
 
+		monitoring.GetCollector().ObserveCCTVStreamEvent(eventType)
+
 		if shouldLogCCTVStreamEvent(db, result.CCTV.ID, eventType, result.VerifiedAt) {
 			streamLog := models.CCTVStreamLog{
 				CCTVID:        result.CCTV.ID,
@@ -1067,6 +1071,21 @@ func isMediaMTXNotFound(err error) bool {
 
 // VerifyStream menjalankan verifikasi end-to-end satu CCTV secara manual (Admin saja)
 // melalui UnifiedNVRSessionGate yang sama dengan pemeriksaan terjadwal.
+// @Summary      Verifikasi Status Stream CCTV
+// @Description  Memicu pembacaan singkat melalui MediaMTX via UnifiedNVRSessionGate lalu memeriksa apakah sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu verifikasi.
+// @Tags         Streaming
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id path string true "CCTV UUID"
+// @Success      200 {object} map[string]interface{} "Hasil verifikasi stream"
+// @Failure      400 {object} map[string]interface{} "UUID tidak valid / streaming belum diaktifkan"
+// @Failure      401 {object} map[string]interface{} "Sesi tidak valid / Token tidak terdaftar"
+// @Failure      403 {object} map[string]interface{} "Akses ditolak: Hanya Admin yang diperbolehkan"
+// @Failure      404 {object} map[string]interface{} "CCTV tidak ditemukan"
+// @Failure      500 {object} map[string]interface{} "Database belum tersedia"
+// @Failure      503 {object} map[string]interface{} "Antrean sesi verifikasi NVR/GSM sedang penuh atau tidak tersedia"
+// @Router       /streams/{id}/verify [post]
 func VerifyStream(c *fiber.Ctx) error {
 	if config.DB == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

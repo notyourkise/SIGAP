@@ -168,11 +168,11 @@ func main() {
 	go handlers.RunStreamReRegistrar(config.DB)
 	utils.Log.Info("🔁 Re-registrar stream otomatis diaktifkan (interval: 10 menit)")
 
-	// Jalankan engine probe status live RTSP (Task 14A.1, Sprint 37). Berjalan
-	// sekali segera lalu berulang setiap 2 menit; memperbarui stream_live &
-	// stream_checked_at berdasarkan hasil probe host & channel NVR.
+	// Jalankan engine probe status live RTSP (Task 14A.1, Sprint 37). Saat startup,
+	// CheckMetroEReachabilityAtStartup mengecek jangkauan 10.20.105.x dan beralih
+	// otomatis ke mode pasif MediaMTX bila tidak dapat dijangkau (mencegah offline palsu).
 	go handlers.RunRTSPProber(config.DB)
-	utils.Log.Info("📡 RTSP Probe Engine aktif (interval: 2 menit)")
+	utils.Log.Info("📡 RTSP Probe Engine & diagnostik Metro-E aktif (interval: 2 menit)")
 
 	// Verifikasi aktif end-to-end melalui MediaMTX. Berjalan periodik dengan
 	// concurrency terbatas agar status live/offline memiliki bukti sumber

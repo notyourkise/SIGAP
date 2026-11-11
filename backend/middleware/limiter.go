@@ -27,11 +27,21 @@ func getClientIP(c *fiber.Ctx) string {
 // Endpoint memakai pola route (mis. /api/auth/login) agar seluruh request ke
 // satu endpoint dihitung dalam satu bucket; fallback ke URL path aktual.
 func limiterKey(c *fiber.Ctx) string {
+	return scopedLimiterKey("", c)
+}
+
+// scopedLimiterKey memisahkan namespace counter antarlapisan limiter (mis. "auth" vs
+// global) agar rute di bawah grup GlobalLimiter() tidak terhitung dua kali di bucket
+// AuthLimiter() yang lebih ketat.
+func scopedLimiterKey(scope string, c *fiber.Ctx) string {
 	endpoint := c.Path()
 	if r := c.Route(); r != nil && r.Path != "" && r.Path != "/api" {
 		endpoint = r.Path
 	}
-	return "limiter:" + getClientIP(c) + ":" + endpoint
+	if scope == "" {
+		return "limiter:" + getClientIP(c) + ":" + endpoint
+	}
+	return "limiter:" + scope + ":" + getClientIP(c) + ":" + endpoint
 }
 
 // rateLimitCounter adalah kontrak counter rate limit per key.
@@ -113,13 +123,18 @@ func getLimiterStore() rateLimitCounter {
 // newFixedWindowLimiter membangun handler rate limit fixed-window berbasis
 // counter per key "limiter:{ip}:{endpoint}".
 func newFixedWindowLimiter(max int, window time.Duration, message string) fiber.Handler {
+	return newScopedFixedWindowLimiter("", max, window, message)
+}
+
+func newScopedFixedWindowLimiter(scope string, max int, window time.Duration, message string) fiber.Handler {
 	store := getLimiterStore()
 	return func(c *fiber.Ctx) error {
-		count, err := store.Increment(limiterKey(c), window)
+		key := scopedLimiterKey(scope, c)
+		count, err := store.Increment(key, window)
 		if err != nil {
 			// Kegagalan counter tidak boleh memblokir layanan (fail-open ringan);
 			// cukup dicatat agar masalah infra terlihat.
-			utils.Log.Warnf("⚠️ Rate limiter gagal INCR key %s: %v", limiterKey(c), err)
+			utils.Log.Warnf("⚠️ Rate limiter gagal INCR key %s: %v", key, err)
 			return c.Next()
 		}
 		if count > int64(max) {
@@ -132,7 +147,7 @@ func newFixedWindowLimiter(max int, window time.Duration, message string) fiber.
 	}
 }
 
-// GlobalLimiter membatasi maksimal 100 request per menit per IP per endpoint
+// GlobalLimiter membatasi maksimal 300 request per menit per IP per endpoint
 // (key "limiter:{ip}:{endpoint}").
 func GlobalLimiter() fiber.Handler {
 	limit := 300
@@ -145,8 +160,8 @@ func GlobalLimiter() fiber.Handler {
 }
 
 // AuthLimiter membatasi maksimal 5 request per menit per IP khusus rute login
-// (key "limiter:{ip}:{endpoint}" → endpoint /api/auth/login).
-// Melindungi dari serangan brute force percobaan kata sandi.
+// (key "limiter:auth:{ip}:{endpoint}" → endpoint /api/auth/login).
+// Terisolasi dari GlobalLimiter agar percobaan login tidak terhitung dua kali.
 func AuthLimiter() fiber.Handler {
-	return newFixedWindowLimiter(5, 1*time.Minute, "Terlalu banyak percobaan login. Silakan coba lagi setelah 1 menit.")
+	return newScopedFixedWindowLimiter("auth", 5, 1*time.Minute, "Terlalu banyak percobaan login. Silakan coba lagi setelah 1 menit.")
 }

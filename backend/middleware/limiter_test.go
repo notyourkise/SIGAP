@@ -234,3 +234,25 @@ func TestLimiterMemoryCounter_PerKeyIsolation(t *testing.T) {
 	countC, _ := counter.Increment("limiter:ip-a:/api/other", window)
 	assert.Equal(t, int64(1), countC)
 }
+
+// TestGlobalAndAuthLimiter_NoDoubleCount memastikan rute /api/auth/login yang
+// dibungkus GlobalLimiter() dan AuthLimiter() sekaligus tidak menghitung satu
+// permintaan login sebanyak dua kali di bucket AuthLimiter (maks 5 penuh/menit).
+func TestGlobalAndAuthLimiter_NoDoubleCount(t *testing.T) {
+	app := fiber.New(config.NewFiberConfig(nil))
+	api := app.Group("/api", GlobalLimiter())
+	api.Post("/auth/login-nodouble", AuthLimiter(), func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	for i := 1; i <= 5; i++ {
+		req := httptest.NewRequest("POST", "/api/auth/login-nodouble", nil)
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode, "permintaan login ke-%d dari 5 harus diizinkan", i)
+	}
+
+	respOver, err := app.Test(httptest.NewRequest("POST", "/api/auth/login-nodouble", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusTooManyRequests, respOver.StatusCode, "permintaan login ke-6 harus ditolak 429")
+}

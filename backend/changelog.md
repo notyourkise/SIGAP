@@ -1,5 +1,61 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-11 - Diagnostik Metro-E, Observabilitas Streaming, & Regression Suite CI/E2E (#150, #154, #155)
+
+### Diagnostik Metro-E (#150), Observabilitas & Alert Prometheus/Grafana (#154), serta Suite Regresi CI/E2E (#155)
+
+**Cakupan Perubahan**:
+- **#150 (Diagnostik Metro-E & Anti-False Offline)**:
+  - Menambahkan `CheckMetroEReachabilityAtStartup` untuk memeriksa keterjangkauan target `10.20.105.x` saat startup; jika `CCTV_METRO_E_DIRECT_PROBE=true` tetapi jaringan tidak dapat dijangkau, backend mencatat peringatan dan otomatis mengaktifkan mode fallback pasif.
+  - Menambahkan endpoint Admin `GET /api/streams/diagnostics` (terdokumentasi di Swagger sekaligus memulihkan anotasi Swagger `POST /api/streams/{id}/verify`) beserta helper `resolveLiveDisplayState` untuk mencegah status `offline` palsu ketika probe langsung tidak aktif atau verifikasi belum segar.
+- **#154 (Observabilitas & Proteksi Kebocoran Kredensial RTSP)**:
+  - Menambahkan redaksi kredensial RTSP (`RedactRTSPCredentialsInText` & `safeStreamErrorText`) pada log stream serta galat klien MediaMTX.
+  - Menambahkan metrik Prometheus (`sigap_cctv_stream_events_total`, `sigap_stream_verify_total`, `sigap_stream_verify_success_rate`, `sigap_stream_verify_duration_seconds`, `sigap_cctv_offline_cameras`, `sigap_cctv_cameras_state`, `sigap_cctv_offline_alerts_total`), aturan alert `monitoring/prometheus/alerts.yml` (termasuk `CameraOfflineOver15Minutes`), provisioning dashboard `monitoring/grafana/provisioning/dashboards/sigap-observability.json`, dan pembaruan `docker-compose.override.yml`.
+- **#155 (CI & Regression Suite E2E/Integrasi)**:
+  - Menambahkan uji integrasi backend `ops_regression_integration_test.go` (isolasi multi-site melewati stack middleware penuh, anti-spoofing proxy `X-Forwarded-For`/`X-Real-IP`, batas hari `Asia/Makassar`, dan retensi log bertahap).
+  - Mengisolasi namespace key `AuthLimiter()` (`limiter:auth:{ip}:{endpoint}`) dari `GlobalLimiter()` di `backend/middleware/limiter.go` agar `POST /api/auth/login` tidak terhitung dua kali di counter yang sama (memulihkan kuota penuh 5 percobaan/menit tanpa `429` palsu).
+  - Memperbaiki kebocoran prefix middleware Fiber v2 di `backend/routes/cctv.go` dengan mendaftarkan alias `GET /cctv-logs` di luar grup `/cctv` serta memasang middleware mutasi admin secara eksplisit per rute (`protected, adminOnly, siteMiddleware`), sehingga teknisi yang sudah ditugaskan ke site tidak diblokir `403` oleh `RequireRole("admin")` milik `/cctv/*` (+ uji regresi `routes_test.go`).
+  - Menambahkan suite Playwright `e2e/tests/ops-regression.spec.ts` + helper `e2e/tests/helpers/auth.ts` (smoke test `/cctv/logs`, validasi timezone/retensi/diagnostik API, isolasi multi-site + `SiteSwitcher`, serta uji spoof IP melalui Nginx TLS).
+  - Memperluas `.github/workflows/ci.yml` dengan job `monitoring-ci` (`promtool check config`), `go vet ./...`, `npm run test:live`, `npm run test:site-switcher`, `tsc --noEmit` pasca-build, dan pemicu E2E untuk perubahan `backend/**`.
+
+timestamp: 2026-11-11 17:20 WITA
+kategori: Sedang, Backend + Monitoring + CI/E2E
+file yang diubah:
+- .github/workflows/ci.yml
+- backend/changelog.md
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/handlers/ops_regression_integration_test.go
+- backend/handlers/stream.go
+- backend/handlers/stream_metro_e_diagnostic.go
+- backend/handlers/stream_metro_e_diagnostic_test.go
+- backend/handlers/stream_observability_test.go
+- backend/handlers/stream_probe.go
+- backend/handlers/stream_verify.go
+- backend/main.go
+- backend/middleware/limiter.go
+- backend/middleware/limiter_test.go
+- backend/monitoring/collector.go
+- backend/monitoring/metrics.go
+- backend/monitoring/metrics_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
+- backend/routes/stream.go
+- backend/routes/stream_test.go
+- backend/utils/mediamtx.go
+- backend/utils/rtsp.go
+- backend/utils/rtsp_test.go
+- docker-compose.override.yml
+- e2e/tests/helpers/auth.ts
+- e2e/tests/ops-regression.spec.ts
+- monitoring/grafana/provisioning/dashboards/dashboards.yml
+- monitoring/grafana/provisioning/dashboards/sigap-observability.json
+- monitoring/prometheus/alerts.yml
+- monitoring/prometheus/prometheus.yml
+
+alasan perubahan: Menyelesaikan issue backlog #150 (diagnostik Metro-E dan false offline), #154 (observabilitas streaming dan alert offline > 15 menit), dan #155 (CI & E2E regression suite).
+
 ## [Unreleased] - 2026-11-11 - Penyelesaian Temuan Audit M14, M15, L01, dan L02 (#187, #188, #189, #190)
 
 ### Perbaikan Audit Keamanan, Idempotensi Offline Mobile, Validasi Tanggal, & Koordinat

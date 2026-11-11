@@ -5,6 +5,7 @@ import (
 
 	"sigap-backend/config"
 	"sigap-backend/models"
+	"sigap-backend/monitoring"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,6 +33,7 @@ func RunRTSPProber(db *gorm.DB) {
 		return
 	}
 
+	CheckMetroEReachabilityAtStartup(db)
 	runInitialProbe(db, mediaMTXStartupTimeout)
 
 	ticker := time.NewTicker(rtspProbeInterval)
@@ -120,7 +122,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		var latencyMs *int
 
 		isMetroE := utils.IsMetroE(cctv)
-		if isMetroE && utils.MetroEDirectProbeEnabled() {
+		if isMetroE && effectiveMetroEDirectProbe() {
 			// Metro-E: jaringan dedicated — aman diprobe langsung tiap 2 menit.
 			ms, ok := utils.ProbeICMP(cctv.IPCamera, 3*time.Second)
 			if ok {
@@ -231,6 +233,8 @@ func runRTSPProbeCycle(db *gorm.DB) {
 				utils.Log.Warnf("⚪ CCTV %s (%s) status stream tidak diketahui [%s]", cctv.Nama, cctv.KodeCCTV, networkType(cctv))
 			}
 
+			monitoring.GetCollector().ObserveCCTVStreamEvent(eventType)
+
 			if shouldLogCCTVStreamEvent(db, cctv.ID, eventType, now) {
 				streamLog := models.CCTVStreamLog{
 					CCTVID:        cctv.ID,
@@ -288,6 +292,7 @@ func runRTSPProbeCycle(db *gorm.DB) {
 		}
 	}
 
+	monitoring.GetCollector().SetCCTVCameraStates(float64(online), float64(idle), float64(offline), float64(unchecked))
 	utils.Log.Infof("✅ Probe cycle: %d kamera dicek | online=%d idle=%d offline=%d unknown=%d",
 		len(cctvs), online, idle, offline, unchecked)
 }
@@ -326,20 +331,7 @@ func GetLiveStatus(c *fiber.Ctx) error {
 	verifiedLive, verifiedOffline := 0, 0
 	data := make([]fiber.Map, 0, len(cctvs))
 	for _, cctv := range cctvs {
-		streamState := cctv.StreamState
-		if streamState == "" {
-			// Fallback data lama sebelum migrasi 000025.
-			switch {
-			case cctv.StreamLive:
-				streamState = models.StreamStateLive
-			case cctv.StreamCheckedAt != nil:
-				streamState = models.StreamStateOffline
-			default:
-				streamState = models.StreamStateUnknown
-			}
-		}
-
-		effectiveState := effectiveStreamState(cctv, now)
+		streamState, effectiveState, _ := resolveLiveDisplayState(cctv, now)
 		switch effectiveState {
 		case models.StreamStateLive:
 			online++
@@ -388,6 +380,9 @@ func GetLiveStatus(c *fiber.Ctx) error {
 			"unchecked":        unchecked,
 			"verified_live":    verifiedLive,
 			"verified_offline": verifiedOffline,
+		},
+		"diagnostics": fiber.Map{
+			"metro_e": GetMetroEDiagnosticSnapshot(),
 		},
 		"data": data,
 	})

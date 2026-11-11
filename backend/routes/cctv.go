@@ -10,32 +10,39 @@ import (
 
 // SetupCCTVRoutes mendaftarkan rute untuk modul Master Data CCTV terenkripsi
 func SetupCCTVRoutes(router fiber.Router) {
-	cctvGroup := router.Group("/cctv")
-
 	siteMiddleware := middleware.SiteContext()
+	protected := middleware.Protected()
+	adminOnly := middleware.RequireRole("admin")
+
+	// Alias kompatibilitas /cctv-logs didaftarkan di luar grup /cctv serta tanpa
+	// sub-grup `Group("", RequireRole("admin"))` karena di Fiber v2 middleware
+	// `Use()` pada prefix `/cctv` juga cocok dengan `/cctv-logs` (`strings.HasPrefix`).
+	router.Get("/cctv-logs", protected, siteMiddleware, handlers.GetCCTVStreamLogs)
+
+	cctvGroup := router.Group("/cctv")
 
 	cctvGroup.Get("/", middleware.APIKeyOrProtected(models.ScopeCCTVRead), siteMiddleware, handlers.GetAllCCTV)
 
-	protectedCCTV := cctvGroup.Group("", middleware.Protected(), siteMiddleware)
-	protectedCCTV.Get("/logs", handlers.GetCCTVStreamLogs)
-	protectedCCTV.Get("/template", handlers.DownloadTemplateCCTV)
-	protectedCCTV.Post("/scan", handlers.ScanCCTV)
-	protectedCCTV.Get("/:id/qrcode", handlers.GetCCTVQRCode)
-	protectedCCTV.Get("/:id/health-score", handlers.GetCCTVHealthScore)
-	protectedCCTV.Get("/:id/snapshot-status", handlers.GetCCTVSnapshotStatus)
-	protectedCCTV.Get("/:id/snapshot", handlers.GetCCTVSnapshot)
-	protectedCCTV.Get("/:id/timeline", handlers.GetCCTVTimeline)
-	protectedCCTV.Get("/:id/health-history", handlers.GetCCTVHealthHistory)
-	protectedCCTV.Get("/:id", handlers.GetCCTVByID)
+	// Rute baca & operasional terautentikasi (admin & teknisi).
+	// Rute statis didaftarkan sebelum rute dinamis /:id (gotcha Fiber route ordering).
+	cctvGroup.Get("/logs", protected, siteMiddleware, handlers.GetCCTVStreamLogs)
+	cctvGroup.Get("/template", protected, siteMiddleware, handlers.DownloadTemplateCCTV)
+	cctvGroup.Post("/scan", protected, siteMiddleware, handlers.ScanCCTV)
+	cctvGroup.Get("/:id/qrcode", protected, siteMiddleware, handlers.GetCCTVQRCode)
+	cctvGroup.Get("/:id/health-score", protected, siteMiddleware, handlers.GetCCTVHealthScore)
+	cctvGroup.Get("/:id/snapshot-status", protected, siteMiddleware, handlers.GetCCTVSnapshotStatus)
+	cctvGroup.Get("/:id/snapshot", protected, siteMiddleware, handlers.GetCCTVSnapshot)
+	cctvGroup.Get("/:id/timeline", protected, siteMiddleware, handlers.GetCCTVTimeline)
+	cctvGroup.Get("/:id/health-history", protected, siteMiddleware, handlers.GetCCTVHealthHistory)
+	cctvGroup.Get("/:id", protected, siteMiddleware, handlers.GetCCTVByID)
 
-	adminCCTV := protectedCCTV.Group("", middleware.RequireRole("admin"))
-	adminCCTV.Post("/", handlers.CreateCCTV)
-	adminCCTV.Post("/import", handlers.ImportCCTV)
-	adminCCTV.Post("/bulk-delete", handlers.BulkDeleteCCTV)
-	adminCCTV.Post("/:id/rotate-qr", handlers.RotateQRCode)
-	adminCCTV.Post("/:id/reactivate-verify", handlers.ReactivateAndVerifyCCTV)
-	adminCCTV.Put("/:id", handlers.UpdateCCTV)
-	adminCCTV.Delete("/:id", handlers.DeleteCCTV)
-
-	router.Get("/cctv-logs", middleware.Protected(), siteMiddleware, handlers.GetCCTVStreamLogs)
+	// Rute mutasi master data CCTV khusus admin (inline middleware agar tidak
+	// membayangi rute non-admin atau alias /cctv-logs).
+	cctvGroup.Post("/", protected, adminOnly, siteMiddleware, handlers.CreateCCTV)
+	cctvGroup.Post("/import", protected, adminOnly, siteMiddleware, handlers.ImportCCTV)
+	cctvGroup.Post("/bulk-delete", protected, adminOnly, siteMiddleware, handlers.BulkDeleteCCTV)
+	cctvGroup.Post("/:id/rotate-qr", protected, adminOnly, siteMiddleware, handlers.RotateQRCode)
+	cctvGroup.Post("/:id/reactivate-verify", protected, adminOnly, siteMiddleware, handlers.ReactivateAndVerifyCCTV)
+	cctvGroup.Put("/:id", protected, adminOnly, siteMiddleware, handlers.UpdateCCTV)
+	cctvGroup.Delete("/:id", protected, adminOnly, siteMiddleware, handlers.DeleteCCTV)
 }
