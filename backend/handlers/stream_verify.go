@@ -62,6 +62,12 @@ var (
 	manualVerifyGateWaitTimeout = defaultManualVerifyGateWaitTimeout
 	sourceCloseConfirmDelay     = 500 * time.Millisecond
 	probeNVRRTSPHost            = func(ip string) bool { return utils.ProbeRTSPHost(ip, 554) }
+	observeSharedWaveFn         = func(ctx context.Context, db *gorm.DB, siteID uuid.UUID, ipNVR string, obs []incidents.CameraObservation) error {
+		return (incidents.Service{DB: db}).ObserveSharedCorrelatedWave(ctx, siteID, ipNVR, true, obs)
+	}
+	observeSingleObservationFn = func(ctx context.Context, db *gorm.DB, obs incidents.CameraObservation) error {
+		return (incidents.Service{DB: db}).ObserveDetailed(ctx, obs)
+	}
 )
 
 var (
@@ -81,19 +87,60 @@ var (
 
 // streamVerificationResult adalah hasil satu percobaan verifikasi.
 type streamVerificationResult struct {
-	CCTV           models.CCTV
-	State          string
-	VerifiedAt     time.Time
-	Method         string
-	Failures       int
-	Tracks         int
-	Duration       time.Duration
-	Error          string
-	BytesVerify    int64
-	ByteDelta      int64
-	OpenedOnDemand bool
-	SuppressObserve bool
-	FirstFailedAt   *time.Time
+	CCTV                   models.CCTV
+	State                  string
+	VerifiedAt             time.Time
+	Method                 string
+	Failures               int
+	Tracks                 int
+	Duration               time.Duration
+	Error                  string
+	BytesVerify            int64
+	ByteDelta              int64
+	OpenedOnDemand         bool
+	SuppressObserve        bool
+	DeferOfflineObserve    bool
+	OfflineObserveDeferred bool
+	FirstFailedAt          *time.Time
+}
+
+type cycleConfirmTracker struct {
+	mu       sync.Mutex
+	channels []chan streamVerificationResult
+}
+
+func (t *cycleConfirmTracker) Add(ch chan streamVerificationResult) {
+	if t == nil || ch == nil {
+		return
+	}
+	t.mu.Lock()
+	t.channels = append(t.channels, ch)
+	t.mu.Unlock()
+}
+
+func (t *cycleConfirmTracker) Remove(ch chan streamVerificationResult) {
+	if t == nil || ch == nil {
+		return
+	}
+	t.mu.Lock()
+	for i, existing := range t.channels {
+		if existing == ch {
+			t.channels = append(t.channels[:i], t.channels[i+1:]...)
+			break
+		}
+	}
+	t.mu.Unlock()
+}
+
+func (t *cycleConfirmTracker) Snapshot() []chan streamVerificationResult {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	out := make([]chan streamVerificationResult, len(t.channels))
+	copy(out, t.channels)
+	t.mu.Unlock()
+	return out
 }
 
 func resolveGateDB(fallback *gorm.DB) *gorm.DB {
@@ -118,7 +165,7 @@ func startVerifierGateDispatcher(gate *UnifiedNVRSessionGate, fallbackDB *gorm.D
 		func(_ context.Context, job GateJob) (streamVerificationResult, bool) {
 			activeDB := resolveGateDB(fallbackDB)
 			suppress := job.PostMaintRefresh != nil
-			res := verifyCCTVStreamInternal(activeDB, job.CCTV, suppress, job.FirstFailedAt)
+			res := verifyCCTVStreamInternalWithDefer(activeDB, job.CCTV, suppress, job.DeferOfflineObserve, job.FirstFailedAt)
 			return res, res.OpenedOnDemand
 		},
 		func(job GateJob, res streamVerificationResult) {
@@ -249,13 +296,23 @@ func handleGateJobCompletion(db *gorm.DB, job GateJob, res streamVerificationRes
 		updatedCam := res.CCTV
 		updatedCam.StreamVerifyFailures = 1
 		updatedCam.StreamVerifiedState = res.State
-		getOrInitVerifierGate(db).Enqueue(GateJob{
-			Priority:      GatePriorityConfirm,
-			CCTV:          updatedCam,
-			EnqueuedAt:    ff,
-			ReadyAt:       ff.Add(confirmRetryDelay),
-			FirstFailedAt: &ff,
-		})
+		confirmJob := GateJob{
+			Priority:            GatePriorityConfirm,
+			CCTV:                updatedCam,
+			EnqueuedAt:          ff,
+			ReadyAt:             ff.Add(confirmRetryDelay),
+			FirstFailedAt:       &ff,
+			DeferOfflineObserve: job.DeferOfflineObserve,
+		}
+		var confirmCh chan streamVerificationResult
+		if job.ConfirmTracker != nil {
+			confirmCh = make(chan streamVerificationResult, 1)
+			confirmJob.CompletionNotifyChan = confirmCh
+			job.ConfirmTracker.Add(confirmCh)
+		}
+		if !getOrInitVerifierGate(db).Enqueue(confirmJob) && confirmCh != nil {
+			job.ConfirmTracker.Remove(confirmCh)
+		}
 	}
 
 	if !res.OpenedOnDemand {
@@ -578,6 +635,19 @@ func runStreamVerifyCycle(db *gorm.DB) {
 	}
 
 	gate := getOrInitVerifierGate(db)
+	type nvrKey struct {
+		SiteID uuid.UUID
+		IPNVR  string
+	}
+	nvrSiblings := map[nvrKey]int{}
+	for _, cctv := range cctvs {
+		ipNVR := strings.TrimSpace(cctv.IPNVR)
+		if cctv.SiteID != nil && *cctv.SiteID != uuid.Nil && ipNVR != "" {
+			nvrSiblings[nvrKey{SiteID: *cctv.SiteID, IPNVR: ipNVR}]++
+		}
+	}
+
+	confirmTracker := &cycleConfirmTracker{}
 	notifyChans := make([]chan streamVerificationResult, 0, len(cctvs))
 	for _, cctv := range cctvs {
 		ch := make(chan streamVerificationResult, 1)
@@ -589,12 +659,18 @@ func runStreamVerifyCycle(db *gorm.DB) {
 		}
 		firstFailureMu.Unlock()
 
+		ipNVR := strings.TrimSpace(cctv.IPNVR)
+		deferOffline := cctv.SiteID != nil && *cctv.SiteID != uuid.Nil && ipNVR != "" &&
+			nvrSiblings[nvrKey{SiteID: *cctv.SiteID, IPNVR: ipNVR}] >= 2
+
 		enqueued := gate.Enqueue(GateJob{
 			Priority:             GatePriorityMain,
 			CCTV:                 cctv,
 			EnqueuedAt:           started,
 			ReadyAt:              started,
 			FirstFailedAt:        ffPtr,
+			DeferOfflineObserve:  deferOffline,
+			ConfirmTracker:       confirmTracker,
 			CompletionNotifyChan: ch,
 		})
 		if enqueued {
@@ -604,11 +680,74 @@ func runStreamVerifyCycle(db *gorm.DB) {
 
 	collected := make([]streamVerificationResult, 0, len(notifyChans))
 	for _, ch := range notifyChans {
-		res := <-ch
-		collected = append(collected, res)
+		select {
+		case res, ok := <-ch:
+			if ok {
+				collected = append(collected, res)
+			}
+		case <-gate.ClosedChan():
+			return
+		}
 	}
 
-	processMonitoringCycleSummary(db, collected)
+	confirmChans := confirmTracker.Snapshot()
+	confirmResults := make([]streamVerificationResult, 0, len(confirmChans))
+	for _, ch := range confirmChans {
+		select {
+		case res, ok := <-ch:
+			if ok {
+				confirmResults = append(confirmResults, res)
+			}
+		case <-gate.ClosedChan():
+			return
+		}
+	}
+
+	processMonitoringCycleSummary(db, mergeCycleVerificationResults(collected, confirmResults))
+}
+
+func mergeCycleVerificationResults(mainResults, confirmResults []streamVerificationResult) []streamVerificationResult {
+	order := make([]uuid.UUID, 0, len(mainResults)+len(confirmResults))
+	byID := make(map[uuid.UUID]streamVerificationResult, len(mainResults)+len(confirmResults))
+	for _, r := range mainResults {
+		if _, exists := byID[r.CCTV.ID]; !exists {
+			order = append(order, r.CCTV.ID)
+		}
+		byID[r.CCTV.ID] = r
+	}
+	for _, r := range confirmResults {
+		if _, exists := byID[r.CCTV.ID]; !exists {
+			order = append(order, r.CCTV.ID)
+		}
+		byID[r.CCTV.ID] = r
+	}
+	merged := make([]streamVerificationResult, 0, len(order))
+	for _, id := range order {
+		merged = append(merged, byID[id])
+	}
+	return merged
+}
+
+func observationFromVerificationResult(r streamVerificationResult) incidents.CameraObservation {
+	verifiedUTC := r.VerifiedAt.UTC()
+	firstFailed := verifiedUTC
+	if r.FirstFailedAt != nil && !r.FirstFailedAt.IsZero() {
+		firstFailed = r.FirstFailedAt.UTC()
+	}
+	return incidents.CameraObservation{
+		Camera:                r.CCTV,
+		State:                 r.State,
+		ObservedAt:            verifiedUTC,
+		FirstFailedObservedAt: &firstFailed,
+		Evidence: map[string]interface{}{
+			"method":       r.Method,
+			"tracks":       r.Tracks,
+			"bytes_verify": r.BytesVerify,
+			"byte_delta":   r.ByteDelta,
+			"duration_ms":  r.Duration.Milliseconds(),
+			"error":        r.Error,
+		},
+	}
 }
 
 func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResult) {
@@ -627,6 +766,7 @@ func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResu
 		IPNVR  string
 	}
 	nvrOfflineGroups := map[nvrKey][]incidents.CameraObservation{}
+	deferredOffline := make([]streamVerificationResult, 0)
 
 	for _, r := range results {
 		switch r.State {
@@ -648,22 +788,12 @@ func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResu
 				}
 				siteInfraFailures[sid] = cur
 			}
-			if r.State == models.StreamStateOffline && strings.TrimSpace(r.CCTV.IPNVR) != "" {
-				ff := r.VerifiedAt.UTC()
-				if r.FirstFailedAt != nil && !r.FirstFailedAt.IsZero() {
-					ff = *r.FirstFailedAt
+			if r.State == models.StreamStateOffline && r.OfflineObserveDeferred && !r.SuppressObserve {
+				deferredOffline = append(deferredOffline, r)
+				if ipNVR := strings.TrimSpace(r.CCTV.IPNVR); ipNVR != "" {
+					key := nvrKey{SiteID: sid, IPNVR: ipNVR}
+					nvrOfflineGroups[key] = append(nvrOfflineGroups[key], observationFromVerificationResult(r))
 				}
-				key := nvrKey{SiteID: sid, IPNVR: strings.TrimSpace(r.CCTV.IPNVR)}
-				nvrOfflineGroups[key] = append(nvrOfflineGroups[key], incidents.CameraObservation{
-					Camera:                r.CCTV,
-					State:                 models.StreamStateOffline,
-					ObservedAt:            r.VerifiedAt.UTC(),
-					FirstFailedObservedAt: &ff,
-					Evidence: map[string]interface{}{
-						"method": r.Method,
-						"error":  r.Error,
-					},
-				})
 			}
 		}
 	}
@@ -683,6 +813,7 @@ func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResu
 	}
 
 	// Korelasi gelombang NVR bila >= 2 kamera pada site & IP NVR yang sama gagal bersamaan dan NVR tidak merespons RTSP TCP:554.
+	handledByWave := map[uuid.UUID]bool{}
 	for key, obsList := range nvrOfflineGroups {
 		if len(obsList) < 2 {
 			continue
@@ -692,7 +823,25 @@ func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResu
 		}
 		nvrDead := !probeNVRRTSPHost(key.IPNVR)
 		if nvrDead {
-			_ = svc.ObserveSharedCorrelatedWave(ctx, key.SiteID, key.IPNVR, true, obsList)
+			if err := observeSharedWaveFn(ctx, db, key.SiteID, key.IPNVR, obsList); err == nil {
+				for _, obs := range obsList {
+					handledByWave[obs.Camera.ID] = true
+				}
+			}
+		}
+	}
+
+	for _, r := range deferredOffline {
+		if handledByWave[r.CCTV.ID] {
+			continue
+		}
+		if r.CCTV.SiteID != nil {
+			if _, infraBroken := siteInfraFailures[*r.CCTV.SiteID]; infraBroken {
+				continue
+			}
+		}
+		if err := observeSingleObservationFn(ctx, db, observationFromVerificationResult(r)); err != nil {
+			utils.Log.Errorf("Gagal memproses insiden tertunda CCTV %s: %v", r.CCTV.ID, err)
 		}
 	}
 
@@ -707,16 +856,24 @@ func verifyCCTVStream(db *gorm.DB, cctv models.CCTV) streamVerificationResult {
 }
 
 func verifyCCTVStreamInternal(db *gorm.DB, cctv models.CCTV, suppressObserve bool, priorFirstFailed *time.Time) streamVerificationResult {
-	return verifyCCTVStreamWithOptions(db, cctv, suppressObserve, IncidentMonitoringEnabled() || streamVerifyRequireBytes, priorFirstFailed)
+	return verifyCCTVStreamInternalWithDefer(db, cctv, suppressObserve, false, priorFirstFailed)
 }
 
-// verifyCCTVStreamWithOptions melakukan verifikasi 4-lapis:
+func verifyCCTVStreamInternalWithDefer(db *gorm.DB, cctv models.CCTV, suppressObserve, deferOfflineObserve bool, priorFirstFailed *time.Time) streamVerificationResult {
+	return verifyCCTVStreamWithCycleOptions(db, cctv, suppressObserve, deferOfflineObserve, IncidentMonitoringEnabled() || streamVerifyRequireBytes, priorFirstFailed)
+}
+
+func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve, requireByteProgress bool, priorFirstFailed *time.Time) streamVerificationResult {
+	return verifyCCTVStreamWithCycleOptions(db, cctv, suppressObserve, false, requireByteProgress, priorFirstFailed)
+}
+
+// verifyCCTVStreamWithCycleOptions melakukan verifikasi 4-lapis:
 //  1. MediaMTX terjangkau & path terdaftar (atau diregistrasi ulang otomatis 1x).
 //  2. Sumber RTSP siap (SourceReady) dan memiliki >= 1 track media.
 //  3. Saat requireByteProgress bernilai true, memverifikasi kemajuan paket nyata
 //     (Delta BytesReceived > 0 dalam streamVerifyByteWindow) untuk menangkap stream beku (stalled RTP stream).
 //  4. Mencatat pemisahan kegagalan pertama (FirstFailedAt) dari konfirmasi ke-2 (VerifiedAt).
-func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve, requireByteProgress bool, priorFirstFailed *time.Time) streamVerificationResult {
+func verifyCCTVStreamWithCycleOptions(db *gorm.DB, cctv models.CCTV, suppressObserve, deferOfflineObserve, requireByteProgress bool, priorFirstFailed *time.Time) streamVerificationResult {
 	started := time.Now()
 	path := utils.BuildStreamPath(cctv.ID.String())
 	initialMethod := streamVerifyMethodHLS
@@ -724,13 +881,14 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 		initialMethod = streamVerifyMethodRTSP
 	}
 	result := streamVerificationResult{
-		CCTV:            cctv,
-		State:           models.StreamStateUnknown,
-		VerifiedAt:      started,
-		Method:          initialMethod,
-		Failures:        cctv.StreamVerifyFailures,
-		SuppressObserve: suppressObserve,
-		FirstFailedAt:   priorFirstFailed,
+		CCTV:                cctv,
+		State:               models.StreamStateUnknown,
+		VerifiedAt:          started,
+		Method:              initialMethod,
+		Failures:            cctv.StreamVerifyFailures,
+		SuppressObserve:     suppressObserve,
+		DeferOfflineObserve: deferOfflineObserve,
+		FirstFailedAt:       priorFirstFailed,
 	}
 
 	info, err := streamClient.GetPath(path)
@@ -931,39 +1089,39 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		}
 		result.FirstFailedAt = &firstFailed
 
-		obs := incidents.CameraObservation{
-			Camera:                result.CCTV,
-			State:                 result.State,
-			ObservedAt:            verifiedUTC,
-			FirstFailedObservedAt: &firstFailed,
-			Evidence: map[string]interface{}{
-				"method":       result.Method,
-				"tracks":       result.Tracks,
-				"bytes_verify": result.BytesVerify,
-				"byte_delta":   result.ByteDelta,
-				"duration_ms":  result.Duration.Milliseconds(),
-				"error":        result.Error,
-			},
-		}
+		obs := observationFromVerificationResult(result)
 
-		// Jika kamera terkonfirmasi offline dan sudah ada tiket bersama NVR terbuka di site & IP NVR yang sama
-		// dengan NVR tidak merespons RTSP TCP:554, gabungkan otomatis ke tiket bersama tersebut.
 		handledShared := false
-		if result.State == models.StreamStateOffline && result.CCTV.SiteID != nil && strings.TrimSpace(result.CCTV.IPNVR) != "" {
-			var openSharedCount int64
-			_ = db.Model(&incidents.Incident{}).
-				Where("site_id = ? AND correlation_key = ? AND status NOT IN ('resolved', 'merged')",
-					*result.CCTV.SiteID, "nvr:"+strings.TrimSpace(result.CCTV.IPNVR)).
-				Count(&openSharedCount).Error
-			if openSharedCount > 0 && !probeNVRRTSPHost(strings.TrimSpace(result.CCTV.IPNVR)) {
-				if err := (incidents.Service{DB: db}).ObserveSharedCorrelatedWave(context.Background(), *result.CCTV.SiteID, result.CCTV.IPNVR, true, []incidents.CameraObservation{obs}); err == nil {
-					handledShared = true
+		shouldDeferOffline := false
+		if result.State == models.StreamStateOffline {
+			var activeMemberCount int64
+			_ = db.Model(&incidents.Member{}).
+				Where("cctv_id = ? AND is_active_member = true", result.CCTV.ID).
+				Count(&activeMemberCount).Error
+
+			ipNVR := strings.TrimSpace(result.CCTV.IPNVR)
+			if activeMemberCount == 0 && result.CCTV.SiteID != nil && *result.CCTV.SiteID != uuid.Nil && ipNVR != "" {
+				// Jika kamera terkonfirmasi offline dan sudah ada tiket bersama NVR terbuka di site & IP NVR yang sama
+				// dengan NVR tidak merespons RTSP TCP:554, gabungkan otomatis ke tiket bersama tersebut.
+				var openSharedCount int64
+				_ = db.Model(&incidents.Incident{}).
+					Where("site_id = ? AND correlation_key = ? AND status NOT IN ('resolved', 'merged')",
+						*result.CCTV.SiteID, "nvr:"+ipNVR).
+					Count(&openSharedCount).Error
+				if openSharedCount > 0 && !probeNVRRTSPHost(ipNVR) {
+					if err := observeSharedWaveFn(context.Background(), db, *result.CCTV.SiteID, result.CCTV.IPNVR, []incidents.CameraObservation{obs}); err == nil {
+						handledShared = true
+					}
+				} else if result.DeferOfflineObserve {
+					shouldDeferOffline = true
 				}
 			}
 		}
 
-		if !handledShared {
-			if err := (incidents.Service{DB: db}).ObserveDetailed(context.Background(), obs); err != nil {
+		if shouldDeferOffline {
+			result.OfflineObserveDeferred = true
+		} else if !handledShared {
+			if err := observeSingleObservationFn(context.Background(), db, obs); err != nil {
 				utils.Log.Errorf("Gagal memproses insiden CCTV %s: %v", result.CCTV.ID, err)
 			}
 		}

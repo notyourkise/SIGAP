@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+	"sigap-backend/incidents"
 	"sigap-backend/models"
 	"sigap-backend/utils"
 )
@@ -567,4 +570,227 @@ func TestReactivateAndVerifyCCTVRemainsInactiveWhenProbeNotLive(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	assert.EqualValues(t, 1, removed.Load(), "temporary path for failed reactivation must be cleaned up")
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRunStreamVerifyCycleDefersSharedNVRObservationsAcrossConfirmRetry(t *testing.T) {
+	t.Setenv("CCTV_INCIDENTS_ENABLED", "true")
+
+	origTimeout := streamVerifyTimeout
+	origPoll := streamVerifyPollInterval
+	origByteWin := streamVerifyByteWindow
+	origConfirmDelay := confirmRetryDelay
+	origCloseDelay := sourceCloseConfirmDelay
+	origProbeNVR := probeNVRRTSPHost
+	origObserveWave := observeSharedWaveFn
+	origObserveSingle := observeSingleObservationFn
+	defer func() {
+		streamVerifyTimeout = origTimeout
+		streamVerifyPollInterval = origPoll
+		streamVerifyByteWindow = origByteWin
+		confirmRetryDelay = origConfirmDelay
+		sourceCloseConfirmDelay = origCloseDelay
+		probeNVRRTSPHost = origProbeNVR
+		observeSharedWaveFn = origObserveWave
+		observeSingleObservationFn = origObserveSingle
+		replaceVerifierGateForTest(nil, false)
+	}()
+
+	streamVerifyTimeout = 35 * time.Millisecond
+	streamVerifyPollInterval = 10 * time.Millisecond
+	streamVerifyByteWindow = 10 * time.Millisecond
+	confirmRetryDelay = 20 * time.Millisecond
+	sourceCloseConfirmDelay = 0
+
+	siteID := uuid.New()
+	nvrIP := "172.28.0.51"
+	encPass := encryptedTestPassword(t, "secret123")
+
+	runScenario := func(t *testing.T, cam2Alive, nvrReachable bool) (sharedCalls int, sharedObs []incidents.CameraObservation, singleOfflineObs []incidents.CameraObservation, singleLiveObs []incidents.CameraObservation) {
+		t.Helper()
+		gate := NewUnifiedNVRSessionGate(4, 2, 0, 5*time.Millisecond)
+		replaceVerifierGateForTest(gate, true)
+		defer replaceVerifierGateForTest(nil, false)
+
+		cam1ID := uuid.New()
+		cam2ID := uuid.New()
+		firstFailureMu.Lock()
+		delete(firstFailureMap, cam1ID)
+		delete(firstFailureMap, cam2ID)
+		firstFailureMu.Unlock()
+
+		var readyCam2 atomic.Bool
+		readyCam2.Store(cam2Alive)
+		var bytesSeq atomic.Int64
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+			pathName := r.URL.Path[len("/v3/paths/get/"):]
+			live := cam2Alive && strings.Contains(pathName, cam2ID.String()) && readyCam2.Load()
+			bytesReceived := int64(0)
+			if live {
+				bytesReceived = bytesSeq.Add(1024)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"name":          pathName,
+				"available":     live,
+				"ready":         live,
+				"tracks":        []string{"H264"},
+				"bytesReceived": bytesReceived,
+			})
+		})
+		mux.HandleFunc("/v3/config/paths/add/", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		oldClient := streamClient
+		streamClient = &utils.MediaMTXClient{BaseURL: srv.URL, HLSURL: srv.URL, HTTPClient: srv.Client()}
+		defer func() { streamClient = oldClient }()
+
+		db, mock := setupMockGORM(t)
+		mock.MatchExpectationsInOrder(false)
+		cols := []string{
+			"id", "kode_cctv", "nama", "ip_camera", "ip_nvr", "channel_port",
+			"rtsp_password", "site_id", "status", "stream_enabled", "monitoring_enabled",
+			"stream_verified_state", "stream_verify_failures",
+		}
+		rows := sqlmock.NewRows(cols).
+			AddRow(cam1ID, "NVR-CAM-1", "NVR Cam 1", "", nvrIP, 1, encPass, siteID, "aktif", true, true, models.StreamStateLive, 0).
+			AddRow(cam2ID, "NVR-CAM-2", "NVR Cam 2", "", nvrIP, 2, encPass, siteID, "aktif", true, true, models.StreamStateLive, 0)
+		mock.ExpectQuery(`SELECT \* FROM "cctvs"`).WillReturnRows(rows)
+		for i := 0; i < 4; i++ {
+			mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectQuery(`FROM "cctv_stream_logs"`).WillReturnRows(sqlmock.NewRows([]string{"event_type", "created_at"}))
+			mock.ExpectQuery(`INSERT INTO "cctv_stream_logs"`).WillReturnRows(sqlmock.NewRows([]string{"created_at"}).AddRow(time.Now().UTC()))
+			mock.ExpectExec(`INSERT INTO "cctv_probe_telemetry"`).WillReturnResult(sqlmock.NewResult(1, 1))
+		}
+		mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incident_cameras"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incident_cameras"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incidents"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incidents"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`SELECT pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+		mock.ExpectQuery(`SELECT \* FROM "monitor_health_episodes"`).WillReturnError(gorm.ErrRecordNotFound)
+
+		var obsMu sync.Mutex
+		probeNVRRTSPHost = func(ip string) bool {
+			assert.Equal(t, nvrIP, ip)
+			return nvrReachable
+		}
+		observeSharedWaveFn = func(_ context.Context, _ *gorm.DB, gotSite uuid.UUID, gotIP string, obs []incidents.CameraObservation) error {
+			assert.Equal(t, siteID, gotSite)
+			assert.Equal(t, nvrIP, gotIP)
+			obsMu.Lock()
+			sharedCalls++
+			sharedObs = append(sharedObs, obs...)
+			obsMu.Unlock()
+			return nil
+		}
+		observeSingleObservationFn = func(_ context.Context, _ *gorm.DB, obs incidents.CameraObservation) error {
+			obsMu.Lock()
+			if obs.State == incidents.StateOffline {
+				singleOfflineObs = append(singleOfflineObs, obs)
+			} else if obs.State == "live" {
+				singleLiveObs = append(singleLiveObs, obs)
+			}
+			obsMu.Unlock()
+			return nil
+		}
+
+		runStreamVerifyCycle(db)
+		return sharedCalls, sharedObs, singleOfflineObs, singleLiveObs
+	}
+
+	t.Run("2 kamera gagal serentak lewat ConfirmQueue + NVR TCP:554 mati menghasilkan 1 gelombang shared_nvr", func(t *testing.T) {
+		sharedCalls, sharedObs, singleOfflineObs, _ := runScenario(t, false, false)
+		assert.Equal(t, 1, sharedCalls, "must trigger exactly one ObserveSharedCorrelatedWave call after ConfirmQueue finishes")
+		assert.Len(t, sharedObs, 2, "both confirmed NVR cameras must arrive in the shared wave")
+		assert.Empty(t, singleOfflineObs, "must NOT emit premature single_camera offline observations")
+		for _, obs := range sharedObs {
+			require.NotNil(t, obs.FirstFailedObservedAt)
+			assert.True(t, obs.ObservedAt.After(*obs.FirstFailedObservedAt),
+				"confirm timestamp (%v) must stay strictly after Cycle-1 first failed timestamp (%v)",
+				obs.ObservedAt, *obs.FirstFailedObservedAt)
+		}
+	})
+
+	t.Run("2 kamera gagal namun NVR port 554 hidup tetap jatuh ke tiket terpisah", func(t *testing.T) {
+		sharedCalls, _, singleOfflineObs, _ := runScenario(t, false, true)
+		assert.Zero(t, sharedCalls, "must not open shared_nvr when NVR host port 554 responds")
+		assert.Len(t, singleOfflineObs, 2, "must fall back to per-camera single_camera observations")
+	})
+
+	t.Run("hanya 1 kamera NVR gagal sementara kamera lain live membuka 1 tiket single_camera", func(t *testing.T) {
+		sharedCalls, _, singleOfflineObs, singleLiveObs := runScenario(t, true, false)
+		assert.Zero(t, sharedCalls, "1 offline camera must not open shared_nvr")
+		assert.Len(t, singleOfflineObs, 1, "single failed camera must still open 1 single_camera observation")
+		assert.Len(t, singleLiveObs, 1, "live sibling observation must still be processed immediately")
+	})
+}
+
+func TestUnifiedGateInteractiveEvictionClosesMainNotifyChanWithoutDeadlock(t *testing.T) {
+	// Uji bahwa jika VerifyStream interaktif mengeluarkan job kamera B dari MainQueue,
+	// CompletionNotifyChan milik MainQueue ditutup (bukan diblokir selamanya) sehingga siklus selesai bersih.
+	gate := NewUnifiedNVRSessionGate(1, 1, 20*time.Millisecond, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	camA := models.CCTV{Base: models.Base{ID: uuid.New()}, IPCamera: "10.10.0.1", Nama: "Cam A"}
+	camB := models.CCTV{Base: models.Base{ID: uuid.New()}, IPCamera: "10.10.0.2", Nama: "Cam B"}
+
+	camAStarted := make(chan struct{})
+	releaseCamA := make(chan struct{})
+	go gate.RunDispatcher(ctx, func(_ context.Context, job GateJob) (streamVerificationResult, bool) {
+		if job.CCTV.ID == camA.ID {
+			close(camAStarted)
+			<-releaseCamA
+		}
+		return streamVerificationResult{CCTV: job.CCTV, State: models.StreamStateLive}, false
+	}, nil, nil)
+
+	chA := make(chan streamVerificationResult, 1)
+	chB := make(chan streamVerificationResult, 1)
+	require.True(t, gate.Enqueue(GateJob{Priority: GatePriorityMain, CCTV: camA, CompletionNotifyChan: chA}))
+	require.True(t, gate.Enqueue(GateJob{Priority: GatePriorityMain, CCTV: camB, CompletionNotifyChan: chB}))
+
+	<-camAStarted
+
+	interactiveDone := make(chan streamVerificationResult, 1)
+	go func() {
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer waitCancel()
+		res, err := gate.ExecuteInteractive(waitCtx, GateJob{CCTV: camB})
+		if err == nil {
+			interactiveDone <- res
+		}
+	}()
+
+	// chB harus tertutup oleh eviction sebelum camA selesai, tanpa menerima struct kosong sebagai hasil valid.
+	select {
+	case _, ok := <-chB:
+		assert.False(t, ok, "evicted MainQueue job channel must close immediately without blocking")
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for evicted MainQueue CompletionNotifyChan to close")
+	}
+
+	close(releaseCamA)
+
+	select {
+	case resA, ok := <-chA:
+		assert.True(t, ok)
+		assert.Equal(t, camA.ID, resA.CCTV.ID)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for camA result")
+	}
+
+	select {
+	case resInt := <-interactiveDone:
+		assert.Equal(t, camB.ID, resInt.CCTV.ID)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for interactive camB verification result")
+	}
 }
