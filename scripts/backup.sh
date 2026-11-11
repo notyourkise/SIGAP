@@ -103,15 +103,28 @@ else
 fi
 
 # --- 2. Backup Uploads ---
-log "Memulai backup folder uploads '${UPLOADS_DIR}' ..."
-if [ -d "${UPLOADS_DIR}" ] && [ -n "$(ls -A "${UPLOADS_DIR}" 2>/dev/null)" ]; then
-  # -C: masuk ke folder sebelum tar agar struktur relatif (isi uploads/ saja).
-  tar -czf "${UPLOADS_FILE}" -C "$(dirname "${UPLOADS_DIR}")" "$(basename "${UPLOADS_DIR}")"
-  log "Uploads backup selesai -> ${UPLOADS_FILE} ($(du -h "${UPLOADS_FILE}" | cut -f1))"
+UPLOADS_DIR_CLEAN="${UPLOADS_DIR%/}"
+[ -z "${UPLOADS_DIR_CLEAN}" ] && UPLOADS_DIR_CLEAN="/"
+UPLOADS_PARENT="$(dirname "${UPLOADS_DIR_CLEAN}")"
+UPLOADS_NAME="$(basename "${UPLOADS_DIR_CLEAN}")"
+log "Memulai backup folder uploads '${UPLOADS_DIR_CLEAN}' ..."
+if [ -d "${UPLOADS_DIR_CLEAN}" ]; then
+  # -C: masuk ke folder induk sebelum tar agar struktur relatif (<nama uploads>/).
+  # Mengarsipkan direktori kosong secara langsung tetap berhasil pada BusyBox tar
+  # (Alpine menolak --files-from /dev/null dengan error "tar: empty archive").
+  tar -czf "${UPLOADS_FILE}" -C "${UPLOADS_PARENT}" "${UPLOADS_NAME}"
+  if [ -n "$(ls -A "${UPLOADS_DIR_CLEAN}" 2>/dev/null)" ]; then
+    log "Uploads backup selesai -> ${UPLOADS_FILE} ($(du -h "${UPLOADS_FILE}" | cut -f1))"
+  else
+    log "Folder uploads kosong; archive direktori kosong dibuat -> ${UPLOADS_FILE}"
+  fi
 else
-  # Folder uploads kosong / belum ada: simpan archive kosong agar restore konsisten.
-  tar -czf "${UPLOADS_FILE}" --files-from /dev/null
-  log "Folder uploads kosong/ tidak ada; archive kosong dibuat -> ${UPLOADS_FILE}"
+  # Folder uploads belum ada: buat direktori sementara bernama sama agar struktur archive konsisten.
+  TMP_EMPTY_ROOT="$(mktemp -d /tmp/sigap_empty_uploads.XXXXXX)"
+  mkdir -p "${TMP_EMPTY_ROOT}/${UPLOADS_NAME}"
+  tar -czf "${UPLOADS_FILE}" -C "${TMP_EMPTY_ROOT}" "${UPLOADS_NAME}"
+  rm -rf "${TMP_EMPTY_ROOT}"
+  log "Folder uploads tidak ditemukan; archive direktori kosong dibuat -> ${UPLOADS_FILE}"
 fi
 
 # --- Encrypt Uploads Backup (optional) ---
