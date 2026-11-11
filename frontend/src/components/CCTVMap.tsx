@@ -282,19 +282,11 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
       });
   }, [cctvs]);
 
-  // CCTV tanpa koordinat valid (untuk panel & status bar).
+  // CCTV tanpa koordinat valid (untuk panel peringatan di bawah peta).
   const missingCoord = useMemo(
     () => cctvs.filter((c) => !isValidCoord(c.latitude) || !isValidCoord(c.longitude)),
     [cctvs]
   );
-
-  // Statistik status live streaming (RTSP) dari seluruh CCTV.
-  // stream_state tersedia → hitung live/idle/offline/unknown secara eksplisit;
-  // data lama tanpa stream_state → fallback ke stream_live.
-  const onlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'live').length;
-  const idleCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'idle').length;
-  const offlineCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'offline').length;
-  const uncheckedCount = cctvs.filter((c) => getEffectiveStreamState(c) === 'unknown').length;
 
   // Pusat peta: gunakan prop `center` bila tersedia, fallback ke pusat IKN.
   // `mapCenterKey` dipakai sebagai key MapContainer agar peta di-reinit bila
@@ -438,19 +430,6 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
       </button>
     </div>
 
-    {/* Status bar di bawah peta: jumlah yang ditampilkan vs total */}
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs text-muted">
-      <span>
-        Menampilkan <span className="font-bold text-foreground">{processedCCTVs.length}</span> dari{' '}
-        <span className="font-bold text-foreground">{cctvs.length}</span> CCTV
-      </span>
-      {missingCoord.length > 0 && (
-        <span className="font-semibold text-amber-600 dark:text-amber-400">
-          {missingCoord.length} belum memiliki koordinat
-        </span>
-      )}
-    </div>
-
     {/* Daftar CCTV tanpa koordinat + tombol Edit (dipindah dari panel toggle di dalam peta) */}
     {missingCoord.length > 0 && (
       <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
@@ -476,26 +455,6 @@ export default function CCTVMap({ cctvs, onMarkerClick, center }: CCTVMapProps) 
         </ul>
       </div>
     )}
-
-    {/* Status bar live streaming (RTSP): online / idle / offline / unknown */}
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-        <span className="text-emerald-600">{onlineCount} Online</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-        <span className="text-blue-600">{idleCount} Siaga</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-        <span className="text-red-600">{offlineCount} Offline</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
-        <span className="text-gray-500">{uncheckedCount} Tidak diketahui</span>
-      </span>
-    </div>
     </>
   );
 }
