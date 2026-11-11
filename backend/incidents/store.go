@@ -369,14 +369,31 @@ func (s Service) openSingleIncidentTx(tx *gorm.DB, obs CameraObservation, firstF
 // dan bukti ProbeRTSPHost membuktikan NVR tidak merespons (nvrUnreachable == true).
 // Jika bukti penyebab bersama belum terpenuhi, otomatis jatuh ke tiket per kamera.
 func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UUID, ipNVR string, nvrUnreachable bool, observations []CameraObservation) error {
+	if len(observations) == 0 {
+		return nil
+	}
 	ipNVR = strings.TrimSpace(ipNVR)
-	if !nvrUnreachable || ipNVR == "" || len(observations) < 2 {
+	if !nvrUnreachable || ipNVR == "" {
 		for _, obs := range observations {
 			if err := s.ObserveDetailed(ctx, obs); err != nil {
 				return err
 			}
 		}
 		return nil
+	}
+	if len(observations) < 2 {
+		var openSharedCount int64
+		_ = s.DB.WithContext(ctx).Model(&Incident{}).
+			Where("site_id = ? AND correlation_key = ? AND status NOT IN ('resolved', 'merged')", siteID, "nvr:"+ipNVR).
+			Count(&openSharedCount).Error
+		if openSharedCount == 0 || observations[0].State != StateOffline {
+			for _, obs := range observations {
+				if err := s.ObserveDetailed(ctx, obs); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 	}
 
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

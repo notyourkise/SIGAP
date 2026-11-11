@@ -44,6 +44,8 @@ type GateJob struct {
 	ReadyAt               time.Time
 	FirstFailedAt         *time.Time
 	PostMaintRefresh      *incidents.PlannedOutageRefreshRequest
+	DeferOfflineObserve   bool
+	ConfirmTracker        *cycleConfirmTracker
 	JobProbe              GateProbeFunc
 	SkipCompletionHandler bool
 	slotAcquiredChan      chan struct{}
@@ -233,6 +235,8 @@ func (g *UnifiedNVRSessionGate) removeMainQueueCameraLocked(cid uuid.UUID) {
 	for _, item := range g.mainQueue {
 		if item.CCTV.ID != cid {
 			out = append(out, item)
+		} else if item.CompletionNotifyChan != nil {
+			close(item.CompletionNotifyChan)
 		}
 	}
 	g.mainQueue = out
@@ -304,6 +308,8 @@ func (g *UnifiedNVRSessionGate) removeQueuedCameraLocked(cid uuid.UUID) {
 		for _, item := range slice {
 			if item.CCTV.ID != cid {
 				out = append(out, item)
+			} else if item.CompletionNotifyChan != nil {
+				close(item.CompletionNotifyChan)
 			}
 		}
 		return out
@@ -322,6 +328,10 @@ func (g *UnifiedNVRSessionGate) Close() {
 	}
 	g.cond.Broadcast()
 	g.mu.Unlock()
+}
+
+func (g *UnifiedNVRSessionGate) ClosedChan() <-chan struct{} {
+	return g.closedChan
 }
 
 // RunDispatcher menjalankan loop penjadwalan tunggal yang mematuhi:
