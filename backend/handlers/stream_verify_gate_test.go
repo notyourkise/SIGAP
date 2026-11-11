@@ -692,9 +692,10 @@ func TestRunStreamVerifyCycleDefersSharedNVRObservationsAcrossConfirmRetry(t *te
 		}
 		observeSingleObservationFn = func(_ context.Context, _ *gorm.DB, obs incidents.CameraObservation) error {
 			obsMu.Lock()
-			if obs.State == incidents.StateOffline {
+			switch obs.State {
+			case incidents.StateOffline:
 				singleOfflineObs = append(singleOfflineObs, obs)
-			} else if obs.State == "live" {
+			case models.StreamStateLive:
 				singleLiveObs = append(singleLiveObs, obs)
 			}
 			obsMu.Unlock()
