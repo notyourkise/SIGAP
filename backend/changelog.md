@@ -1,5 +1,26 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-11 - Perbaikan Archive Uploads Kosong pada Alpine BusyBox Backup (#153, #148)
+
+### Perbaikan `tar: empty archive` di `scripts/backup.sh` & Pembersihan Bind-Mount Aman di `scripts/restore.sh`
+
+**Sebelum (Before)**:
+- Saat direktori `uploads/` kosong atau belum tersedia di dalam container `sigap_backup` (`postgres:15-alpine`, BusyBox `tar`), perintah `tar -czf "${UPLOADS_FILE}" --files-from /dev/null` pada `scripts/backup.sh` gagal dengan error `tar: empty archive` dan membatalkan backup di bawah `set -euo pipefail`.
+- `scripts/restore.sh` menghapus folder tujuan memakai `rm -rf "${UPLOADS_DIR}"`, yang berisiko gagal (`Device or resource busy`) bila `/app/uploads` adalah bind-mount container.
+
+**Sesudah (After)**:
+- Memperbarui `scripts/backup.sh` agar menormalisasi path dan mengarsipkan direktori `<nama_uploads>/` secara langsung saat direktori ada (termasuk kondisi kosong), atau membuat direktori kosong sementara di `/tmp` lalu menghapusnya setelah archive dibuat bila path tidak ada.
+- Memperbarui `scripts/restore.sh` agar mengosongkan isi `${UPLOADS_DIR}` menggunakan `find "${UPLOADS_DIR_CLEAN}" -mindepth 1 -delete` tanpa mencoba menghapus mountpoint-nya.
+
+timestamp: 2026-11-11 18:05 WITA
+kategori: Kecil, Infra + Backup
+file yang diubah:
+- backend/changelog.md
+- scripts/backup.sh
+- scripts/restore.sh
+
+alasan perubahan: Memastikan eksekusi container `sigap_backup` berjalan sukses tanpa error pada lingkungan baru dengan folder uploads kosong serta restore tetap aman pada bind-mount.
+
 ## [Unreleased] - 2026-11-11 - Audit Kualitas Data Koordinat, Hardening Keamanan Residual & Sinkronisasi Dokumentasi (#151, #152, #153)
 
 ### Audit Kualitas Koordinat (#151), Hardening `/api/metrics` & Backup GPG (#153), serta Sinkronisasi Dokumentasi (#152)

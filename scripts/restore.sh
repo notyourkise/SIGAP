@@ -159,12 +159,15 @@ if [ -n "${UPLOADS_ARCHIVE}" ]; then
   # Decrypt jika perlu.
   TEMP_UPLOADS=$(decrypt_if_needed "${UPLOADS_ARCHIVE}" "uploads")
 
-  # Bersihkan folder uploads lama (buat kembali) agar tidak ada file yatim.
-  rm -rf "${UPLOADS_DIR}"
-  mkdir -p "${UPLOADS_DIR}"
+  # Bersihkan isi folder uploads lama tanpa menghapus direktori mountpoint
+  # (mencegah error Device or resource busy pada container bind-mount).
+  UPLOADS_DIR_CLEAN="${UPLOADS_DIR%/}"
+  [ -z "${UPLOADS_DIR_CLEAN}" ] && UPLOADS_DIR_CLEAN="/"
+  mkdir -p "${UPLOADS_DIR_CLEAN}"
+  find "${UPLOADS_DIR_CLEAN}" -mindepth 1 -delete
 
   # Ekstrak archive. Skrip backup membuat struktur relatif '<nama uploads>'.
-  tar -xzf "${TEMP_UPLOADS}" -C "$(dirname "${UPLOADS_DIR}")"
+  tar -xzf "${TEMP_UPLOADS}" -C "$(dirname "${UPLOADS_DIR_CLEAN}")"
   log "Uploads restored dari '${UPLOADS_ARCHIVE}' ke '${UPLOADS_DIR}'."
 else
   log "Argumen uploads tidak diberikan — melewati restore uploads."
