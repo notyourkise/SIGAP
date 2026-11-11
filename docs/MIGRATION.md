@@ -3,7 +3,7 @@
 > Prosedur migrasi database SIGAP menggunakan **golang-migrate v4** dengan driver
 > PostgreSQL (pgx v5). Dokumentasi ini menjelaskan cara kerja, penggunaan CLI,
 > penambahan migration baru, serta pemulihan saat migration gagal.
-> Diperbarui: 2026-08-06 (Task 7.1, Fase 7 Kesiapan Produksi).
+> Diperbarui: 2026-11-11 (sinkronisasi jumlah migration aktual: **35 pasangan file** `000001`–`000035`).
 
 ---
 
@@ -26,9 +26,10 @@ startup.
 
 ```
 backend/migrations/
-├── migrations.go                  # embed FS (memuat *.sql ke binary)
-├── 000001_init_schema.up.sql      # skema awal: 10 tabel + index + FK
-└── 000001_init_schema.down.sql    # rollback skema awal
+├── migrations.go                          # embed FS (memuat *.sql ke binary)
+├── 000001_init_schema.up.sql              # skema awal: 10 tabel + index + FK
+├── 000001_init_schema.down.sql            # rollback skema awal
+└── ... (total 35 pasangan s.d. 000035_field_maintenance_idempotency.{up,down}.sql)
 ```
 
 Konvensi penamaan golang-migrate (wajib):

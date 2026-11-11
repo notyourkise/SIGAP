@@ -1,7 +1,7 @@
 # ROADMAP — SIGAP
 
 > Rencana pengembangan SIGAP — dari perbaikan keamanan hingga streaming CCTV real-time.
-> Disusun: 2026-08-01 · Diperbarui: 2026-08-20 (sinkronisasi status roadmap + multi-site isolation & security fixes)
+> Disusun: 2026-08-01 · Diperbarui: 2026-11-11 (sinkronisasi status rilis pasca Sprint hardening #139–#155 & PR audit #151/#152/#153)
 
 ## Visi & Prinsip Prioritas
 
@@ -38,23 +38,23 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 | **14** | **CCTV Intelligence — Live Status & AI Takedown** | **Sprint 37 ✅ · Sprint 37-PATCH ✅ · Sprint 40 ✅** | **✅ Selesai** |
 | **15** | **Branding & Dokumentasi** | **1/1** | **✅ Selesai** |
 
-> **Update Terbaru 2026-08-20**: 
-> - **Fase 12 (Integrasi & Skalabilitas)**: Multi-Site Isolation (Task 12.2) selesai ✅ — semua 4 task dalam Fase 12 telah diselesaikan.
-> - **Security Hardening**: 3 critical vulnerabilities patched (hardcoded NVR credentials, public metrics endpoint exposure, unencrypted backups).
-> - **Manual Test Governance**: Dokumen testing formal v2 diorganisir ke `docs/Testing-Manual-V2/`.
-> - **Git Workflow Compliance**: Seluruh fitur dikembangkan menggunakan Conventional Commits + PR review process.
+> **Update Terbaru 2026-11-11 (Hardening, Observabilitas, & Release Gate):** 
+> - **Fase 12–15**: Implementasi fitur inti selesai ✅, dilanjutkan sprint hardening backlog **#139–#155** dan PR **#151/#152/#153** (isolasi site Log CCTV & WebSocket, trusted proxy `X-Forwarded-For`, timezone `Asia/Makassar`, retensi log 90 hari + deduplikasi, diagnostik Metro-E, metrik Prometheus + alert, CI/E2E Playwright, allowlist CIDR `/api/metrics`, enkripsi backup GPG headless, serta audit kualitas koordinat CCTV).
+> - **Status Release Gate Saat Ini**: **Staging / Pre-Release Pilot** (belum dinyatakan production ready sampai gate manual test `#147` [Bug 4, 8, 21 — `docs/README.md` saat ini `22/25`], deployment & smoke test VPS `#148`, serta survei koordinat fisik 9 titik `#151` selesai atau risikonya disetujui tertulis).
+> - **Manual Test Governance**: Dokumen testing formal terkelola di `docs/04-manual-tests/`.
 > 
 > ```
-> Fase 1–15 ✅ (semua fase roadmap utama selesai)
+> Fase 1–15 + Sprint Hardening (#139–#155, #151–#153) ✅ (implementasi kode & uji otomatis selesai)
 >     │
 >     ▼
-> Status saat ini: Production Ready ✅
+> Status saat ini: Staging / Pre-Release Pilot 🚧
 >     │
->     ├── Multi-Site Isolation operational
->     ├── Security compliance achieved
->     ├── Backup encryption enabled
->     ├── Metrics protection enforced
->     └── Documentation governance complete
+>     ├── Multi-Site Isolation & WebSocket Scoping aktif ✅
+>     ├── Trusted Proxy (Nginx -> API) & /api/metrics CIDR Allowlist ✅
+>     ├── Backup Encryption GPG AES-256 (ENCRYPT_BACKUPS=true) ✅
+>     ├── Coordinate Quality Audit Report & CSV Export (#151) ✅ (9 titik THD fisik pending)
+>     ├── Gate Manual Test Bug 4, 8, 21 (#147: 22/25) ⏳ Menunggu verifikasi
+>     └── Production VPS Deployment & Smoke Test (#148) ⏳ Menunggu jendela rilis
 > ```
 
 > **Urutan pengerjaan:**
@@ -343,9 +343,9 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 | # | Pertanyaan | Keputusan |
 |---|-----------|----------|
-| 1 | Network Access | VPS Hostinger (cloud). Port RTSP `554` pada IP Publik `36.91.27.35` dibuka oleh tim jaringan OIKN. |
+| 1 | Network Access | VPS Hostinger (cloud). Port RTSP `554` pada IP Publik NVR (`<NVR_IP>`) dibuka oleh tim jaringan OIKN. |
 | 2 | Bandwidth | **Sub Stream (02)** default (~0.5–1 Mbps/stream). Toggle opsional ke Main Stream (01). |
-| 3 | Kredensial NVR | 1 NVR (`36.91.27.35:554`), 35 kamera, credential tunggal. Password AES-256 encrypted di DB. |
+| 3 | Kredensial NVR | 1 NVR (`<NVR_IP>:554`), 35 kamera, credential tunggal. Password AES-256 encrypted di DB. |
 | 4 | Encoding | **H.264 wajib**. MediaMTX relay only — **zero transcoding** (tanpa FFmpeg). |
 | 5 | Akses Viewer | **Admin Only** — `middleware.RequireRole("admin")`. |
 | 6 | Retention | **Live View saja** — rekaman tetap di NVR Hikvision lokal. |
@@ -363,7 +363,7 @@ kapabilitas** dan **kesiapan produksi**. Prinsip:
 
 ```
 Hikvision NVR          MediaMTX (Docker)       Nginx             Browser
-36.91.27.35:554   ◄── RTSP pull on-demand ──  :8889 HTTP  ──►  /stream/*  ──►  WebRTC/WHEP
+<NVR_IP>:554     ◄── RTSP pull on-demand ──  :8889 HTTP  ──►  /stream/*  ──►  WebRTC/WHEP
 35 kamera (H.264)      :8554 RTSP internal      :443 TLS         <video> element
 CH 1–35, Sub Stream    :9997 REST API           reverse proxy     Admin Only
 ```
@@ -943,7 +943,7 @@ Walau STREAM_DOWN di-broadcast, marker tidak berubah warna
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         FASE 14 ARCHITECTURE                         │
 │                                                                      │
-│  NVR Hikvision (36.91.27.35:554)                                     │
+│  NVR Hikvision (<NVR_IP>:554)                                        │
 │         │                                                            │
 │         │ RTSP pull (per channel)                                    │
 │         ▼                                                            │
@@ -1316,7 +1316,7 @@ grep "sigap_ai" docker-compose.yml
 
 ## Pemetaan 35 Kamera (Referensi Konfigurasi Streaming)
 
-Semua kamera: `rtsp://admin:***@36.91.27.35:554/Streaming/channels/{ChannelID}`
+Semua kamera: `rtsp://admin:***@<NVR_IP>:554/Streaming/channels/{ChannelID}`
 
 | # | Channel Port | Sub Stream ID | Main Stream ID |
 |---|-------------|---------------|----------------|

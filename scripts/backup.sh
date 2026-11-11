@@ -45,6 +45,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 # Enkripsi backup (opsional tapi disarankan di production).
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-}"
 ENCRYPT_BACKUPS="${ENCRYPT_BACKUPS:-false}"
+DELETE_RAW_AFTER_ENCRYPT="${DELETE_RAW_AFTER_ENCRYPT:-false}"
 
 # Timestamp WITA (UTC+8) untuk penamaan file backup.
 TIMESTAMP="$(TZ=Asia/Makassar date +%Y%m%d_%H%M%S)"
@@ -73,19 +74,30 @@ fi
 log "Database backup selesai -> ${DB_FILE} ($(du -h "${DB_FILE}" | cut -f1))"
 
 # --- Encrypt Database Backup (optional) ---
-if [ "${ENCRYPT_BACKUPS}" = "true" ] && [ -n "${ENCRYPTION_KEY}" ]; then
-  log "Mengenkripsi database backup dengan AES-256 ..."
-  echo "${ENCRYPTION_KEY}" | gpg --batch --yes --passphrase-fd 0 --symmetric --cipher-algo AES256 \
-    --output "${DB_ENCRYPTED}" "${DB_FILE}"
-  if [ $? -eq 0 ]; then
-    log "Database backup terenkripsi -> ${DB_ENCRYPTED} ($(du -h "${DB_ENCRYPTED}" | cut -f1))"
-    # Hapus file raw setelah enkripsi berhasil (opsional, uncomment untuk security lebih)
-    # rm -f "${DB_FILE}"
-  else
-    log "❌ Enkripsi gagal; backup tetap dalam format RAW"
+if [ "${ENCRYPT_BACKUPS}" = "true" ]; then
+  if [ -z "${ENCRYPTION_KEY}" ]; then
+    log "❌ Enkripsi diaktifkan (ENCRYPT_BACKUPS=true) tetapi ENCRYPTION_KEY kosong; membatalkan backup (fail-closed)"
+    rm -f "${DB_FILE}"
+    exit 1
   fi
-elif [ "${ENCRYPT_BACKUPS}" = "true" ] && [ -z "${ENCRYPTION_KEY}" ]; then
-  log "⚠️  Enkripsi diaktifkan tapi ENCRYPTION_KEY tidak diset; skip enkripsi"
+  if ! command -v gpg >/dev/null 2>&1; then
+    log "❌ Enkripsi diaktifkan tetapi biner 'gpg' tidak tersedia"
+    rm -f "${DB_FILE}"
+    exit 1
+  fi
+  log "Mengenkripsi database backup dengan AES-256 ..."
+  if printf '%s' "${ENCRYPTION_KEY}" | gpg --batch --yes --pinentry-mode loopback \
+    --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+    --output "${DB_ENCRYPTED}" "${DB_FILE}"; then
+    log "Database backup terenkripsi -> ${DB_ENCRYPTED} ($(du -h "${DB_ENCRYPTED}" | cut -f1))"
+    if [ "${DELETE_RAW_AFTER_ENCRYPT}" = "true" ]; then
+      rm -f "${DB_FILE}"
+      log "File raw dihapus setelah enkripsi -> ${DB_FILE}"
+    fi
+  else
+    log "❌ Enkripsi database backup gagal"
+    exit 1
+  fi
 else
   log "Enkripsi dinonaktifkan; backup tetap dalam format RAW (tidak aman untuk off-site)"
 fi
@@ -103,19 +115,20 @@ else
 fi
 
 # --- Encrypt Uploads Backup (optional) ---
-if [ "${ENCRYPT_BACKUPS}" = "true" ] && [ -n "${ENCRYPTION_KEY}" ]; then
+if [ "${ENCRYPT_BACKUPS}" = "true" ]; then
   log "Mengenkripsi uploads backup dengan AES-256 ..."
-  echo "${ENCRYPTION_KEY}" | gpg --batch --yes --passphrase-fd 0 --symmetric --cipher-algo AES256 \
-    --output "${UPLOADS_ENCRYPTED}" "${UPLOADS_FILE}"
-  if [ $? -eq 0 ]; then
+  if printf '%s' "${ENCRYPTION_KEY}" | gpg --batch --yes --pinentry-mode loopback \
+    --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+    --output "${UPLOADS_ENCRYPTED}" "${UPLOADS_FILE}"; then
     log "Uploads backup terenkripsi -> ${UPLOADS_ENCRYPTED} ($(du -h "${UPLOADS_ENCRYPTED}" | cut -f1))"
-    # Hapus file raw setelah enkripsi berhasil (opsional)
-    # rm -f "${UPLOADS_FILE}"
+    if [ "${DELETE_RAW_AFTER_ENCRYPT}" = "true" ]; then
+      rm -f "${UPLOADS_FILE}"
+      log "File raw uploads dihapus setelah enkripsi -> ${UPLOADS_FILE}"
+    fi
   else
-    log "❌ Enkripsi gagal; backup tetap dalam format RAW"
+    log "❌ Enkripsi uploads backup gagal"
+    exit 1
   fi
-elif [ "${ENCRYPT_BACKUPS}" = "true" ] && [ -z "${ENCRYPTION_KEY}" ]; then
-  log "⚠️  Enkripsi diaktifkan tapi ENCRYPTION_KEY tidak diset; skip enkripsi"
 else
   log "Enkripsi dinonaktifkan; backup tetap dalam format RAW (tidak aman untuk off-site)"
 fi

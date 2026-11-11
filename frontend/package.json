@@ -13,7 +13,8 @@
     "test:live": "node --no-warnings --experimental-strip-types --test tests/live-status.test.mts",
     "test:monitor": "node --no-warnings --experimental-strip-types --test tests/monitor-cctv.test.mts",
     "test:encoding": "node --no-warnings --experimental-strip-types --test tests/text-encoding.test.mts",
-    "test:site-switcher": "node --no-warnings --experimental-strip-types --test tests/site-switcher.test.mts"
+    "test:site-switcher": "node --no-warnings --experimental-strip-types --test tests/site-switcher.test.mts",
+    "test:coords": "node --no-warnings --experimental-strip-types --test tests/coordinate-quality.test.mts"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",

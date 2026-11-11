@@ -26,6 +26,7 @@ func SetupCCTVRoutes(router fiber.Router) {
 	// Rute baca & operasional terautentikasi (admin & teknisi).
 	// Rute statis didaftarkan sebelum rute dinamis /:id (gotcha Fiber route ordering).
 	cctvGroup.Get("/logs", protected, siteMiddleware, handlers.GetCCTVStreamLogs)
+	cctvGroup.Get("/coordinate-quality", protected, siteMiddleware, handlers.GetCCTVCoordinateQuality)
 	cctvGroup.Get("/template", protected, siteMiddleware, handlers.DownloadTemplateCCTV)
 	cctvGroup.Post("/scan", protected, siteMiddleware, handlers.ScanCCTV)
 	cctvGroup.Get("/:id/qrcode", protected, siteMiddleware, handlers.GetCCTVQRCode)

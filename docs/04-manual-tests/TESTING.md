@@ -1,8 +1,7 @@
 # TESTING — Backend SIGAP
 
 > Status pengujian backend dan cakupan lanjutan Fase 4.1.
-> Diperbarui: 2026-08-20 (Task 1A: regression lifecycle QR memastikan rotasi tetap menunjuk ID CCTV yang sama, scanner menolak payload lama, dan service worker tidak menyimpan/menyajikan QR atau respons `no-store`). Sebelumnya diperbarui 2026-08-13 (Sprint 40: AI Feature Takedown — matriks & gotchas `handlers/ai_test.go` dihapus karena test AI detection di-remove dari codebase; total file test 65 → 64). 
-> **Update Terbaru 2026-08-20**: Security Hardening patches (metrics IP allowlist protection, backup encryption via GPG, NVR credential removal); Multi-Site Isolation tests added (site context middleware + handlers). Total file test meningkat menjadi 67 (+3 files baru). Manual Test V2 organization di `docs/Testing-Manual-V2/`.
+> Diperbarui: 2026-11-11 (sinkronisasi PR hardening `#139`–`#155`, `#151` audit kualitas koordinat, & `#153` keamanan residual: total **104 file `*_test.go`** di backend + 8 suite unit test frontend + E2E Playwright `e2e/tests/ops-regression.spec.ts`). Sebelumnya diperbarui 2026-08-20 (Task 1A QR lifecycle & Security Hardening patches) dan 2026-08-13 (Sprint 40 AI Feature Takedown).
 
 ## Tata Kelola Manual/Black-box
 
@@ -276,6 +275,20 @@ test** (19 utils, 8 middleware, 42 handlers, 3 models, 6 config, 3 routes,
 **83 file test** (19 utils, 8 middleware, 43 handlers, 3 models, 6 config,
 3 routes, 1 monitoring).
 
+### Matriks Diagnostik, Observabilitas, Kualitas Koordinat, Hardening & E2E (PR #150–#155, #187–#191, 2026-11-11)
+
+| Layer / File Test | Issue | Yang Diuji |
+|---|---|---|
+| `handlers/stream_metro_e_diagnostic_test.go` | #150 | `CheckMetroEReachabilityAtStartup`, fallback pasif saat rute Metro-E tak terjangkau, `GET /api/streams/diagnostics`, pencegahan status `offline` palsu |
+| `handlers/stream_observability_test.go`, `monitoring/metrics_test.go` | #154 | Redaksi kredensial RTSP di log/error MediaMTX, metrik event/verifikasi/offline kamera, alert aturan Prometheus |
+| `handlers/ops_regression_integration_test.go`, `routes/routes_test.go` | #155, #151 | Isolasi multi-site via stack middleware penuh, anti-spoofing XFF, batas hari WITA, retensi log, `GET /api/cctv-logs`, serta urutan rute statis `GET /api/cctv/coordinate-quality` sebelum `/:id` |
+| `handlers/cctv_coordinate_quality_test.go` | #151 | Deteksi koordinat `missing`, `partial`, `invalid` (NaN/Inf/out-of-range), `zero`, `estimated`, dan `duplicate`; skor kelengkapan/verifikasi, `pending_legacy_codes`, ekspor CSV tahan formula injection tanpa mengubah angka negatif, isolasi site, serta zero kebocoran RTSP/QR |
+| `middleware/metrics_test.go` (diperluas) | #153 | Matriks CIDR allowlist (`127.0.0.0/8`, `::1`, `172.16.0.0/12`), penolakan IP publik (`203.0.113.10`, `0.0.0.0`), IPv4-mapped IPv6, serta penolakan spoofing `X-Forwarded-For` tanpa trusted proxy |
+| `frontend/tests/coordinate-quality.test.mts`, `site-switcher.test.mts`, `live-status.test.mts` | #151, #191 | Filter grup masalah koordinat, konsistensi label `SiteSwitcher` berbasis peran + cookie, serta transisi badge status live tanpa regresi |
+| `e2e/tests/ops-regression.spec.ts` | #151, #153, #155 | Browser E2E via Nginx TLS: isolasi multi-site, blokir `404` pada `/api/metrics`, `/api/test-panic`, `/swagger/index.html`, verifikasi CSV/JSON `/api/cctv/coordinate-quality` & modal UI Kualitas Koordinat |
+
+**Total Backend Aktual (2026-11-11):** **104 file `*_test.go`** across packages (`aiassistant`, `config`, `handlers`, `incidents`, `middleware`, `models`, `monitoring`, `routes`, `utils`), termasuk modul insiden & asisten AI.
+
 ### Matriks Streaming (Fase 9)
 
 Ringkasan cakupan test streaming CCTV real-time:
@@ -483,15 +496,15 @@ Prioritas lanjutan:
 - Core Features tests (CCTV, maintenance, health score, geotag, etc.)
 - Infrastructure tests (backup, streaming, snapshot, etc.)
 
-### Security Fixes Coverage (2026-08-20 Patch)
+### Security Fixes Coverage (2026-08-20 → 2026-11-11 Hardening)
 
-Tiga critical vulnerabilities telah ditangani:
+Kerentanan dan hardening residual yang telah ditangani di codebase:
 
-| Fix | Vulnerability | Status | Test Coverage |
-|-----|---------------|--------|--------------|
-| **#1** | Hardcoded NVR Credential Exposure | ✅ Patched | Unit tests verify `rtsp_password` excluded; code review confirms no plain-text in source/docs |
-| **#2** | Metrics Endpoint Public Access | ✅ Patched | New middleware test `IsTrustedMetricsAccess` (localhost/Docker network allowlist) |
-| **#3** | Unencrypted Backup Storage | ✅ Patched | Manual test V2 blackbox scenarios for encryption/decryption workflow (6+ scenarios) |
+| Fix | Vulnerability / Hardening | Status | Test Coverage |
+|-----|---------------------------|--------|--------------|
+| **#1** | Hardcoded NVR Credential Removal & Log Redaction | ✅ Code Patched; ⏳ Physical NVR rotation by infra | `cctv_test.go` & `m15_nested_rtsp_redaction_test.go` verifikasi `rtsp_password`/`rtsp_url` dikecualikan; `rtsp_test.go` pakai IP RFC 5737 `192.0.2.10`; redaksi RTSP di log MediaMTX |
+| **#2** | Metrics Endpoint Public Access (#153) | ✅ Patched | `middleware/metrics_test.go` verifikasi CIDR allowlist & anti-spoofing XFF; `ops-regression.spec.ts` uji `404` via Nginx TLS |
+| **#3** | Unencrypted Backup Storage & Alpine GPG (#153) | ✅ Container/Script Patched; ⏳ Off-site VPS sync (#148) | `backup/Dockerfile` menyertakan `gnupg`; `backup.sh`/`restore.sh` mendukung `--pinentry-mode loopback`, `DELETE_RAW_AFTER_ENCRYPT`, & restore aman; skenario V2 blackbox di `manual-test-backup-encryption-v2.md` |
 
 ---
 

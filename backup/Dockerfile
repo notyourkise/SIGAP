@@ -12,8 +12,9 @@
 # ==========================================
 FROM postgres:15-alpine
 
-# dcron (cron untuk Alpine) — pengganti busybox crond yang lebih stabil di foreground.
-RUN apk add --no-cache dcron bash
+# dcron (cron untuk Alpine) — pengganti busybox crond yang lebih stabil di foreground,
+# gnupg — enkripsi/dekripsi AES-256 backup (.gpg) saat ENCRYPT_BACKUPS=true.
+RUN apk add --no-cache dcron bash gnupg
 
 # Salin skrip backup/restore & entrypoint.
 COPY scripts/backup.sh /usr/local/bin/backup.sh

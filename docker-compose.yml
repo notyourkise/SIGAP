@@ -255,6 +255,9 @@ services:
       UPLOADS_DIR: /app/uploads
       BACKUP_DIR: /backups
       RETENTION_DAYS: "7"
+      ENCRYPT_BACKUPS: ${ENCRYPT_BACKUPS:-false}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      DELETE_RAW_AFTER_ENCRYPT: ${DELETE_RAW_AFTER_ENCRYPT:-false}
       TZ: Asia/Makassar
       CRON_SCHEDULE: ${CRON_SCHEDULE:-0 6 * * *}
     volumes:

@@ -40,6 +40,7 @@ func TestCCTVRoutesRegisterProtectedPaths(t *testing.T) {
 		method string
 		path   string
 	}{
+		{"GET", "/cctv/coordinate-quality"},
 		{"GET", "/cctv/template"},
 		{"POST", "/cctv/scan"},
 		{"GET", "/cctv/" + id + "/qrcode"},
@@ -346,5 +347,42 @@ func TestSetupCCTVRoutes_TechnicianCCTVLogsNoPrefixLeak(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, fiber.StatusForbidden, adminMutResp.StatusCode)
 	assert.Contains(t, string(bodyBytes), "Peran Anda tidak memiliki izin")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSetupCCTVRoutes_CoordinateQualityStaticRouteAndIsolation memverifikasi
+// rute statis /cctv/coordinate-quality terdaftar sebelum /:id (tidak dianggap
+// UUID invalid) dan menerapkan fail-closed 403 bagi teknisi tanpa site.
+func TestSetupCCTVRoutes_CoordinateQualityStaticRouteAndIsolation(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
+	require.NoError(t, err)
+	prevDB := config.DB
+	config.DB = gormDB
+	t.Cleanup(func() { config.DB = prevDB })
+
+	techID := uuid.NewString()
+	token, err := utils.GenerateToken(techID, "teknisi", 1)
+	require.NoError(t, err)
+
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WithArgs(techID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
+	mock.ExpectQuery(`FROM "sites" JOIN user_sites`).
+		WithArgs(techID, 1).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	app := fiber.New()
+	api := app.Group("/api")
+	SetupCCTVRoutes(api)
+
+	req := httptest.NewRequest("GET", "/api/cctv/coordinate-quality", nil)
+	req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
