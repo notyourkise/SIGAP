@@ -763,6 +763,7 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 			return true, initial.BytesReceived, 0, false
 		}
 		b1 := initial.BytesReceived
+		lastBytes := b1
 		maxAttempts := 1
 		if b1 == 0 {
 			// Kamera RTSP yang baru dibuka on-demand dapat menunda IDR pertama hingga ~1s GOP setelah handshake PLAY.
@@ -772,17 +773,18 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 			time.Sleep(streamVerifyByteWindow)
 			after, gErr := streamClient.GetPath(path)
 			if gErr != nil {
-				return false, b1, 0, true
+				return false, lastBytes, 0, true
 			}
+			lastBytes = after.BytesReceived
 			if !after.SourceReady() || len(after.Tracks) == 0 {
-				return false, after.BytesReceived, 0, false
+				return false, lastBytes, 0, false
 			}
 			d := after.BytesReceived - b1
 			if d > 0 {
 				return true, after.BytesReceived, d, false
 			}
 		}
-		return false, 0, 0, false
+		return false, lastBytes, 0, false
 	}
 
 	// Path yang sudah menyala tidak perlu dipicu ulang.
