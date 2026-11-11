@@ -4,13 +4,12 @@ Dokumen ini menjadi daftar utama untuk melanjutkan pemeriksaan dan perbaikan 25 
 
 ## Lingkungan Pengujian
 
-- Lokasi proyek: `D:\SIGAP\SIGAP`
-- Branch: `bugfix/25manualtest`
-- Lingkungan: **lokal Windows**
-- Backend lokal: `http://127.0.0.1:3000`
-- Frontend lokal: `http://127.0.0.1:3001`
-- Docker, VPS, server teman, dan deployment `nexaspace.site`: **tidak digunakan dan tidak diubah**
-- Verifikasi terakhir: 28 September 2026 (WITA)
+- Lokasi proyek: `d:\laragon\www\SIGAP`
+- Branch: `main`
+- Lingkungan: **lokal Windows + Docker Desktop (Nginx TLS)**
+- Entrypoint resmi Docker: `https://localhost` (backend internal `:3000`, frontend internal `:3000`)
+- Verifikasi terakhir baseline: 28 September 2026 (WITA); pembaruan sinkronisasi status: 11 November 2026 (WITA)
+- Target production (`nexaspace.site`): **belum dieksekusi** (menunggu gate manual test `#147` dan runbook `#148`)
 
 ## Arti Status
 

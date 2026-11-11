@@ -4,8 +4,8 @@
 |------|--------|
 | **Issue** | #148 (P1 - Deployment dan smoke test production) |
 | **Branch** | `docs/release-gate-runbooks` |
-| **Versi acuan** | Backend `0.64.38`, Frontend `1.55.37`, migration terakhir `000029` |
-| **Tanggal dokumen** | 2026-10-28 |
+| **Versi acuan** | Backend `0.65.x` (`main` pasca Sprint hardening #139-#155 & #151/#152/#153), Frontend `1.55.46+`, migration terakhir `000035` |
+| **Tanggal dokumen** | 2026-10-28 (disinkronkan 2026-11-11) |
 | **Status** | **BELUM DIEKSEKUSI** — runbook ini harus dijalankan dan diisi buktinya |
 
 ---
@@ -34,12 +34,11 @@ Runbook ini mencakup deployment production SIGAP setelah merge backlog
 | Migration `000027_stream_verification` | Kolom `stream_verified_state`, `stream_verified_at`, `stream_verified_method`, `stream_verify_failures`, `stream_verify_error` pada `cctvs` | Aditif; aplikasi lama tetap dapat berjalan (kolom baru diabaikan) |
 | Migration `000028_cctv_stream_logs` | Tabel `cctv_stream_logs` + index | Aditif; rollback menghapus seluruh riwayat log (destruktif) |
 | Migration `000029_cctv_stream_logs_indexes` | Index komposit `(cctv_id, created_at)` dan `(event_type, created_at)`; index kolom tunggal dihapus | Rollback mengembalikan index kolom tunggal; tidak menghapus data |
-| Backend `0.64.34`-`0.64.38` | Regression test keamanan, timezone WITA, retensi log, validasi event, kebijakan standby/dedup | Perlu rebuild image API |
-| Frontend `1.55.36`-`1.55.37` | Filter/pencarian Log CCTV, URL state, retry, empty state | Perlu rebuild image frontend |
+| Migration `000030`–`000035` | `checklist_template` + integritas jadwal (`000030`, `000032`, `000033`), modul insiden & telemetri (`000031`, `000034`), serta `client_request_id` idempotensi field maintenance (`000035`) | Aditif; kompatibel maju dan diperlukan sebelum mengaktifkan fitur insiden |
+| Backend & Security Hardening (#139–#155, #151–#153) | Isolasi site, trusted proxy, timezone WITA, retensi log, diagnostik Metro-E, observabilitas Prometheus, audit kualitas koordinat, dan allowlist CIDR `/api/metrics` | Perlu rebuild image API |
+| Frontend `1.55.36`–`1.55.46+` | Filter/pencarian Log CCTV, modal Kualitas Koordinat, sinkronisasi label `SiteSwitcher`, halaman insiden, kompatibilitas H.265/snapshot | Perlu rebuild image frontend |
 
-Catatan: issue #148 menyebut migrasi 27 dan 28. Sejak #144, migration terakhir
-adalah **29**; deployment harus menerapkan sampai versi terbaru yang ada di
-branch `main`.
+Catatan: issue #148 semula menyebut migrasi 27 dan 28. Migration terbaru saat ini berada pada **000035** (`schema_migrations.version = 35`); deployment wajib menerapkan seluruh migration terbaru yang ada di branch `main`.
 
 ---
 
@@ -95,11 +94,13 @@ Periksa `backend/.env.docker` dan root `.env` (jangan commit nilainya):
 | `TRUSTED_PROXY_IPS` | `172.28.0.10` | Hanya Nginx yang boleh mengirim XFF; jangan longgarkan |
 | `CCTV_VERIFY_INTERVAL_MINUTES` | `15` | Nilai valid 5-30; di luar itu fallback 15 |
 | `CCTV_VERIFY_CONCURRENCY` | `1` | Nilai valid 1-4; naikkan hanya bila NVR kuat |
-| `CCTV_METRO_E_DIRECT_PROBE` | `false` | `true` hanya bila host benar-benar punya rute ke `10.20.105.x` |
+| `CCTV_METRO_E_DIRECT_PROBE` | `false` | `true` hanya bila host benar-benar punya rute ke `10.20.105.x` (mencegah offline palsu) |
 | `MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS` | `<domain-publik>` | Wajib; jangan `172.28.x.x`/`localhost` |
 | `CCTV_STREAM_LOG_RETENTION_DAYS` | `90` | Kosong/invalid/`<=0` fallback 90 |
 | `CCTV_LOG_STANDBY_EVENTS` | `false` | Aktifkan hanya untuk audit sementara |
-| `CCTV_METRO_E_DIRECT_PROBE` | `false` | Menghindari offline palsu bila tidak ada rute |
+| `ENCRYPT_BACKUPS` | `true` | Wajib di production untuk enkripsi GPG AES-256 (`ENCRYPTION_KEY` diisi) |
+| `DELETE_RAW_AFTER_ENCRYPT` | `true` *(opsional)* | Menghapus raw `.sql.gz`/`.tar.gz` setelah `.gpg` sukses dibuat |
+| `CCTV_INCIDENTS_ENABLED` | `false` *(aktifkan bertahap pasca staging)* | Fitur monitoring insiden otomatis & notifikasi bot Telegram |
 | `LOG_LEVEL` | `info` | Jangan `debug` permanen di production |
 | `REDIS_PASSWORD` | secret | Harus sama di root `.env` dan backend |
 | `RTSP_NVR_HOST/PORT/USER` | secret/placeholder | Jangan tulis kredensial di dokumentasi |
@@ -123,8 +124,8 @@ docker compose config >/dev/null && echo "COMPOSE_OK"
 ### 5.1 Backup wajib
 
 ```bash
-# Dari root repository; sesuaikan dengan prosedur docs/BACKUP.md
-docker compose exec backup /scripts/backup.sh
+# Dari root repository; sesuaikan dengan prosedur docs/01-documentation/BACKUP.md
+docker compose exec backup /usr/local/bin/backup.sh
 ls -lh backups/
 ```
 
@@ -179,7 +180,7 @@ Verifikasi versi migration:
 SELECT version, dirty FROM schema_migrations;
 ```
 
-**Kriteria lulus:** `version = 29`, `dirty = false`. Bila `dirty = true`, hentikan
+**Kriteria lulus:** `version = 35` (atau versi terbaru di `main`), `dirty = false`. Bila `dirty = true`, hentikan
 deploy dan ikuti §8.
 
 Alternatif CLI (dari host yang memiliki Go dan akses DB):
@@ -280,7 +281,7 @@ Isi kolom bukti dengan tautan file/screenshot. Jalankan berurutan.
 
 - [ ] `docker compose ps` semua service `healthy`/`running`.
 - [ ] Error rate API tidak meningkat; tidak ada panic.
-- [ ] `schema_migrations.version = 29`, `dirty = false`.
+- [ ] `schema_migrations.version = 35` (terbaru di `main`), `dirty = false`.
 - [ ] Jumlah event log per tipe wajar; tidak ada lonjakan `standby`.
 - [ ] Kamera offline sesuai kondisi nyata, bukan massal.
 - [ ] Latensi API dan query log dalam batas normal.
@@ -390,7 +391,7 @@ Deploy dinyatakan **GO** hanya bila:
 
 - [ ] Preflight §3 lengkap.
 - [ ] Backup terverifikasi.
-- [ ] Migration `version=29`, `dirty=false`.
+- [ ] Migration `version=35` (terbaru di `main`), `dirty=false`.
 - [ ] Smoke test §6 nomor 1-24 lulus; nomor 25-27 mengikuti hasil #147.
 - [ ] Tidak ada 429 palsu.
 - [ ] Log dan status live tampil benar.

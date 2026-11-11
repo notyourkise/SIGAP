@@ -370,4 +370,170 @@ test.describe('SIGAP Ops Regression Suite (#155)', () => {
     expect(recorded?.ip_address).toBeTruthy();
     expect(recorded?.ip_address).not.toBe(spoofedIP);
   });
+
+  test('endpoint diagnostik tertutup lewat Nginx TLS (#153)', async () => {
+    const publicApi = await request.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true });
+    try {
+      for (const path of ['/api/metrics', '/api/metrics/', '/api/test-panic', '/swagger/index.html']) {
+        const res = await publicApi.get(path);
+        expect(res.status(), `${path} wajib 404 di Nginx`).toBe(404);
+      }
+    } finally {
+      await publicApi.dispose();
+    }
+  });
+
+  test('audit kualitas data koordinat CCTV terisolasi site, ekspor CSV, dan modal UI (#151)', async ({ browser }) => {
+    const suffix = `${Date.now()}`.slice(-6);
+    const siteCode = `CQ${suffix}`;
+    let siteId = '';
+    const createdCctvIds: string[] = [];
+    const browserCtx = await newAuthenticatedBrowserContext(browser, adminApi);
+
+    try {
+      const siteRes = await adminApi.post('/api/sites', {
+        headers: { 'X-CSRF-Token': adminCsrf },
+        data: {
+          nama: `Coord Quality Site ${suffix}`,
+          kode: siteCode,
+          alamat: 'Area Uji Koordinat',
+          is_default: false,
+        },
+      });
+      expect(siteRes.status()).toBe(201);
+      siteId = ((await siteRes.json()) as { data: { id: string } }).data.id;
+
+      const cameras = [
+        {
+          kode_cctv: `CQV-${suffix}`,
+          nama: `Cam Verified ${suffix}`,
+          lokasi_area: 'Zona A',
+          status: 'aktif',
+          latitude: -0.966111,
+          longitude: 116.720111,
+          keterangan: 'Sumber GPS terverifikasi',
+          site_id: siteId,
+        },
+        {
+          kode_cctv: `CQE-${suffix}`,
+          nama: `Cam Estimasi ${suffix}`,
+          lokasi_area: 'Zona B',
+          status: 'nonaktif',
+          latitude: -0.972125,
+          longitude: 116.710371,
+          keterangan: 'Koordinat: Estimasi area sekitar',
+          site_id: siteId,
+        },
+        {
+          kode_cctv: `CQD-${suffix}`,
+          nama: `Cam Duplikat ${suffix}`,
+          lokasi_area: 'Zona B',
+          status: 'aktif',
+          latitude: -0.972125,
+          longitude: 116.710371,
+          keterangan: 'Titik ganda',
+          site_id: siteId,
+        },
+        {
+          kode_cctv: `CQM-${suffix}`,
+          nama: `Cam Missing ${suffix}`,
+          lokasi_area: 'Zona C',
+          status: 'nonaktif',
+          keterangan: 'Belum disurvei',
+          site_id: siteId,
+        },
+      ];
+
+      for (const cam of cameras) {
+        const res = await adminApi.post('/api/cctv', {
+          headers: { 'X-CSRF-Token': adminCsrf },
+          data: cam,
+        });
+        expect(res.status(), `Gagal membuat kamera ${cam.kode_cctv}`).toBe(201);
+        const created = ((await res.json()) as { data: { id: string } }).data;
+        createdCctvIds.push(created.id);
+      }
+
+      // Verifikasi laporan kualitas koordinat terisolasi ke siteId
+      const qualityRes = await adminApi.get('/api/cctv/coordinate-quality', {
+        headers: { 'X-Site-ID': siteId },
+      });
+      expect(qualityRes.status()).toBe(200);
+      const qualityBody = (await qualityRes.json()) as {
+        status: string;
+        data: {
+          summary: {
+            total_count: number;
+            verified_count: number;
+            needs_attention_count: number;
+            missing_count: number;
+            estimated_count: number;
+            duplicate_count: number;
+          };
+          items: Array<Record<string, unknown>>;
+        };
+      };
+      expect(qualityBody.status).toBe('success');
+      expect(qualityBody.data.summary.total_count).toBe(4);
+      expect(qualityBody.data.summary.verified_count).toBe(1);
+      expect(qualityBody.data.summary.needs_attention_count).toBe(3);
+      expect(qualityBody.data.summary.missing_count).toBe(1);
+      expect(qualityBody.data.summary.estimated_count).toBe(1);
+      expect(qualityBody.data.summary.duplicate_count).toBe(2);
+      for (const item of qualityBody.data.items) {
+        expect(Object.prototype.hasOwnProperty.call(item, 'rtsp_url')).toBeFalsy();
+        expect(Object.prototype.hasOwnProperty.call(item, 'rtsp_password')).toBeFalsy();
+      }
+
+      // Verifikasi ekspor CSV kualitas koordinat
+      const csvRes = await adminApi.get('/api/cctv/coordinate-quality?format=csv', {
+        headers: { 'X-Site-ID': siteId },
+      });
+      expect(csvRes.status()).toBe(200);
+      expect(csvRes.headers()['content-type']).toContain('text/csv');
+      const csvText = await csvRes.text();
+      expect(csvText).toContain(`CQE-${suffix}`);
+      expect(csvText).toContain(`CQM-${suffix}`);
+
+      // Verifikasi modal UI pada /cctv
+      const page = await browserCtx.newPage();
+      const pageErrors: string[] = [];
+      const serverErrors: string[] = [];
+      page.on('pageerror', (err) => pageErrors.push(String(err)));
+      page.on('response', (res) => {
+        if (res.status() >= 500) {
+          serverErrors.push(`${res.status()} ${res.request().method()} ${res.url()}`);
+        }
+      });
+
+      await page.goto('/cctv', { waitUntil: 'domcontentloaded' });
+      const openBtn = page.getByRole('button', { name: 'Kualitas Koordinat' });
+      await expect(openBtn).toBeVisible();
+      await openBtn.click();
+
+      const dialog = page.getByRole('dialog', { name: 'Kualitas Data Koordinat CCTV' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByText('Total Kamera')).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Ekspor CSV' })).toBeVisible();
+      await expect(dialog.getByText(`CQE-${suffix}`)).toBeVisible();
+
+      await page.getByRole('button', { name: 'Tutup audit kualitas koordinat' }).click();
+      await expect(dialog).toBeHidden();
+
+      expect(pageErrors, 'Tidak boleh ada runtime pageerror').toEqual([]);
+      expect(serverErrors, 'Tidak boleh ada HTTP >= 500').toEqual([]);
+    } finally {
+      await browserCtx.close();
+      for (const id of createdCctvIds) {
+        await adminApi.delete(`/api/cctv/${id}`, {
+          headers: { 'X-CSRF-Token': adminCsrf },
+        });
+      }
+      if (siteId) {
+        await adminApi.delete(`/api/sites/${siteId}`, {
+          headers: { 'X-CSRF-Token': adminCsrf },
+        });
+      }
+    }
+  });
 });

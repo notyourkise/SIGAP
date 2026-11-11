@@ -2,7 +2,7 @@
 
 > Prosedur backup database & uploads SIGAP secara otomatis beserta pemulihan
 > (disaster recovery). Menggunakan skrip `scripts/backup.sh` dan `scripts/restore.sh`.
-> Diperbarui: 2026-08-21 (Task 7.3 + Encryption新增, Fase 7 Kesiapan Produksi).
+> Diperbarui: 2026-11-11 (Task 7.3 + GnuPG headless encryption & `DELETE_RAW_AFTER_ENCRYPT`, #153).
 
 ---
 
@@ -19,8 +19,9 @@ kegagalan perangkat, penghapusan tak sengaja, atau korupsi data. Tersedia dua
 cara menjadwalkan: **container `backup` di docker-compose (opsi utama)** dan
 **cron job di host** (opsi alternatif).
 
-> ⚠️ **Keamanan Backup:** Untuk production, **WAKTU MENGGUNAKAN ENKRIPSI** untuk
-> melindungi backup dari akses tidak sah saat off-site storage atau transfer.
+> ⚠️ **Keamanan Backup:** Untuk production dan transfer off-site, **WAJIB MENGGUNAKAN ENKRIPSI**
+> (`ENCRYPT_BACKUPS=true` dengan `ENCRYPTION_KEY` kuat; pertimbangkan `DELETE_RAW_AFTER_ENCRYPT=true`)
+> agar backup terlindungi dari akses tidak sah.
 
 Hasil backup disimpan di `backups/`:
 
@@ -65,12 +66,13 @@ yang menyesuaikan deployment Docker SIGAP). Dapat di-override per pemanggilan.
 | `CRON_SCHEDULE` | `0 6 * * *` | Jadwal cron (container backup saja) |
 | `TZ` | `Asia/Makassar` | Zona waktu container backup |
 
-> **Variabel Enkripsi (NEW):**  
-> Untuk enkripsi backup AES-256, tambahkan:
-> - `ENCRYPT_BACKUPS=true` — aktifkan enkripsi
-> - `ENCRYPTION_KEY=<strong_password>` — kunci AES-256 untuk enkripsi/dekripsi
-> 
-> Contoh secure key generation: `openssl rand -base64 32`
+> **Variabel Enkripsi (#153):**  
+> `docker-compose.yml` meneruskan variabel berikut ke container `backup` (image kini menyertakan paket `gnupg`):
+> - `ENCRYPT_BACKUPS=true` — aktifkan enkripsi simetris GPG AES-256 (`--pinentry-mode loopback`)
+> - `ENCRYPTION_KEY=<strong_password>` — passphrase kuat untuk enkripsi/dekripsi (wajib terisi bila `ENCRYPT_BACKUPS=true`)
+> - `DELETE_RAW_AFTER_ENCRYPT=true` *(opsional, default `false`)* — hapus berkas mentah `.sql.gz`/`.tar.gz` secara otomatis setelah berkas `.gpg` sukses dibuat
+>
+> Contoh generate kunci kuat: `openssl rand -base64 32`
 
 ---
 
@@ -170,14 +172,16 @@ environment:
   - ENCRYPT_BACKUPS=true
 ```
 
-### 5.3.2 Output backup terenkripsi
+### 5.3.2 Output backup terenkripsi & salinan off-site
 
-Jika enkripsi aktif, skrip akan membuat dua versi file:
+Jika enkripsi aktif (`ENCRYPT_BACKUPS=true`), skrip membuat arsip terenkripsi GPG AES-256:
 
-- `sigap_<TS>.sql.gz` — raw dump (tidak aman untuk off-site)
-- `sigap_<TS>.sql.gz.gpg` — AES-256 encrypted ← gunakan ini untuk backup
+- `sigap_<TS>.sql.gz.gpg` — arsip database terenkripsi AES-256 ← **salin ke storage off-site**
+- `uploads_<TS>.tar.gz.gpg` — arsip uploads terenkripsi AES-256 ← **salin ke storage off-site**
+- `sigap_<TS>.sql.gz` & `uploads_<TS>.tar.gz` — raw dump sementara; set `DELETE_RAW_AFTER_ENCRYPT=true` pada root `.env` jika tidak ingin menyimpan file mentah secara lokal setelah `.gpg` selesai dibuat.
 
-File `.gpg` hanya bisa dibuka dengan kunci yang sama saat restore.
+File `.gpg` hanya dapat dibuka memakai `ENCRYPTION_KEY` yang sama melalui `scripts/restore.sh`.
+Untuk ketahanan bencana di VPS production, sinkronkan berkas `*.gpg` secara terjadwal ke storage terpisah (mis. objek/bucket terisolasi) dan **jangan pernah** menyimpan `ENCRYPTION_KEY` di storage backup yang sama.
 
 ### 5.3.3 Restore backup terenkripsi
 
@@ -207,7 +211,7 @@ Skrip otomatis mendeteksi ekstensi `.gpg` dan mendekripsi sebelum restore.
 
 Service `backup` (di `docker-compose.yml`) berjalan dengan **cron**:
 
-- Memakai image `postgres:15-alpine` (sudah punya klien PostgreSQL) + `dcron`.
+- Memakai image `postgres:15-alpine` (klien PostgreSQL + `dcron` + `gnupg`).
 - `backup/entrypoint.sh` menulis crontab yang memanggil `/usr/local/bin/backup.sh`
   lalu menjalankan `crond` di foreground.
 - Volume `backups_data:/backups` menyimpan hasil backup (persisten).

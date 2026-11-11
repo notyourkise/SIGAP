@@ -978,6 +978,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/cctv/coordinate-quality": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengevaluasi kelengkapan, tanda estimasi, rentang valid WGS84, dan duplikasi koordinat CCTV pada scope site aktif. Mendukung ekspor CSV lewat ?format=csv.",
+                "produces": [
+                    "application/json",
+                    "text/csv"
+                ],
+                "tags": [
+                    "Master CCTV"
+                ],
+                "summary": "Audit Kualitas Koordinat CCTV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Opsional override UUID site",
+                        "name": "X-Site-ID",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter item berdasarkan status/issue (all, needs_attention, estimated, duplicate, missing, invalid)",
+                        "name": "issue",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Format output: json (default) atau csv",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ringkasan dan rincian kualitas koordinat CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak untuk site terkait",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal membaca data CCTV",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/cctv/import": {
             "post": {
                 "security": [

@@ -1908,6 +1908,54 @@ paths:
       summary: Ambil Timeline CCTV
       tags:
       - Snapshot
+  /cctv/coordinate-quality:
+    get:
+      description: Mengevaluasi kelengkapan, tanda estimasi, rentang valid WGS84,
+        dan duplikasi koordinat CCTV pada scope site aktif. Mendukung ekspor CSV lewat
+        ?format=csv.
+      parameters:
+      - description: Opsional override UUID site
+        in: query
+        name: X-Site-ID
+        type: string
+      - description: Filter item berdasarkan status/issue (all, needs_attention, estimated,
+          duplicate, missing, invalid)
+        in: query
+        name: issue
+        type: string
+      - description: 'Format output: json (default) atau csv'
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/json
+      - text/csv
+      responses:
+        "200":
+          description: Ringkasan dan rincian kualitas koordinat CCTV
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Sesi tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak untuk site terkait
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Gagal membaca data CCTV
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Audit Kualitas Koordinat CCTV
+      tags:
+      - Master CCTV
   /cctv/import:
     post:
       consumes:

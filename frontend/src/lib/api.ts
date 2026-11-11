@@ -452,10 +452,23 @@ export async function reorderChecklistTemplates(
   });
 }
 
-export async function downloadApiFile(endpoint: string, fallbackName: string): Promise<void> {
+export async function downloadApiFile(
+  endpoint: string,
+  fallbackName: string,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  const { skipAuthRedirect, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers);
+  const siteId = getCookie('sigap_site_id');
+  if (siteId && !headers.has('X-Site-ID')) {
+    headers.set('X-Site-ID', siteId);
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...fetchOptions,
+      headers,
       credentials: 'include',
     });
   } catch {
@@ -466,7 +479,7 @@ export async function downloadApiFile(endpoint: string, fallbackName: string): P
     });
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && !skipAuthRedirect) {
     handleUnauthorized();
     throw new ApiError('Sesi Anda telah berakhir. Silakan masuk kembali.', {
       status: 401,

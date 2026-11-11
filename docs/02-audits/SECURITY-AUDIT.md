@@ -1,7 +1,7 @@
 # SECURITY-AUDIT — SIGAP
 
 > Audit keamanan, pemahaman sistem, dan rekomendasi pengembangan.
-> Audit awal: 2026-08-01 · Diperbarui: 2026-10-21 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
+> Audit awal: 2026-08-01 · Diperbarui: 2026-11-11 · Cakupan: seluruh monorepo (`backend/`, `frontend/`, `mobile/`, dan infrastruktur).
 >
 > Temuan 1–20 di bagian 3 adalah rekam audit awal. Ringkasan arsitektur dan catatan risiko terbuka telah diselaraskan dengan kondisi proyek setelah Sprint 40.
 
@@ -45,16 +45,15 @@ telah dihapus pada Sprint 40.
 - 🟡 Sedang/Rendah: **8/8 ✅ Selesai** (temuan 13, 14, 15, 16, 17, 18, 19, 20).
 - Rencana bertahap & to-do per item: lihat `ROADMAP.md` dan bagian **3.4**.
 
-### 1.1 Risiko Terbuka pada Pembaruan 2026-08-19
+### 1.1 Risiko Terbuka & Status Penutupan (Pembaruan 2026-11-11)
 
-Pembaruan ini adalah sinkronisasi dokumentasi dan bukan penetration test baru. Risiko berikut
-teridentifikasi dari dokumentasi dan inspeksi statis terbatas:
+Pembaruan ini menyelaraskan catatan audit statis dengan kontrol yang telah ditambahkan sampai PR hardening `#153`:
 
-| Severity | Temuan | Dampak | Tindak lanjut |
-|----------|--------|--------|---------------|
-| **Tinggi** | Contoh kredensial NVR nyata masih muncul di komentar backend dan placeholder form frontend. Dokumentasi telah memakai placeholder. | Siapa pun yang memperoleh source code atau UI dapat mengetahui kredensial perangkat. | Hapus nilai nyata dari source/UI, gunakan placeholder, rotasi kredensial NVR, dan perlakukan riwayat Git sebagai pernah terekspos. |
-| **Sedang** | Endpoint Prometheus `/api/metrics` didokumentasikan publik. | Detail traffic, error, koneksi, dan penggunaan storage dapat membantu reconnaissance bila terekspos internet. | **Selesai 2026-10-20:** Nginx memblokir `/api/metrics` dari publik; Prometheus scrape langsung ke `api:3000`. |
-| **Sedang** | Backup default disimpan pada volume lokal dengan retensi 7 hari; enkripsi at-rest dan salinan off-site belum didokumentasikan. | Kegagalan host atau akses volume dapat menyebabkan kehilangan atau kebocoran backup. | Tambahkan backup terenkripsi, off-site, verifikasi restore berkala, serta kebijakan akses dan retensi produksi. |
+| Severity | Temuan | Status | Keterangan & Tindak Lanjut Operasional |
+|----------|--------|--------|----------------------------------------|
+| **Tinggi** | Kredensial NVR contoh pernah tercatat di source/test dan dokumentasi. | ✅ Kode & Docs Selesai; ⏳ Rotasi Fisik Eksternal | IP/kredensial nyata telah dihapus dari `backend/utils/rtsp_test.go` (`192.0.2.10` RFC 5737) serta `ROADMAP.md`/`README.md` (`<NVR_IP>`). **Operasional eksternal:** tim infrastruktur wajib merotasi password NVR fisik karena riwayat Git lama pernah menyimpan nilai sebelumnya. |
+| **Sedang** | Endpoint Prometheus `/api/metrics` berpotensi terekspos atau dilewati via header spoof. | ✅ Selesai (#153) | Nginx memblokir `/api/metrics` dan `/api/metrics/` dengan `404`; `middleware/metrics.go` (`IsTrustedMetricsAccess`) menegakkan parsing CIDR eksplisit (`127.0.0.0/8`, `::1`, `172.16.0.0/12`), menolak header `X-Forwarded-For` tanpa trusted proxy, serta diverifikasi test matriks + E2E Nginx TLS. |
+| **Sedang** | Backup default berpotensi belum terenkripsi atau gagal pada container Alpine tanpa GnuPG. | ✅ Kode & Container Selesai; ⏳ Off-site VPS Eksternal | `backup/Dockerfile` menyertakan `gnupg`, `docker-compose.yml` & `.env.example` meneruskan `ENCRYPT_BACKUPS`, `ENCRYPTION_KEY`, `DELETE_RAW_AFTER_ENCRYPT`, serta `scripts/backup.sh`/`restore.sh` mendukung GPG loopback AES-256 non-interaktif. **Operasional eksternal:** verifikasi salinan `.gpg` ke storage off-site VPS terpisah tetap dijalankan saat rilis `#148`. |
 
 Nilai kredensial nyata sengaja tidak dicantumkan dalam dokumen ini.
 
@@ -80,12 +79,12 @@ Bukti runtime: `docs/audits/MT-11-QR-RUNTIME-EVIDENCE-2026-08-20.md`.
 
 Bukti runtime: `docs/audits/TASK-1B-STREAMING-RUNTIME-EVIDENCE-2026-08-20.md`.
 
-### 1.4 Dependency security update — 2026-10-21
+### 1.4 Dependency security update — 2026-11-11
 
-- [x] `next` dan `eslint-config-next` dinaikkan dari `16.2.11` ke `16.4.2`; perbaikan mencakup advisory RCE/SSRF/cache poisoning Next.js serta `sharp` dan `postcss`.
-- [x] `npm audit --omit=dev` menghasilkan **0 kerentanan** pada dependency produksi.
-- [x] `npm audit` penuh menyisakan **5 high** yang seluruhnya berada di rantai dev-only `eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces`; `braces` 3.0.3 adalah rilis terbaru dan belum memiliki patch.
-- [ ] `npm audit fix --force` tidak dijalankan karena solusinya menurunkan `eslint-config-next` ke `14.2.35` (tidak kompatibel dengan Next 16). Risiko diterima sampai upstream merilis patch; dampaknya hanya pada tooling lint, bukan runtime aplikasi.
+- [x] `next` dan `eslint-config-next` tetap pada `16.4.2`; `npm audit fix --no-fund` memutakhirkan `zod` dan mengatasi temuan **high**.
+- [x] `npm audit --omit=dev` menghasilkan **0 kerentanan** pada dependency produksi (`found 0 vulnerabilities`).
+- [x] `npm audit` penuh menyisakan **7 moderate** (turun dari temuan high sebelumnya) yang seluruhnya berada di rantai dev-only `typescript-eslint` (`@typescript-eslint/typescript-estree` -> `minimatch` `7.0.0 - 11.0.0`, GHSA-g3hv-75wg-m249).
+- [ ] `npm audit fix --force` tidak dijalankan karena berisiko downgrade toolchain `eslint-config-next`/Next 16; risiko 7 moderate dev-only diterima secara eksplisit karena hanya memengaruhi linter build-time, bukan bundle/runtime produksi. Tinjau ulang pada upgrade berkala `eslint-config-next`/`typescript-eslint`.
 
 ### 1.5 Isolasi site dashboard dan field maintenance — 2026-10-21
 
@@ -249,8 +248,8 @@ backend 0.16.0: sliding session tidak dipertahankan dan JWT berlaku tetap selama
 - **CI/CD** (`.github/workflows/ci.yml`): `npm run lint`, `golangci-lint`, build, dan unit test sudah dijalankan; cakupan unit test Fase 4.1 sudah diperluas ke handler, middleware, utils, routes, models, dan config.
 - **Migrasi DB versioned** — ✅ golang-migrate v4 dengan migration SQL berpasangan dan verifikasi CI.
 - **Redis** — ✅ rate-limit dan blacklist token mendukung multi-instance dengan fallback development.
-- **Backup** — ✅ cron `pg_dump`, archive uploads, rotasi 7 hari, dan restore script; enkripsi/off-site masih menjadi risiko terbuka.
-- **Monitoring** — ✅ endpoint metrics Prometheus dan health check; pembatasan akses metrics di production masih perlu ditetapkan.
+- **Backup** — ✅ cron `pg_dump`, archive uploads, rotasi 7 hari, dukungan enkripsi GPG AES-256 non-interaktif (`ENCRYPT_BACKUPS=true` + `DELETE_RAW_AFTER_ENCRYPT`), dan skrip restore aman; salinan off-site terpisah dikonfigurasi per host VPS.
+- **Monitoring** — ✅ endpoint metrics Prometheus `/api/metrics` hanya mengizinkan allowlist CIDR internal (`127.0.0.0/8`, `::1`, `172.16.0.0/12`), diblokir `404` di Nginx TLS, serta dilengkapi aturan alert & redaksi kredensial RTSP (`#154`).
 - **Docker hardening** — ✅ container API non-root, resource limits, rootfs read-only, capabilities di-drop, port internal tidak dipublish, dan Docker secrets.
 - **Reverse proxy** Nginx + TLS + security headers sudah diterapkan; akses resmi kini melalui `https://localhost`.
 - **Isi `docs/changelog.md`** sesuai rencana `plan.md` sudah diterapkan untuk milestone proyek.

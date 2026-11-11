@@ -75,10 +75,17 @@ fi
 log() { echo "[restore $(date -u +%H:%M:%S)] $*"; }
 
 # --- Helper: Deteksi & decrypt file GPG ---
-# Jika file berakhiran .gpg, decrypt ke temp file dan return path temp.
-# Jika tidak, return path asli.
+# Jika file berakhiran .gpg, decrypt ke direktori sementara TEMP_ROOT dan return path-nya.
+# Log pesan diarahkan ke stderr agar stdout hanya berisi path file hasil.
+TEMP_ROOT="$(mktemp -d /tmp/sigap_restore_XXXXXX)"
+cleanup_temp() {
+  rm -rf "${TEMP_ROOT}"
+}
+trap cleanup_temp EXIT
+
 decrypt_if_needed() {
   local file_path="$1"
+  local label="$2"
   local temp_file=""
 
   if [[ "${file_path}" == *.gpg ]]; then
@@ -90,14 +97,12 @@ decrypt_if_needed() {
       echo "ERROR: 'gpg' tidak ditemukan. Diperlukan untuk mendekripsi file .gpg." >&2
       exit 1
     fi
-    # Buat temp file (hapus ekstensi .gpg).
-    temp_file="${file_path%.gpg}"
-    log "Mendekripsi '${file_path}' -> '${temp_file}' ..."
-    echo "${ENCRYPTION_KEY}" | gpg --batch --yes --passphrase-fd 0 --decrypt \
-      --output "${temp_file}" "${file_path}"
-    if [ $? -ne 0 ]; then
+    # Pertahankan ekstensi asli (mis. .sql.gz / .tar.gz) agar deteksi gunzip/tar tetap akurat.
+    temp_file="${TEMP_ROOT}/${label}_$(basename "${file_path%.gpg}")"
+    log "Mendekripsi '${file_path}' -> '${temp_file}' ..." >&2
+    if ! printf '%s' "${ENCRYPTION_KEY}" | gpg --batch --yes --pinentry-mode loopback \
+      --passphrase-fd 0 --decrypt --output "${temp_file}" "${file_path}" >&2; then
       echo "ERROR: Dekripsi gagal untuk '${file_path}'. Periksa ENCRYPTION_KEY." >&2
-      rm -f "${temp_file}"
       exit 1
     fi
     echo "${temp_file}"
@@ -111,7 +116,7 @@ log "=== RESTORE DATABASE ==="
 log "Mengembalikan '${DB_NAME}' dari '${SQL_DUMP}' @ ${DB_HOST}:${DB_PORT} ..."
 
 # Deteksi file GPG & decrypt jika diperlukan.
-TEMP_SQL=$(decrypt_if_needed "${SQL_DUMP}")
+TEMP_SQL=$(decrypt_if_needed "${SQL_DUMP}" "db")
 
 # Gunakan psql untuk drop/recreate agar restore bersih (tanpa data lama).
 # Bila psql tersedia (postgres-client), lakukan drop & create; jika hanya
@@ -152,7 +157,7 @@ if [ -n "${UPLOADS_ARCHIVE}" ]; then
   log "Mengembalikan '${UPLOADS_DIR}' dari '${UPLOADS_ARCHIVE}' ..."
 
   # Decrypt jika perlu.
-  TEMP_UPLOADS=$(decrypt_if_needed "${UPLOADS_ARCHIVE}")
+  TEMP_UPLOADS=$(decrypt_if_needed "${UPLOADS_ARCHIVE}" "uploads")
 
   # Bersihkan folder uploads lama (buat kembali) agar tidak ada file yatim.
   rm -rf "${UPLOADS_DIR}"

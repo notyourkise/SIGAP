@@ -168,15 +168,15 @@ func TestResolveRTSPURL_SelectsHikvisionStreamType(t *testing.T) {
 	}{
 		{
 			name:       "main URL to sub",
-			raw:        "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/1501",
+			raw:        "rtsp://admin:secret@192.0.2.10:554/Streaming/channels/1501",
 			streamType: SubStream,
-			want:       "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/1502",
+			want:       "rtsp://admin:secret@192.0.2.10:554/Streaming/channels/1502",
 		},
 		{
 			name:       "sub URL to main",
-			raw:        "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/602",
+			raw:        "rtsp://admin:secret@192.0.2.10:554/Streaming/channels/602",
 			streamType: MainStream,
-			want:       "rtsp://admin:secret@36.91.27.35:554/Streaming/channels/601",
+			want:       "rtsp://admin:secret@192.0.2.10:554/Streaming/channels/601",
 		},
 		{
 			name:       "suffix already matches",

@@ -1,5 +1,54 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-11 - Audit Kualitas Data Koordinat, Hardening Keamanan Residual & Sinkronisasi Dokumentasi (#151, #152, #153)
+
+### Audit Kualitas Koordinat (#151), Hardening `/api/metrics` & Backup GPG (#153), serta Sinkronisasi Dokumentasi (#152)
+
+**Sebelum (Before)**:
+- Belum ada laporan terpusat untuk mengaudit kamera dengan koordinat `missing`, `partial`, `invalid`, `0,0`, berstatus `Estimasi` (termasuk daftar 9 titik legacy `THD-18, THD-20, THD-25, THD-27, THD-29, THD-30, THD-31, THD-34, THD-35`), ataupun koordinat duplikat (`THD-05` & `THD-17`) serta mengekspornya sebagai CSV aman.
+- `middleware/metrics.go` (`IsTrustedMetricsAccess`) memakai pemeriksaan string substring sederhana tanpa CIDR parsing eksplisit, `backup/Dockerfile` tidak menginstal `gnupg`, `scripts/backup.sh` memakai `echo | gpg` tanpa `--pinentry-mode loopback`, `scripts/restore.sh` menulis log ke stdout di dalam subshell `$()`, `docker-compose.yml` tidak meneruskan variabel enkripsi backup, dan `utils/rtsp_test.go` masih memakai IP sampel non-RFC 5737.
+- Dokumentasi (`README.md`, `docs/01-documentation/README.md`, `ROADMAP.md`, `docs/README.md`, `SECURITY-AUDIT.md`, `TESTING.md`, `BACKUP.md`, `production-deployment-runbook.md`, `MIGRATION.md`, dan `TODO-PERBAIKAN-2026-10-27.md`) belum disinkronkan dengan Next.js 16.4.2, 35 pasangan migrasi DB, endpoint baru (`/api/cctv-logs`, `/api/cctv/coordinate-quality`, `/api/streams/diagnostics`, `/api/incidents/*`), serta status release gate yang jujur.
+
+**Sesudah (After)**:
+- Menambahkan `backend/handlers/cctv_coordinate_quality.go` (`EvaluateCoordinateQuality`, `GetCCTVCoordinateQuality`, ekspor `?format=csv` dengan `sanitizeCSVCell` formula neutralization tanpa merusak koordinat negatif, filter `?issue=`, isolasi `c.Locals("site_id")`, nol kebocoran RTSP/QR secret), mendaftarkan `GET /api/cctv/coordinate-quality` sebelum `/:id` di `backend/routes/cctv.go`, meregenerasi Swagger (`backend/docs/`), serta menambahkan unit/route test di `cctv_coordinate_quality_test.go` dan `routes_test.go`.
+- Memperketat `backend/middleware/metrics.go` (`net/netip` CIDR parsing eksplisit untuk `127.0.0.0/8`, `::1`, `172.16.0.0/12`, menolak IP tak valid / unspecified / `X-Forwarded-For` palsu tanpa trusted proxy) beserta `metrics_test.go`; menambahkan `gnupg` di `backup/Dockerfile`; menyempurnakan headless `--pinentry-mode loopback`, penanganan error `set -e`, `DELETE_RAW_AFTER_ENCRYPT`, dan stderr logging + `mktemp -d` aman pada `scripts/backup.sh` & `scripts/restore.sh`; menghubungkan `ENCRYPT_BACKUPS`/`ENCRYPTION_KEY`/`DELETE_RAW_AFTER_ENCRYPT` di `docker-compose.yml` & `.env.example`; serta mengganti IP contoh di `backend/utils/rtsp_test.go` ke `192.0.2.10` (RFC 5737).
+- Memperbarui dokumentasi proyek, runbook produksi, panduan backup (termasuk menyinkronkan snapshot `backend/aiassistant/corpus.json` untuk `BACKUP.md#inicio`), matrix testing, audit keamanan (`0` kerentanan produksi pasca `npm audit fix --no-fund`), serta changelog.
+
+timestamp: 2026-11-11 17:40 WITA
+kategori: Sedang, Backend + Infra + Security + Docs
+file yang diubah:
+- .env.example
+- .github/workflows/ci.yml
+- README.md
+- backend/aiassistant/corpus.json
+- backend/changelog.md
+- backend/docs/docs.go
+- backend/docs/swagger.json
+- backend/docs/swagger.yaml
+- backend/handlers/cctv_coordinate_quality.go
+- backend/handlers/cctv_coordinate_quality_test.go
+- backend/middleware/metrics.go
+- backend/middleware/metrics_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
+- backend/utils/rtsp_test.go
+- backup/Dockerfile
+- docker-compose.yml
+- docs/01-documentation/BACKUP.md
+- docs/01-documentation/README.md
+- docs/01-documentation/ROADMAP.md
+- docs/01-documentation/production-deployment-runbook.md
+- docs/02-audits/SECURITY-AUDIT.md
+- docs/04-manual-tests/TESTING.md
+- docs/05-reports/TODO-PERBAIKAN-2026-10-27.md
+- docs/MIGRATION.md
+- docs/README.md
+- e2e/tests/ops-regression.spec.ts
+- scripts/backup.sh
+- scripts/restore.sh
+
+alasan perubahan: Menuntaskan cakupan kode & dokumentasi untuk issue #151 (data quality koordinat CCTV), #152 (sinkronisasi dokumentasi & status rilis), serta #153 (hardening keamanan residual).
+
 ## [Unreleased] - 2026-11-11 - Diagnostik Metro-E, Observabilitas Streaming, & Regression Suite CI/E2E (#150, #154, #155)
 
 ### Diagnostik Metro-E (#150), Observabilitas & Alert Prometheus/Grafana (#154), serta Suite Regresi CI/E2E (#155)

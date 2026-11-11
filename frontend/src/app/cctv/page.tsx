@@ -7,6 +7,15 @@ import Pagination from '@/components/Pagination';
 import SortableHeader from '@/components/SortableHeader';
 import AuthenticatedImage from '@/components/AuthenticatedImage';
 import { apiRequest, downloadApiFile, API_BASE_URL, ApiValidationError, formatValidationMessages, getAllSitesForSelect } from '@/lib/api';
+import {
+  coordinateIssueLabel,
+  coordinateStatusLabel,
+  filterCoordinateQualityItems,
+  formatCoordinatePair,
+  type CoordinateQualityFilterKey,
+  type CoordinateQualityItem,
+  type CoordinateQualityReport,
+} from '@/lib/coordinate-quality';
 import { getLiveBadge, hasFreshVerification } from '@/lib/live-status';
 import { useAuth } from '@/context/AuthContext';
 import { useWebSocket } from '@/context/WebSocketContext';
@@ -36,7 +45,8 @@ import {
   Network,
   ShieldCheck,
   TrendingUp,
-  Building2
+  Building2,
+  Download
 } from 'lucide-react';
 
 interface CCTV {
@@ -200,6 +210,13 @@ export default function CCTVPage() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isFieldMaintenanceOpen, setIsFieldMaintenanceOpen] = useState(false);
+  const [isCoordinateQualityOpen, setIsCoordinateQualityOpen] = useState(false);
+  const [coordinateQualityLoading, setCoordinateQualityLoading] = useState(false);
+  const [coordinateQualityError, setCoordinateQualityError] = useState('');
+  const [coordinateQualityReport, setCoordinateQualityReport] = useState<CoordinateQualityReport | null>(null);
+  const [coordinateQualityFilter, setCoordinateQualityFilter] = useState<CoordinateQualityFilterKey>('needs_attention');
+  const [coordinateQualityExporting, setCoordinateQualityExporting] = useState(false);
+  const [editingQualityId, setEditingQualityId] = useState<string | null>(null);
   
   const [currentCCTV, setCurrentCCTV] = useState<CCTV | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
@@ -1230,6 +1247,86 @@ export default function CCTVPage() {
     };
   }, [openActionMenu]);
 
+  const fetchCoordinateQuality = useCallback(async () => {
+    setCoordinateQualityLoading(true);
+    setCoordinateQualityError('');
+    try {
+      const qs = siteFilter ? `?site_id=${encodeURIComponent(siteFilter)}` : '';
+      const opts = siteFilter ? { headers: { 'X-Site-ID': siteFilter } } : undefined;
+      const response = await apiRequest<CoordinateQualityReport>(
+        `/cctv/coordinate-quality${qs}`,
+        opts
+      );
+      if (response.status === 'success' && response.data) {
+        setCoordinateQualityReport(response.data);
+      }
+    } catch (err: any) {
+      setCoordinateQualityError(err?.message || 'Audit kualitas koordinat belum dapat dimuat.');
+    } finally {
+      setCoordinateQualityLoading(false);
+    }
+  }, [siteFilter]);
+
+  const handleOpenCoordinateQuality = () => {
+    setCoordinateQualityFilter('needs_attention');
+    setIsCoordinateQualityOpen(true);
+    void fetchCoordinateQuality();
+  };
+
+  const handleExportCoordinateQualityCSV = async () => {
+    setCoordinateQualityExporting(true);
+    try {
+      const qs = siteFilter
+        ? `?format=csv&site_id=${encodeURIComponent(siteFilter)}`
+        : '?format=csv';
+      await downloadApiFile(
+        `/cctv/coordinate-quality${qs}`,
+        'cctv-coordinate-quality.csv',
+        siteRequestOptions
+      );
+      toast.success('Laporan kualitas koordinat (CSV) berhasil diunduh.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengunduh CSV kualitas koordinat.', err);
+    } finally {
+      setCoordinateQualityExporting(false);
+    }
+  };
+
+  const handleEditFromCoordinateQuality = async (item: CoordinateQualityItem) => {
+    const existing = cctvs.find((c) => c.id === item.id);
+    if (existing) {
+      setIsCoordinateQualityOpen(false);
+      handleOpenForm(existing);
+      return;
+    }
+    setEditingQualityId(item.id);
+    try {
+      const response = await apiRequest<CCTV>(`/cctv/${item.id}`, siteRequestOptions);
+      if (response.data) {
+        setIsCoordinateQualityOpen(false);
+        handleOpenForm(response.data);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Data CCTV belum dapat dibuka untuk disunting.', err);
+    } finally {
+      setEditingQualityId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCoordinateQualityOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsCoordinateQualityOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isCoordinateQualityOpen]);
+
   return (
     <DashboardLayout>
       <div className={`space-y-8 ${selectedIDs.length > 0 && isAdmin ? 'pb-24' : ''}`}>
@@ -1239,6 +1336,14 @@ export default function CCTVPage() {
             <p className="mt-1 text-sm text-muted">Cari, identifikasi, dan kelola perangkat CCTV.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenCoordinateQuality}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary"
+            >
+              <MapPin className="h-4 w-4 text-primary" />
+              <span>Kualitas Koordinat</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsScanModalOpen(true)}
@@ -2676,6 +2781,238 @@ export default function CCTVPage() {
                 >
                   Tutup
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Coordinate Data Quality Modal (#151) */}
+        {isCoordinateQualityOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="coordinate-quality-title"
+              className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+                <div>
+                  <h3 id="coordinate-quality-title" className="text-xl font-bold">Kualitas Data Koordinat CCTV</h3>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Deteksi otomatis koordinat kosong, di luar rentang WGS84, titik duplikat, dan koordinat berstatus estimasi.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportCoordinateQualityCSV}
+                    disabled={coordinateQualityLoading || coordinateQualityExporting}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:border-primary disabled:opacity-50"
+                  >
+                    {coordinateQualityExporting ? (
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5 text-primary" />
+                    )}
+                    <span>Ekspor CSV</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Tutup audit kualitas koordinat"
+                    onClick={() => setIsCoordinateQualityOpen(false)}
+                    className="rounded-lg border border-border p-1.5 text-muted hover:bg-background hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-6">
+                {coordinateQualityLoading ? (
+                  <div className="flex items-center justify-center gap-3 py-12" role="status">
+                    <LoaderCircle className="h-6 w-6 animate-spin text-primary" />
+                    <span className="text-sm text-muted">Mengevaluasi kualitas koordinat CCTV…</span>
+                  </div>
+                ) : coordinateQualityError ? (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 p-6 text-center">
+                    <AlertTriangle className="h-8 w-8 text-red-500" />
+                    <p className="mt-2 text-sm font-semibold text-red-500">{coordinateQualityError}</p>
+                    <button
+                      type="button"
+                      onClick={() => fetchCoordinateQuality()}
+                      className="mt-3 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Coba lagi
+                    </button>
+                  </div>
+                ) : coordinateQualityReport ? (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-xl border border-border bg-background/60 p-3.5">
+                        <p className="text-xs text-muted">Total Kamera</p>
+                        <p className="mt-1 text-2xl font-bold">{coordinateQualityReport.summary.total_count}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3.5">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-300">Terverifikasi</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                          {coordinateQualityReport.summary.verified_count}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5">
+                        <p className="text-xs text-amber-700 dark:text-amber-300">Perlu Cek / Survei</p>
+                        <p className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-400">
+                          {coordinateQualityReport.summary.needs_attention_count}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-background/60 p-3.5">
+                        <p className="text-xs text-muted">Kelengkapan</p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {coordinateQualityReport.summary.completeness_percent.toFixed(1)}%
+                        </p>
+                        <p className="text-[11px] text-muted">
+                          {coordinateQualityReport.summary.verified_percent.toFixed(1)}% terverifikasi bersih
+                        </p>
+                      </div>
+                    </div>
+
+                    {coordinateQualityReport.summary.pending_legacy_codes.length > 0 && (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
+                        <p className="font-semibold">
+                          {coordinateQualityReport.summary.pending_legacy_codes.length} unit THD legacy masih memerlukan verifikasi GPS lapangan:
+                        </p>
+                        <p className="mt-1 font-mono text-[11px]">
+                          {coordinateQualityReport.summary.pending_legacy_codes.join(', ')}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          ['needs_attention', `Semua Perlu Cek (${coordinateQualityReport.summary.needs_attention_count})`],
+                          ['estimated', `Estimasi (${coordinateQualityReport.summary.estimated_count})`],
+                          [
+                            'missing_invalid',
+                            `Kosong / Invalid (${
+                              coordinateQualityReport.summary.missing_count +
+                              coordinateQualityReport.summary.partial_count +
+                              coordinateQualityReport.summary.invalid_count +
+                              coordinateQualityReport.summary.zero_count
+                            })`,
+                          ],
+                          ['duplicate', `Duplikat (${coordinateQualityReport.summary.duplicate_count})`],
+                          ['all', `Semua Kamera (${coordinateQualityReport.summary.total_count})`],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setCoordinateQualityFilter(key)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            coordinateQualityFilter === key
+                              ? 'border-primary bg-primary text-white'
+                              : 'border-border bg-background text-muted hover:text-foreground'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {(() => {
+                      const filteredItems = filterCoordinateQualityItems(
+                        coordinateQualityReport.items,
+                        coordinateQualityFilter
+                      );
+                      if (filteredItems.length === 0) {
+                        return (
+                          <div className="rounded-xl border border-dashed border-border bg-background/40 p-8 text-center text-sm text-muted">
+                            Tidak ada CCTV pada kategori filter ini.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b border-border bg-background/70 text-[11px] uppercase tracking-wider text-muted">
+                              <tr>
+                                <th className="px-4 py-3 font-semibold">Kode / Nama</th>
+                                <th className="px-4 py-3 font-semibold">Lokasi / Site</th>
+                                <th className="px-4 py-3 font-semibold">Koordinat</th>
+                                <th className="px-4 py-3 font-semibold">Status &amp; Temuan</th>
+                                {isAdmin && <th className="px-4 py-3 text-right font-semibold">Tindakan</th>}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {filteredItems.map((item) => (
+                                <tr key={item.id} className="hover:bg-background/40">
+                                  <td className="px-4 py-3 align-top">
+                                    <p className="font-mono font-bold text-primary">{item.kode_cctv}</p>
+                                    <p className="mt-0.5 font-semibold text-foreground">{item.nama}</p>
+                                  </td>
+                                  <td className="px-4 py-3 align-top text-muted">
+                                    <p>{item.lokasi_area || '—'}</p>
+                                    {item.site_nama && <p className="mt-0.5 text-[11px]">{item.site_nama}</p>}
+                                  </td>
+                                  <td className="px-4 py-3 align-top font-mono text-[11px]">
+                                    {formatCoordinatePair(item.latitude, item.longitude)}
+                                  </td>
+                                  <td className="px-4 py-3 align-top">
+                                    <span
+                                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                                        item.coordinate_status === 'verified'
+                                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                          : item.coordinate_status === 'estimated' || item.coordinate_status === 'duplicate'
+                                            ? 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                            : 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400'
+                                      }`}
+                                    >
+                                      {coordinateStatusLabel(item.coordinate_status)}
+                                    </span>
+                                    {item.issues.length > 0 && (
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {item.issues.map((issue) => (
+                                          <span
+                                            key={issue}
+                                            className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted border border-border"
+                                          >
+                                            {coordinateIssueLabel(issue)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {item.keterangan && (
+                                      <p className="mt-1 max-w-xs truncate text-[11px] text-muted" title={item.keterangan}>
+                                        {item.keterangan}
+                                      </p>
+                                    )}
+                                  </td>
+                                  {isAdmin && (
+                                    <td className="px-4 py-3 text-right align-top">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleEditFromCoordinateQuality(item)}
+                                        disabled={editingQualityId === item.id}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                                      >
+                                        {editingQualityId === item.id ? (
+                                          <LoaderCircle className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Edit2 className="h-3 w-3" />
+                                        )}
+                                        <span>Perbarui Koordinat</span>
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

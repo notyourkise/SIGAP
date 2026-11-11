@@ -1,5 +1,34 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.47] - 2026-11-11
+
+### Audit Kualitas Data Koordinat CCTV (#151) & Audit Dependensi Keamanan (#153)
+
+**Sebelum (Before)**:
+- Halaman `/cctv` belum menyediakan laporan terstruktur maupun ekspor CSV untuk memantau kamera yang koordinatnya masih kosong/parsial, tidak valid, bertanda `Estimasi`, atau duplikat.
+- `downloadApiFile` pada `src/lib/api.ts` belum meneruskan header `X-Site-ID` dari cookie `sigap_site_id`, dan `frontend/package-lock.json` masih memuat 1 kerentanan tingkat **High** pada `zod` menurut `npm audit`.
+
+**Sesudah (After)**:
+- Menambahkan modul murni [`coordinate-quality.ts`](src/lib/coordinate-quality.ts) beserta unit test `tests/coordinate-quality.test.mts` (`npm run test:coords`, terintegrasi ke `.github/workflows/ci.yml`).
+- Menambahkan tombol dan modal **"Kualitas Koordinat"** pada [`cctv/page.tsx`](src/app/cctv/page.tsx) (termasuk 4 kartu ringkasan, banner daftar 9 titik legacy THD, tab filter masalah, ekspor CSV terisolasi site, dan aksi Admin **"Perbarui Koordinat"**), serta memperbarui `downloadApiFile` di [`api.ts`](src/lib/api.ts) agar opsional mengirim opsi request + menyertakan header `X-Site-ID` aktif.
+- Menjalankan `npm audit fix --no-fund` (`frontend/package-lock.json`) untuk menutup kerentanan **High** (`zod`); `npm audit --omit=dev` kini **0 kerentanan** dan 7 temuan dev-only `moderate` (`minimatch` di `@typescript-eslint`) didokumentasikan pada `docs/02-audits/SECURITY-AUDIT.md`.
+- Memperluas suite Playwright [`ops-regression.spec.ts`](../e2e/tests/ops-regression.spec.ts) untuk menguji blokir diagnostik Nginx TLS (`#153`) serta alur API/CSV/UI Kualitas Koordinat (`#151`).
+
+timestamp: 2026-11-11 17:40 WITA
+kategori: Sedang, Frontend + Security + E2E
+file yang diubah:
+- .github/workflows/ci.yml
+- e2e/tests/ops-regression.spec.ts
+- frontend/changelog.md
+- frontend/package-lock.json
+- frontend/package.json
+- frontend/src/app/cctv/page.tsx
+- frontend/src/lib/api.ts
+- frontend/src/lib/coordinate-quality.ts
+- frontend/tests/coordinate-quality.test.mts
+
+alasan perubahan: Memenuhi aspek UI/client/dependensi/E2E untuk issue #151 dan #153 tanpa mengubah file lokal pengguna yang tidak terkait.
+
 ## [1.55.46] - 2026-11-11
 
 ### [Low][L03] Sinkronkan label `SiteSwitcher` berbasis peran untuk mencegah efek SSR fallback menyesatkan (#191)
