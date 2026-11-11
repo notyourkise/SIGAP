@@ -7,6 +7,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'e2e/**'
+      - 'monitoring/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
@@ -14,6 +15,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'e2e/**'
+      - 'monitoring/**'
       - '.github/workflows/ci.yml'
 
 permissions:
@@ -29,6 +31,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       e2e: ${{ steps.filter.outputs.e2e }}
+      monitoring: ${{ steps.filter.outputs.monitoring }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -44,6 +47,40 @@ jobs:
               - 'frontend/**'
             e2e:
               - 'e2e/**'
+            monitoring:
+              - 'monitoring/**'
+
+  # Job untuk validasi konfigurasi Prometheus/Grafana
+  monitoring-ci:
+    name: Monitoring Config Validation
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.monitoring == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate Grafana Dashboard JSON & Provisioning YAML
+        run: |
+          python3 -c '
+          import json
+          with open("monitoring/grafana/provisioning/dashboards/sigap-observability.json", encoding="utf-8") as f:
+              json.load(f)
+          print("Grafana dashboard JSON valid.")
+          '
+          ruby -ryaml -e '
+          %w[
+            monitoring/prometheus/prometheus.yml
+            monitoring/prometheus/alerts.yml
+            monitoring/grafana/provisioning/dashboards/dashboards.yml
+          ].each { |p| YAML.load_file(p); puts "YAML valid: #{p}" }
+          '
+
+      - name: Validate Prometheus Config & Alert Rules (promtool)
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "${{ github.workspace }}/monitoring/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v2.53.0 check config /etc/prometheus/prometheus.yml
 
   # Job untuk validasi dan pengujian Backend Go
   backend-ci:
@@ -96,8 +133,12 @@ jobs:
           DB_PASSWORD: sigap
           DB_NAME: sigap_test
 
+      - name: Run Go Vet
+        run: go vet ./...
+        working-directory: ./backend
+
       - name: Run Tests
-        run: go test -v ./...
+        run: go test -v -count=1 ./...
         working-directory: ./backend
 
       - name: Run Go Linter
@@ -143,6 +184,10 @@ jobs:
         run: npm run test:hevc
         working-directory: ./frontend
 
+      - name: Run Live Status Tests
+        run: npm run test:live
+        working-directory: ./frontend
+
       - name: Run Monitor Selection Tests
         run: npm run test:monitor
         working-directory: ./frontend
@@ -151,11 +196,19 @@ jobs:
         run: npm run test:encoding
         working-directory: ./frontend
 
+      - name: Run Site Switcher Tests
+        run: npm run test:site-switcher
+        working-directory: ./frontend
+
       - name: Run Build
         run: npm run build
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: http://localhost:3000/api
+
+      - name: Run TypeScript Typecheck
+        run: npx tsc --noEmit
+        working-directory: ./frontend
 
       - name: Run Lint
         run: npm run lint
@@ -163,17 +216,17 @@ jobs:
 
   # Job untuk end-to-end test UI memakai Playwright (Chromium).
   #
-  # Menguji regresi halaman /change-password: alur wajib ganti sandi tidak
-  # boleh mengalami loop reload (/auth/me harus dipanggil sedikit kali) dan
-  # elemen mode wajib (banner + tombol kembali ke halaman masuk) harus tampil.
+  # Menguji regresi /change-password serta regression suite ops (#155):
+  # smoke test /cctv/logs, isolasi multi-site UI+API, perlindungan proxy
+  # spoofing, konsistensi timezone Asia/Makassar, dan konfigurasi retensi log.
   #
   # Seluruh stack dinyalakan lewat Docker Compose (sama seperti produksi lokal):
   # Nginx TLS + frontend + api + postgres + redis. Sertifikat TLS self-signed
   # dibuat on-the-fly dan Playwright memakai ignoreHTTPSErrors.
   e2e-playwright:
-    name: E2E Playwright (Change Password)
+    name: E2E Playwright (Regression Suite)
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.e2e == 'true' }}
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -204,6 +257,8 @@ jobs:
           AES_SECRET_KEY=0123456789abcdef0123456789abcdef
           ADMIN_DEFAULT_PASSWORD=AdminPass123!
           APP_ENV=development
+          APP_TIMEZONE=Asia/Makassar
+          CCTV_STREAM_LOG_RETENTION_DAYS=90
           DB_MAX_OPEN_CONNS=50
           DB_MAX_IDLE_CONNS=10
           DB_CONN_MAX_LIFETIME=30

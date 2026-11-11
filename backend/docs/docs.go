@@ -5908,6 +5908,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/streams/diagnostics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan indikator diagnostik Metro-E (10.20.105.x), mode fallback pasif, keterjangkauan MediaMTX, heartbeat StreamVerifier, ringkasan status bebas false offline, serta parameter observabilitas (hanya Admin).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Streaming"
+                ],
+                "summary": "Diagnostik Streaming \u0026 Metro-E",
+                "responses": {
+                    "200": {
+                        "description": "Ringkasan diagnostik streaming",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Sesi tidak valid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Akses ditolak: hanya Admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Gagal memuat data diagnostik",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/streams/health": {
             "get": {
                 "security": [
@@ -6409,7 +6456,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Memicu pembacaan singkat melalui MediaMTX lalu memeriksa apakah sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu verifikasi.",
+                "description": "Memicu pembacaan singkat melalui MediaMTX via UnifiedNVRSessionGate lalu memeriksa apakah sumber benar-benar siap. Hasil live/offline/unknown disimpan beserta waktu verifikasi.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6467,6 +6514,13 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Database belum tersedia",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Antrean sesi verifikasi NVR/GSM sedang penuh atau tidak tersedia",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -8358,6 +8412,9 @@ const docTemplate = `{
                 "longitude": {
                     "type": "number"
                 },
+                "monitoring_enabled": {
+                    "type": "boolean"
+                },
                 "nama": {
                     "type": "string",
                     "maxLength": 100,
@@ -8466,6 +8523,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/handlers.FieldCheckItem"
                     }
                 },
+                "client_request_id": {
+                    "type": "string",
+                    "maxLength": 100
+                },
                 "images": {
                     "type": "array",
                     "maxItems": 5,
@@ -8536,6 +8597,9 @@ const docTemplate = `{
                         "weekly",
                         "monthly"
                     ]
+                },
+                "sla_policy_id": {
+                    "type": "string"
                 },
                 "technician_id": {
                     "type": "string"
@@ -8731,6 +8795,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 2
+                },
+                "site_id": {
+                    "$ref": "#/definitions/utils.OptionalUUID"
                 }
             }
         },
@@ -8773,6 +8840,9 @@ const docTemplate = `{
                         "ok",
                         "not_ok"
                     ]
+                },
+                "template_id": {
+                    "type": "string"
                 },
                 "wajib": {
                     "description": "Wajib menandai apakah item ini bersifat wajib (Task 13.12). Nilai pointer\nmemungkinkan membedakan field yang tidak dikirim (nil → default true).",
@@ -8999,6 +9069,9 @@ const docTemplate = `{
                 "longitude": {
                     "type": "number"
                 },
+                "monitoring_enabled": {
+                    "type": "boolean"
+                },
                 "nama": {
                     "type": "string",
                     "maxLength": 100,
@@ -9120,6 +9193,9 @@ const docTemplate = `{
                         "weekly",
                         "monthly"
                     ]
+                },
+                "sla_policy_id": {
+                    "type": "string"
                 },
                 "technician_id": {
                     "type": "string"
@@ -9298,6 +9374,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 2
+                },
+                "site_id": {
+                    "$ref": "#/definitions/utils.OptionalUUID"
                 }
             }
         },

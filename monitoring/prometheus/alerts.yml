@@ -1,0 +1,35 @@
+# ==========================================
+# SIGAP — Prometheus Alerting Rules (#154)
+# ==========================================
+groups:
+  - name: sigap_cctv_stream_alerts
+    rules:
+      - alert: CameraOfflineOver15Minutes
+        expr: sigap_cctv_offline_cameras > 0
+        for: 15m
+        labels:
+          severity: critical
+          service: sigap-streaming
+        annotations:
+          summary: "Terdapat kamera CCTV SIGAP offline lebih dari 15 menit"
+          description: "{{ $value }} kamera CCTV terpantau offline selama lebih dari 15 menit berturut-turut."
+
+      - alert: StreamVerificationLowSuccessRate
+        expr: sigap_stream_verify_total{outcome="failure"} > 0 and sigap_stream_verify_success_rate < 0.8
+        for: 15m
+        labels:
+          severity: warning
+          service: sigap-streaming
+        annotations:
+          summary: "Tingkat keberhasilan verifikasi stream SIGAP di bawah 80%"
+          description: "Success rate verifikasi stream aktif turun menjadi {{ $value | humanizePercentage }} selama 15 menit."
+
+      - alert: SigapApiDown
+        expr: up{job="sigap-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: sigap-api
+        annotations:
+          summary: "SIGAP API target tidak merespons scrape Prometheus"
+          description: "Endpoint /api/metrics pada sigap-api tidak dapat dijangkau selama 2 menit."

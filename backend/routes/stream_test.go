@@ -70,8 +70,10 @@ func TestSetupStreamRoutesRegistersVerify(t *testing.T) {
 
 	verifyPath := "/api/streams/:id/verify"
 	authPath := "/api/streams/auth"
+	diagPath := "/api/streams/diagnostics"
 	foundVerify := false
 	foundAuth := false
+	foundDiag := false
 	for _, route := range app.GetRoutes() {
 		if route.Method == "POST" && route.Path == verifyPath {
 			foundVerify = true
@@ -79,9 +81,18 @@ func TestSetupStreamRoutesRegistersVerify(t *testing.T) {
 		if route.Method == "GET" && route.Path == authPath {
 			foundAuth = true
 		}
+		if route.Method == "GET" && route.Path == diagPath {
+			foundDiag = true
+		}
 	}
 	assert.True(t, foundVerify, "rute %s belum terdaftar", verifyPath)
 	assert.True(t, foundAuth, "rute %s belum terdaftar", authPath)
+	assert.True(t, foundDiag, "rute %s belum terdaftar", diagPath)
+
+	// Endpoint diagnostik harus menolak permintaan tanpa sesi (401).
+	diagResp, err := app.Test(httptest.NewRequest("GET", diagPath, nil))
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusUnauthorized, diagResp.StatusCode)
 
 	// Permintaan anonim langsung ke /stream/* dan /hls/* harus ditolak 401
 	whepResp, err := app.Test(httptest.NewRequest("POST", "/stream/cam-00000000-0000-0000-0000-000000000001/whep", nil))

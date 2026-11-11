@@ -236,3 +236,17 @@ func TestResolveRTSPURL_EmptyUsesBuildFallback(t *testing.T) {
 		t.Fatalf("ResolveRTSPURL(empty) = %q, want %q", got, want)
 	}
 }
+
+func TestRedactRTSPCredentialsInText(t *testing.T) {
+	input := `MediaMTX gagal pada sumber rtsp://admin:RahasiaKu123!@10.20.105.11:554/Streaming/channels/101 dan cadangan rtsps://ops:P@ssSec@192.168.1.9:322/cam1`
+	got := RedactRTSPCredentialsInText(input)
+	if strings.Contains(got, "RahasiaKu123!") || strings.Contains(got, "P@ssSec") {
+		t.Fatalf("RedactRTSPCredentialsInText membocorkan password: %q", got)
+	}
+	if !strings.Contains(got, "10.20.105.11:554") || !strings.Contains(got, "192.168.1.9:322") {
+		t.Fatalf("RedactRTSPCredentialsInText menghapus informasi host: %q", got)
+	}
+	if gotNoCred := RedactRTSPCredentialsInText("status 200 ok tanpa url"); gotNoCred != "status 200 ok tanpa url" {
+		t.Fatalf("teks biasa berubah: %q", gotNoCred)
+	}
+}

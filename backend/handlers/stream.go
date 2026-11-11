@@ -8,12 +8,20 @@ import (
 
 	"sigap-backend/config"
 	"sigap-backend/models"
+	"sigap-backend/monitoring"
 	"sigap-backend/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+func safeStreamErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return utils.RedactRTSPCredentialsInText(err.Error())
+}
 
 // streamClient adalah klien global untuk berkomunikasi dengan MediaMTX.
 // Dapat diganti (di-inject) pada pengujian melalui setStreamClient.
@@ -160,7 +168,7 @@ func StartStream(c *fiber.Ctx) error {
 	// DecryptRTSPURL, sedangkan data baru tersimpan sebagai enc:v1:<ciphertext>.
 	storedRTSPURL, err := utils.DecryptRTSPURL(cctv.RTSPURL)
 	if err != nil {
-		utils.Log.Errorf("❌ Gagal mendekripsi URL RTSP untuk CCTV %s: %v", cctv.ID, err)
+		utils.Log.Errorf("❌ Gagal mendekripsi URL RTSP untuk CCTV %s: %s", cctv.ID, safeStreamErrorText(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal mendekripsi URL RTSP",
@@ -222,7 +230,7 @@ func StartStream(c *fiber.Ctx) error {
 	}
 	pathAlreadyRegistered, err := ensureStreamPath(path, pathCfg)
 	if err != nil {
-		utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+		utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %s", path, safeStreamErrorText(err))
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menghubungi server streaming",
@@ -382,7 +390,7 @@ func StartAllStreams(c *fiber.Ctx) error {
 		}
 		alreadyRegistered, err := ensureStreamPath(path, pathCfg)
 		if err != nil {
-			utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %v", path, err)
+			utils.Log.Errorf("❌ Gagal mendaftarkan path streaming %s: %s", path, safeStreamErrorText(err))
 			failed++
 			continue
 		}
@@ -713,7 +721,7 @@ func registerStreamWithRetry(cctv models.CCTV, maxRetry int) error {
 			}
 			return nil
 		}
-		utils.Log.Warnf("⚠️ Percobaan %d/%d register stream %s gagal: %v", attempt+1, maxRetry, path, err)
+		utils.Log.Warnf("⚠️ Percobaan %d/%d register stream %s gagal: %s", attempt+1, maxRetry, path, safeStreamErrorText(err))
 		if attempt < maxRetry-1 {
 			time.Sleep(backoff[attempt])
 		}
@@ -884,6 +892,7 @@ func evaluateStreamState(db *gorm.DB, cctv models.CCTV, path string, isReady boo
 				return
 			}
 			streamDownNotified[path] = true
+			monitoring.GetCollector().ObserveStreamOfflineAlert()
 			utils.Log.Warnf("🔴 Stream CCTV %s (%s) down lebih dari 15 menit — path %s", cctv.Nama, cctv.KodeCCTV, path)
 			broadcastStreamEvent("STREAM_DOWN", fiber.Map{
 				"cctv_id": cctv.ID.String(),

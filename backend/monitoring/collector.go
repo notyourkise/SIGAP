@@ -3,15 +3,29 @@ package monitoring
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"sigap-backend/config"
 	"sigap-backend/utils"
 )
 
+const streamVerifyFreshnessWindow = 30 * time.Minute
+
+type cctvStateProjection struct {
+	StreamLive          bool
+	StreamState         string
+	StreamCheckedAt     *time.Time
+	StreamVerifiedState string
+	StreamVerifiedAt    *time.Time
+}
+
 // updateDBPool membaca statistik connection pool dari sql.DB dan mencatatnya
 // sebagai gauge. Bila gagal, gauge dibiarkan bernilai sebelumnya (tidak fatal).
 func (c *Collector) updateDBPool() {
+	if config.DB == nil {
+		return
+	}
 	sqlDB, err := config.DB.DB()
 	if err != nil {
 		utils.Log.Warnf("⚠️ Metrics: gagal mengambil sql.DB untuk pool stats: %v", err)
@@ -23,6 +37,61 @@ func (c *Collector) updateDBPool() {
 		float64(stats.Idle),
 		float64(stats.MaxOpenConnections),
 	)
+}
+
+// updateCCTVCameraStates membaca status efektif kamera aktif dari database untuk
+// memperbarui gauge online, idle, offline, dan unknown pada Prometheus.
+func (c *Collector) updateCCTVCameraStates() {
+	if config.DB == nil {
+		return
+	}
+
+	var rows []cctvStateProjection
+	err := config.DB.Table("cctvs").
+		Select("stream_live, stream_state, stream_checked_at, stream_verified_state, stream_verified_at").
+		Where("deleted_at IS NULL AND (stream_enabled = ? OR monitoring_enabled = ?) AND LOWER(COALESCE(status, '')) <> 'nonaktif'", true, true).
+		Find(&rows).Error
+	if err != nil {
+		utils.Log.Warnf("⚠️ Metrics: gagal memuat status kamera CCTV: %v", err)
+		return
+	}
+
+	now := time.Now().UTC()
+	var online, idle, offline, unknown float64
+	for _, row := range rows {
+		switch effectiveCCTVCameraState(row, now) {
+		case "live":
+			online++
+		case "idle":
+			idle++
+		case "offline":
+			offline++
+		default:
+			unknown++
+		}
+	}
+	c.SetCCTVCameraStates(online, idle, offline, unknown)
+}
+
+func effectiveCCTVCameraState(row cctvStateProjection, now time.Time) string {
+	if row.StreamVerifiedAt != nil {
+		age := now.Sub(*row.StreamVerifiedAt)
+		if age >= 0 && age <= streamVerifyFreshnessWindow &&
+			(row.StreamVerifiedState == "live" || row.StreamVerifiedState == "offline") {
+			return row.StreamVerifiedState
+		}
+	}
+	state := strings.TrimSpace(row.StreamState)
+	if state != "" {
+		return state
+	}
+	if row.StreamLive {
+		return "live"
+	}
+	if row.StreamCheckedAt != nil {
+		return "offline"
+	}
+	return "unknown"
 }
 
 // updateWSActive membaca jumlah koneksi WebSocket aktif dan mencatatnya sebagai gauge.
@@ -76,6 +145,7 @@ func StartCollector(uploadsDir string, interval time.Duration) {
 		collector.updateDBPool()
 		collector.updateWSActive()
 		collector.updateUploadStorage(uploadsDir)
+		collector.updateCCTVCameraStates()
 	}
 
 	// Perbarui langsung sekali saat startup agar metrik gauge langsung terisi.
