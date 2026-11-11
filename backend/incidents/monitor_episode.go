@@ -16,6 +16,24 @@ import (
 	"sigap-backend/utils"
 )
 
+func AssignmentReminderThreshold() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("CCTV_INCIDENT_REMINDER_MINUTES"))
+	if raw != "" {
+		if mins, err := strconv.Atoi(raw); err == nil && mins >= 1 && mins <= 1440 {
+			return time.Duration(mins) * time.Minute
+		}
+	}
+	return AssignmentReminderDelay
+}
+
+func formatDurationMinutesLabel(d time.Duration) string {
+	mins := int(d.Round(time.Minute) / time.Minute)
+	if mins < 1 {
+		mins = 1
+	}
+	return fmt.Sprintf("%d menit", mins)
+}
+
 func EscalationThreshold() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("CCTV_INCIDENT_ESCALATION_MINUTES"))
 	if raw != "" {
@@ -213,8 +231,10 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 		}
 	}
 
-	// 2. Pengingat penugasan 30 menit (terbuka, belum ditugaskan, masih ada kamera belum recovered, maksimal 1x).
-	reminderCutoff := now.Add(-AssignmentReminderDelay)
+	// 2. Pengingat penugasan (default 30 menit, konfigurabel via CCTV_INCIDENT_REMINDER_MINUTES, terbuka, belum ditugaskan, maksimal 1x).
+	remThreshold := AssignmentReminderThreshold()
+	remLabel := formatDurationMinutesLabel(remThreshold)
+	reminderCutoff := now.Add(-remThreshold)
 	var dueReminders []Incident
 	if err := s.DB.WithContext(ctx).
 		Where("status = ? AND assigned_to IS NULL AND assignment_reminder_queued_at IS NULL AND sla_clock_start_at <= ?", StatusOpen, reminderCutoff).
@@ -248,8 +268,8 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 			}
 
 			outbox, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_ASSIGN_REMINDER",
-				fmt.Sprintf("Pengingat 30 menit: Tiket %s (%s) masih terbuka, belum ditugaskan ke teknisi, dan %d kamera belum pulih.",
-					i.TicketNumber, i.Title, unrecovered),
+				fmt.Sprintf("Pengingat %s: Tiket %s (%s) masih terbuka, belum ditugaskan ke teknisi, dan %d kamera belum pulih.",
+					remLabel, i.TicketNumber, i.Title, unrecovered),
 				now, enqueueOpts{TargetChannel: ChannelOpsGroup})
 			if err != nil {
 				return err
@@ -262,7 +282,7 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 				return err
 			}
 			_ = recordIncidentEvent(tx, i.ID, nil, nil, "INCIDENT_ASSIGN_REMINDER_QUEUED",
-				"Pengingat penugasan 30 menit diantrekan ke outbox Telegram",
+				fmt.Sprintf("Pengingat penugasan %s diantrekan ke outbox Telegram", remLabel),
 				map[string]interface{}{"outbox_id": outbox.ID.String()}, now)
 			queued = true
 			return nil
@@ -274,8 +294,8 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 			reminders++
 			ref := cand.ID
 			utils.NotifyRole(s.DB, "admin", models.NotificationTypeIncidentAssignReminder,
-				"Pengingat Penugasan Insiden (30 Menit)",
-				fmt.Sprintf("Tiket %s belum ditugaskan setelah 30 menit dan kamera masih mengalami gangguan.", cand.TicketNumber),
+				fmt.Sprintf("Pengingat Penugasan Insiden (%s)", remLabel),
+				fmt.Sprintf("Tiket %s belum ditugaskan setelah %s dan kamera masih mengalami gangguan.", cand.TicketNumber, remLabel),
 				"incident", &ref)
 		}
 	}
