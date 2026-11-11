@@ -7,6 +7,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -208,17 +209,18 @@ type FieldImageItem struct {
 }
 
 type CreateFieldMaintenanceRequest struct {
-	CCTVID         string           `json:"cctv_id" validate:"required,uuid4"`
-	Notes          string           `json:"notes" validate:"omitempty,max=1000"`
-	CheckLatitude  string           `json:"check_latitude"`
-	CheckLongitude string           `json:"check_longitude"`
-	Checks         []FieldCheckItem `json:"checks" validate:"required,min=1,dive"`
-	Images         []FieldImageItem `json:"images" validate:"required,min=1,max=5,dive"`
+	CCTVID          string           `json:"cctv_id" validate:"required,uuid4"`
+	Notes           string           `json:"notes" validate:"omitempty,max=1000"`
+	CheckLatitude   string           `json:"check_latitude"`
+	CheckLongitude  string           `json:"check_longitude"`
+	ClientRequestID string           `json:"client_request_id" validate:"omitempty,max=100"`
+	Checks          []FieldCheckItem `json:"checks" validate:"required,min=1,dive"`
+	Images          []FieldImageItem `json:"images" validate:"required,min=1,max=5,dive"`
 }
 
 // validateCoordinates memvalidasi pasangan koordinat geotag (opsional).
 // Bila keduanya kosong maka geotag diabaikan (diizinkan). Bila salah satu
-// atau keduanya diisi, keduanya harus berupa angka valid: latitude dalam
+// atau keduanya diisi, keduanya harus berupa angka finit valid: latitude dalam
 // rentang [-90, 90] dan longitude dalam rentang [-180, 180].
 func validateCoordinates(lat, lng string) error {
 	lat = strings.TrimSpace(lat)
@@ -235,7 +237,7 @@ func validateCoordinates(lat, lng string) error {
 	}
 
 	latVal, err := strconv.ParseFloat(lat, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(latVal) || math.IsInf(latVal, 0) {
 		return errors.New("check_latitude harus berupa angka yang valid")
 	}
 	if latVal < -90 || latVal > 90 {
@@ -243,7 +245,7 @@ func validateCoordinates(lat, lng string) error {
 	}
 
 	lngVal, err := strconv.ParseFloat(lng, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(lngVal) || math.IsInf(lngVal, 0) {
 		return errors.New("check_longitude harus berupa angka yang valid")
 	}
 	if lngVal < -180 || lngVal > 180 {
@@ -347,6 +349,36 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 		})
 	}
 
+	// Idempotensi pengiriman mobile offline (M14 #187): bila klien menyertakan
+	// client_request_id yang sudah pernah berhasil disimpan untuk teknisi ini,
+	// kembalikan catatan yang sudah ada tanpa membuat duplikasi.
+	var clientReqPtr *string
+	if trimmedReqID := strings.TrimSpace(req.ClientRequestID); trimmedReqID != "" {
+		clientReqPtr = &trimmedReqID
+		var existing models.FieldMaintenance
+		if findErr := config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").
+			Where("technician_id = ? AND client_request_id = ?", techUUID, trimmedReqID).
+			First(&existing).Error; findErr == nil {
+			if existing.CCTVID != cctvUUID {
+				return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+					"status":  "error",
+					"message": "client_request_id sudah dipakai untuk pengecekan CCTV yang berbeda",
+				})
+			}
+			sanitizeCCTVForResponse(&existing.CCTV)
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{
+				"status":     "success",
+				"idempotent": true,
+				"data":       existing,
+			})
+		} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Gagal memeriksa status pengiriman pengecekan lapangan",
+			})
+		}
+	}
+
 	activeTemplates := loadActiveChecklistTemplates(config.DB, cctv.SiteID)
 	validatedChecks, err := validateChecklistItemsAgainstTemplates(req.Checks, activeTemplates)
 	if err != nil {
@@ -368,13 +400,14 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 
 	now := time.Now()
 	entry := models.FieldMaintenance{
-		CCTVID:         cctvUUID,
-		TechnicianID:   techUUID,
-		OverallStatus:  overall,
-		Notes:          strings.TrimSpace(req.Notes),
-		CheckLatitude:  strings.TrimSpace(req.CheckLatitude),
-		CheckLongitude: strings.TrimSpace(req.CheckLongitude),
-		CompletedAt:    &now,
+		CCTVID:          cctvUUID,
+		TechnicianID:    techUUID,
+		OverallStatus:   overall,
+		Notes:           strings.TrimSpace(req.Notes),
+		CheckLatitude:   strings.TrimSpace(req.CheckLatitude),
+		CheckLongitude:  strings.TrimSpace(req.CheckLongitude),
+		ClientRequestID: clientReqPtr,
+		CompletedAt:     &now,
 	}
 
 	// Simpan header + checklist + gambar dalam satu transaksi agar konsisten
@@ -423,6 +456,26 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 		}
 		return nil
 	}); err != nil {
+		errLower := strings.ToLower(err.Error())
+		if clientReqPtr != nil && (strings.Contains(errLower, "unique") || strings.Contains(errLower, "duplicate") || strings.Contains(errLower, "23505")) {
+			var existing models.FieldMaintenance
+			if findErr := config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").
+				Where("technician_id = ? AND client_request_id = ?", techUUID, *clientReqPtr).
+				First(&existing).Error; findErr == nil {
+				if existing.CCTVID != cctvUUID {
+					return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+						"status":  "error",
+						"message": "client_request_id sudah dipakai untuk pengecekan CCTV yang berbeda",
+					})
+				}
+				sanitizeCCTVForResponse(&existing.CCTV)
+				return c.Status(fiber.StatusOK).JSON(fiber.Map{
+					"status":     "success",
+					"idempotent": true,
+					"data":       existing,
+				})
+			}
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Gagal menyimpan catatan pengecekan lapangan",
@@ -448,6 +501,7 @@ func CreateFieldMaintenance(c *fiber.Ctx) error {
 
 	// Muat ulang dengan relasi lengkap untuk respon JSON
 	config.DB.Preload("CCTV").Preload("User").Preload("Checks").Preload("Images").First(&entry, entry.ID)
+	sanitizeCCTVForResponse(&entry.CCTV)
 
 	// Hasil field-check mengubah salah satu faktor skor, jadi hitung ulang
 	// setelah seluruh header dan checklist berhasil disimpan.
@@ -543,6 +597,9 @@ func GetAllFieldMaintenances(c *fiber.Ctx) error {
 			"message": "Gagal mengambil daftar pengecekan lapangan",
 		})
 	}
+	for i := range entries {
+		sanitizeCCTVForResponse(&entries[i].CCTV)
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -603,6 +660,8 @@ func GetFieldMaintenanceByID(c *fiber.Ctx) error {
 			})
 		}
 	}
+
+	sanitizeCCTVForResponse(&entry.CCTV)
 
 	return c.JSON(fiber.Map{
 		"status": "success",

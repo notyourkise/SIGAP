@@ -1,44 +1,75 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiClient, extractError } from '../api/client';
 import type { CreateFieldMaintenancePayload } from '../api/types';
+import {
+  classifySyncError,
+  createDraftStore,
+  DRAFT_KEY,
+  MAX_DRAFT_RETRY_COUNT,
+  type CreateFieldDraftInput,
+  type DraftStatus,
+  type FieldDraft,
+  type SyncAllResult,
+} from './engine';
 
-const DRAFT_KEY = 'sigap_field_drafts';
+export {
+  classifySyncError,
+  createDraftStore,
+  DRAFT_KEY,
+  MAX_DRAFT_RETRY_COUNT,
+  type CreateFieldDraftInput,
+  type DraftStatus,
+  type FieldDraft,
+  type SyncAllResult,
+};
 
-// Draft offline pengecekan lapangan yang disimpan saat sinyal hilang.
-export interface FieldDraft {
-  id: string;
-  createdAt: string;
-  payload: CreateFieldMaintenancePayload;
-}
-
-export async function getDrafts(): Promise<FieldDraft[]> {
-  const raw = await AsyncStorage.getItem(DRAFT_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as FieldDraft[];
-  } catch {
-    return [];
-  }
-}
-
-export async function saveDraft(payload: CreateFieldMaintenancePayload): Promise<FieldDraft[]> {
-  const drafts = await getDrafts();
-  const draft: FieldDraft = {
-    id: `${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    payload,
+/**
+ * Membangun bagian FormData untuk unggahan foto (React Native memakai objek
+ * { uri, name, type } — base64 di-encode sebagai data URI).
+ */
+export function buildUploadPart(base64: string): { uri: string; name: string; type: string } {
+  return {
+    uri: `data:image/jpeg;base64,${base64}`,
+    name: `proof-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`,
+    type: 'image/jpeg',
   };
-  const next = [...drafts, draft];
-  await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(next));
-  return next;
 }
 
-export async function removeDraft(id: string): Promise<FieldDraft[]> {
-  const drafts = await getDrafts();
-  const next = drafts.filter((d) => d.id !== id);
-  await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(next));
-  return next;
-}
+const defaultStore = createDraftStore(
+  AsyncStorage,
+  {
+    async uploadPhoto(base64: string) {
+      const form = new FormData();
+      form.append('file', buildUploadPart(base64) as unknown as Blob);
+      const res = await apiClient.post<{
+        status: string;
+        data?: { url: string };
+        message?: string;
+      }>('/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const url = res.data?.data?.url;
+      if (!url) {
+        throw new Error(res.data?.message || 'Gagal mengunggah foto bukti');
+      }
+      return url;
+    },
+    async submitFieldMaintenance(payload: CreateFieldMaintenancePayload) {
+      const res = await apiClient.post<{ status: string; message?: string }>(
+        '/field-maintenance',
+        payload
+      );
+      return res.data;
+    },
+  },
+  extractError
+);
 
-export async function clearDrafts(): Promise<void> {
-  await AsyncStorage.removeItem(DRAFT_KEY);
-}
+export const getDrafts = defaultStore.getDrafts;
+export const getDraftsByUser = defaultStore.getDraftsByUser;
+export const saveDraft = defaultStore.saveDraft;
+export const updateDraft = defaultStore.updateDraft;
+export const removeDraft = defaultStore.removeDraft;
+export const clearDrafts = defaultStore.clearDrafts;
+export const syncSingleDraft = defaultStore.syncSingleDraft;
+export const syncAllDrafts = defaultStore.syncAllDrafts;

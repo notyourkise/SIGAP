@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -173,13 +174,14 @@ type ScanCCTVRequest struct {
 }
 
 // validateCoordinateRange memvalidasi rentang koordinat (Task 13.1).
-// Latitude harus -90..90, Longitude -180..180. Nilai nil dianggap valid (opsional).
+// Latitude harus -90..90, Longitude -180..180, serta wajib berupa angka finit
+// (bukan NaN / +/-Inf). Nilai nil dianggap valid (opsional).
 // Mengembalikan pesan error, atau "" bila valid.
 func validateCoordinateRange(lat, lng *float64) string {
-	if lat != nil && (*lat < -90 || *lat > 90) {
+	if lat != nil && (math.IsNaN(*lat) || math.IsInf(*lat, 0) || *lat < -90 || *lat > 90) {
 		return "Latitude tidak valid (rentang -90 s.d. 90)"
 	}
-	if lng != nil && (*lng < -180 || *lng > 180) {
+	if lng != nil && (math.IsNaN(*lng) || math.IsInf(*lng, 0) || *lng < -180 || *lng > 180) {
 		return "Longitude tidak valid (rentang -180 s.d. 180)"
 	}
 	return ""
@@ -226,7 +228,7 @@ func parseCoordinateCell(value string, rowNum int, field string) *float64 {
 		return nil
 	}
 	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 		utils.Log.Warnf("⚠️ Impor CCTV baris %d: %s '%s' bukan angka valid — koordinat dilewati", rowNum, field, v)
 		return nil
 	}

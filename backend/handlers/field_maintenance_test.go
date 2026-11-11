@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -669,5 +670,198 @@ func TestAudit_FieldMaintenanceMustRejectInventedChecklistAndFakePhoto(t *testin
 	respInvented, err := app.Test(reqInvented)
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusBadRequest, respInvented.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// L02 (#190): Memastikan validasi koordinat lapangan menolak NaN, Inf, dan -Inf.
+func TestAudit_FieldCoordinatesMustRejectNaN(t *testing.T) {
+	assert.Error(t, validateCoordinates("NaN", "116.7"))
+	assert.Error(t, validateCoordinates("nan", "116.7"))
+	assert.Error(t, validateCoordinates("-0.97", "Inf"))
+	assert.Error(t, validateCoordinates("-0.97", "+Inf"))
+	assert.Error(t, validateCoordinates("-Inf", "116.7"))
+	assert.Error(t, validateCoordinates("-90.1", "116.7"))
+	assert.Error(t, validateCoordinates("-0.97", "180.1"))
+	assert.NoError(t, validateCoordinates("", ""))
+	assert.NoError(t, validateCoordinates("-90", "180"))
+
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	techID := uuid.New()
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
+
+	badCoords := []struct {
+		lat string
+		lng string
+	}{
+		{"NaN", "116.7092"},
+		{"-0.9721", "nan"},
+		{"Inf", "116.7092"},
+		{"-0.9721", "-Inf"},
+		{"+Inf", "116.7092"},
+	}
+	for _, tc := range badCoords {
+		payload := `{"cctv_id":"` + cctvID.String() + `","check_latitude":"` + tc.lat + `","check_longitude":"` + tc.lng + `",
+			"checks":[{"name":"Pengecekan jaringan","result":"ok"}],
+			"images":[{"image_url":"/api/uploads/bukti1.jpg"}]}`
+		req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	}
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// M14 (#187): Replay client_request_id mengembalikan catatan yang sudah ada dengan HTTP 200 idempotent:true
+// serta meredaksi metadata RTSP bersarang tanpa membuat insert ganda.
+func TestCreateFieldMaintenance_IdempotencyReplay(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	techID := uuid.New()
+	entryID := uuid.New()
+	reqID := "req-offline-abc-123"
+
+	cctvRows := cctvMockRowWithIdentity(cctvID, "encrypted-qr", "aktif")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(cctvRows)
+
+	existingRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "overall_status", "notes", "check_latitude", "check_longitude", "client_request_id", "completed_at",
+	}).AddRow(entryID, time.Now(), time.Now(), nil, cctvID, techID, "ok", "Semua item normal", "-0.97", "116.7", reqID, time.Now())
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).WillReturnRows(existingRows)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status", "rtsp_url", "rtsp_password"}).
+			AddRow(cctvID, "CAM-01", "Kamera Utama", "aktif", "rtsp://admin:replay-secret@10.0.0.1:554/ch1", "pw-secret"))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "name", "result"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(techID, "teknisi1", "teknisi"))
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
+
+	payload := `{"cctv_id":"` + cctvID.String() + `","client_request_id":"` + reqID + `","notes":"Semua item normal",
+		"checks":[{"name":"Pengecekan jaringan","result":"ok"}],
+		"images":[{"image_url":"/api/uploads/bukti1.jpg"}]}`
+	req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "success", body["status"])
+	assert.Equal(t, true, body["idempotent"])
+
+	encoded, err := json.Marshal(body)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(encoded), "replay-secret")
+	assert.NotContains(t, string(encoded), "pw-secret")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// M14 (#187): Penggunaan ulang client_request_id untuk CCTV yang berbeda ditolak HTTP 409 Conflict.
+func TestCreateFieldMaintenance_IdempotencyConflictDifferentCCTV(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	otherCCTVID := uuid.New()
+	techID := uuid.New()
+	entryID := uuid.New()
+	reqID := "req-offline-reuse"
+
+	cctvRows := cctvMockRowWithIdentity(cctvID, "encrypted-qr", "aktif")
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).WillReturnRows(cctvRows)
+
+	existingRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "overall_status", "notes", "client_request_id",
+	}).AddRow(entryID, time.Now(), time.Now(), nil, otherCCTVID, techID, "ok", "Kamera lain", reqID)
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).WillReturnRows(existingRows)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "name", "result"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}))
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
+
+	payload := `{"cctv_id":"` + cctvID.String() + `","client_request_id":"` + reqID + `",
+		"checks":[{"name":"Pengecekan jaringan","result":"ok"}],
+		"images":[{"image_url":"/api/uploads/bukti1.jpg"}]}`
+	req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusConflict, resp.StatusCode)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// M14 (#187): Race condition concurrent submit ditangani melalui recovery SQLSTATE 23505 menjadi HTTP 200 idempotent:true.
+func TestCreateFieldMaintenance_IdempotencyUniqueViolationRace(t *testing.T) {
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	techID := uuid.New()
+	entryID := uuid.New()
+	reqID := "req-offline-race-23505"
+
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(cctvMockRowWithIdentity(cctvID, "encrypted-qr", "aktif"))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).
+		WillReturnError(gorm.ErrRecordNotFound)
+	expectTwoActiveChecklistTemplates(mock)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`^INSERT INTO "field_maintenances"`).
+		WillReturnError(errors.New(`ERROR: duplicate key value violates unique constraint "uq_field_maintenances_tech_client_req" (SQLSTATE 23505)`))
+	mock.ExpectRollback()
+
+	existingRows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"cctv_id", "technician_id", "overall_status", "notes", "client_request_id", "completed_at",
+	}).AddRow(entryID, time.Now(), time.Now(), nil, cctvID, techID, "ok", "Concurrent OK", reqID, time.Now())
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenances"`).WillReturnRows(existingRows)
+	mock.ExpectQuery(`^SELECT \* FROM "cctvs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "kode_cctv", "nama", "status", "rtsp_url", "rtsp_password"}).
+			AddRow(cctvID, "CAM-01", "Kamera Race", "aktif", "rtsp://admin:race-secret@10.0.0.2:554/ch1", "pw-race-secret"))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_checks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "name", "result"}))
+	mock.ExpectQuery(`^SELECT \* FROM "field_maintenance_images"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "field_maintenance_id", "image_url"}))
+	mock.ExpectQuery(`^SELECT \* FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(techID, "teknisi1", "teknisi"))
+
+	app := newTestApp()
+	app.Post("/field-maintenance", withUserLocals(techID.String(), "teknisi"), CreateFieldMaintenance)
+	payload := `{"cctv_id":"` + cctvID.String() + `","client_request_id":"` + reqID + `",
+		"checks":[{"name":"Pengecekan jaringan","result":"ok"},{"name":"Pengecekan listrik","result":"ok"}],
+		"images":[{"image_url":"/api/uploads/bukti1.jpg"}]}`
+	req := httptest.NewRequest("POST", "/field-maintenance", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "success", body["status"])
+	assert.Equal(t, true, body["idempotent"])
+
+	encoded, err := json.Marshal(body)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(encoded), "race-secret")
+	assert.NotContains(t, string(encoded), "pw-race-secret")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

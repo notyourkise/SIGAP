@@ -1,5 +1,43 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-11 - Penyelesaian Temuan Audit M14, M15, L01, dan L02 (#187, #188, #189, #190)
+
+### Perbaikan Audit Keamanan, Idempotensi Offline Mobile, Validasi Tanggal, & Koordinat
+
+**Masalah & Sebelum (Before)**:
+- **M14 (#187)**: `POST /api/field-maintenance` belum mendukung kunci idempotensi dari klien mobile (`client_request_id`), sehingga retry jaringan pasca-gagal dapat membuat catatan duplikat.
+- **M15 (#188)**: Entitas `models.CCTV` yang di-preload bersarang di `maintenance_logs`, `field_maintenances`, `maintenance_schedules`, `zones`, dan `cctv_stream_logs` belum memanggil `sanitizeCCTVForResponse` dan `RTSPURL` masih bertag JSON `rtsp_url`, berisiko membocorkan kredensial RTSP atau URL terenkripsi pada respons bersarang.
+- **L01 (#189)**: Nilai `scheduled_date` tidak valid pada `POST /maintenance-logs` dan `PUT /maintenance-logs/:id` belum menyertakan array `errors` terstruktur untuk field `scheduled_date`, dan pada endpoint `PUT` validasi tanggal berjalan setelah lookup `cctv_id`.
+- **L02 (#190)**: Parser float `strconv.ParseFloat` pada koordinat pengecekan lapangan (`field_maintenance`) dan CCTV (`cctv`) meloloskan nilai `NaN`, `Inf`, dan `-Inf` karena tidak memeriksa `math.IsNaN`/`math.IsInf`.
+
+**Sesudah (After)**:
+- **M14 (#187)**: Menambahkan migrasi `000035_field_maintenance_idempotency` (kolom nullable `client_request_id` + partial unique index `(technician_id, client_request_id) WHERE client_request_id IS NOT NULL AND deleted_at IS NULL`), penanganan replay idempoten HTTP `200` (`idempotent: true`), penolakan `409 Conflict` bila `client_request_id` dipakai ulang untuk CCTV berbeda, serta recovery race `SQLSTATE 23505` di `handlers/field_maintenance.go`.
+- **M15 (#188)**: Mengubah tag JSON `RTSPURL` dan `RTSPPassword` pada `models/cctv.go` menjadi `json:"-"`, serta menerapkan `sanitizeCCTVForResponse` pada seluruh path `maintenance.go`, `field_maintenance.go`, `maintenance_schedule.go`, `zone.go`, dan `cctv_stream_log.go` yang mem-preload `CCTV`.
+- **L01 (#189)**: Mengembalikan HTTP `400` dengan `errors: [{field: "scheduled_date", tag: "datetime", value}]` serta menempatkan validasi `scheduled_date` sebelum query DB / mutasi field di `CreateMaintenanceLog` dan `UpdateMaintenanceLog`.
+- **L02 (#190)**: Menambahkan penjaga `math.IsNaN` & `math.IsInf` di `validateCoordinates` (`handlers/field_maintenance.go`), `validateCoordinateRange`, dan `parseCoordinateCell` (`handlers/cctv.go`).
+- **Uji Regresi**: Menambahkan `m15_nested_rtsp_redaction_test.go` serta memperluas `maintenance_test.go`, `field_maintenance_test.go`, dan `cctv_security_test.go`.
+
+timestamp: 2026-11-11 16:38 WITA
+kategori: Sedang, Backend (Security, Idempotency, Input Validation, Migration)
+file yang diubah:
+- backend/models/cctv.go
+- backend/models/field_maintenance.go
+- backend/migrations/000035_field_maintenance_idempotency.up.sql
+- backend/migrations/000035_field_maintenance_idempotency.down.sql
+- backend/handlers/field_maintenance.go
+- backend/handlers/maintenance.go
+- backend/handlers/maintenance_schedule.go
+- backend/handlers/zone.go
+- backend/handlers/cctv_stream_log.go
+- backend/handlers/cctv.go
+- backend/handlers/m15_nested_rtsp_redaction_test.go
+- backend/handlers/maintenance_test.go
+- backend/handlers/field_maintenance_test.go
+- backend/handlers/cctv_security_test.go
+- backend/changelog.md
+
+alasan perubahan: Menyelesaikan temuan audit kode M14 (#187), M15 (#188), L01 (#189), dan L02 (#190) beserta uji regresi otomatis sebelum pengujian E2E dan Telegram.
+
 ## [Unreleased] - 2026-11-07 - Penyempurnaan Review Revisi 3 Monitoring CCTV & Telegram
 
 ### Tiga Koreksi Review Revisi 3 beserta Uji Regresi

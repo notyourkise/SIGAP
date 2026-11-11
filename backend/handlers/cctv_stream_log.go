@@ -87,6 +87,11 @@ func GetCCTVStreamLogs(c *fiber.Ctx) error {
 			"message": "Gagal mengambil data log CCTV",
 		})
 	}
+	for i := range logs {
+		if logs[i].CCTV != nil {
+			sanitizeCCTVForResponse(logs[i].CCTV)
+		}
+	}
 
 	// Ringkasan hari ini memakai zona waktu operasional (APP_TIMEZONE) dan
 	// filter yang sama dengan daftar. Batas atas eksklusif agar event tepat

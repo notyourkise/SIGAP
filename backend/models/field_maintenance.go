@@ -30,8 +30,11 @@ type FieldMaintenance struct {
 	CheckLatitude string `gorm:"type:varchar(30)" json:"check_latitude,omitempty"`
 	// CheckLongitude adalah koordinat longitude lokasi pengecekan lapangan (opsional).
 	// Nil string kosong berarti geotag tidak dilampirkan oleh teknisi.
-	CheckLongitude string `gorm:"type:varchar(30)" json:"check_longitude,omitempty"`
-	CompletedAt   *time.Time `json:"completed_at"`
+	CheckLongitude  string `gorm:"type:varchar(30)" json:"check_longitude,omitempty"`
+	// ClientRequestID adalah idempotency key opsional dari klien (mis. mobile
+	// offline) untuk mencegah duplikasi record saat retry pengiriman yang sama.
+	ClientRequestID *string `gorm:"type:varchar(100)" json:"client_request_id,omitempty"`
+	CompletedAt     *time.Time `json:"completed_at"`
 	Checks        []FieldMaintenanceCheck `gorm:"foreignKey:FieldMaintenanceID" json:"checks"`
 	Images        []FieldMaintenanceImage `gorm:"foreignKey:FieldMaintenanceID" json:"images"`
 }
