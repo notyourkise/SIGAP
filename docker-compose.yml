@@ -98,8 +98,9 @@ services:
       # Alamat internal API MediaMTX di network Docker. Mode native-local
       # memakai default 127.0.0.1:9997 dari backend.
       - MEDIAMTX_API_URL=http://mediamtx:9997
-      # Alamat HLS internal dipakai untuk memicu path on-demand saat verifikasi
-      # status aktif. Bukan URL yang diekspos ke browser.
+      # Alamat RTSP internal dipakai untuk memicu path on-demand via DESCRIBE singkat saat verifikasi
+      # aktif tanpa meninggalkan hlsSession/hlsMuxer. MEDIAMTX_HLS_URL & WEBRTC dipakai untuk proksi pemutaran.
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
       - MEDIAMTX_HLS_URL=http://mediamtx:8888
       - MEDIAMTX_WEBRTC_URL=http://mediamtx:8889
       # Interval verifikasi aktif (menit) dan jumlah worker paralel. Nilai

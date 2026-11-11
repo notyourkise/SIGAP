@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -449,10 +451,11 @@ func TestNilHTTPClient(t *testing.T) {
 }
 
 // TestNewMediaMTXClientDefault memverifikasi bahwa NewMediaMTXClient membaca
-// env MEDIAMTX_API_URL dan membuang trailing slash, serta menetapkan timeout.
+// env MEDIAMTX_* dan menurunkan RTSPURL saat MEDIAMTX_RTSP_URL tidak diisi.
 func TestNewMediaMTXClientDefault(t *testing.T) {
 	t.Setenv("MEDIAMTX_API_URL", "http://mediamtx:9997/")
 	t.Setenv("MEDIAMTX_HLS_URL", "http://mediamtx:8888/")
+	t.Setenv("MEDIAMTX_RTSP_URL", "")
 	client := NewMediaMTXClient()
 	if client.BaseURL != "http://mediamtx:9997" {
 		t.Errorf("NewMediaMTXClient() BaseURL = %q, want http://mediamtx:9997", client.BaseURL)
@@ -460,8 +463,17 @@ func TestNewMediaMTXClientDefault(t *testing.T) {
 	if client.HLSURL != "http://mediamtx:8888" {
 		t.Errorf("NewMediaMTXClient() HLSURL = %q, want http://mediamtx:8888", client.HLSURL)
 	}
+	if client.RTSPURL != "rtsp://mediamtx:8554" {
+		t.Errorf("NewMediaMTXClient() RTSPURL = %q, want rtsp://mediamtx:8554", client.RTSPURL)
+	}
 	if client.HTTPClient == nil {
 		t.Fatal("NewMediaMTXClient() HTTPClient nil")
+	}
+
+	t.Setenv("MEDIAMTX_RTSP_URL", "rtsp://custom-mtx:18554/")
+	clientOverride := NewMediaMTXClient()
+	if clientOverride.RTSPBaseURL() != "rtsp://custom-mtx:18554" {
+		t.Errorf("NewMediaMTXClient() RTSPBaseURL = %q, want rtsp://custom-mtx:18554", clientOverride.RTSPBaseURL())
 	}
 }
 
@@ -500,5 +512,165 @@ func TestTriggerHLSStatusHandling(t *testing.T) {
 				t.Fatalf("TriggerHLS() unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestTriggerRTSPStatusHandling(t *testing.T) {
+	startMockRTSP := func(t *testing.T, handler func(conn net.Conn, firstLine string)) string {
+		t.Helper()
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		go func() {
+			for {
+				conn, accErr := ln.Accept()
+				if accErr != nil {
+					return
+				}
+				go func(c net.Conn) {
+					defer func() { _ = c.Close() }()
+					_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+					br := bufio.NewReader(c)
+					first, _ := br.ReadString('\n')
+					for {
+						line, rErr := br.ReadString('\n')
+						if rErr != nil || line == "\r\n" || line == "\n" {
+							break
+						}
+					}
+					handler(c, first)
+				}(conn)
+			}
+		}()
+		return "rtsp://" + ln.Addr().String()
+	}
+
+	t.Run("ok SDP response succeeds and sends DESCRIBE", func(t *testing.T) {
+		var gotFirstLine string
+		rtspURL := startMockRTSP(t, func(c net.Conn, first string) {
+			gotFirstLine = strings.TrimSpace(first)
+			_, _ = io.WriteString(c, "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n")
+		})
+		client := &MediaMTXClient{RTSPURL: rtspURL}
+		if err := client.TriggerRTSP("cam-test", time.Second); err != nil {
+			t.Fatalf("TriggerRTSP() unexpected error: %v", err)
+		}
+		if !strings.HasPrefix(gotFirstLine, "DESCRIBE "+rtspURL+"/cam-test RTSP/1.0") {
+			t.Fatalf("unexpected RTSP request line: %q", gotFirstLine)
+		}
+	})
+
+	t.Run("500 upstream error treated as normal trigger", func(t *testing.T) {
+		rtspURL := startMockRTSP(t, func(c net.Conn, _ string) {
+			_, _ = io.WriteString(c, "RTSP/1.0 500 Internal Server Error\r\nCSeq: 1\r\n\r\n")
+		})
+		client := &MediaMTXClient{RTSPURL: rtspURL}
+		if err := client.TriggerRTSP("cam-test", time.Second); err != nil {
+			t.Fatalf("TriggerRTSP() unexpected error on 500: %v", err)
+		}
+	})
+
+	t.Run("read timeout after dial treated as normal trigger", func(t *testing.T) {
+		rtspURL := startMockRTSP(t, func(c net.Conn, _ string) {
+			time.Sleep(150 * time.Millisecond)
+		})
+		client := &MediaMTXClient{RTSPURL: rtspURL}
+		if err := client.TriggerRTSP("cam-test", 40*time.Millisecond); err != nil {
+			t.Fatalf("TriggerRTSP() unexpected error on slow read timeout: %v", err)
+		}
+	})
+
+	for _, status := range []string{"400 Bad Request", "401 Unauthorized", "403 Forbidden", "404 Not Found"} {
+		status := status
+		t.Run("config or auth error "+status, func(t *testing.T) {
+			rtspURL := startMockRTSP(t, func(c net.Conn, _ string) {
+				_, _ = io.WriteString(c, "RTSP/1.0 "+status+"\r\nCSeq: 1\r\n\r\n")
+			})
+			client := &MediaMTXClient{RTSPURL: rtspURL}
+			if err := client.TriggerRTSP("cam-test", time.Second); err == nil {
+				t.Fatalf("TriggerRTSP() expected error for %s, got nil", status)
+			}
+		})
+	}
+
+	t.Run("unreachable RTSP port returns error", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		_ = ln.Close()
+
+		client := &MediaMTXClient{RTSPURL: "rtsp://" + addr}
+		if err := client.TriggerRTSP("cam-test", 150*time.Millisecond); err == nil {
+			t.Fatal("TriggerRTSP() expected dial error, got nil")
+		}
+	})
+}
+
+func TestTriggerOnDemandRouting(t *testing.T) {
+	var hlsHits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hlsHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	var rtspHits int
+	go func() {
+		for {
+			conn, accErr := ln.Accept()
+			if accErr != nil {
+				return
+			}
+			rtspHits++
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				br := bufio.NewReader(c)
+				for {
+					line, rErr := br.ReadString('\n')
+					if rErr != nil || line == "\r\n" || line == "\n" {
+						break
+					}
+				}
+				_, _ = io.WriteString(c, "RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n")
+			}(conn)
+		}
+	}()
+
+	// Saat RTSPURL tersedia, TriggerOnDemand memilih RTSP tanpa menyentuh HLS.
+	rtspClient := &MediaMTXClient{
+		BaseURL:    srv.URL,
+		HLSURL:     srv.URL,
+		RTSPURL:    "rtsp://" + ln.Addr().String(),
+		HTTPClient: srv.Client(),
+	}
+	method, err := rtspClient.TriggerOnDemand("cam-1", time.Second)
+	if err != nil {
+		t.Fatalf("TriggerOnDemand(RTSP) unexpected error: %v", err)
+	}
+	if method != TriggerMethodRTSP || rtspHits != 1 || hlsHits != 0 {
+		t.Fatalf("got method=%q rtspHits=%d hlsHits=%d, want RTSP=1 HLS=0", method, rtspHits, hlsHits)
+	}
+
+	// Saat hanya mock HLS yang tersedia (tanpa RTSPURL & bukan port 9997), fallback ke HLS.
+	hlsClient := &MediaMTXClient{
+		BaseURL:    srv.URL,
+		HLSURL:     srv.URL,
+		HTTPClient: srv.Client(),
+	}
+	method, err = hlsClient.TriggerOnDemand("cam-1", time.Second)
+	if err != nil {
+		t.Fatalf("TriggerOnDemand(HLS) unexpected error: %v", err)
+	}
+	if method != TriggerMethodHLS || hlsHits != 1 {
+		t.Fatalf("got method=%q hlsHits=%d, want HLS=1", method, hlsHits)
 	}
 }

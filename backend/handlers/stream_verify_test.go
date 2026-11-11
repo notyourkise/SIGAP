@@ -1,9 +1,14 @@
 package handlers
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -627,4 +632,312 @@ func TestConfirmSourceClosedEvidenceBasedGSMTelemetry(t *testing.T) {
 		assert.Empty(t, tel.CloseUnconfirmedReason)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func startMockHandlerRTSPServer(t *testing.T, handler func(conn net.Conn, firstLine string)) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, accErr := ln.Accept()
+			if accErr != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+				br := bufio.NewReader(c)
+				first, _ := br.ReadString('\n')
+				for {
+					line, rErr := br.ReadString('\n')
+					if rErr != nil || line == "\r\n" || line == "\n" {
+						break
+					}
+				}
+				handler(c, first)
+			}(conn)
+		}
+	}()
+
+	return "rtsp://" + ln.Addr().String()
+}
+
+func TestVerifyCCTVStreamPrefersRTSPTriggerWhenAvailable(t *testing.T) {
+	oldTimeout, oldPoll, oldByteWin := streamVerifyTimeout, streamVerifyPollInterval, streamVerifyByteWindow
+	oldCloseDelay := sourceCloseConfirmDelay
+	streamVerifyTimeout = time.Second
+	streamVerifyPollInterval = 10 * time.Millisecond
+	streamVerifyByteWindow = 10 * time.Millisecond
+	sourceCloseConfirmDelay = 0
+	defer func() {
+		streamVerifyTimeout = oldTimeout
+		streamVerifyPollInterval = oldPoll
+		streamVerifyByteWindow = oldByteWin
+		sourceCloseConfirmDelay = oldCloseDelay
+	}()
+
+	t.Run("RTSP trigger sukses memicu DESCRIBE tanpa menyentuh HLS", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		cctvID := uuid.New()
+		mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+		expectNoPreviousCCTVStreamLog(mock, cctvID)
+		expectCCTVStreamLogInsert(mock)
+
+		var ready atomic.Bool
+		var bytesReceived atomic.Int64
+		var hlsHits atomic.Int32
+		var rtspHits atomic.Int32
+		var mu sync.Mutex
+		var gotFirstLine string
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+			curReady := ready.Load()
+			var curBytes int64
+			if curReady {
+				curBytes = bytesReceived.Add(4096)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"name":          r.URL.Path[len("/v3/paths/get/"):],
+				"available":     curReady,
+				"ready":         curReady,
+				"tracks":        []string{"H264"},
+				"readers":       []interface{}{},
+				"bytesReceived": curBytes,
+			})
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			hlsHits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		})
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		rtspURL := startMockHandlerRTSPServer(t, func(conn net.Conn, firstLine string) {
+			mu.Lock()
+			gotFirstLine = strings.TrimSpace(firstLine)
+			mu.Unlock()
+			rtspHits.Add(1)
+			ready.Store(true)
+			_, _ = io.WriteString(conn, "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n")
+		})
+
+		oldClient := streamClient
+		streamClient = &utils.MediaMTXClient{
+			BaseURL:    srv.URL,
+			HLSURL:     srv.URL,
+			RTSPURL:    rtspURL,
+			HTTPClient: srv.Client(),
+		}
+		defer func() { streamClient = oldClient }()
+
+		cctv := models.CCTV{
+			Base:                models.Base{ID: cctvID},
+			KodeCCTV:            "THD-RTSP-01",
+			Nama:                "Kamera RTSP Trigger",
+			StreamEnabled:       true,
+			StreamState:         models.StreamStateIdle,
+			StreamVerifiedState: models.StreamStateUnknown,
+		}
+
+		res := verifyCCTVStreamWithOptions(configDBForTest(t), cctv, false, true, nil)
+		assert.Equal(t, models.StreamStateLive, res.State)
+		assert.Equal(t, streamVerifyMethodRTSP, res.Method)
+		assert.True(t, res.OpenedOnDemand)
+		assert.Zero(t, res.Failures)
+		assert.Greater(t, res.ByteDelta, int64(0))
+		assert.EqualValues(t, 1, rtspHits.Load())
+		assert.EqualValues(t, 0, hlsHits.Load(), "HLS tidak boleh dipanggil saat RTSP trigger aktif")
+		mu.Lock()
+		assert.True(t, strings.HasPrefix(gotFirstLine, "DESCRIBE "), "expected RTSP DESCRIBE, got %q", gotFirstLine)
+		mu.Unlock()
+		assert.NoError(t, mock.ExpectationsWereMet())
+
+		// Simulasikan penutupan alami sourceOnDemandCloseAfter=5s tanpa reader (0 RemovePath).
+		db2, mock2 := setupMockGORM(t)
+		mock2.ExpectExec(`INSERT INTO "cctv_probe_telemetry"`).WillReturnResult(sqlmock.NewResult(1, 1))
+		ready.Store(false)
+
+		gsmCam := cctv
+		gsmCam.IPCamera = "" // GSM path untuk membuktikan tidak memicu RemovePath saat closed naturally
+		siteID := uuid.New()
+		gsmCam.SiteID = &siteID
+		tel := evaluateAndPersistSourceClosureTelemetry(db2, GateJob{CCTV: gsmCam}, res)
+		assert.Equal(t, streamVerifyMethodRTSP, tel.Method)
+		assert.True(t, tel.SourceClosedConfirmed)
+		assert.False(t, tel.ForcedClose)
+		assert.Equal(t, RemovePathStatusNotNeeded, tel.RemovePathStatus)
+		assert.Equal(t, CloseVerifyClosedNaturally, tel.CloseVerifyStatus)
+		assert.NoError(t, mock2.ExpectationsWereMet())
+	})
+
+	t.Run("RTSP 401 dan port unreachable menjaga State=Unknown tanpa menaikkan Failures", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"name":      r.URL.Path[len("/v3/paths/get/"):],
+				"available": false,
+				"ready":     false,
+				"tracks":    []string{},
+			})
+		})
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		t.Run("status 401 Unauthorized", func(t *testing.T) {
+			_, mock := setupMockGORM(t)
+			mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+
+			rtspURL := startMockHandlerRTSPServer(t, func(conn net.Conn, _ string) {
+				_, _ = io.WriteString(conn, "RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\n\r\n")
+			})
+			oldClient := streamClient
+			streamClient = &utils.MediaMTXClient{
+				BaseURL:    srv.URL,
+				HLSURL:     srv.URL,
+				RTSPURL:    rtspURL,
+				HTTPClient: srv.Client(),
+			}
+			defer func() { streamClient = oldClient }()
+
+			cctv := models.CCTV{
+				Base:                 models.Base{ID: uuid.New()},
+				KodeCCTV:             "THD-RTSP-401",
+				Nama:                 "Kamera RTSP 401",
+				StreamEnabled:        true,
+				StreamVerifiedState:  models.StreamStateUnknown,
+				StreamVerifyFailures: 1,
+			}
+
+			res := verifyCCTVStream(configDBForTest(t), cctv)
+			assert.Equal(t, models.StreamStateUnknown, res.State)
+			assert.Equal(t, streamVerifyMethodRTSP, res.Method)
+			assert.Equal(t, 1, res.Failures)
+			assert.Contains(t, res.Error, "gagal memicu RTSP MediaMTX")
+			assert.True(t, isMonitorInfraError(res.Error))
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+
+		t.Run("RTSP port unreachable", func(t *testing.T) {
+			_, mock := setupMockGORM(t)
+			mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			deadAddr := ln.Addr().String()
+			_ = ln.Close()
+
+			oldClient := streamClient
+			streamClient = &utils.MediaMTXClient{
+				BaseURL:    srv.URL,
+				HLSURL:     srv.URL,
+				RTSPURL:    "rtsp://" + deadAddr,
+				HTTPClient: srv.Client(),
+			}
+			defer func() { streamClient = oldClient }()
+
+			cctv := models.CCTV{
+				Base:                 models.Base{ID: uuid.New()},
+				KodeCCTV:             "THD-RTSP-DEAD",
+				Nama:                 "Kamera RTSP Dead",
+				StreamEnabled:        true,
+				StreamVerifiedState:  models.StreamStateUnknown,
+				StreamVerifyFailures: 1,
+			}
+
+			res := verifyCCTVStream(configDBForTest(t), cctv)
+			assert.Equal(t, models.StreamStateUnknown, res.State)
+			assert.Equal(t, streamVerifyMethodRTSP, res.Method)
+			assert.Equal(t, 1, res.Failures)
+			assert.Contains(t, res.Error, "gagal memicu RTSP MediaMTX")
+			assert.True(t, isMonitorInfraError(res.Error))
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	})
+}
+
+func TestIsMonitorInfraErrorRecognizesRTSPAndHLS(t *testing.T) {
+	assert.True(t, isMonitorInfraError("gagal memicu RTSP MediaMTX: dial error"))
+	assert.True(t, isMonitorInfraError("gagal memicu HLS MediaMTX"))
+	assert.True(t, isMonitorInfraError("MediaMTX tidak dapat dihubungi"))
+	assert.True(t, isMonitorInfraError("path stream belum terdaftar di MediaMTX; pendaftaran ulang gagal"))
+	assert.False(t, isMonitorInfraError("sumber stream tidak siap setelah 8s"))
+	assert.False(t, isMonitorInfraError(""))
+}
+
+func TestVerifyCCTVStreamHandlesDelayedInitialIDRByteGrowth(t *testing.T) {
+	oldTimeout, oldPoll, oldByteWin := streamVerifyTimeout, streamVerifyPollInterval, streamVerifyByteWindow
+	streamVerifyTimeout = time.Second
+	streamVerifyPollInterval = 10 * time.Millisecond
+	streamVerifyByteWindow = 10 * time.Millisecond
+	defer func() {
+		streamVerifyTimeout = oldTimeout
+		streamVerifyPollInterval = oldPoll
+		streamVerifyByteWindow = oldByteWin
+	}()
+
+	_, mock := setupMockGORM(t)
+	cctvID := uuid.New()
+	mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+	expectNoPreviousCCTVStreamLog(mock, cctvID)
+	expectCCTVStreamLogInsert(mock)
+
+	var ready atomic.Bool
+	var readyGetCalls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3/paths/get/", func(w http.ResponseWriter, r *http.Request) {
+		isReady := ready.Load()
+		var curBytes int64
+		if isReady {
+			n := readyGetCalls.Add(1)
+			// Panggilan #1 (b1=0) dan panggilan #2 (attempt 1=0) masih 0 sebelum IDR pertama; panggilan #3 naik ke 8192.
+			if n >= 3 {
+				curBytes = 8192
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"name":          r.URL.Path[len("/v3/paths/get/"):],
+			"available":     isReady,
+			"ready":         isReady,
+			"tracks":        []string{"H264"},
+			"bytesReceived": curBytes,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rtspURL := startMockHandlerRTSPServer(t, func(conn net.Conn, _ string) {
+		ready.Store(true)
+		_, _ = io.WriteString(conn, "RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n")
+	})
+
+	oldClient := streamClient
+	streamClient = &utils.MediaMTXClient{
+		BaseURL:    srv.URL,
+		HLSURL:     srv.URL,
+		RTSPURL:    rtspURL,
+		HTTPClient: srv.Client(),
+	}
+	defer func() { streamClient = oldClient }()
+
+	cctv := models.CCTV{
+		Base:                models.Base{ID: cctvID},
+		KodeCCTV:            "THD-RTSP-GOP",
+		Nama:                "Kamera GOP Delay",
+		StreamEnabled:       true,
+		StreamVerifiedState: models.StreamStateUnknown,
+	}
+
+	res := verifyCCTVStreamWithOptions(configDBForTest(t), cctv, false, true, nil)
+	assert.Equal(t, models.StreamStateLive, res.State)
+	assert.Equal(t, streamVerifyMethodRTSP, res.Method)
+	assert.EqualValues(t, 8192, res.ByteDelta)
+	assert.Zero(t, res.Failures)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
