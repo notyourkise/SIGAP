@@ -13,10 +13,11 @@
   - Menambahkan metrik Prometheus (`sigap_cctv_stream_events_total`, `sigap_stream_verify_total`, `sigap_stream_verify_success_rate`, `sigap_stream_verify_duration_seconds`, `sigap_cctv_offline_cameras`, `sigap_cctv_cameras_state`, `sigap_cctv_offline_alerts_total`), aturan alert `monitoring/prometheus/alerts.yml` (termasuk `CameraOfflineOver15Minutes`), provisioning dashboard `monitoring/grafana/provisioning/dashboards/sigap-observability.json`, dan pembaruan `docker-compose.override.yml`.
 - **#155 (CI & Regression Suite E2E/Integrasi)**:
   - Menambahkan uji integrasi backend `ops_regression_integration_test.go` (isolasi multi-site melewati stack middleware penuh, anti-spoofing proxy `X-Forwarded-For`/`X-Real-IP`, batas hari `Asia/Makassar`, dan retensi log bertahap).
+  - Mengisolasi namespace key `AuthLimiter()` (`limiter:auth:{ip}:{endpoint}`) dari `GlobalLimiter()` di `backend/middleware/limiter.go` agar `POST /api/auth/login` tidak terhitung dua kali di counter yang sama (memulihkan kuota penuh 5 percobaan/menit tanpa `429` palsu).
   - Menambahkan suite Playwright `e2e/tests/ops-regression.spec.ts` + helper `e2e/tests/helpers/auth.ts` (smoke test `/cctv/logs`, validasi timezone/retensi/diagnostik API, isolasi multi-site + `SiteSwitcher`, serta uji spoof IP melalui Nginx TLS).
   - Memperluas `.github/workflows/ci.yml` dengan job `monitoring-ci` (`promtool check config`), `go vet ./...`, `npm run test:live`, `npm run test:site-switcher`, `tsc --noEmit` pasca-build, dan pemicu E2E untuk perubahan `backend/**`.
 
-timestamp: 2026-11-11 17:02 WITA
+timestamp: 2026-11-11 17:10 WITA
 kategori: Sedang, Backend + Monitoring + CI/E2E
 file yang diubah:
 - .github/workflows/ci.yml
@@ -32,6 +33,8 @@ file yang diubah:
 - backend/handlers/stream_probe.go
 - backend/handlers/stream_verify.go
 - backend/main.go
+- backend/middleware/limiter.go
+- backend/middleware/limiter_test.go
 - backend/monitoring/collector.go
 - backend/monitoring/metrics.go
 - backend/monitoring/metrics_test.go
