@@ -150,6 +150,7 @@ interface ProbeTelemetrySummary {
   gsm_total_bytes_observed: number;
   gsm_avg_duration_ms: number;
   gsm_forced_close_count: number;
+  gsm_unconfirmed_close_count: number;
   metro_probe_count: number;
 }
 
@@ -1168,7 +1169,7 @@ export default function IncidentsPage() {
                     Angka di bawah ini murni hasil pengukuran <code>bytesReceived</code> aktual dari
                     MediaMTX pada site ini (tanpa estimasi karangan paket GSM).
                   </p>
-                  <div className="grid gap-3 sm:grid-cols-4 text-sm">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
                     <div className="rounded-lg bg-muted/10 p-3">
                       <p className="text-xs text-muted">Jumlah Probe GSM</p>
                       <p className="mt-1 text-xl font-semibold">
@@ -1192,6 +1193,18 @@ export default function IncidentsPage() {
                       <p className="text-xs text-muted">Penutupan Paksa Sesi Bocor</p>
                       <p className="mt-1 text-xl font-semibold">
                         {data?.gsm_telemetry_summary?.gsm_forced_close_count || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-muted/10 p-3">
+                      <p className="text-xs text-muted">Penutupan Belum Terkonfirmasi</p>
+                      <p
+                        className={`mt-1 text-xl font-semibold ${
+                          (data?.gsm_telemetry_summary?.gsm_unconfirmed_close_count || 0) > 0
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : ''
+                        }`}
+                      >
+                        {data?.gsm_telemetry_summary?.gsm_unconfirmed_close_count || 0}
                       </p>
                     </div>
                   </div>

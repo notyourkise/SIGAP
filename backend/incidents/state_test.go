@@ -100,3 +100,32 @@ func TestGapOver105SecondsAndRepeatedRecovery(t *testing.T) {
 		t.Fatal("escalated member must ignore live/offline advance")
 	}
 }
+
+func TestAssignmentReminderAndEscalationThresholdsFromEnv(t *testing.T) {
+	t.Setenv("CCTV_INCIDENT_REMINDER_MINUTES", "")
+	if got := AssignmentReminderThreshold(); got != AssignmentReminderDelay {
+		t.Fatalf("expected default reminder %v, got %v", AssignmentReminderDelay, got)
+	}
+	for _, invalid := range []string{"abc", "0", "-5", "1441"} {
+		t.Setenv("CCTV_INCIDENT_REMINDER_MINUTES", invalid)
+		if got := AssignmentReminderThreshold(); got != AssignmentReminderDelay {
+			t.Fatalf("expected invalid %q to fallback to %v, got %v", invalid, AssignmentReminderDelay, got)
+		}
+	}
+	t.Setenv("CCTV_INCIDENT_REMINDER_MINUTES", " 2 ")
+	if got := AssignmentReminderThreshold(); got != 2*time.Minute {
+		t.Fatalf("expected 2m, got %v", got)
+	}
+	if got := formatDurationMinutesLabel(AssignmentReminderDelay); got != "30 menit" {
+		t.Fatalf("expected default label '30 menit', got %q", got)
+	}
+
+	t.Setenv("CCTV_INCIDENT_ESCALATION_MINUTES", "")
+	if got := EscalationThreshold(); got != DefaultEscalationMinutes*time.Minute {
+		t.Fatalf("expected default escalation, got %v", got)
+	}
+	t.Setenv("CCTV_INCIDENT_ESCALATION_MINUTES", "15")
+	if got := EscalationThreshold(); got != 15*time.Minute {
+		t.Fatalf("expected 15m escalation, got %v", got)
+	}
+}
