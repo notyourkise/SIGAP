@@ -414,17 +414,21 @@ Backend mendukung auto-generasi UI Dokumentasi Interaktif.
 | **Live View Access** | **Admin-only** (route `/streams/*` dilindungi `RequireRole("admin")`) |
 | **Recording** | Ã¢ÂÅ’ Tidak ada recording/retention di VPS SIGAP. Playback tetap di NVR lokal. |
 
-### 11.2 Network Health Check Ã¢â‚¬â€ Kebijakan Metro-E vs GSM
+### 11.2 Network Health Check - Kebijakan Metro-E dan GSM
 
-> [!CAUTION]
-> **JANGAN** melakukan ICMP ping atau background-stream pada kamera GSM. Ini dapat menguras kuota data seluler. Hanya 17 kamera Metro-E yang boleh di-ping secara berkala.
+> [!IMPORTANT]
+> **Revisi kebijakan dikonfirmasi pengguna pada 2026-11-01 (WITA).** Kamera GSM boleh diperiksa secara aktif melalui ICMP, pemeriksaan protokol, atau verifikasi stream singkat yang dibatasi. Larangan mutlak ICMP/probe GSM dan kewajiban pemantauan GSM sepenuhnya pasif pada kebijakan 2026-08-13 telah dicabut.
+>
+> Informasi paket/kuota GSM dan model NVR belum tersedia. Pengguna mengizinkan revisi ini tanpa menunggu informasi tersebut. Monitoring tidak lagi dipersyaratkan memiliki konsumsi data GSM nol; konsumsi aktual harus diukur dan dilaporkan.
+>
+> Revisi ini adalah keputusan kebijakan. Kode, konfigurasi runtime, interval, dan kemampuan deteksi yang berjalan tidak otomatis berubah.
 
 #### Aturan Probe per Tipe Jaringan
 
-| Tipe | ICMP Ping Berkala | RTSP Options Probe | Keterangan |
-|------|-------------------|-------------------|------------|
-| **Metro-E** (`10.20.105.x`) | Ã¢Å“â€¦ Ya Ã¢â‚¬â€ tiap 2 menit | Ã¢Å“â€¦ Ya | Jaringan dedicated, aman di-probe |
-| **GSM** (IP publik/non-Metro-E) | Ã¢ÂÅ’ TIDAK | Ã¢ÂÅ’ TIDAK | Wajib pasif melalui state MediaMTX lokal; jangan menyentuh kamera/NVR GSM |
+| Tipe | ICMP Berkala | Pemeriksaan Protokol / Stream | Ketentuan |
+|------|--------------|------------------------------|-----------|
+| **Metro-E** (`10.20.105.x`) | Diizinkan jika rute jaringan tersedia; interval existing 2 menit | Diizinkan, dengan batas waktu | Pertahankan pemeriksaan konektivitas dan bedakan hasilnya dari kesehatan video |
+| **GSM** (IP publik/non-Metro-E) | Diizinkan jika target mendukung dan dapat dijangkau | Diizinkan untuk pemeriksaan aktif terbatas dan verifikasi video singkat per kamera | Batasi durasi, timeout, retry, dan pemeriksaan bersamaan; ukur konsumsi data |
 
 #### Cara Identifikasi Tipe Jaringan
 
@@ -457,47 +461,38 @@ func isMetroE(cctv models.CCTV) bool {
 | D19  | `10.20.105.60` | D28  | `10.20.105.70` |
 | D23  | `10.20.105.65` | D30  | `10.20.105.68` |
 | D38  | `10.20.105.57` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
-> [!IMPORTANT]
-> **Addendum Kebijakan Metro-E vs GSM Ã¢â‚¬â€ Probe Strategy Final (dikonfirmasi 2026-08-13):**
-> Implementasi `RunRTSPProber` telah di-patch dan wajib mempertahankan strategi berikut:
->
-> | Tipe | Cara Identifikasi | Probe Method | Interval | Konsumsi Data GSM |
-> |------|-------------------|-------------|----------|-------------------|
-> | **Metro-E** | `ip_camera` prefix `10.20.105.` | ICMP Ping Ã¢â€ â€™ IP kamera langsung | 2 menit | Ã¢ÂÅ’ Tidak ada (jaringan dedicated) |
-> | **GSM** | IP selain `10.20.105.x` | Cek MediaMTX path list (lokal VPS) + last-active tracking | Pasif (event-driven) | Ã¢Å“â€¦ Nol Ã¢â‚¬â€ tidak menyentuh kamera |
->
-> **Strategi GSM Ã¢â‚¬â€ Zero Data Consumption:**
-> ```
-> JANGAN probe ke NVR/kamera GSM sama sekali.
-> Gunakan data yang sudah ada di VPS:
->
-> 1. Cek MediaMTX path list (GET http://mediamtx:9997/v3/paths/list)
->    Ã¢â€ â€™ Jika path "cam-{uuid}" Ready=true Ã¢â€ â€™ kamera ONLINE (sedang ada viewer)
->    Ã¢â€ â€™ Jika path tidak ada/Ready=false Ã¢â€ â€™ tidak bisa disimpulkan (mungkin tidak ada yang nonton)
->
-> 2. Last-active tracking dari stream events:
->    Ã¢â€ â€™ Field baru: stream_last_active_at TIMESTAMPTZ (nullable)
->    Ã¢â€ â€™ Diupdate setiap stream berhasil dibuka (Ready=true di MediaMTX)
->    Ã¢â€ â€™ Jika stream_last_active_at < 24 jam lalu Ã¢â€ â€™ status "Pernah Online Hari Ini"
->    Ã¢â€ â€™ Jika stream_last_active_at > 24 jam atau null Ã¢â€ â€™ status "Tidak Diketahui"
->    Ã¢â€ â€™ Jika stream pernah aktif lalu tiba-tiba gagal Ã¢â€ â€™ status "Offline"
-> ```
->
-> **Badge UI untuk GSM:**
-> - Ã°Å¸Å¸Â¢ Online Ã¢â‚¬â€ MediaMTX path Ready=true (sedang ditonton)
-> - Ã°Å¸Å¸Â¡ Pernah aktif Ã¢â‚¬â€ `stream_last_active_at` < 24 jam, saat ini tidak ada viewer
-> - Ã¢Å¡Âª Tidak diketahui Ã¢â‚¬â€ belum pernah dibuka atau > 24 jam
-> - Ã°Å¸â€Â´ Offline Ã¢â‚¬â€ stream pernah aktif tapi sekarang error/disconnected
->
-> **Mode probe Metro-E (`CCTV_METRO_E_DIRECT_PROBE`):** probe langsung hanya boleh aktif jika host/container API benar-benar memiliki rute ke `10.20.105.x`. Deployment yang tidak memiliki rute wajib memakai `CCTV_METRO_E_DIRECT_PROBE=false`; status Metro-E kemudian diambil pasif dari MediaMTX (`live`/`idle`/`offline`/`unknown`) agar tidak muncul offline palsu. Compose SIGAP default `false`.
->
-> **17 Metro-E IP Resmi:** D3:`10.20.105.62` D5:`10.20.105.66` D6:`10.20.105.59` D7:`10.20.105.53` D8:`10.20.105.52` D9:`10.20.105.54` D11:`10.20.105.55` D12:`10.20.105.58` D13:`10.20.105.67` D15:`10.20.105.61` D16:`10.20.105.56` D17:`10.20.105.63` D19:`10.20.105.60` D23:`10.20.105.65` D28:`10.20.105.70` D30:`10.20.105.68` D38:`10.20.105.57`
->
+
+#### Strategi Monitoring Aktif yang Diperbolehkan
+
+1. Gunakan bukti status NVR/perangkat, konektivitas, dan MediaMTX yang tersedia. Prioritaskan pemeriksaan ringan; verifikasi video per kamera boleh dilakukan secara singkat bila diperlukan.
+2. ICMP atau koneksi ke NVR yang berhasil hanya membuktikan keterjangkauan target. Hasil itu tidak boleh dianggap membuktikan bahwa semua kanal CCTV mengirim video.
+3. Verifikasi stream harus memiliki batas waktu dan menutup sesi pemantauan setelah selesai. Hitung juga jeda penutupan sumber saat mengukur konsumsi data.
+4. Pembacaan MediaMTX path list dan last-active tracking tetap boleh dipakai sebagai bukti pendukung. Path yang tidak aktif karena tidak ada penonton tidak cukup untuk menyimpulkan kamera offline; riwayat pernah aktif tidak membuktikan kondisi kamera saat ini.
+5. Konfirmasikan kegagalan sebelum membuat tiket. Bedakan kegagalan kamera/kanal, NVR, jaringan, dan layanan monitoring sesuai bukti yang tersedia; jangan menyebut kamera rusak hanya karena jalur SIGAP gagal dijangkau.
+6. Catat waktu pemeriksaan, sumber bukti, hasil, durasi, dan error. Konsumsi data monitoring harus diukur; tidak boleh diklaim nol atau dijanjikan angka tertentu tanpa pengukuran.
+
+#### Target Tiket dan Notifikasi (Kebutuhan yang Disepakati)
+
+- Berlaku untuk seluruh CCTV, termasuk Metro-E dan GSM: **maksimal 5 menit sejak CCTV benar-benar offline sampai tiket maintenance dibuat dan pemberitahuan masuk ke grup Telegram operasional teknisi**.
+- Interval, timeout, retry, dan kapasitas worker harus dirancang agar seluruh waktu deteksi, konfirmasi, pembuatan tiket, dan pengiriman masuk dalam target tersebut. Nilai teknis final belum ditetapkan pada revisi kebijakan ini.
+- Gangguan yang sama dan masih terbuka memakai tiket yang sama. Retry pengiriman Telegram tidak boleh menggandakan tiket.
+- Pemulihan koneksi diperbarui dan diberitahukan; penutupan pekerjaan tetap mengikuti verifikasi penyelesaian yang disepakati.
+- Target ini merupakan kebutuhan produk, bukan klaim kemampuan runtime yang sudah terbukti. Implementasi dan pengujian dilakukan oleh agent Antigravity; Anto menangani audit dan verifikasi.
+
+#### Interpretasi Status dan Keterjangkauan
+
+- `live`: ada bukti terkini bahwa sumber kamera/kanal mengirim video.
+- `idle`: sumber on-demand sedang tidak dipakai; bukan bukti offline.
+- `unknown`: bukti tidak cukup atau pemeriksaan tidak dapat menghasilkan kesimpulan; jangan otomatis membuat tiket kamera offline.
+- `offline`: kegagalan terkonfirmasi sesuai aturan pemeriksaan dan bukti sumber yang dicatat.
+- Probe langsung Metro-E hanya boleh diaktifkan bila host/container memiliki rute ke `10.20.105.x`. Pertahankan makna `CCTV_METRO_E_DIRECT_PROBE=false` pada deployment yang tidak memiliki rute; perubahan flag atau jaringan memerlukan implementasi terpisah.
+
 > **Latensi Metro-E:** `<50ms` Ã°Å¸Å¸Â¢ Good | `50Ã¢â‚¬â€œ100ms` Ã°Å¸Å¸Â¡ Lagging | `>100ms` Ã°Å¸â€Â´ Critical | Timeout Ã¢Å¡Â« Offline
-> Lihat `docs/AGENTS.md` Ã‚Â§ 11.2 untuk detail lengkap.
 
-#### Sprint 37-PATCH Ã¢â‚¬â€ Update Probe Strategy Metro-E vs GSM
+#### Catatan Historis Sprint 37-PATCH (2026-08-13)
 
+> Catatan implementasi lama di bawah dipertahankan sebagai riwayat. Strategi GSM pasif pada catatan ini telah digantikan kebijakan 2026-11-01 di atas; bukan larangan untuk monitoring aktif.
+>
 > **Branch:** `bugfix/rtsp-probe-metro-gsm-strategy`
 > **Prasyarat:** Sprint 37 sudah selesai (stream_probe.go sudah ada)
 > **Estimasi:** 1 hari kerja
@@ -513,16 +508,14 @@ func isMetroE(cctv models.CCTV) bool {
 | **Update `CCTVMap.tsx`** | Badge GSM: 4 state (Ã°Å¸Å¸Â¢/Ã°Å¸Å¸Â¡/Ã¢Å¡Âª/Ã°Å¸â€Â´). Tooltip Metro-E: tampilkan latensi (`"Ping: 12ms"`). |
 | **Test** | `utils/rtsp_probe_test.go` + `handlers/stream_probe_test.go` update untuk Metro-E vs GSM path. |
 
-#### GSM Safety Rules
+#### Batas Monitoring GSM
 
-```
-Ã¢Å“â€¦ Boleh: Stream terbuka SAAT user aktif menonton (on-demand)
-Ã¢ÂÅ’ Dilarang: ICMP ping berkala (tiap menit/2 menit)
-Ã¢ÂÅ’ Dilarang: RTSP OPTIONS/probe langsung ke kamera atau NVR GSM
-Ã¢ÂÅ’ Dilarang: background-stream tanpa viewer
-Ã¢Å“â€¦ Wajib: Status GSM berasal dari MediaMTX path list + last-active tracking di VPS
-Ã¢Å“â€¦ Wajib: Auto-close stream GSM saat popup/modal ditutup (existing: sourceOnDemandCloseAfter: 30s)
-```
+- Boleh: ICMP berkala, pemeriksaan protokol, dan stream singkat untuk monitoring aktif yang dibatasi.
+- Boleh: stream on-demand selama pengguna aktif menonton.
+- Tetap tidak diperbolehkan: membuka background stream terus-menerus tanpa batas sebagai cara monitoring default.
+- Wajib: batasi durasi, timeout, retry, dan concurrency; pastikan sesi monitoring benar-benar ditutup.
+- Wajib: ukur penggunaan data aktual dan laporkan batas pengujiannya; paket GSM yang belum diketahui tidak menghalangi izin monitoring aktif ini.
+- Wajib: pisahkan bukti konektivitas dari bukti kesehatan video dan pertahankan pengendalian akses/kredensial yang sudah berlaku.
 
 ### 11.3 Infrastruktur Deployment
 
@@ -651,6 +644,6 @@ Handler execution with filtered queries
 ---
 _Dokumen ini adalah referensi sentral untuk AI. Patuhi segala aturan, instruksi arsitektural, dan gotchas teknis yang tercantum di atas.
 
-> **Last Update**: 2026-10-21 UTC+8 — SiteContext default scoping + cookie fallback untuk non-admin, serta scope dashboard, field maintenance, dan daftar site; sebelumnya Multi-Site Isolation (Task 12.2), Security Hardening Fixes (#1-3), Environment Variables documentation updated, Manual Test V2 governance implemented.
+> **Last Update**: 2026-11-01 WITA - Pengguna mengizinkan monitoring aktif terbatas untuk GSM, mencabut larangan mutlak probe GSM; target tiket/notifikasi seluruh CCTV maksimal 5 menit masih memerlukan implementasi dan pengujian. Pembaruan sebelumnya 2026-10-21: SiteContext dan isolasi multi-site.
 > 
 > **Status Roadmap**: Semua Fase (1-15) selesai ✅ — Production Ready.
