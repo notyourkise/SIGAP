@@ -14,10 +14,11 @@
 - **#155 (CI & Regression Suite E2E/Integrasi)**:
   - Menambahkan uji integrasi backend `ops_regression_integration_test.go` (isolasi multi-site melewati stack middleware penuh, anti-spoofing proxy `X-Forwarded-For`/`X-Real-IP`, batas hari `Asia/Makassar`, dan retensi log bertahap).
   - Mengisolasi namespace key `AuthLimiter()` (`limiter:auth:{ip}:{endpoint}`) dari `GlobalLimiter()` di `backend/middleware/limiter.go` agar `POST /api/auth/login` tidak terhitung dua kali di counter yang sama (memulihkan kuota penuh 5 percobaan/menit tanpa `429` palsu).
+  - Memperbaiki kebocoran prefix middleware Fiber v2 di `backend/routes/cctv.go` dengan mendaftarkan alias `GET /cctv-logs` di luar grup `/cctv` serta memasang middleware mutasi admin secara eksplisit per rute (`protected, adminOnly, siteMiddleware`), sehingga teknisi yang sudah ditugaskan ke site tidak diblokir `403` oleh `RequireRole("admin")` milik `/cctv/*` (+ uji regresi `routes_test.go`).
   - Menambahkan suite Playwright `e2e/tests/ops-regression.spec.ts` + helper `e2e/tests/helpers/auth.ts` (smoke test `/cctv/logs`, validasi timezone/retensi/diagnostik API, isolasi multi-site + `SiteSwitcher`, serta uji spoof IP melalui Nginx TLS).
   - Memperluas `.github/workflows/ci.yml` dengan job `monitoring-ci` (`promtool check config`), `go vet ./...`, `npm run test:live`, `npm run test:site-switcher`, `tsc --noEmit` pasca-build, dan pemicu E2E untuk perubahan `backend/**`.
 
-timestamp: 2026-11-11 17:10 WITA
+timestamp: 2026-11-11 17:20 WITA
 kategori: Sedang, Backend + Monitoring + CI/E2E
 file yang diubah:
 - .github/workflows/ci.yml
@@ -38,6 +39,8 @@ file yang diubah:
 - backend/monitoring/collector.go
 - backend/monitoring/metrics.go
 - backend/monitoring/metrics_test.go
+- backend/routes/cctv.go
+- backend/routes/routes_test.go
 - backend/routes/stream.go
 - backend/routes/stream_test.go
 - backend/utils/mediamtx.go

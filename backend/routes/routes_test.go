@@ -1,9 +1,11 @@
 package routes
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"sigap-backend/config"
 	"sigap-backend/middleware"
@@ -13,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -272,4 +275,76 @@ func TestLogoutRouteRemainsAvailableWithoutSession(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("POST", "/api/auth/logout", nil))
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// TestSetupCCTVRoutes_TechnicianCCTVLogsNoPrefixLeak memastikan teknisi yang
+// ditugaskan ke sebuah site dapat mengakses GET /api/cctv-logs dan GET /api/cctv/logs
+// tanpa diblokir oleh middleware RequireRole("admin") milik mutasi CCTV (mencegah
+// bug Fiber v2 Use() prefix collision /cctv vs /cctv-logs), sementara mutasi admin
+// pada /api/cctv/ tetap menolak teknisi dengan 403.
+func TestSetupCCTVRoutes_TechnicianCCTVLogsNoPrefixLeak(t *testing.T) {
+	t.Setenv("JWT_SECRET", "sigap_test_jwt_secret_key_2026")
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
+	require.NoError(t, err)
+	prevDB := config.DB
+	config.DB = gormDB
+	t.Cleanup(func() { config.DB = prevDB })
+
+	techID := uuid.NewString()
+	siteID := uuid.New()
+	token, err := utils.GenerateToken(techID, "teknisi", 1)
+	require.NoError(t, err)
+
+	app := fiber.New()
+	api := app.Group("/api")
+	SetupCCTVRoutes(api)
+
+	for _, path := range []string{"/api/cctv-logs", "/api/cctv/logs"} {
+		mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+			WithArgs(techID, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
+		mock.ExpectQuery(`FROM "sites" JOIN user_sites`).
+			WithArgs(techID, 1).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "created_at", "updated_at", "deleted_at",
+				"nama", "kode", "alamat", "koordinat_lat", "koordinat_lng", "is_default",
+			}).AddRow(siteID, time.Now(), time.Now(), nil, "Site A", "SITE-A", "", nil, nil, true))
+
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1`).
+			WithArgs(siteID.String()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT \* FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1`).
+			WithArgs(siteID.String(), 20).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "cctv_id", "event_type"}))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1`).
+			WithArgs(siteID.String(), sqlmock.AnyArg(), sqlmock.AnyArg(), "online").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`^SELECT count\(\*\) FROM "cctv_stream_logs" WHERE .*EXISTS .*cctvs\.site_id = \$1`).
+			WithArgs(siteID.String(), sqlmock.AnyArg(), sqlmock.AnyArg(), "offline").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		req := httptest.NewRequest("GET", path, nil)
+		req.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+		resp, err := app.Test(req)
+		require.NoError(t, err, path)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode, path)
+	}
+
+	// Mutasi admin CCTV masih wajib menolak teknisi dengan 403 error peran.
+	mock.ExpectQuery(`^SELECT "token_version",\s*"must_change_password" FROM "users"|^SELECT "token_version".*FROM "users"`).
+		WithArgs(techID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"token_version", "must_change_password"}).AddRow(1, false))
+
+	adminMutReq := httptest.NewRequest("POST", "/api/cctv/", nil)
+	adminMutReq.AddCookie(&http.Cookie{Name: utils.SessionCookieName, Value: token})
+	adminMutResp, err := app.Test(adminMutReq)
+	require.NoError(t, err)
+	bodyBytes, err := io.ReadAll(adminMutResp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusForbidden, adminMutResp.StatusCode)
+	assert.Contains(t, string(bodyBytes), "Peran Anda tidak memiliki izin")
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
