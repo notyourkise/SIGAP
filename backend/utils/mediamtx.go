@@ -1,16 +1,27 @@
 package utils
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	// TriggerMethodRTSP menandakan verifikasi memicu path on-demand melalui RTSP DESCRIBE.
+	TriggerMethodRTSP = "mediamtx-rtsp"
+	// TriggerMethodHLS menandakan verifikasi memicu path on-demand melalui HLS fallback.
+	TriggerMethodHLS = "mediamtx-hls"
 )
 
 // MediaMTXClient mengelola komunikasi dengan MediaMTX REST API v3.
@@ -18,14 +29,16 @@ import (
 // untuk me-relay aliran kamera dari NVR ke client.
 type MediaMTXClient struct {
 	BaseURL string
-	// HLSURL adalah alamat HTTP HLS MediaMTX. Dipakai untuk memicu path
-	// on-demand sebelum verifikasi status serta proksi /hls/*. Bila kosong,
-	// diturunkan dari BaseURL (port 9997 -> 8888).
+	// HLSURL adalah alamat HTTP HLS MediaMTX. Dipakai untuk proksi /hls/* serta
+	// fallback pemicu on-demand bila RTSPURL belum tersedia.
 	HLSURL string
 	// WebRTCURL adalah alamat HTTP WebRTC/WHEP MediaMTX (port 8889) untuk
 	// proksi jalur /stream/* yang terautentikasi. Bila kosong, diturunkan dari
 	// BaseURL (port 9997 -> 8889).
-	WebRTCURL  string
+	WebRTCURL string
+	// RTSPURL adalah alamat RTSP internal MediaMTX (port 8554) untuk memicu path
+	// on-demand via RTSP DESCRIBE saat verifikasi aktif tanpa menahan sesi/muxer HLS.
+	RTSPURL    string
 	HTTPClient *http.Client
 }
 
@@ -62,20 +75,38 @@ func (p PathInfo) SourceReady() bool {
 const defaultMediaMTXURL = "http://127.0.0.1:9997"
 
 // NewMediaMTXClient membuat MediaMTXClient baru dengan membaca URL API dari
-// env MEDIAMTX_API_URL. Bila env kosong, gunakan MediaMTX lokal pada
-// http://127.0.0.1:9997.
+// env MEDIAMTX_API_URL, HLS dari MEDIAMTX_HLS_URL, WebRTC dari MEDIAMTX_WEBRTC_URL,
+// dan RTSP internal dari MEDIAMTX_RTSP_URL. Bila env opsional kosong, host
+// diturunkan dari MEDIAMTX_API_URL (default lokal 127.0.0.1).
 // Trailing slash pada URL dibuang agar penyusunan endpoint konsisten. HTTP
 // client diberi timeout 10 detik agar panggilan tidak menggantung selamanya.
 func NewMediaMTXClient() *MediaMTXClient {
 	baseURL := getenvOr("MEDIAMTX_API_URL", defaultMediaMTXURL)
-	hlsURL := getenvOr("MEDIAMTX_HLS_URL", "http://127.0.0.1:8888")
-	webrtcURL := getenvOr("MEDIAMTX_WEBRTC_URL", "http://127.0.0.1:8889")
+	hlsURL := getenvOr("MEDIAMTX_HLS_URL", deriveMediaMTXURL(baseURL, "", "8888", "http://127.0.0.1:8888"))
+	webrtcURL := getenvOr("MEDIAMTX_WEBRTC_URL", deriveMediaMTXURL(baseURL, "", "8889", "http://127.0.0.1:8889"))
+	rtspURL := getenvOr("MEDIAMTX_RTSP_URL", deriveMediaMTXURL(baseURL, "rtsp", "8554", "rtsp://127.0.0.1:8554"))
 	return &MediaMTXClient{
 		BaseURL:    strings.TrimSuffix(baseURL, "/"),
 		HLSURL:     strings.TrimSuffix(hlsURL, "/"),
 		WebRTCURL:  strings.TrimSuffix(webrtcURL, "/"),
+		RTSPURL:    strings.TrimSuffix(rtspURL, "/"),
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+func deriveMediaMTXURL(baseURL, targetScheme, targetPort, fallback string) string {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || u.Hostname() == "" {
+		return fallback
+	}
+	scheme := targetScheme
+	if scheme == "" {
+		scheme = u.Scheme
+		if scheme == "" {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + net.JoinHostPort(u.Hostname(), targetPort)
 }
 
 // doRequest menjalankan permintaan HTTP ke endpoint MediaMTX dan mengembalikan
@@ -277,6 +308,139 @@ func (c *MediaMTXClient) WebRTCBaseURL() string {
 		return strings.TrimSuffix(c.WebRTCURL, "/")
 	}
 	return strings.Replace(strings.TrimSuffix(c.BaseURL, "/"), ":9997", ":8889", 1)
+}
+
+func (c *MediaMTXClient) rtspBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	if trimmed := strings.TrimSpace(c.RTSPURL); trimmed != "" {
+		return strings.TrimSuffix(trimmed, "/")
+	}
+	u, err := url.Parse(strings.TrimSpace(c.BaseURL))
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	// Turunkan alamat RTSP port 8554 otomatis hanya bila pemanggil mengarah ke
+	// port API standar MediaMTX (9997) tanpa mengisi RTSPURL.
+	if u.Port() == "9997" {
+		return "rtsp://" + net.JoinHostPort(u.Hostname(), "8554")
+	}
+	return ""
+}
+
+// RTSPBaseURL mengembalikan alamat RTSP internal MediaMTX untuk pemicu on-demand
+// verifikasi aktif, atau string kosong bila klien hanya dikonfigurasi untuk mock HTTP/HLS.
+func (c *MediaMTXClient) RTSPBaseURL() string {
+	return c.rtspBaseURL()
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+// TriggerRTSP memicu path on-demand MediaMTX melalui RTSP DESCRIBE singkat lalu
+// langsung menutup koneksi TCP. Berbeda dengan TriggerHLS, pemicu RTSP tidak
+// membuat hlsSession atau hlsMuxer internal sehingga pembaca MediaMTX langsung 0
+// dan timer sourceOnDemandCloseAfter (5s) menutup sumber NVR/GSM tepat waktu.
+func (c *MediaMTXClient) TriggerRTSP(name string, timeout time.Duration) error {
+	if c == nil {
+		return fmt.Errorf("MediaMTXClient tidak siap")
+	}
+	base := c.rtspBaseURL()
+	if base == "" {
+		return fmt.Errorf("alamat RTSP MediaMTX kosong")
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" {
+		return fmt.Errorf("alamat RTSP MediaMTX tidak valid: %s", base)
+	}
+	port := u.Port()
+	if port == "" {
+		port = "8554"
+	}
+	dialAddr := net.JoinHostPort(u.Hostname(), port)
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", dialAddr)
+	if err != nil {
+		return fmt.Errorf("gagal menghubungi RTSP MediaMTX (%s): %w", dialAddr, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+
+	targetURL := strings.TrimSuffix(base, "/") + "/" + url.PathEscape(name)
+	req := fmt.Sprintf("DESCRIBE %s RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\nUser-Agent: SIGAP-StreamVerifier/1.0\r\n\r\n", targetURL)
+	if _, err := io.WriteString(conn, req); err != nil {
+		if isTimeoutError(err) {
+			return nil
+		}
+		return fmt.Errorf("gagal mengirim RTSP DESCRIBE ke MediaMTX: %w", err)
+	}
+
+	reader := bufio.NewReaderSize(conn, 4096)
+	statusLine, err := reader.ReadString('\n')
+	if err != nil && statusLine == "" {
+		if isTimeoutError(err) {
+			// MediaMTX sudah menerima DESCRIBE dan sedang menunggu handshake sumber RTSP hulu.
+			return nil
+		}
+		return fmt.Errorf("gagal membaca respon RTSP MediaMTX: %w", err)
+	}
+
+	fields := strings.Fields(strings.TrimSpace(statusLine))
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "RTSP/") {
+		return fmt.Errorf("respon RTSP MediaMTX tidak valid: %q", strings.TrimSpace(statusLine))
+	}
+	statusCode, convErr := strconv.Atoi(fields[1])
+	if convErr != nil {
+		return fmt.Errorf("kode status RTSP MediaMTX tidak valid: %q", fields[1])
+	}
+
+	// 400/401/403/404 pada DESCRIBE langsung dari MediaMTX menandakan path tidak terdaftar
+	// atau pembatasan auth/konfigurasi — bukan bukti kamera hulu offline.
+	if statusCode == http.StatusBadRequest ||
+		statusCode == http.StatusUnauthorized ||
+		statusCode == http.StatusForbidden ||
+		statusCode == http.StatusNotFound {
+		return fmt.Errorf("RTSP MediaMTX mengembalikan status %d", statusCode)
+	}
+
+	// Kuras header respon secukupnya bila sudah tersedia sebelum menutup soket TCP.
+	for i := 0; i < 64; i++ {
+		line, hdrErr := reader.ReadString('\n')
+		if hdrErr != nil || line == "\r\n" || line == "\n" {
+			break
+		}
+	}
+	return nil
+}
+
+// TriggerOnDemand memicu path on-demand menggunakan RTSP DESCRIBE bila tersedia,
+// atau fallback ke HLS ketika hanya endpoint HTTP/HLS (mis. mock server uji) yang diisi.
+func (c *MediaMTXClient) TriggerOnDemand(name string, timeout time.Duration) (string, error) {
+	if c == nil {
+		return TriggerMethodRTSP, fmt.Errorf("MediaMTXClient tidak siap")
+	}
+	if c.rtspBaseURL() != "" {
+		return TriggerMethodRTSP, c.TriggerRTSP(name, timeout)
+	}
+	return TriggerMethodHLS, c.TriggerHLS(name, timeout)
 }
 
 // TriggerHLS memicu path on-demand MediaMTX agar sumber RTSP mulai ditarik.

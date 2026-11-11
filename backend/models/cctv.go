@@ -109,7 +109,7 @@ type CCTV struct {
 	// berarti kamera belum pernah diverifikasi secara aktif.
 	StreamVerifiedAt *time.Time `gorm:"column:stream_verified_at" json:"stream_verified_at,omitempty"`
 	// StreamVerifiedMethod menyimpan metode verifikasi terakhir, mis.
-	// "mediamtx-hls" atau "mediamtx-live".
+	// "mediamtx-rtsp", "mediamtx-live", atau "mediamtx-hls".
 	StreamVerifiedMethod string `gorm:"column:stream_verified_method;type:varchar(32);not null;default:''" json:"stream_verified_method,omitempty"`
 	// StreamVerifyFailures menghitung kegagalan verifikasi berturut-turut.
 	// Offline baru ditetapkan setelah ambang tertentu agar tidak false alarm.

@@ -27,7 +27,8 @@ const (
 	defaultStreamVerifyConcurrency     = 1
 	streamVerifyFailureThreshold       = 2
 	streamVerifyFreshness              = 30 * time.Minute
-	streamVerifyMethodHLS              = "mediamtx-hls"
+	streamVerifyMethodRTSP             = utils.TriggerMethodRTSP
+	streamVerifyMethodHLS              = utils.TriggerMethodHLS
 	streamVerifyMethodLive             = "mediamtx-live"
 	defaultManualVerifyGateWaitTimeout = 15 * time.Second
 
@@ -452,7 +453,10 @@ func isMonitorInfraError(errMsg string) bool {
 		return false
 	}
 	low := strings.ToLower(errMsg)
-	return strings.Contains(low, "mediamtx") || strings.Contains(low, "pendaftaran ulang") || strings.Contains(low, "gagal memicu hls")
+	return strings.Contains(low, "mediamtx") ||
+		strings.Contains(low, "pendaftaran ulang") ||
+		strings.Contains(low, "gagal memicu hls") ||
+		strings.Contains(low, "gagal memicu rtsp")
 }
 
 // RunStreamVerifier menjalankan verifikasi end-to-end secara periodik.
@@ -714,11 +718,15 @@ func verifyCCTVStreamInternal(db *gorm.DB, cctv models.CCTV, suppressObserve boo
 func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve, requireByteProgress bool, priorFirstFailed *time.Time) streamVerificationResult {
 	started := time.Now()
 	path := utils.BuildStreamPath(cctv.ID.String())
+	initialMethod := streamVerifyMethodHLS
+	if streamClient != nil && streamClient.RTSPBaseURL() != "" {
+		initialMethod = streamVerifyMethodRTSP
+	}
 	result := streamVerificationResult{
 		CCTV:            cctv,
 		State:           models.StreamStateUnknown,
 		VerifiedAt:      started,
-		Method:          streamVerifyMethodHLS,
+		Method:          initialMethod,
 		Failures:        cctv.StreamVerifyFailures,
 		SuppressObserve: suppressObserve,
 		FirstFailedAt:   priorFirstFailed,
@@ -755,19 +763,29 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 			return true, initial.BytesReceived, 0, false
 		}
 		b1 := initial.BytesReceived
-		time.Sleep(streamVerifyByteWindow)
-		after, gErr := streamClient.GetPath(path)
-		if gErr != nil {
-			return false, b1, 0, true
+		maxAttempts := 1
+		if b1 == 0 {
+			// Kamera RTSP yang baru dibuka on-demand dapat menunda IDR pertama hingga ~1s GOP setelah handshake PLAY.
+			maxAttempts = 3
 		}
-		if !after.SourceReady() || len(after.Tracks) == 0 {
-			return false, after.BytesReceived, 0, false
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			time.Sleep(streamVerifyByteWindow)
+			after, gErr := streamClient.GetPath(path)
+			if gErr != nil {
+				return false, b1, 0, true
+			}
+			if !after.SourceReady() || len(after.Tracks) == 0 {
+				return false, after.BytesReceived, 0, false
+			}
+			d := after.BytesReceived - b1
+			if d > 0 {
+				return true, after.BytesReceived, d, false
+			}
 		}
-		d := after.BytesReceived - b1
-		return d > 0, after.BytesReceived, d, false
+		return false, 0, 0, false
 	}
 
-	// Path yang sudah menyala tidak perlu dipicu ulang lewat HLS.
+	// Path yang sudah menyala tidak perlu dipicu ulang.
 	if info.SourceReady() && (!requireByteProgress || len(info.Tracks) > 0) {
 		okBytes, totalB, deltaB, mtxErr := checkByteGrowth(info)
 		if mtxErr {
@@ -798,8 +816,14 @@ func verifyCCTVStreamWithOptions(db *gorm.DB, cctv models.CCTV, suppressObserve,
 		return persistStreamVerification(db, result)
 	}
 
-	if err := streamClient.TriggerHLS(path, 2*time.Second); err != nil {
-		result.Error = "gagal memicu HLS MediaMTX"
+	method, triggerErr := streamClient.TriggerOnDemand(path, 2*time.Second)
+	result.Method = method
+	if triggerErr != nil {
+		if method == streamVerifyMethodRTSP {
+			result.Error = fmt.Sprintf("gagal memicu RTSP MediaMTX: %v", triggerErr)
+		} else {
+			result.Error = "gagal memicu HLS MediaMTX"
+		}
 		result.Duration = time.Since(started)
 		return persistStreamVerification(db, result)
 	}
