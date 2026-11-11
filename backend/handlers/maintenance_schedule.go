@@ -242,6 +242,7 @@ func CreateMaintenanceSchedule(c *fiber.Ctx) error {
 	if schedule.SLAPolicy == nil && loadedSLAPolicy != nil {
 		schedule.SLAPolicy = loadedSLAPolicy
 	}
+	sanitizeCCTVForResponse(&schedule.CCTV)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status": "success",
@@ -293,6 +294,9 @@ func GetAllMaintenanceSchedules(c *fiber.Ctx) error {
 			"message": "Gagal mengambil daftar jadwal pemeliharaan",
 		})
 	}
+	for i := range schedules {
+		sanitizeCCTVForResponse(&schedules[i].CCTV)
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -334,6 +338,7 @@ func GetMaintenanceScheduleByID(c *fiber.Ctx) error {
 			"message": "Jadwal pemeliharaan tidak ditemukan",
 		})
 	}
+	sanitizeCCTVForResponse(&schedule.CCTV)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -561,6 +566,7 @@ func UpdateMaintenanceSchedule(c *fiber.Ctx) error {
 			schedule.SLAPolicy = updatedSLAPolicy
 		}
 	}
+	sanitizeCCTVForResponse(&schedule.CCTV)
 
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -667,6 +673,7 @@ func ToggleMaintenanceSchedule(c *fiber.Ctx) error {
 
 	// Muat ulang dengan relasi untuk respon JSON
 	config.DB.Preload("CCTV").Preload("Technician").First(&schedule, schedule.ID)
+	sanitizeCCTVForResponse(&schedule.CCTV)
 
 	return c.JSON(fiber.Map{
 		"status": "success",

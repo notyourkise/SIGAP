@@ -59,6 +59,7 @@ export interface CreateFieldMaintenancePayload {
   notes: string;
   check_latitude: string;
   check_longitude: string;
+  client_request_id?: string;
   checks: FieldCheckItem[];
   images: FieldImageItem[];
 }

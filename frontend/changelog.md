@@ -1,5 +1,30 @@
 # Changelog - Frontend SIGAP
 
+## [1.55.46] - 2026-11-11
+
+### [Low][L03] Sinkronkan label `SiteSwitcher` berbasis peran untuk mencegah efek SSR fallback menyesatkan (#191)
+
+**Sebelum (Before)**:
+- `SiteSwitcher` melakukan fallback senyap ke site default (`is_default`) saat cookie `sigap_site_id` kosong meskipun pengguna adalah **admin** yang sebenarnya berada pada mode lintas kawasan ("Semua Site"), sehingga tampilan header tidak mencerminkan scope query backend.
+- Pengguna tidak memiliki tombol eksplisit untuk kembali ke mode `"Semua Site"`, dan pembacaan cookie dilakukan tidak seragam antara render awal dan hidrasi klien.
+
+**Sesudah (After)**:
+- Mengekstrak resolver murni [`site-switcher.ts`](src/lib/site-switcher.ts) (`resolveSiteSwitcherState`, `ALL_SITES_LABEL = 'Semua Site'`) agar logika penentuan label konsisten dan dapat diuji tanpa DOM/Next runtime.
+- Menghubungkan `SiteSwitcher.tsx` ke `useAuth()` (`@/context/AuthContext`) dan `useSyncExternalStore` untuk deteksi hidrasi serta pembacaan cookie `sigap_site_id` secara aman terhadap SSR/CSR.
+- Admin tanpa cookie (atau cookie tidak valid) menampilkan `"Semua Site"` dan mendapat opsi menu `"Semua Site"` untuk menghapus cookie lalu me-reload halaman; peran `teknisi` tetap scoped ke `cookieSite ?? defaultSite ?? sites[0]`.
+- Menambahkan unit test `tests/site-switcher.test.mts` (`npm run test:site-switcher`).
+
+timestamp: 2026-11-11 16:38 WITA
+kategori: Ringan, Frontend (Multi-Site Navigation / UI Consistency)
+file yang diubah:
+- frontend/src/lib/site-switcher.ts
+- frontend/src/components/SiteSwitcher.tsx
+- frontend/tests/site-switcher.test.mts
+- frontend/package.json
+- frontend/changelog.md
+
+alasan perubahan: Menyelesaikan temuan audit L03 (#191) agar label SiteSwitcher akurat sesuai peran pengguna dan sinkron dengan header X-Site-ID.
+
 ## [1.55.45] - 2026-11-02
 
 ### [Medium][M06] Tampilkan filter tanggal dan hasil pengecekan untuk entitas pengecekan lapangan (#179)

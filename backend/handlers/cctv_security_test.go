@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -106,5 +107,36 @@ func TestSanitizeCCTVForResponse_WithoutURL(t *testing.T) {
 
 	if cctv.RTSPURL != "" || cctv.RTSPURLMasked != "" || cctv.RTSPURLConfigured {
 		t.Fatalf("CCTV tanpa URL tidak boleh punya metadata RTSP: %+v", cctv)
+	}
+}
+
+func TestAudit_CCTVCoordinatesRejectNaNAndInf(t *testing.T) {
+	nanLat := math.NaN()
+	infPos := math.Inf(1)
+	infNeg := math.Inf(-1)
+	validLat := -0.9721
+	validLng := 116.7092
+
+	if msg := validateCoordinateRange(&nanLat, &validLng); msg == "" {
+		t.Fatal("validateCoordinateRange menerima latitude NaN")
+	}
+	if msg := validateCoordinateRange(&validLat, &infPos); msg == "" {
+		t.Fatal("validateCoordinateRange menerima longitude +Inf")
+	}
+	if msg := validateCoordinateRange(&infNeg, &validLng); msg == "" {
+		t.Fatal("validateCoordinateRange menerima latitude -Inf")
+	}
+	if msg := validateCoordinateRange(&validLat, &validLng); msg != "" {
+		t.Fatalf("validateCoordinateRange menolak koordinat valid: %s", msg)
+	}
+
+	for _, bad := range []string{"NaN", "nan", "Inf", "+Inf", "-Inf", "Infinity"} {
+		if got := parseCoordinateCell(bad, 2, "Latitude"); got != nil {
+			t.Fatalf("parseCoordinateCell(%q) = %v, want nil", bad, *got)
+		}
+	}
+	got := parseCoordinateCell(" -0.9723 ", 2, "Latitude")
+	if got == nil || *got != -0.9723 {
+		t.Fatalf("parseCoordinateCell gagal membaca koordinat valid: got=%v", got)
 	}
 }

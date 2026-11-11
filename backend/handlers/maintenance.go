@@ -87,6 +87,27 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 
+	// Parsing Waktu pada zona waktu operasional aplikasi (default WITA / Asia/Makassar)
+	// sebelum menyentuh database agar tanggal tidak valid langsung ditolak (L01 #189).
+	var schedDate *time.Time
+	if req.ScheduledDate != "" {
+		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
+				"errors": []utils.ValidationError{
+					{
+						Field: "scheduled_date",
+						Tag:   "datetime",
+						Value: req.ScheduledDate,
+					},
+				},
+			})
+		}
+		schedDate = &t
+	}
+
 	// Cek apakah cctv_id valid — CCTV adalah satu-satunya sumber kebenaran aset
 	cctvUUID, err := uuid.Parse(req.CCTVID)
 	if err != nil {
@@ -108,19 +129,6 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 			"status":  "error",
 			"message": "Akses ditolak: CCTV berada di site lain",
 		})
-	}
-
-	// Parsing Waktu pada zona waktu operasional aplikasi (default WITA / Asia/Makassar)
-	var schedDate *time.Time
-	if req.ScheduledDate != "" {
-		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
-			})
-		}
-		schedDate = &t
 	}
 
 	// Log baru selalu dibuat tanpa penugasan (TechnicianID nil) dengan status
@@ -151,6 +159,7 @@ func CreateMaintenanceLog(c *fiber.Ctx) error {
 	if logEntry.ScheduledDate == nil && schedDate != nil {
 		logEntry.ScheduledDate = schedDate
 	}
+	sanitizeCCTVForResponse(&logEntry.CCTV)
 	normalizeMaintenanceLogTimezone(&logEntry)
 	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_CREATED", logEntry)
 
@@ -295,6 +304,7 @@ func GetAllMaintenanceLogs(c *fiber.Ctx) error {
 		})
 	}
 	for i := range logs {
+		sanitizeCCTVForResponse(&logs[i].CCTV)
 		normalizeMaintenanceLogTimezone(&logs[i])
 	}
 
@@ -356,6 +366,7 @@ func GetMaintenanceLogByID(c *fiber.Ctx) error {
 		}
 	}
 
+	sanitizeCCTVForResponse(&logEntry.CCTV)
 	normalizeMaintenanceLogTimezone(&logEntry)
 	return c.JSON(fiber.Map{
 		"status": "success",
@@ -441,6 +452,25 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 		}
 	}
 
+	var updatedSchedDate *time.Time
+	if req.ScheduledDate != "" {
+		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
+				"errors": []utils.ValidationError{
+					{
+						Field: "scheduled_date",
+						Tag:   "datetime",
+						Value: req.ScheduledDate,
+					},
+				},
+			})
+		}
+		updatedSchedDate = &t
+	}
+
 	// Update field jika disediakan
 	if req.CCTVID != "" {
 		cctvUUID, err := uuid.Parse(req.CCTVID)
@@ -463,20 +493,11 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if req.Notes != "" {
 		logEntry.Notes = req.Notes
 	}
-	var updatedSchedDate *time.Time
-	if req.ScheduledDate != "" {
-		t, err := parseMaintenanceScheduledDate(req.ScheduledDate)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Format scheduled_date tidak valid (gunakan YYYY-MM-DD HH:MM:SS)",
-			})
-		}
-		updatedSchedDate = &t
-		logEntry.ScheduledDate = &t
+	if updatedSchedDate != nil {
+		logEntry.ScheduledDate = updatedSchedDate
 		// Jadwal baru di masa depan membuka kesempatan eskalasi baru bila
 		// tugas kembali terlambat setelah reschedule.
-		if t.After(time.Now()) {
+		if updatedSchedDate.After(time.Now()) {
 			logEntry.OverdueNotifiedAt = nil
 			logEntry.OverdueLevel = 0
 		}
@@ -508,6 +529,7 @@ func UpdateMaintenanceLog(c *fiber.Ctx) error {
 	if logEntry.ScheduledDate == nil && updatedSchedDate != nil {
 		logEntry.ScheduledDate = updatedSchedDate
 	}
+	sanitizeCCTVForResponse(&logEntry.CCTV)
 	normalizeMaintenanceLogTimezone(&logEntry)
 	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
@@ -705,6 +727,7 @@ func AssignMaintenanceLog(c *fiber.Ctx) error {
 	}
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	sanitizeCCTVForResponse(&logEntry.CCTV)
 	broadcastMaintenanceLogEvent(config.DB, "MAINTENANCE_UPDATED", logEntry)
 
 	return c.JSON(fiber.Map{
@@ -995,6 +1018,7 @@ func CompleteMaintenanceLog(c *fiber.Ctx) error {
 		"maintenance-log", &refID)
 
 	config.DB.Preload("CCTV").Preload("User").First(&logEntry, logEntry.ID)
+	sanitizeCCTVForResponse(&logEntry.CCTV)
 
 	// Perbarui skor setelah transaksi penyelesaian berhasil. Kegagalan
 	// kalkulator tidak boleh membatalkan data checklist yang sudah tersimpan.

@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -9,14 +8,23 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { apiClient, apiGet, apiPost, extractError } from '../api/client';
+import { apiGet, extractError } from '../api/client';
 import type { CCTV, FieldCheckItem } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
 import { PrimaryButton, TextField } from '../components/ui';
-import { saveDraft } from '../offline/storage';
+import {
+  classifySyncError,
+  getDraftsByUser,
+  MAX_DRAFT_RETRY_COUNT,
+  removeDraft,
+  saveDraft,
+  syncAllDrafts,
+  syncSingleDraft,
+} from '../offline/storage';
 import { theme } from '../theme/colors';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -40,6 +48,7 @@ const CHECKLIST = [
 type CheckStatus = 'ok' | 'not_ok';
 
 export default function CheckupWizardScreen() {
+  const { user } = useAuth();
   const route = useRoute<Route>();
   const cctv: CCTV | undefined = route.params?.cctv;
 
@@ -49,9 +58,29 @@ export default function CheckupWizardScreen() {
   const [notes, setNotes] = useState('');
   const [location, setLocation] = useState<{ lat: string; lng: string } | null>(null);
   const [photos, setPhotos] = useState<string[]>([]); // base64 sementara
+  const [pendingDraftCount, setPendingDraftCount] = useState(0);
+  const [syncingDrafts, setSyncingDrafts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  const refreshDraftCount = useCallback(async () => {
+    if (!user?.id) {
+      setPendingDraftCount(0);
+      return;
+    }
+    const mine = await getDraftsByUser(user.id);
+    setPendingDraftCount(
+      mine.filter((d) => d.status !== 'failed_permanent' && d.retryCount < MAX_DRAFT_RETRY_COUNT)
+        .length
+    );
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshDraftCount();
+    }, [refreshDraftCount])
+  );
 
   // Ambil izin lokasi & posisi GPS otomatis.
   useEffect(() => {
@@ -116,23 +145,41 @@ export default function CheckupWizardScreen() {
     }
   };
 
-  // Unggah foto ke backend lalu kembalikan daftar URL.
-  const uploadPhotos = async (): Promise<string[]> => {
-    const urls: string[] = [];
-    for (const base64 of photos) {
-      const form = new FormData();
-      // React Native menerima objek { uri, name, type } sebagai bagian FormData.
-      form.append('file', buildUploadPart(base64) as unknown as Blob);
-      const res = await apiClient.post<{ status: string; data?: { url: string } }>('/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const url = res.data?.data?.url;
-      if (url) urls.push(url);
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleSyncPendingDrafts = async () => {
+    if (!user?.id) {
+      setError('Sesi pengguna tidak valid. Silakan masuk kembali.');
+      return;
     }
-    return urls;
+    setSyncingDrafts(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await syncAllDrafts(user.id);
+      await refreshDraftCount();
+      if (res.success > 0) {
+        setMessage(`${res.success} draf offline berhasil disinkronkan.`);
+      }
+      if (res.authRequired) {
+        setError('Sesi Anda berakhir. Masuk kembali lalu sinkronkan draf offline.');
+      } else if (res.failed > 0 || res.permanentFailed > 0) {
+        setError('Sebagian draf gagal disinkronkan. Periksa detailnya pada tab Tugas.');
+      }
+    } catch (e) {
+      setError(extractError(e));
+    } finally {
+      setSyncingDrafts(false);
+    }
   };
 
   const handleSubmit = async () => {
+    if (!user?.id) {
+      setError('Sesi pengguna tidak valid. Silakan masuk kembali.');
+      return;
+    }
     if (!cctv) {
       setError('Data CCTV tidak ditemukan.');
       return;
@@ -151,45 +198,59 @@ export default function CheckupWizardScreen() {
     setError('');
     setMessage('');
 
-    // Susun payload field-maintenance.
+    // Susun item checklist sesuai skema backend /field-maintenance.
     const checkItems: FieldCheckItem[] = checklist.map((name) => ({
       name,
       result: checks[name] === 'ok' ? 'ok' : 'not_ok',
       note: '',
     }));
 
+    // Simpan draf beserta foto base64 ke AsyncStorage SEBELUM menyentuh jaringan
+    // agar kehilangan sinyal di tengah unggah foto atau POST tetap dapat dilanjutkan.
+    let draft;
     try {
-      const imageUrls = await uploadPhotos();
-      const payload = {
-        cctv_id: cctv.id,
+      draft = await saveDraft({
+        userId: user.id,
+        cctvId: cctv.id,
+        cctvName: cctv.nama,
+        cctvCode: cctv.kode_cctv,
         notes,
-        check_latitude: location?.lat ?? '',
-        check_longitude: location?.lng ?? '',
+        location,
         checks: checkItems,
-        images: imageUrls.map((url) => ({ image_url: url })),
-      };
+        photos,
+      });
+    } catch (e) {
+      setError(extractError(e));
+      setSubmitting(false);
+      return;
+    }
 
-      let res;
-      try {
-        res = await apiPost('/field-maintenance', payload);
-      } catch (e) {
-        // Offline / gagal — simpan draft ke AsyncStorage.
-        await saveDraft(payload);
-        setMessage('Koneksi bermasalah. Pengecekan disimpan sebagai draft dan akan disinkronkan saat online.');
-        setSubmitting(false);
-        return;
-      }
-
-      if (res.status === 'success') {
-        setMessage('Pengecekan lapangan berhasil dikirim.');
+    try {
+      await syncSingleDraft(draft);
+      setMessage('Pengecekan lapangan berhasil dikirim.');
+      setChecks({});
+      setNotes('');
+      setPhotos([]);
+      await refreshDraftCount();
+    } catch (e) {
+      const classified = classifySyncError(e, extractError);
+      if (classified.kind === 'permanent') {
+        // Error validasi/izin (400/403/404/409/422): hapus draf agar form
+        // dapat langsung diperbaiki oleh teknisi tanpa mengendap di antrean offline.
+        await removeDraft(draft.id, user.id);
+        setError(classified.message);
+      } else if (classified.kind === 'auth') {
         setChecks({});
         setNotes('');
         setPhotos([]);
+        setError('Sesi Anda berakhir. Draf tersimpan aman secara lokal — masuk kembali lalu sinkronkan ulang.');
       } else {
-        setError(res.message || 'Gagal mengirim pengecekan.');
+        setChecks({});
+        setNotes('');
+        setPhotos([]);
+        setMessage('Koneksi bermasalah. Pengecekan dan foto bukti telah disimpan di draf offline dan akan disinkronkan saat online.');
       }
-    } catch (e) {
-      setError(extractError(e));
+      await refreshDraftCount();
     } finally {
       setSubmitting(false);
     }
@@ -204,6 +265,28 @@ export default function CheckupWizardScreen() {
             <Text style={styles.cctv}>{cctv.nama} ({cctv.kode_cctv})</Text>
             <Text style={styles.muted}>Lokasi: {cctv.lokasi_area || '-'}</Text>
           </>
+        ) : null}
+
+        {pendingDraftCount > 0 ? (
+          <View style={styles.draftBanner}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.draftBannerTitle}>
+                {pendingDraftCount} draf offline menunggu sinkronisasi
+              </Text>
+              <Text style={styles.muted}>
+                Draf akan dikirim otomatis saat kembali online atau ketuk Sinkronkan.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.syncBtn}
+              onPress={handleSyncPendingDrafts}
+              disabled={syncingDrafts}
+            >
+              <Text style={styles.syncBtnText}>
+                {syncingDrafts ? 'Menyinkronkan…' : 'Sinkronkan'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <Text style={styles.section}>Checklist {checklist.length} Tahap</Text>
@@ -243,7 +326,12 @@ export default function CheckupWizardScreen() {
         </View>
         <View style={styles.photoRow}>
           {photos.map((p, i) => (
-            <Image key={i} source={{ uri: `data:image/jpeg;base64,${p}` }} style={styles.photo} />
+            <View key={i} style={styles.photoWrap}>
+              <Image source={{ uri: `data:image/jpeg;base64,${p}` }} style={styles.photo} />
+              <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(i)}>
+                <Text style={styles.removePhotoText}>×</Text>
+              </TouchableOpacity>
+            </View>
           ))}
           {photos.length === 0 ? <Text style={styles.muted}>Belum ada foto.</Text> : null}
         </View>
@@ -265,23 +353,31 @@ export default function CheckupWizardScreen() {
   );
 }
 
-// Membangun bagian FormData untuk unggahan foto (React Native memakai objek
-// { uri, name, type } — base64 di-encode sebagai data URI agar tidak perlu
-// file fisik sementara).
-function buildUploadPart(base64: string): { uri: string; name: string; type: string } {
-  return {
-    uri: `data:image/jpeg;base64,${base64}`,
-    name: `proof-${Date.now()}.jpg`,
-    type: 'image/jpeg',
-  };
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.background },
   content: { padding: 20 },
   title: { color: theme.text, fontSize: 24, fontWeight: '800', marginBottom: 8 },
   cctv: { color: theme.text, fontSize: 16, fontWeight: '700', marginTop: 4 },
   muted: { color: theme.muted, fontSize: 13, marginTop: 2 },
+  draftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.card,
+    borderColor: theme.warning,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 14,
+  },
+  draftBannerTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
+  syncBtn: {
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  syncBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   section: { color: theme.text, fontSize: 16, fontWeight: '800', marginTop: 20, marginBottom: 8 },
   sectionHeader: {
     flexDirection: 'row',
@@ -313,7 +409,20 @@ const styles = StyleSheet.create({
   notOkActive: { backgroundColor: theme.danger, borderColor: theme.danger },
   activeText: { color: '#fff' },
   photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoWrap: { position: 'relative' },
   photo: { width: 72, height: 72, borderRadius: 8 },
+  removePhotoBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: theme.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removePhotoText: { color: '#fff', fontSize: 14, fontWeight: '800', lineHeight: 18 },
   gps: { color: theme.success, fontSize: 13, marginTop: 10 },
   error: { color: theme.danger, fontSize: 13, marginTop: 12 },
   success: { color: theme.success, fontSize: 13, marginTop: 12 },

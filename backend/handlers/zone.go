@@ -246,6 +246,9 @@ func GetZoneByID(c *fiber.Ctx) error {
 			"message": "Akses ditolak: zona berada di site lain",
 		})
 	}
+	for i := range item.CCTVs {
+		sanitizeCCTVForResponse(&item.CCTVs[i])
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",

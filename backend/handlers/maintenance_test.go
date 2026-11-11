@@ -1437,3 +1437,76 @@ func TestCompleteMaintenanceLog_UniqueConstraintViolation(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestAudit_InvalidScheduledDateMustBeRejected memverifikasi temuan L01 (#189):
+// 1. POST /maintenance-logs menolak scheduled_date tidak valid dengan HTTP 400 + array errors[scheduled_date].
+// 2. PUT /maintenance-logs/:id menolak scheduled_date tidak valid sebelum mutasi field lain (cctv_id, DB save),
+//    mengembalikan HTTP 400 + array errors[scheduled_date].
+func TestAudit_InvalidScheduledDateMustBeRejected(t *testing.T) {
+	invalidDates := []string{"not-a-date", "2026-13-45", "invalid-timestamp"}
+
+	t.Run("POST /maintenance-logs rejects invalid scheduled_date with field error", func(t *testing.T) {
+		app := newTestApp()
+		app.Post("/maintenance-logs", withUserLocals(uuid.New().String(), "admin"), CreateMaintenanceLog)
+
+		for _, badDate := range invalidDates {
+			payload := `{"cctv_id":"` + uuid.New().String() + `","action_taken":"Bersihkan lensa kamera","status":"scheduled","scheduled_date":"` + badDate + `"}`
+			req := httptest.NewRequest("POST", "/maintenance-logs", strings.NewReader(payload))
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+			var body map[string]interface{}
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+			assert.Equal(t, "error", body["status"])
+
+			rawErrs, ok := body["errors"].([]interface{})
+			require.True(t, ok, "expected structured errors array for %q", badDate)
+			require.NotEmpty(t, rawErrs)
+			firstErr, ok := rawErrs[0].(map[string]interface{})
+			require.True(t, ok)
+			assert.Equal(t, "scheduled_date", firstErr["field"])
+			assert.Equal(t, "datetime", firstErr["tag"])
+			assert.Equal(t, badDate, firstErr["value"])
+		}
+	})
+
+	t.Run("PUT /maintenance-logs/:id fails fast on invalid scheduled_date without touching DB mutations", func(t *testing.T) {
+		_, mock := setupMockGORM(t)
+		adminID := uuid.New()
+		logID := uuid.New()
+
+		app := newTestApp()
+		app.Put("/maintenance-logs/:id", withUserLocals(adminID.String(), "admin"), UpdateMaintenanceLog)
+
+		for _, badDate := range invalidDates {
+			mock.ExpectQuery(`^SELECT \* FROM "maintenance_logs"`).
+				WillReturnRows(maintenanceMockRow())
+
+			payload := `{"cctv_id":"` + uuid.New().String() + `","notes":"Ubah catatan","scheduled_date":"` + badDate + `"}`
+			req := httptest.NewRequest("PUT", "/maintenance-logs/"+logID.String(), strings.NewReader(payload))
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+			var body map[string]interface{}
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+			assert.Equal(t, "error", body["status"])
+
+			rawErrs, ok := body["errors"].([]interface{})
+			require.True(t, ok, "expected structured errors array for %q", badDate)
+			require.NotEmpty(t, rawErrs)
+			firstErr, ok := rawErrs[0].(map[string]interface{})
+			require.True(t, ok)
+			assert.Equal(t, "scheduled_date", firstErr["field"])
+			assert.Equal(t, "datetime", firstErr["tag"])
+		}
+
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+

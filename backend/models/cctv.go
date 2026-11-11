@@ -40,7 +40,7 @@ type CCTV struct {
 	// === Field Streaming RTSP (Task 9.1) ===
 	// ChannelPort adalah nomor channel kamera pada NVR (mis. 19 untuk CH 19).
 	ChannelPort       int    `gorm:"type:integer" json:"channel_port"`
-	RTSPPassword      string `gorm:"type:text" json:"rtsp_password,omitempty"`
+	RTSPPassword      string `gorm:"type:text" json:"-"`
 	StreamEnabled     bool   `gorm:"type:boolean;not null;default:false" json:"stream_enabled"`
 	MonitoringEnabled bool   `gorm:"column:monitoring_enabled;type:boolean;not null;default:true" json:"monitoring_enabled"`
 	// PlannedOutage* adalah metadata computed saat CCTV sedang berada dalam
@@ -56,7 +56,7 @@ type CCTV struct {
 	// Di database nilai ini disimpan terenkripsi (prefix enc:v1:); data legacy
 	// plaintext tetap dapat dibaca. Jangan pernah mengembalikan nilai mentah ke
 	// klien — gunakan RTSPURLMasked/RTSPURLConfigured pada response.
-	RTSPURL string `gorm:"type:text" json:"rtsp_url,omitempty"`
+	RTSPURL string `gorm:"type:text" json:"-"`
 	// RTSPURLMasked adalah URL tersamarkan (password diganti xxxxx) untuk UI.
 	// Field computed, tidak disimpan di database.
 	RTSPURLMasked string `gorm:"-" json:"rtsp_url_masked,omitempty"`

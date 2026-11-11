@@ -1,5 +1,34 @@
 # Changelog - Mobile SIGAP
 
+## [1.1.1] - 2026-11-11
+
+### [Medium][M14] Perbaikan Penyimpanan Draf Offline, Foto Bukti, Kunci Idempoten, & Auto-Sync (#187)
+
+**Sebelum (Before)**:
+- `CheckupWizardScreen` mengunggah foto terlebih dahulu ke `/upload` sebelum memanggil `/field-maintenance`, dan saat offline hanya memanggil `saveDraft(payload)` dengan URL foto mentah tanpa foto base64 maupun kunci idempoten; jika foto gagal diunggah atau form dikirim saat offline, seluruh input hilang tanpa masuk antrean offline.
+- `storage.ts` hanya menyimpan payload tunggal global tanpa isolasi antar-teknisi, tanpa resume unggahan foto parsial, dan tidak membedakan error validasi/otorisasi (`400`/`401`/`403`) vs gangguan jaringan sementara, serta `TasksScreen` belum menyinkronkan antrean draf otomatis saat kembali fokus/aktif.
+
+**Sesudah (After)**:
+- Membuat mesin sinkronisasi murni `src/offline/engine.ts` (`createDraftStore`, `classifySyncError`) dan mengikatnya ke `AsyncStorage` + `apiClient` di `src/offline/storage.ts`.
+- Menyimpan draf beserta `userId`, `clientRequestId` unik, dan array `photos` (base64) ke penyimpanan lokal **sebelum** panggilan jaringan, lalu melanjutkan unggahan foto dari `uploadedImageUrls.length` bila sempat terputus di tengah jalan dan mengirim `client_request_id` ke backend agar bebas duplikasi.
+- Memisahkan klasifikasi error: `401` menyimpan draf tetap `pending` tanpa menaikkan `retryCount` & menghentikan loop batch; `400/403/404/409/422` pada submit Wizard menghapus draf & mempertahankan form agar diperbaiki, atau di antrean latar menandai `failed_permanent` agar dapat ditinjau/dihapus teknisi; error jaringan/`5xx` menaikkan `retryCount` hingga batas `MAX_DRAFT_RETRY_COUNT = 5`.
+- Menambahkan isolasi draf per-teknisi (`getDraftsByUser`, `syncAllDrafts`), lock konkurensi single-flight per-pengguna, banner sinkronisasi di `CheckupWizardScreen` (plus tombol hapus foto `×`), panel draf & auto-sync pada focus/`AppState` `'active'` di `TasksScreen`, serta unit test `tests/offline-sync.test.mts`.
+
+timestamp: 2026-11-11 16:38 WITA
+kategori: Sedang, Mobile (Offline-First Sync & Draft Resilience)
+file yang diubah:
+- mobile/src/api/types.ts
+- mobile/src/offline/engine.ts
+- mobile/src/offline/storage.ts
+- mobile/src/screens/CheckupWizardScreen.tsx
+- mobile/src/screens/TasksScreen.tsx
+- mobile/tests/offline-sync.test.mts
+- mobile/package.json
+- mobile/tsconfig.json
+- mobile/changelog.md
+
+alasan perubahan: Menyelesaikan temuan audit M14 (#187) agar pengecekan lapangan offline aman dari kehilangan foto/data, terisolasi per teknisi, bebas duplikasi saat retry, dan menyinkronkan otomatis saat kembali online.
+
 ## [1.1.0] - 2026-08-12
 
 ### Fitur: Checkup Wizard Memakai Template Checklist dari Server (Sprint 35 - P12c)
