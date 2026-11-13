@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Camera, ChevronRight, Clock, User, X } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/lib/api';
@@ -248,7 +249,8 @@ export default function IncidentsPage() {
   const [busy, setBusy] = useState(false);
   const [snapshotMs, setSnapshotMs] = useState<number>(0);
 
-  // State modal aksi tiket
+  // State modal aksi tiket & detail tiket
+  const [detailIncidentId, setDetailIncidentId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Incident | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>('assign');
   const [technician, setTechnician] = useState('');
@@ -332,6 +334,25 @@ export default function IncidentsPage() {
     if (statusFilter === 'all') return list;
     return list.filter((i) => i.status === statusFilter);
   }, [data?.incidents, statusFilter]);
+
+  const detailIncident = useMemo(
+    () => (detailIncidentId ? data?.incidents.find((i) => i.id === detailIncidentId) || null : null),
+    [data?.incidents, detailIncidentId],
+  );
+
+  useEffect(() => {
+    if (!detailIncidentId && !selected) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selected) {
+        setSelected(null);
+      } else {
+        setDetailIncidentId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [detailIncidentId, selected]);
 
   const openActionModal = (inc: Incident, mode: ModalMode) => {
     setSelected(inc);
@@ -672,234 +693,98 @@ export default function IncidentsPage() {
                     </p>
                   </div>
                 ) : (
-                  filteredIncidents.map((inc) => {
-                    const isClosedOrMerged = ['resolved', 'merged'].includes(inc.status);
-                    const isLegacyBackfill =
-                      inc.timestamp_source === 'legacy_backfill_opened_at';
-                    const assignedName = inc.assigned_to
-                      ? techMap.get(inc.assigned_to) || inc.assigned_to.slice(0, 8)
-                      : null;
+                  <div className="space-y-3">
+                    {filteredIncidents.map((inc) => {
+                      const isLegacyBackfill =
+                        inc.timestamp_source === 'legacy_backfill_opened_at';
+                      const assignedName = inc.assigned_to
+                        ? techMap.get(inc.assigned_to) || inc.assigned_to.slice(0, 8)
+                        : null;
+                      const offlineCount = inc.members.filter(
+                        (m) => m.connection_state === 'offline',
+                      ).length;
+                      const recoveredCount = inc.members.filter(
+                        (m) => m.connection_state === 'recovered',
+                      ).length;
+                      const cameraSummary =
+                        inc.members.length === 1
+                          ? `${inc.members[0].camera_code ? `${inc.members[0].camera_code} · ` : ''}${inc.members[0].camera_name}`
+                          : `${inc.members.length} kamera (${offlineCount} offline, ${recoveredCount} pulih)`;
+                      const recordedAt = isLegacyBackfill
+                        ? inc.opened_at
+                        : inc.confirmed_offline_at || inc.opened_at;
+                      const statusPillClass =
+                        inc.status === 'pending_verification'
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : inc.status === 'resolved'
+                            ? 'border-border bg-muted/10 text-muted'
+                            : inc.status === 'merged'
+                              ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                              : 'border-primary/35 bg-primary/10 text-primary';
 
-                    return (
-                      <article
-                        key={inc.id}
-                        className="rounded-xl border border-border bg-card p-5 space-y-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1">
+                      return (
+                        <article
+                          key={inc.id}
+                          className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 sm:flex-row sm:items-center"
+                        >
+                          <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                               <span className="font-mono font-semibold text-primary">
                                 {inc.ticket_number || inc.id.slice(0, 8)}
                               </span>
-                              <span className="rounded bg-muted/15 px-2 py-0.5 font-medium">
+                              <span className="rounded bg-muted/15 px-2 py-0.5 font-medium text-foreground">
                                 {scopeLabels[inc.scope_type] || inc.scope_type}
                               </span>
-                              {inc.origin_type === 'post_planned_maintenance' ? (
-                                <span className="rounded bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-300">
-                                  Pasca-Pemeliharaan Terjadwal
-                                </span>
-                              ) : (
-                                <span className="rounded bg-muted/10 px-2 py-0.5 text-muted">
-                                  Gangguan Luar Jadwal
-                                </span>
-                              )}
-                              {isLegacyBackfill && (
-                                <span
-                                  className="rounded border border-border px-2 py-0.5 text-muted"
-                                  title="Tiket dibuat pada skema sebelum 000034; stempel waktu diisi dari waktu pembukaan tiket historis."
-                                >
-                                  Data Historis Backfill
-                                </span>
-                              )}
+                              <span
+                                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusPillClass}`}
+                              >
+                                {statusLabels[inc.status] || inc.status}
+                              </span>
                             </div>
-                            <h2 className="text-lg font-semibold">{inc.title}</h2>
-                            {/* Label jujur semantik waktu (Koreksi #1) */}
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                              {isLegacyBackfill ? (
-                                <span>
-                                  Waktu tercatat historis (pembukaan tiket):{' '}
-                                  <strong>{formatWITA(inc.opened_at)}</strong>
-                                </span>
-                              ) : (
-                                <>
-                                  <span>
-                                    Gagal teramati pertama:{' '}
-                                    <strong>{formatWITA(inc.first_failed_observed_at)}</strong>
-                                  </span>
-                                  <span>
-                                    Offline terkonfirmasi:{' '}
-                                    <strong>{formatWITA(inc.confirmed_offline_at)}</strong>
-                                  </span>
-                                  <span>
-                                    Awal SLA 5m ({inc.sla_clock_basis === 'planned_window_end' ? 'akhir pemeliharaan' : 'observasi gagal pertama'}):{' '}
-                                    <strong>{formatWITA(inc.sla_clock_start_at)}</strong>
-                                  </span>
-                                </>
-                              )}
+
+                            <h2 className="truncate text-base font-semibold text-foreground">
+                              {inc.title}
+                            </h2>
+
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Camera className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{cameraSummary}</span>
+                              </span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                                <span>{formatWITA(recordedAt)}</span>
+                              </span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <User className="h-3.5 w-3.5 shrink-0" />
+                                <span>{assignedName || 'Belum ditugaskan'}</span>
+                              </span>
                             </div>
-                            {assignedName && (
-                              <p className="text-xs text-muted">
-                                Teknisi ditugaskan: <strong>{assignedName}</strong>
-                              </p>
-                            )}
-                            {inc.resolution_type && (
-                              <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                                Hasil Penutupan:{' '}
-                                {resolutionLabels[inc.resolution_type] || inc.resolution_type}
-                                {inc.resolution_note ? ` — "${inc.resolution_note}"` : ''}
-                              </p>
-                            )}
-                            {inc.status === 'merged' && (
-                              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                                Digabung ke tiket induk ID {inc.merged_into_incident_id?.slice(0, 8)}
-                                {inc.merge_reason ? ` — Alasan: ${inc.merge_reason}` : ''}
-                              </p>
-                            )}
                           </div>
-                          <span className="rounded-full border border-border px-3 py-1 text-xs font-semibold">
-                            {statusLabels[inc.status] || inc.status}
-                          </span>
-                        </div>
 
-                        {/* Daftar kamera terdampak & hasil per kamera */}
-                        <ul className="space-y-2">
-                          {inc.members.map((m) => (
-                            <li
-                              key={m.id}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/5 px-3 py-2.5 text-sm"
-                            >
-                              <div className="space-y-0.5">
-                                <div className="flex flex-wrap items-center gap-2 font-medium">
-                                  <span>
-                                    {m.camera_code ? `${m.camera_code} · ` : ''}
-                                    {m.camera_name}
-                                  </span>
-                                  {m.source_ticket_number && (
-                                    <span className="rounded bg-muted/15 px-2 py-0.5 font-mono text-[11px] text-muted">
-                                      Asal: {m.source_ticket_number}
-                                    </span>
-                                  )}
-                                  {m.member_outcome && m.member_outcome !== 'pending' && (
-                                    <span
-                                      className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
-                                        m.member_outcome === 'escalated_replacement'
-                                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                      }`}
-                                    >
-                                      {outcomeLabels[m.member_outcome] || m.member_outcome}
-                                    </span>
-                                  )}
-                                </div>
-                                {m.damage_findings && (
-                                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                                    Temuan kerusakan: {m.damage_findings}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right text-xs text-muted">
-                                <div className="font-medium text-foreground">
-                                  {statusLabels[m.connection_state] || m.connection_state}
-                                  {m.connection_state === 'recovering' &&
-                                    ` (${m.consecutive_live_count}/6 sampel)`}
-                                </div>
-                                {m.last_observed_at && (
-                                  <div>Bukti terakhir: {formatWITA(m.last_observed_at)}</div>
-                                )}
-                                <div className="mt-0.5 flex justify-end gap-2">
-                                  {m.field_maintenance_log_id && (
-                                    <Link href="/maintenance" className="underline text-primary">
-                                      Tugas Cek Lapangan
-                                    </Link>
-                                  )}
-                                  {m.replacement_maintenance_log_id && (
-                                    <Link href="/maintenance" className="underline text-amber-600">
-                                      Tugas Penggantian Unit
-                                    </Link>
-                                  )}
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-
-                        {/* Tombol Aksi Admin */}
-                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                          {!isClosedOrMerged && (
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                            {inc.status === 'pending_verification' && (
+                              <button
+                                type="button"
+                                onClick={() => openActionModal(inc, 'resolve')}
+                                className="rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-600/20 dark:text-emerald-300"
+                              >
+                                Verifikasi &amp; Tutup
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => openActionModal(inc, 'assign')}
-                              className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white hover:opacity-90"
+                              onClick={() => setDetailIncidentId(inc.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                             >
-                              {inc.assigned_to ? 'Alihkan Teknisi' : 'Tugaskan Teknisi'}
+                              <span>Detail</span>
+                              <ChevronRight className="h-3.5 w-3.5" />
                             </button>
-                          )}
-                          {inc.status === 'pending_verification' && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal(inc, 'resolve')}
-                              className="rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300"
-                            >
-                              {inc.assigned_to
-                                ? 'Verifikasi & Tutup'
-                                : 'Verifikasi & Tutup (Pulih Mandiri)'}
-                            </button>
-                          )}
-                          {!isClosedOrMerged && inc.members.filter((m) => m.is_active_member).length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal(inc, 'camera_task')}
-                              className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium hover:bg-muted/10"
-                            >
-                              + Tugas Cek Kamera Lapangan
-                            </button>
-                          )}
-                          {!isClosedOrMerged && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal(inc, 'merge')}
-                              className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium hover:bg-muted/10"
-                            >
-                              Gabungkan ke Tiket Bersama
-                            </button>
-                          )}
-                          {!isClosedOrMerged && inc.members.some((m) => m.is_active_member) && (
-                            <button
-                              type="button"
-                              onClick={() => openActionModal(inc, 'escalate')}
-                              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-300"
-                            >
-                              Eskalasi Penggantian Perangkat
-                            </button>
-                          )}
-                          {inc.maintenance_log_id && (
-                            <Link
-                              href="/maintenance"
-                              className="px-2 py-2 text-xs font-medium underline text-primary"
-                            >
-                              Lihat Tugas Pemeliharaan Utama
-                            </Link>
-                          )}
-                        </div>
-
-                        {inc.events && inc.events.length > 0 && (
-                          <details className="border-t border-border pt-2 text-xs text-muted">
-                            <summary className="cursor-pointer font-medium">
-                              Riwayat jejak tiket ({inc.events.length} peristiwa)
-                            </summary>
-                            <ul className="mt-2 space-y-1 pl-3">
-                              {inc.events.map((ev) => (
-                                <li key={ev.id}>
-                                  <span className="font-mono">{formatWITA(ev.created_at)}</span> ·{' '}
-                                  <strong>{ev.event_type}</strong> — {ev.summary}
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
-                      </article>
-                    );
-                  })
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
               </section>
             )}
@@ -1300,26 +1185,339 @@ export default function IncidentsPage() {
               </div>
             )}
 
+            {/* MODAL DETAIL TIKET */}
+            {detailIncident && (() => {
+              const inc = detailIncident;
+              const isClosedOrMerged = ['resolved', 'merged'].includes(inc.status);
+              const isLegacyBackfill =
+                inc.timestamp_source === 'legacy_backfill_opened_at';
+              const assignedName = inc.assigned_to
+                ? techMap.get(inc.assigned_to) || inc.assigned_to.slice(0, 8)
+                : null;
+
+              return (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="incident-detail-title"
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+                  onClick={() => setDetailIncidentId(null)}
+                >
+                  <div
+                    className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-mono font-semibold text-primary">
+                            {inc.ticket_number || inc.id.slice(0, 8)}
+                          </span>
+                          <span className="rounded bg-muted/15 px-2 py-0.5 font-medium">
+                            {scopeLabels[inc.scope_type] || inc.scope_type}
+                          </span>
+                          {inc.origin_type === 'post_planned_maintenance' ? (
+                            <span className="rounded bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-300">
+                              Pasca-Pemeliharaan Terjadwal
+                            </span>
+                          ) : (
+                            <span className="rounded bg-muted/10 px-2 py-0.5 text-muted">
+                              Gangguan Luar Jadwal
+                            </span>
+                          )}
+                          {isLegacyBackfill && (
+                            <span
+                              className="rounded border border-border px-2 py-0.5 text-muted"
+                              title="Tiket dibuat pada skema sebelum 000034; stempel waktu diisi dari waktu pembukaan tiket historis."
+                            >
+                              Data Historis Backfill
+                            </span>
+                          )}
+                          <span className="rounded-full border border-border px-2.5 py-0.5 font-semibold">
+                            {statusLabels[inc.status] || inc.status}
+                          </span>
+                        </div>
+                        <h2 id="incident-detail-title" className="text-lg font-semibold">
+                          {inc.title}
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDetailIncidentId(null)}
+                        aria-label="Tutup detail tiket"
+                        className="rounded-lg p-1.5 text-muted transition-colors hover:bg-background hover:text-foreground"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                      {/* Ringkasan Waktu & Status */}
+                      <div className="grid gap-3 rounded-xl border border-border bg-background p-4 text-xs sm:grid-cols-2">
+                        {isLegacyBackfill ? (
+                          <div>
+                            <span className="text-muted">Waktu tercatat historis (pembukaan tiket)</span>
+                            <p className="mt-0.5 font-semibold">{formatWITA(inc.opened_at)}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <span className="text-muted">Gagal teramati pertama</span>
+                              <p className="mt-0.5 font-semibold">
+                                {formatWITA(inc.first_failed_observed_at)}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-muted">Offline terkonfirmasi</span>
+                              <p className="mt-0.5 font-semibold">
+                                {formatWITA(inc.confirmed_offline_at)}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-muted">
+                                Awal SLA 5m (
+                                {inc.sla_clock_basis === 'planned_window_end'
+                                  ? 'akhir pemeliharaan'
+                                  : 'observasi gagal pertama'}
+                                )
+                              </span>
+                              <p className="mt-0.5 font-semibold">
+                                {formatWITA(inc.sla_clock_start_at)}
+                              </p>
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <span className="text-muted">Teknisi ditugaskan</span>
+                          <p className="mt-0.5 font-semibold">
+                            {assignedName || 'Belum ditugaskan'}
+                          </p>
+                        </div>
+                        {inc.resolved_at && (
+                          <div>
+                            <span className="text-muted">Waktu ditutup</span>
+                            <p className="mt-0.5 font-semibold">{formatWITA(inc.resolved_at)}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {inc.resolution_type && (
+                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-700 dark:text-emerald-300">
+                          <strong>Hasil Penutupan:</strong>{' '}
+                          {resolutionLabels[inc.resolution_type] || inc.resolution_type}
+                          {inc.resolution_note ? ` — "${inc.resolution_note}"` : ''}
+                        </div>
+                      )}
+
+                      {inc.status === 'merged' && (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
+                          Digabung ke tiket induk ID {inc.merged_into_incident_id?.slice(0, 8)}
+                          {inc.merge_reason ? ` — Alasan: ${inc.merge_reason}` : ''}
+                        </div>
+                      )}
+
+                      {/* Daftar Kamera Terdampak */}
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Kamera Terdampak ({inc.members.length})
+                        </h3>
+                        <ul className="space-y-2">
+                          {inc.members.map((m) => (
+                            <li
+                              key={m.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-background px-3.5 py-2.5 text-sm"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex flex-wrap items-center gap-2 font-medium">
+                                  <span>
+                                    {m.camera_code ? `${m.camera_code} · ` : ''}
+                                    {m.camera_name}
+                                  </span>
+                                  {m.source_ticket_number && (
+                                    <span className="rounded bg-muted/15 px-2 py-0.5 font-mono text-[11px] text-muted">
+                                      Asal: {m.source_ticket_number}
+                                    </span>
+                                  )}
+                                  {m.member_outcome && m.member_outcome !== 'pending' && (
+                                    <span
+                                      className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
+                                        m.member_outcome === 'escalated_replacement'
+                                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                      }`}
+                                    >
+                                      {outcomeLabels[m.member_outcome] || m.member_outcome}
+                                    </span>
+                                  )}
+                                </div>
+                                {m.location_area && (
+                                  <p className="text-xs text-muted">Lokasi: {m.location_area}</p>
+                                )}
+                                {m.damage_findings && (
+                                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                                    Temuan kerusakan: {m.damage_findings}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right text-xs text-muted">
+                                <div className="font-medium text-foreground">
+                                  {statusLabels[m.connection_state] || m.connection_state}
+                                  {m.connection_state === 'recovering' &&
+                                    ` (${m.consecutive_live_count}/6 sampel)`}
+                                </div>
+                                {m.last_observed_at && (
+                                  <div>Bukti terakhir: {formatWITA(m.last_observed_at)}</div>
+                                )}
+                                <div className="mt-0.5 flex justify-end gap-2">
+                                  {m.field_maintenance_log_id && (
+                                    <Link href="/maintenance" className="text-primary underline">
+                                      Tugas Cek Lapangan
+                                    </Link>
+                                  )}
+                                  {m.replacement_maintenance_log_id && (
+                                    <Link href="/maintenance" className="text-amber-600 underline">
+                                      Tugas Penggantian Unit
+                                    </Link>
+                                  )}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Tombol Aksi Admin */}
+                      <div className="space-y-2 border-t border-border pt-4">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Tindakan Admin
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {!isClosedOrMerged && (
+                            <button
+                              type="button"
+                              onClick={() => openActionModal(inc, 'assign')}
+                              className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white hover:opacity-90"
+                            >
+                              {inc.assigned_to ? 'Alihkan Teknisi' : 'Tugaskan Teknisi'}
+                            </button>
+                          )}
+                          {inc.status === 'pending_verification' && (
+                            <button
+                              type="button"
+                              onClick={() => openActionModal(inc, 'resolve')}
+                              className="rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300"
+                            >
+                              {inc.assigned_to
+                                ? 'Verifikasi & Tutup'
+                                : 'Verifikasi & Tutup (Pulih Mandiri)'}
+                            </button>
+                          )}
+                          {!isClosedOrMerged &&
+                            inc.members.filter((m) => m.is_active_member).length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => openActionModal(inc, 'camera_task')}
+                                className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium hover:bg-muted/10"
+                              >
+                                + Tugas Cek Kamera Lapangan
+                              </button>
+                            )}
+                          {!isClosedOrMerged && (
+                            <button
+                              type="button"
+                              onClick={() => openActionModal(inc, 'merge')}
+                              className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium hover:bg-muted/10"
+                            >
+                              Gabungkan ke Tiket Bersama
+                            </button>
+                          )}
+                          {!isClosedOrMerged &&
+                            inc.members.some((m) => m.is_active_member) && (
+                              <button
+                                type="button"
+                                onClick={() => openActionModal(inc, 'escalate')}
+                                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-300"
+                              >
+                                Eskalasi Penggantian Perangkat
+                              </button>
+                            )}
+                          {inc.maintenance_log_id && (
+                            <Link
+                              href="/maintenance"
+                              className="px-2 py-2 text-xs font-medium text-primary underline"
+                            >
+                              Lihat Tugas Pemeliharaan Utama
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Riwayat Jejak Tiket */}
+                      {inc.events && inc.events.length > 0 && (
+                        <div className="space-y-2 border-t border-border pt-4">
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                            Riwayat Jejak Tiket ({inc.events.length} peristiwa)
+                          </h3>
+                          <ul className="space-y-1.5 text-xs text-muted">
+                            {inc.events.map((ev) => (
+                              <li
+                                key={ev.id}
+                                className="rounded-lg border border-border/60 bg-background px-3 py-2"
+                              >
+                                <span className="font-mono">{formatWITA(ev.created_at)}</span> ·{' '}
+                                <strong className="text-foreground">{ev.event_type}</strong> —{' '}
+                                {ev.summary}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* MODAL TINDAKAN ADMIN */}
             {selected && (
-              <section
+              <div
+                role="dialog"
+                aria-modal="true"
                 aria-labelledby="incident-action"
-                className="rounded-xl border-2 border-primary bg-card p-6 space-y-4"
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+                onClick={() => !busy && setSelected(null)}
               >
-                <div>
-                  <p className="font-mono text-xs font-semibold text-primary">
-                    {selected.ticket_number}
-                  </p>
-                  <h2 id="incident-action" className="text-lg font-semibold">
-                    {modalMode === 'assign' && 'Tugaskan / Alihkan Teknisi'}
-                    {modalMode === 'resolve' && 'Verifikasi Pemulihan & Tutup Insiden'}
-                    {modalMode === 'camera_task' && 'Buat Tugas Pemeriksaan Kamera Lapangan'}
-                    {modalMode === 'merge' && 'Gabungkan Tiket Lain ke Tiket Bersama Ini'}
-                    {modalMode === 'escalate' &&
-                      'Eskalasi Penggantian Perangkat (Per Kamera Terdampak)'}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">{selected.title}</p>
-                </div>
+                <section
+                  className="max-h-[88vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl border-2 border-primary bg-card p-6 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-xs font-semibold text-primary">
+                        {selected.ticket_number}
+                      </p>
+                      <h2 id="incident-action" className="text-lg font-semibold">
+                        {modalMode === 'assign' && 'Tugaskan / Alihkan Teknisi'}
+                        {modalMode === 'resolve' && 'Verifikasi Pemulihan & Tutup Insiden'}
+                        {modalMode === 'camera_task' && 'Buat Tugas Pemeriksaan Kamera Lapangan'}
+                        {modalMode === 'merge' && 'Gabungkan Tiket Lain ke Tiket Bersama Ini'}
+                        {modalMode === 'escalate' &&
+                          'Eskalasi Penggantian Perangkat (Per Kamera Terdampak)'}
+                      </h2>
+                      <p className="mt-1 text-sm text-muted">{selected.title}</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setSelected(null)}
+                      aria-label="Tutup modal tindakan"
+                      className="rounded-lg p-1 text-muted hover:bg-background hover:text-foreground disabled:opacity-50"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
 
                 {modalMode === 'assign' && (
                   <div className="space-y-2">
@@ -1585,6 +1783,7 @@ export default function IncidentsPage() {
                   </button>
                 </div>
               </section>
+              </div>
             )}
           </>
         )}
