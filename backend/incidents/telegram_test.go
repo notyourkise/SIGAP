@@ -209,20 +209,20 @@ func TestTelegramSendWithOptionsAndBadgeFormatters(t *testing.T) {
 	}
 	tech := &models.User{FullName: "Budi & Rekan"}
 	msg := formatTicketNewSingleMessage("INC-20261113-0001", cam, OriginUnplannedOutage, time.Date(2026, 11, 13, 15, 0, 0, 0, time.UTC), tech)
-	if !strings.HasPrefix(msg, "[🚨 TIKET BARU] <b>INC-20261113-0001</b>") {
-		t.Fatalf("expected ticket badge at top of message, got:\n%s", msg)
+	if !strings.HasPrefix(msg, "TIKET BARU - INC-20261113-0001\n") {
+		t.Fatalf("expected plain text ticket header at top of message, got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "Gerbang &lt;Timur&gt; &amp; A") || !strings.Contains(msg, "<b>Budi &amp; Rekan</b> (Otomatis)") {
-		t.Fatalf("expected escaped HTML camera & auto technician in message, got:\n%s", msg)
+	if !strings.Contains(msg, "Gerbang <Timur> & A") || !strings.Contains(msg, "Teknisi: Budi & Rekan (Otomatis)") {
+		t.Fatalf("expected plain text camera & auto technician in message, got:\n%s", msg)
 	}
 
 	batchResolved := formatBatchText(&claimedBatch{
 		Jobs: []Outbox{
-			{EventType: "INCIDENT_RESOLVED", Text: "[✅ TIKET SELESAI] <b>INC-001</b>\n📹 CAM-01"},
-			{EventType: "INCIDENT_RESOLVED", Text: "[✅ TIKET SELESAI] <b>INC-002</b>\n📹 CAM-02"},
+			{EventType: "INCIDENT_RESOLVED", Text: "TIKET SELESAI - INC-001\nKamera: CAM-01"},
+			{EventType: "INCIDENT_RESOLVED", Text: "TIKET SELESAI - INC-002\nKamera: CAM-02"},
 		},
 	})
-	if !strings.HasPrefix(batchResolved, "<b>[✅ 2 TIKET SELESAI]</b>") {
-		t.Fatalf("expected batch resolved badge header, got:\n%s", batchResolved)
+	if !strings.HasPrefix(batchResolved, "2 TIKET SELESAI\n\n1) INC-001") {
+		t.Fatalf("expected plain text batch resolved header, got:\n%s", batchResolved)
 	}
 }

@@ -841,7 +841,7 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 	if sentOutboxCount != 2 {
 		t.Fatalf("expected both outbox rows (camA + camPreempt) marked sent, got %d", sentOutboxCount)
 	}
-	if !strings.Contains(allBodies, incA.TicketNumber) || !strings.Contains(allBodies, incPreempt.TicketNumber) || !strings.Contains(allBodies, "[Pasca-Pemeliharaan Terjadwal]") {
+	if !strings.Contains(allBodies, incA.TicketNumber) || !strings.Contains(allBodies, incPreempt.TicketNumber) || !strings.Contains(allBodies, "Pasca-Pemeliharaan Terjadwal") {
 		t.Fatalf("delivered Telegram payload missing expected post-maintenance context: %s", allBodies)
 	}
 
@@ -1049,11 +1049,11 @@ func TestPostgresAutoAssignRoundRobinAndChannelRouting(t *testing.T) {
 	var sawReplyToInitial bool
 	for _, p := range opsPayloads {
 		txt, _ := p["text"].(string)
-		if strings.Contains(txt, "[🔄 ALIH TUGAS]") && p["reply_to_message_id"] != nil {
+		if strings.Contains(txt, "ALIH TUGAS") && p["reply_to_message_id"] != nil {
 			sawReplyToInitial = true
 		}
 	}
 	if !sawReplyToInitial {
-		t.Fatalf("expected [🔄 ALIH TUGAS] update to reply to initial ticket message, got payloads: %+v", opsPayloads)
+		t.Fatalf("expected ALIH TUGAS update to reply to initial ticket message, got payloads: %+v", opsPayloads)
 	}
 }

@@ -338,21 +338,21 @@ func claimDueBatch(db *gorm.DB, now time.Time, routing TelegramRouting) (*claime
 func batchHeaderBadge(eventType string, count int) string {
 	switch eventType {
 	case "INCIDENT_RESOLVED":
-		return fmt.Sprintf("[✅ %d TIKET SELESAI]", count)
+		return fmt.Sprintf("%d TIKET SELESAI", count)
 	case "CCTV_RECOVERED":
-		return fmt.Sprintf("[🟢 %d TIKET SIAP VERIFIKASI]", count)
+		return fmt.Sprintf("%d TIKET SIAP VERIFIKASI", count)
 	default:
-		return fmt.Sprintf("[🚨 %d TIKET BARU]", count)
+		return fmt.Sprintf("%d TIKET BARU", count)
 	}
 }
 
 func stripSingleItemBadgePrefix(text string) string {
 	for _, prefix := range []string{
-		"[🚨 TIKET BARU] ",
-		"[🚨 GANGGUAN NVR] ",
-		"[✅ TIKET SELESAI] ",
-		"[🛠️ TUTUP • GANTI UNIT] ",
-		"[🟢 SIAP VERIFIKASI] ",
+		"TIKET BARU - ",
+		"GANGGUAN NVR - ",
+		"TIKET SELESAI - ",
+		"TUTUP (GANTI UNIT) - ",
+		"SIAP VERIFIKASI - ",
 		"[SIGAP] CCTV_OFFLINE\n",
 	} {
 		text = strings.TrimPrefix(text, prefix)
@@ -366,7 +366,7 @@ func formatBatchText(b *claimedBatch) string {
 		text = b.Jobs[0].Text
 	} else {
 		parts := make([]string, 0, len(b.Jobs)+1)
-		parts = append(parts, fmt.Sprintf("<b>%s</b>", batchHeaderBadge(b.Jobs[0].EventType, len(b.Jobs))))
+		parts = append(parts, batchHeaderBadge(b.Jobs[0].EventType, len(b.Jobs)))
 		for idx, j := range b.Jobs {
 			cleaned := stripSingleItemBadgePrefix(j.Text)
 			parts = append(parts, fmt.Sprintf("%d) %s", idx+1, cleaned))
@@ -392,9 +392,9 @@ func formatBatchText(b *claimedBatch) string {
 			}
 		}
 		if b.WasAmbiguous {
-			text += fmt.Sprintf("\n<i>[Pengiriman ulang karena konfirmasi jaringan sebelumnya terputus — mengacu pada Tiket %s yang sama]</i>", escapeTG(ticketRef))
+			text += fmt.Sprintf("\nPengiriman ulang karena konfirmasi jaringan sebelumnya terputus - mengacu pada Tiket %s yang sama.", ticketRef)
 		} else {
-			text += "\n<i>[Pengiriman ulang; mengacu pada tiket insiden yang sama]</i>"
+			text += "\nPengiriman ulang; mengacu pada tiket insiden yang sama."
 		}
 	}
 
@@ -468,7 +468,6 @@ func DeliverWithRouting(ctx context.Context, db *gorm.DB, sender TelegramSender,
 	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	messageID, sendErr := sender.SendWithOptions(sendCtx, chat, text, SendOptions{
-		ParseMode:        "HTML",
 		ReplyToMessageID: replyToMsgID,
 	})
 	completedAt := now
