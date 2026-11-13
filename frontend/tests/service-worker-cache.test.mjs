@@ -159,3 +159,20 @@ test('schedule assignment push opens the technician dashboard', async () => {
   assert.equal(shownNotifications.length, 1);
   assert.equal(shownNotifications[0].options.data.url, '/dashboard');
 });
+
+test('navigation requests return offline shell instead of undefined when network fails', async () => {
+  const { listeners, calls } = loadServiceWorker(async () => {
+    throw new Error('network down');
+  });
+
+  const response = await dispatchFetch(listeners.get('fetch'), {
+    url: 'https://sigap.test/',
+    method: 'GET',
+    mode: 'navigate',
+    cache: 'default',
+  });
+
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /Tidak ada koneksi/);
+  assert.equal(calls.open, 0);
+});
