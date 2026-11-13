@@ -379,15 +379,21 @@ func formatBatchText(b *claimedBatch) string {
 		ticketRef := "insiden terkait"
 		if head.IncidentID != nil {
 			ticketRef = head.IncidentID.String()[:8]
-			if idx := strings.LastIndex(head.Text, "Tiket: "); idx != -1 {
-				ticketRef = strings.TrimSpace(head.Text[idx+len("Tiket: "):])
-			} else if idx := strings.Index(head.Text, "INC-"); idx != -1 {
+			if idx := strings.Index(head.Text, "INC-"); idx != -1 {
 				rest := head.Text[idx:]
-				end := strings.IndexAny(rest, "< \n\t)")
+				end := strings.IndexAny(rest, "< \r\n\t)")
 				if end > 0 {
 					ticketRef = rest[:end]
 				} else if len(rest) > 0 {
 					ticketRef = rest
+				}
+			} else if idx := strings.LastIndex(head.Text, "Tiket: "); idx != -1 {
+				rest := head.Text[idx+len("Tiket: "):]
+				if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
+					rest = rest[:nl]
+				}
+				if trimmed := strings.TrimSpace(rest); trimmed != "" {
+					ticketRef = trimmed
 				}
 			}
 		}

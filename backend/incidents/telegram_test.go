@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"sigap-backend/models"
 )
 
@@ -231,7 +232,8 @@ func TestTelegramMessagesContainNoEmojis(t *testing.T) {
 	now := time.Date(2026, 11, 14, 1, 2, 43, 0, time.UTC)
 	cam := models.CCTV{KodeCCTV: "THD-11", Nama: "REST AREA PARKIRAN", LokasiArea: "Rest Area"}
 	tech := &models.User{FullName: "Rifqy"}
-	inc := Incident{TicketNumber: "INC-20261114-0005"}
+	inc := Incident{TicketNumber: "INC-20261114-0005", Title: "THD-11 Mati"}
+	incID := uuid.New()
 
 	messages := []struct {
 		name string
@@ -244,7 +246,7 @@ func TestTelegramMessagesContainNoEmojis(t *testing.T) {
 		{"resolved", formatIncidentResolvedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", "Pulih Setelah Penanganan")},
 		{"escalated_closed", formatIncidentEscalatedClosedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", []string{"THD-11"})},
 		{"admin_ready_verify", formatAdminReadyVerifyMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", 1, 1)},
-		{"admin_reminder", formatAdminReminderMessage(inc, "1 jam", 1)},
+		{"admin_reminder", formatAdminReminderMessage(inc, "30 menit", 1)},
 		{"admin_escalation", formatAdminEscalationMessage(inc, 4*time.Hour, 1)},
 		{"admin_merged", formatAdminMergedMessage(inc, []string{"INC-20261114-0004"}, "Shared NVR", 2)},
 		{"admin_camera_escalated", formatAdminCameraEscalatedMessage(inc, []string{"THD-11"}, 0)},
@@ -254,6 +256,16 @@ func TestTelegramMessagesContainNoEmojis(t *testing.T) {
 			Jobs: []Outbox{
 				{EventType: "CCTV_OFFLINE", Text: "TIKET BARU - INC-001\nKamera: THD-11"},
 				{EventType: "CCTV_OFFLINE", Text: "TIKET BARU - INC-002\nKamera: THD-12"},
+			},
+		})},
+		{"ambiguous_retry", formatBatchText(&claimedBatch{
+			WasAmbiguous: true,
+			Jobs: []Outbox{
+				{
+					IncidentID: &incID,
+					EventType:  "INCIDENT_UNRECOVERED_ESCALATION",
+					Text:       formatAdminEscalationMessage(inc, 4*time.Hour+30*time.Minute, 1),
+				},
 			},
 		})},
 	}
@@ -270,5 +282,14 @@ func TestTelegramMessagesContainNoEmojis(t *testing.T) {
 		if strings.Contains(tc.text, "<b>") || strings.Contains(tc.text, "</b>") {
 			t.Fatalf("%s unexpectedly contains HTML bold tag in:\n%s", tc.name, tc.text)
 		}
+	}
+
+	escMsg := messages[8].text
+	if !strings.Contains(escMsg, "Masalah: THD-11 Mati") || !strings.Contains(escMsg, "setelah 4 jam") {
+		t.Fatalf("unexpected escalation message formatting:\n%s", escMsg)
+	}
+	retryMsg := messages[14].text
+	if !strings.Contains(retryMsg, "setelah 4 jam 30 menit") || !strings.Contains(retryMsg, "mengacu pada Tiket INC-20261114-0005 yang sama.") {
+		t.Fatalf("unexpected ambiguous retry ticket ref:\n%s", retryMsg)
 	}
 }

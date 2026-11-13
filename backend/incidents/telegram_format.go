@@ -28,6 +28,23 @@ func formatWITA(t time.Time) string {
 	return t.In(witaZone).Format("15:04:05") + " WITA"
 }
 
+func formatDurationID(d time.Duration) string {
+	mins := int(d.Round(time.Minute) / time.Minute)
+	if mins <= 0 {
+		return "0 menit"
+	}
+	hours := mins / 60
+	remMins := mins % 60
+	switch {
+	case hours > 0 && remMins > 0:
+		return fmt.Sprintf("%d jam %d menit", hours, remMins)
+	case hours > 0:
+		return fmt.Sprintf("%d jam", hours)
+	default:
+		return fmt.Sprintf("%d menit", remMins)
+	}
+}
+
 func cleanText(s string) string {
 	return strings.TrimSpace(s)
 }
@@ -195,7 +212,7 @@ func formatAdminReadyVerifyMessage(i Incident, camSummary string, recoveredCount
 func formatAdminReminderMessage(i Incident, remLabel string, unrecovered int64) string {
 	return strings.Join([]string{
 		fmt.Sprintf("PENGINGAT ADMIN - %s", cleanText(i.TicketNumber)),
-		fmt.Sprintf("Tiket: %s", cleanText(i.Title)),
+		fmt.Sprintf("Masalah: %s", cleanText(i.Title)),
 		fmt.Sprintf("Status: Belum ada teknisi selama %s (%d kamera terganggu).", cleanText(remLabel), unrecovered),
 	}, "\n")
 }
@@ -203,8 +220,8 @@ func formatAdminReminderMessage(i Incident, remLabel string, unrecovered int64) 
 func formatAdminEscalationMessage(i Incident, threshold time.Duration, unrecovered int64) string {
 	return strings.Join([]string{
 		fmt.Sprintf("ESKALASI DURASI - %s", cleanText(i.TicketNumber)),
-		fmt.Sprintf("Tiket: %s", cleanText(i.Title)),
-		fmt.Sprintf("Status: Belum pulih setelah %s (%d kamera masih terganggu).", cleanText(threshold.Round(time.Minute).String()), unrecovered),
+		fmt.Sprintf("Masalah: %s", cleanText(i.Title)),
+		fmt.Sprintf("Status: Belum pulih setelah %s (%d kamera masih terganggu).", formatDurationID(threshold), unrecovered),
 	}, "\n")
 }
 
