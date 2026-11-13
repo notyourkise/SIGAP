@@ -162,9 +162,10 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 				Role      string  `json:"role"`
 				Content   *string `json:"content"`
 				ToolCalls []struct {
-					ID       string `json:"id"`
-					Type     string `json:"type"`
-					Function struct {
+					ID           string          `json:"id"`
+					Type         string          `json:"type"`
+					ExtraContent json.RawMessage `json:"extra_content,omitempty"`
+					Function     struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
 					} `json:"function"`
