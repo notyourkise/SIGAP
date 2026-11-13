@@ -61,6 +61,12 @@ Jalankan minimal 24 jam sebelum jendela deploy:
 - [ ] Jendela deploy dan rollback disepakati; on-call tersedia.
 - [ ] Pengguna diberi tahu potensi downtime singkat (restart API/frontend).
 
+> [!NOTE]
+> **Catatan Uji Pra-Rilis Staging Lokal (2026-11-13):**
+> - **Migrasi & Test Integrasi Terisolasi (`postgres:15-alpine`)**: `cmd/migrate` `up -> down -> up` bersih (`version=35, dirty=false`) dan `go test -v -count=1 ./incidents/...` lulus `18/18` fungsi uji + `6` subtest (`0 failed, 0 skipped`).
+> - **Backup & Restore Drill Terenkripsi (`#148`, `#153`)**: `scripts/backup.sh` dengan `ENCRYPT_BACKUPS=true` + `DELETE_RAW_AFTER_ENCRYPT=true` menghasilkan arsip `.sql.gz.gpg` / `.tar.gz.gpg` AES-256 dan sukses di-restore penuh ke instance PostgreSQL 15 bersih (`mig_ver=35`, `sites=1`, `cctvs=35`).
+> - **Uji UI Lokal (Brave)**: Bug 4 filter/select-all lokal (`Kawasan OIKN`, `35` perangkat) & Bug 21 CRUD RTSP termask/hapus tervalidasi pada 1 site; **multi-site Bug 4 (Site A vs Site B + akun teknisi) dan Bug 8 (`#147`), deploy VPS (`#148`), survei GPS 11 titik (`#151`), serta rotasi kredensial NVR fisik (`#153`) belum dijalankan dan tetap dibiarkan terbuka**.
+
 ### 3.1 Baseline sebelum deploy
 
 Simpan output berikut ke folder bukti:
@@ -100,7 +106,15 @@ Periksa `backend/.env.docker` dan root `.env` (jangan commit nilainya):
 | `CCTV_LOG_STANDBY_EVENTS` | `false` | Aktifkan hanya untuk audit sementara |
 | `ENCRYPT_BACKUPS` | `true` | Wajib di production untuk enkripsi GPG AES-256 (`ENCRYPTION_KEY` diisi) |
 | `DELETE_RAW_AFTER_ENCRYPT` | `true` *(opsional)* | Menghapus raw `.sql.gz`/`.tar.gz` setelah `.gpg` sukses dibuat |
-| `CCTV_INCIDENTS_ENABLED` | `false` *(aktifkan bertahap pasca staging)* | Fitur monitoring insiden otomatis & notifikasi bot Telegram |
+| `CCTV_INCIDENTS_ENABLED` | `false` *(aktifkan bertahap pasca staging)* | Fitur monitoring insiden otomatis & notifikasi bot Telegram; saat `true`, verifier menggunakan `UnifiedNVRSessionGate` |
+| `CCTV_INCIDENT_INTERVAL_SECONDS` | `60` | Interval siklus verifier mode insiden (rentang valid `30-120`; default `60`) |
+| `CCTV_MAX_UPSTREAM_SLOTS` | `4` *(uji stabil NVR; default kode `10`)* | Batas total sesi RTSP upstream gabungan di `UnifiedNVRSessionGate` (`1-64`); di staging 22 kamera aktif menghasilkan `0 forced_close` |
+| `CCTV_GSM_MAX_CONCURRENT` | `2` | Batas konkurensi probe kamera GSM di `UnifiedNVRSessionGate` (`1-10`; default `2`) |
+| `CCTV_VERIFY_PACE_MS` | `2000` *(uji stabil NVR; default kode `1250`)* | Jeda antar start slot pacer gate (`100-10000` ms) agar antrean slot NVR tidak memicu thundering herd |
+| `TELEGRAM_BOT_TOKEN` | secret *(placeholder/sandbox)* | Token bot Telegram dari `@BotFather`; wajib terisi jika `CCTV_INCIDENTS_ENABLED=true` |
+| `TELEGRAM_SITE_CHATS_JSON` | json map `site_id -> chat_id` | Pemetaan grup notifikasi insiden per site; gunakan grup sandbox di staging sebelum production |
+| `TELEGRAM_SITE_ADMIN_CHATS_JSON` | json map `site_id -> chat_id` | Chat admin per site untuk eskalasi/ringkasan insiden |
+| `TELEGRAM_ADMIN_CHAT_ID` | secret/chat id | Chat admin fallback global Telegram |
 | `LOG_LEVEL` | `info` | Jangan `debug` permanen di production |
 | `REDIS_PASSWORD` | secret | Harus sama di root `.env` dan backend |
 | `RTSP_NVR_HOST/PORT/USER` | secret/placeholder | Jangan tulis kredensial di dokumentasi |
@@ -377,7 +391,7 @@ minimum (login, CCTV list, live status, log).
 3. Simulasikan rollback 29 → 28 → 27 menggunakan SQL §8.4 pada clone.
 4. Deploy image versi sebelumnya ke clone.
 5. Verifikasi aplikasi lama tetap berjalan (login, CCTV, live status).
-6. Restore snapshot; deploy versi baru lagi; verifikasi `version=29`.
+6. Restore snapshot; deploy versi baru lagi; verifikasi `version=35`.
 7. Simpan log/screenshot sebagai bukti issue #148.
 
 **Kriteria lulus:** rollback dan re-deploy berhasil di staging, data yang
