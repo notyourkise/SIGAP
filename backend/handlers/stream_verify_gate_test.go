@@ -795,3 +795,146 @@ func TestUnifiedGateInteractiveEvictionClosesMainNotifyChanWithoutDeadlock(t *te
 		t.Fatal("timed out waiting for interactive camB verification result")
 	}
 }
+
+func TestMonitoringEnabledGuardSkipsIncidentObservation(t *testing.T) {
+	t.Setenv("CCTV_INCIDENTS_ENABLED", "true")
+
+	siteID := uuid.New()
+	makeCam := func(code, status string, streamEnabled, monitoringEnabled bool) models.CCTV {
+		return models.CCTV{
+			Base:                models.Base{ID: uuid.New()},
+			KodeCCTV:            code,
+			Nama:                "Kamera " + code,
+			SiteID:              &siteID,
+			IPNVR:               "10.77.0.10",
+			Status:              status,
+			StreamEnabled:       streamEnabled,
+			MonitoringEnabled:   monitoringEnabled,
+			StreamVerifiedState: models.StreamStateUnknown,
+			StreamVerifyError:   "probe failed",
+		}
+	}
+
+	t.Run("persistStreamVerification memblokir observasi insiden bila monitoring_enabled false atau status nonaktif", func(t *testing.T) {
+		cases := []struct {
+			name        string
+			cam         models.CCTV
+			wantObserve int32
+		}{
+			{
+				name:        "live-view only (stream_enabled=true, monitoring_enabled=false) tidak memicu insiden",
+				cam:         makeCam("LV-01", "aktif", true, false),
+				wantObserve: 0,
+			},
+			{
+				name:        "kamera nonaktif (status=nonaktif, monitoring_enabled=true) tidak memicu insiden",
+				cam:         makeCam("NA-01", "nonaktif", true, true),
+				wantObserve: 0,
+			},
+			{
+				name:        "kamera monitoring-only (stream_enabled=false, monitoring_enabled=true) tetap memicu insiden",
+				cam:         makeCam("MON-01", "aktif", false, true),
+				wantObserve: 1,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				db, mock := setupMockGORM(t)
+				mock.MatchExpectationsInOrder(false)
+				_ = captureStreamEvents(t)
+
+				mock.ExpectExec(`UPDATE "cctvs" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
+				if tc.wantObserve > 0 {
+					mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incident_cameras"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+					mock.ExpectQuery(`SELECT count\(\*\) FROM "cctv_incidents"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+				}
+				mock.ExpectQuery(`FROM "cctv_stream_logs"`).WillReturnRows(sqlmock.NewRows([]string{"event_type", "created_at"}))
+				mock.ExpectQuery(`INSERT INTO "cctv_stream_logs"`).WillReturnRows(sqlmock.NewRows([]string{"created_at"}).AddRow(time.Now().UTC()))
+
+				origSingle := observeSingleObservationFn
+				origShared := observeSharedWaveFn
+				defer func() {
+					observeSingleObservationFn = origSingle
+					observeSharedWaveFn = origShared
+					clearFirstFailure(tc.cam.ID)
+				}()
+
+				var singleCalls, sharedCalls atomic.Int32
+				observeSingleObservationFn = func(_ context.Context, _ *gorm.DB, _ incidents.CameraObservation) error {
+					singleCalls.Add(1)
+					return nil
+				}
+				observeSharedWaveFn = func(_ context.Context, _ *gorm.DB, _ uuid.UUID, _ string, _ []incidents.CameraObservation) error {
+					sharedCalls.Add(1)
+					return nil
+				}
+
+				persistStreamVerification(db, streamVerificationResult{
+					CCTV:       tc.cam,
+					State:      models.StreamStateOffline,
+					VerifiedAt: time.Now().UTC(),
+					Method:     streamVerifyMethodRTSP,
+					Failures:   2,
+					Error:      "camera offline",
+				})
+
+				assert.Equal(t, tc.wantObserve, singleCalls.Load())
+				assert.Zero(t, sharedCalls.Load())
+				assert.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
+	t.Run("processMonitoringCycleSummary menyaring deferred result kamera monitoring_enabled=false", func(t *testing.T) {
+		db, mock := setupMockGORM(t)
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectBegin()
+		mock.ExpectExec(`SELECT pg_advisory_xact_lock`).WithArgs(sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery(`SELECT \* FROM "monitor_health_episodes"`).WillReturnError(gorm.ErrRecordNotFound)
+		mock.ExpectCommit()
+
+		origSingle := observeSingleObservationFn
+		origShared := observeSharedWaveFn
+		origProbe := probeNVRRTSPHost
+		defer func() {
+			observeSingleObservationFn = origSingle
+			observeSharedWaveFn = origShared
+			probeNVRRTSPHost = origProbe
+		}()
+
+		var singleIDs []uuid.UUID
+		var sharedCalls atomic.Int32
+		probeNVRRTSPHost = func(string) bool { return false }
+		observeSharedWaveFn = func(_ context.Context, _ *gorm.DB, _ uuid.UUID, _ string, _ []incidents.CameraObservation) error {
+			sharedCalls.Add(1)
+			return nil
+		}
+		observeSingleObservationFn = func(_ context.Context, _ *gorm.DB, obs incidents.CameraObservation) error {
+			singleIDs = append(singleIDs, obs.Camera.ID)
+			return nil
+		}
+
+		monitoredCam := makeCam("MON-02", "aktif", true, true)
+		liveViewOnlyCam := makeCam("LV-02", "aktif", true, false)
+
+		processMonitoringCycleSummary(db, []streamVerificationResult{
+			{
+				CCTV:                   monitoredCam,
+				State:                  models.StreamStateOffline,
+				VerifiedAt:             time.Now().UTC(),
+				OfflineObserveDeferred: true,
+			},
+			{
+				CCTV:                   liveViewOnlyCam,
+				State:                  models.StreamStateOffline,
+				VerifiedAt:             time.Now().UTC(),
+				OfflineObserveDeferred: true,
+			},
+		})
+
+		assert.Zero(t, sharedCalls.Load(), "1 monitored + 1 unmonitored sibling must not trigger shared_nvr wave")
+		assert.Equal(t, []uuid.UUID{monitoredCam.ID}, singleIDs, "only monitored camera observation may pass through")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}

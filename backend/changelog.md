@@ -1,5 +1,26 @@
 # Changelog - Backend SIGAP
 
+## [Unreleased] - 2026-11-13 - Penegakan Guard `monitoring_enabled` pada Jalur Observasi Insiden
+
+### Pemisahan Verifikasi Stream Live-View (`stream_enabled`) dan Observasi Insiden (`monitoring_enabled`)
+
+**Sebelum (Before)**:
+- Saat `CCTV_INCIDENTS_ENABLED=true`, kamera berstatus `aktif` dengan `stream_enabled = true` dan `monitoring_enabled = false` tetap masuk ke jalur observasi insiden (`persistStreamVerification`, penjadwalan `ConfirmQueue` pada `handleGateJobCompletion`, serta perhitungan saudara NVR dan ringkasan `processMonitoringCycleSummary`), sehingga dapat memicu tiket dan outbox Telegram meskipun monitoring insiden dimatikan.
+
+**Sesudah (After)**:
+- Menambahkan helper `isIncidentObservationEligible` pada `backend/handlers/stream_verify.go` (mensyaratkan `IncidentMonitoringEnabled()`, `cctv.MonitoringEnabled == true`, dan `status != "nonaktif"`).
+- Menerapkan helper tersebut pada `persistStreamVerification`, `handleGateJobCompletion` (penjadwalan `ConfirmQueue`), `evaluateAndPersistSourceClosureTelemetry`, `runStreamVerifyCycle` (perhitungan `nvrSiblings` dan `deferOffline`), serta `processMonitoringCycleSummary`.
+- Menambahkan regression unit test `TestMonitoringEnabledGuardSkipsIncidentObservation` pada `backend/handlers/stream_verify_gate_test.go`.
+
+timestamp: 2026-11-13 16:56 WITA
+kategori: Kecil, Backend + Bugfix
+file yang diubah:
+- backend/changelog.md
+- backend/handlers/stream_verify.go
+- backend/handlers/stream_verify_gate_test.go
+
+alasan perubahan: Memastikan kamera dengan `monitoring_enabled = false` (live-view only) atau berstatus `nonaktif` tetap diperiksa kesehatannya tanpa memicu observasi insiden maupun alert Telegram.
+
 ## [Unreleased] - 2026-11-11 - Perbaikan Archive Uploads Kosong pada Alpine BusyBox Backup (#153, #148)
 
 ### Perbaikan `tar: empty archive` di `scripts/backup.sh` & Pembersihan Bind-Mount Aman di `scripts/restore.sh`

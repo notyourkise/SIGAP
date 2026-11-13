@@ -271,6 +271,12 @@ func DispatchPostMaintenanceRefreshes(db *gorm.DB, reqs []incidents.PlannedOutag
 	}
 }
 
+func isIncidentObservationEligible(cctv models.CCTV) bool {
+	return IncidentMonitoringEnabled() &&
+		cctv.MonitoringEnabled &&
+		strings.ToLower(strings.TrimSpace(cctv.Status)) != "nonaktif"
+}
+
 func handleGateJobCompletion(db *gorm.DB, job GateJob, res streamVerificationResult) {
 	if db == nil || !IncidentMonitoringEnabled() {
 		return
@@ -289,8 +295,8 @@ func handleGateJobCompletion(db *gorm.DB, job GateJob, res streamVerificationRes
 		return
 	}
 
-	// 2. Jika baru kegagalan pertama (0 -> 1), jadwalkan konfirmasi cepat ke-2 setelah backoff 10s di ConfirmQueue!
-	if res.Failures == 1 && res.State == models.StreamStateUnknown && !isMonitorInfraError(res.Error) {
+	// 2. Jika baru kegagalan pertama (0 -> 1) pada kamera yang dimonitor insiden, jadwalkan konfirmasi cepat ke-2 setelah backoff 10s di ConfirmQueue.
+	if isIncidentObservationEligible(res.CCTV) && res.Failures == 1 && res.State == models.StreamStateUnknown && !isMonitorInfraError(res.Error) {
 		ff := res.VerifiedAt.UTC()
 		rememberFirstFailure(res.CCTV.ID, ff)
 		updatedCam := res.CCTV
@@ -400,8 +406,7 @@ func evaluateAndPersistSourceClosureTelemetry(db *gorm.DB, job GateJob, res stre
 				}
 			} else {
 				removeStatus = RemovePathStatusSucceeded
-				shouldKeepRegistered := job.CCTV.StreamEnabled ||
-					(IncidentMonitoringEnabled() && job.CCTV.MonitoringEnabled && strings.ToLower(strings.TrimSpace(job.CCTV.Status)) != "nonaktif")
+				shouldKeepRegistered := job.CCTV.StreamEnabled || isIncidentObservationEligible(job.CCTV)
 				if shouldKeepRegistered {
 					if regErr := registerStreamWithRetry(job.CCTV, 1); regErr != nil {
 						reregisterStatus = ReregisterStatusFailed
@@ -641,6 +646,9 @@ func runStreamVerifyCycle(db *gorm.DB) {
 	}
 	nvrSiblings := map[nvrKey]int{}
 	for _, cctv := range cctvs {
+		if !isIncidentObservationEligible(cctv) {
+			continue
+		}
 		ipNVR := strings.TrimSpace(cctv.IPNVR)
 		if cctv.SiteID != nil && *cctv.SiteID != uuid.Nil && ipNVR != "" {
 			nvrSiblings[nvrKey{SiteID: *cctv.SiteID, IPNVR: ipNVR}]++
@@ -652,15 +660,18 @@ func runStreamVerifyCycle(db *gorm.DB) {
 	for _, cctv := range cctvs {
 		ch := make(chan streamVerificationResult, 1)
 		var ffPtr *time.Time
-		firstFailureMu.Lock()
-		if ts, ok := firstFailureMap[cctv.ID]; ok {
-			tCopy := ts
-			ffPtr = &tCopy
+		if isIncidentObservationEligible(cctv) {
+			firstFailureMu.Lock()
+			if ts, ok := firstFailureMap[cctv.ID]; ok {
+				tCopy := ts
+				ffPtr = &tCopy
+			}
+			firstFailureMu.Unlock()
 		}
-		firstFailureMu.Unlock()
 
 		ipNVR := strings.TrimSpace(cctv.IPNVR)
-		deferOffline := cctv.SiteID != nil && *cctv.SiteID != uuid.Nil && ipNVR != "" &&
+		deferOffline := isIncidentObservationEligible(cctv) &&
+			cctv.SiteID != nil && *cctv.SiteID != uuid.Nil && ipNVR != "" &&
 			nvrSiblings[nvrKey{SiteID: *cctv.SiteID, IPNVR: ipNVR}] >= 2
 
 		enqueued := gate.Enqueue(GateJob{
@@ -788,7 +799,7 @@ func processMonitoringCycleSummary(db *gorm.DB, results []streamVerificationResu
 				}
 				siteInfraFailures[sid] = cur
 			}
-			if r.State == models.StreamStateOffline && r.OfflineObserveDeferred && !r.SuppressObserve {
+			if r.State == models.StreamStateOffline && r.OfflineObserveDeferred && !r.SuppressObserve && isIncidentObservationEligible(r.CCTV) {
 				deferredOffline = append(deferredOffline, r)
 				if ipNVR := strings.TrimSpace(r.CCTV.IPNVR); ipNVR != "" {
 					key := nvrKey{SiteID: sid, IPNVR: ipNVR}
@@ -1076,7 +1087,7 @@ func persistStreamVerification(db *gorm.DB, result streamVerificationResult) str
 		return result
 	}
 
-	if IncidentMonitoringEnabled() && !result.SuppressObserve {
+	if isIncidentObservationEligible(result.CCTV) && !result.SuppressObserve {
 		verifiedUTC := result.VerifiedAt.UTC()
 		firstFailed := verifiedUTC
 		if result.State == models.StreamStateOffline {
