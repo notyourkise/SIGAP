@@ -101,6 +101,9 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 	if strings.TrimSpace(question) == "" || len([]rune(question)) > 2000 {
 		return Response{}, errors.New("pertanyaan wajib diisi dan maksimal 2000 karakter")
 	}
+	if resp, ok := greetingResponse(question); ok {
+		return resp, nil
+	}
 	if len(docs) == 0 {
 		return Response{Jawaban: "Tidak dapat ditentukan dari dokumen yang tersedia.", DapatDitentukan: false}, nil
 	}
@@ -259,4 +262,29 @@ func cosine(a, b []float64) (float64, error) {
 		return 0, errors.New("embedding kosong")
 	}
 	return dot / (math.Sqrt(x) * math.Sqrt(y)), nil
+}
+
+// greetingResponse handles pure conversational greetings/thanks without invoking the RAG gateway,
+// keeping factual document grounding untouched for any substantive query.
+func greetingResponse(question string) (Response, bool) {
+	cleaned := strings.ToLower(strings.TrimSpace(question))
+	cleaned = strings.TrimRight(cleaned, "!?., ")
+	switch cleaned {
+	case "hai", "halo", "hallo", "hi", "hello", "hey",
+		"selamat pagi", "selamat siang", "selamat sore", "selamat malam",
+		"pagi", "siang", "sore", "malam", "assalamualaikum":
+		return Response{
+			Jawaban:         "Halo! Saya Asisten Operasional SIGAP. Silakan tanyakan seputar dokumentasi SIGAP (akses Docker, backup & restore, log stream CCTV, batasan codec/snapshot, verifikasi aktif, atau multi-site).",
+			DapatDitentukan: false,
+			Bukti:           []Citation{},
+		}, true
+	case "terima kasih", "makasih", "thanks", "thank you":
+		return Response{
+			Jawaban:         "Sama-sama! Silakan tanyakan kembali jika ada informasi dokumentasi SIGAP lain yang dibutuhkan.",
+			DapatDitentukan: false,
+			Bukti:           []Citation{},
+		}, true
+	default:
+		return Response{}, false
+	}
 }

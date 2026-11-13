@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -158,5 +159,21 @@ func TestAnswerPreservesToolCallExtraContent(t *testing.T) {
 	}
 	if !sawExtraContent {
 		t.Fatal("expected tool_calls extra_content (thought_signature) to be preserved in follow-up request")
+	}
+}
+
+func TestAnswerHandlesGreetingsWithoutGateway(t *testing.T) {
+	c := Client{}
+	out, err := c.Answer(context.Background(), "hai!", []Document{{ID: "DOC-1", Text: "Panduan akses SIGAP."}})
+	if err != nil {
+		t.Fatalf("unexpected error on greeting: %v", err)
+	}
+	if out.DapatDitentukan || len(out.Bukti) != 0 || !strings.Contains(out.Jawaban, "Asisten Operasional SIGAP") {
+		t.Fatalf("unexpected greeting output: %+v", out)
+	}
+
+	thanks, err := c.Answer(context.Background(), "terima kasih", []Document{{ID: "DOC-1", Text: "Panduan akses SIGAP."}})
+	if err != nil || thanks.DapatDitentukan || len(thanks.Bukti) != 0 {
+		t.Fatalf("unexpected thanks output: out=%+v err=%v", thanks, err)
 	}
 }
