@@ -3,11 +3,11 @@
 | Item | Detail |
 |------|--------|
 | **Issue** | #147 (P1 - Selesaikan manual test Bug 4, 8, dan 21) |
-| **Branch** | `docs/release-gate-runbooks` |
+| **Branch** | `main` (`1f984bb` saat eksekusi production) |
 | **Versi Backend** | 0.64.38 |
 | **Versi Frontend** | 1.55.37 |
-| **Tanggal dokumen** | 2026-10-28 |
-| **Status** | **BELUM DIJALANKAN** — panduan ini harus dieksekusi manual sebelum checklist `docs/README.md` diperbarui |
+| **Tanggal eksekusi** | 2026-11-13 (WITA) |
+| **Status** | **LULUS (Production `https://nexaspace.site`)** — Bug 4, Bug 8 (publik desktop & seluler), dan Bug 21 lulus serta `docs/README.md` telah diperbarui (`25/25`) |
 
 ---
 
