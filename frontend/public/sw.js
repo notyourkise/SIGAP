@@ -17,7 +17,7 @@
    ========================================== */
 
 // Nama cache versi-mu — naikkan saat konten shell berubah agar cache lama dibuang.
-const CACHE_VERSION = 'sigap-shell-v4';
+const CACHE_VERSION = 'sigap-shell-v5';
 const SHELL_CACHE = CACHE_VERSION;
 const IS_DEVELOPMENT = new URL(self.location.href).searchParams.has('dev');
 
