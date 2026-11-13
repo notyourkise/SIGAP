@@ -452,7 +452,7 @@ func finalizePendingPostMaintenanceLiveTx(tx *gorm.DB, cctvID, primaryPocID uuid
 //   - `unknown` : pertahankan tertunda dengan backoff terkendali tanpa membuka tiket.
 //   - `live`    : selesaikan evaluasi tanpa tiket.
 //   - `offline` : buka tepat 1 tiket `post_planned_maintenance` dengan konteks dan SLA akhir jendela yang benar.
-func (s Service) resolvePendingPostMaintenanceObservationTx(tx *gorm.DB, obs CameraObservation, state string, at time.Time) (bool, error) {
+func (s Service) resolvePendingPostMaintenanceObservationTx(tx *gorm.DB, obs CameraObservation, state string, at time.Time, notices *[]*autoAssignedNotice) (bool, error) {
 	type pendingRow struct {
 		PocID                        uuid.UUID
 		EffectiveEnd                 time.Time
@@ -512,7 +512,7 @@ func (s Service) resolvePendingPostMaintenanceObservationTx(tx *gorm.DB, obs Cam
 				effectiveEnd = r.EffectiveEnd
 			}
 		}
-		_, err := s.openPostMaintenanceIncidentTx(tx, pocIDs, obs.Camera, origFirstFailed, origConfirmed, effectiveEnd, at, obs.Evidence)
+		_, err := s.openPostMaintenanceIncidentTx(tx, pocIDs, obs.Camera, origFirstFailed, origConfirmed, effectiveEnd, at, obs.Evidence, notices)
 		return true, err
 
 	default:
@@ -539,6 +539,7 @@ func (s Service) openPostMaintenanceIncidentAtomically(ctx context.Context, pocI
 		return false, errors.New("kamera belum memiliki site")
 	}
 	var opened bool
+	var notices []*autoAssignedNotice
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockSite(tx, *camera.SiteID); err != nil {
 			return err
@@ -562,10 +563,14 @@ func (s Service) openPostMaintenanceIncidentAtomically(ctx context.Context, pocI
 			pocIDs = append(pocIDs, pocID)
 		}
 		var txErr error
-		opened, txErr = s.openPostMaintenanceIncidentTx(tx, pocIDs, camera, origFirstFailed, origConfirmed, effectiveEnd, now, nil)
+		opened, txErr = s.openPostMaintenanceIncidentTx(tx, pocIDs, camera, origFirstFailed, origConfirmed, effectiveEnd, now, nil, &notices)
 		return txErr
 	})
-	return opened, err
+	if err != nil {
+		return opened, err
+	}
+	dispatchAutoAssignedNotices(s.DB, notices)
+	return opened, nil
 }
 
 func (s Service) openPostMaintenanceIncidentTx(
@@ -574,6 +579,7 @@ func (s Service) openPostMaintenanceIncidentTx(
 	camera models.CCTV,
 	origFirstFailed, origConfirmed, effectiveEnd, now time.Time,
 	evidence map[string]interface{},
+	notices *[]*autoAssignedNotice,
 ) (bool, error) {
 	if len(pocIDs) == 0 {
 		return false, nil
@@ -646,6 +652,14 @@ func (s Service) openPostMaintenanceIncidentTx(
 		return false, err
 	}
 
+	tech, autoNotice, assignErr := autoAssignIncidentTx(tx, &i, camera.ID, WorkScopeIncidentCamera, i.Title, now)
+	if assignErr != nil {
+		return false, assignErr
+	}
+	if autoNotice != nil && notices != nil {
+		*notices = append(*notices, autoNotice)
+	}
+
 	_ = recordIncidentEvent(tx, i.ID, &camera.ID, nil, "POST_MAINTENANCE_INCIDENT_OPENED",
 		fmt.Sprintf("Jendela pemeliharaan berakhir dan kamera %s masih terkonfirmasi offline; SLA dihitung sejak akhir jendela", camera.Nama),
 		map[string]interface{}{
@@ -655,16 +669,13 @@ func (s Service) openPostMaintenanceIncidentTx(
 			"sla_clock_basis":          SLABasisPlannedWindowEnd,
 		}, now)
 
-	wita := time.FixedZone("WITA", 8*3600)
-	body := fmt.Sprintf("[Pasca-Pemeliharaan Terjadwal]\n%s - %s\nLokasi: %s\nGagal teramati saat pemeliharaan: %s WITA\nAkhir jendela pemeliharaan (awal SLA): %s WITA\nKamera masih offline; menunggu penugasan Admin.",
-		camera.KodeCCTV, camera.Nama, camera.LokasiArea,
-		origFirstFailed.In(wita).Format("15:04:05"),
-		effectiveEnd.In(wita).Format("15:04:05"))
+	body := formatTicketNewSingleMessage(ticketNo, camera, OriginPostPlannedMaintenance, effectiveEnd, tech)
 
 	_, err = enqueueWithOpts(tx, &i, i.SiteID, nil, "CCTV_OFFLINE", body, now, enqueueOpts{
 		TargetChannel:  ChannelOpsGroup,
 		CoalesceWindow: s.coalesceDuration(false),
 		SLADeadlineAt:  &slaDeadline,
+		Preformatted:   true,
 	})
 	if err != nil {
 		return false, err

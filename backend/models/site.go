@@ -10,8 +10,9 @@ type Site struct {
 	Kode         string   `gorm:"type:varchar(20);uniqueIndex;not null" json:"kode"`
 	Alamat       string   `gorm:"type:text" json:"alamat"`
 	KoordinatLat *float64 `gorm:"type:double precision" json:"koordinat_lat"`
-	KoordinatLng *float64 `gorm:"type:double precision" json:"koordinat_lng"`
-	IsDefault    bool     `gorm:"type:boolean;not null;default:false" json:"is_default"`
+	KoordinatLng                 *float64   `gorm:"type:double precision" json:"koordinat_lng"`
+	IsDefault                    bool       `gorm:"type:boolean;not null;default:false" json:"is_default"`
+	LastAutoAssignedTechnicianID *uuid.UUID `gorm:"type:uuid" json:"last_auto_assigned_technician_id,omitempty"`
 	// Relasi many-to-many ke user via join table user_sites.
 	Users        []User     `gorm:"many2many:user_sites;" json:"users,omitempty"`
 	UserSites    []UserSite `gorm:"foreignKey:SiteID" json:"user_sites,omitempty"`

@@ -3,9 +3,12 @@ package incidents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -336,9 +339,14 @@ func TestPostgresSharedCorrelatedWaveManualMergeAndSharedTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	var separate []Incident
-	db.Where("site_id = ? AND status = ?", siteID, StatusOpen).Order("opened_at ASC").Find(&separate)
+	db.Where("site_id = ? AND status IN ?", siteID, []string{StatusOpen, StatusInProgress}).Order("opened_at ASC").Find(&separate)
 	if len(separate) != 3 {
 		t.Fatalf("expected 3 separate tickets when NVR proof absent, got %d", len(separate))
+	}
+	for _, s := range separate {
+		if s.AssignedTo == nil || *s.AssignedTo != tech.ID || s.Status != StatusInProgress {
+			t.Fatalf("expected separate ticket auto-assigned to site technician %s, got status=%s assigned_to=%v", tech.ID, s.Status, s.AssignedTo)
+		}
 	}
 
 	// 2. Penggabungan lintas site wajib ditolak.
@@ -370,10 +378,15 @@ func TestPostgresSharedCorrelatedWaveManualMergeAndSharedTask(t *testing.T) {
 		t.Fatal("merged camera must preserve source_ticket_number")
 	}
 
-	// 4. Penugasan tiket bersama membuat 1 tugas perbaikan bersama (shared_infrastructure),
+	// 4. Penugasan/pengalihan tiket bersama menghasilkan 1 tugas perbaikan bersama (shared_infrastructure),
 	//    dan tugas kamera individual dibuat hanya bila diminta eksplisit (Keputusan #4).
-	if err := svc.Assign(ctx, parent.ID, siteID, tech.ID, now.Add(10*time.Second)); err != nil {
+	techOverride := createTestUser(t, db, "teknisi", &siteID)
+	if err := svc.Assign(ctx, parent.ID, siteID, techOverride.ID, now.Add(10*time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	db.First(&parent, "id = ?", parent.ID)
+	if parent.AssignedTo == nil || *parent.AssignedTo != techOverride.ID {
+		t.Fatalf("expected Admin override to reassign parent to %s, got %v", techOverride.ID, parent.AssignedTo)
 	}
 	db.First(&parent, "id = ?", parent.ID)
 	var sharedTask models.MaintenanceLog
@@ -582,10 +595,11 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 	var deliveredTexts []string
 	fakeTG := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
-			ChatID int64  `json:"chat_id"`
+			ChatID string `json:"chat_id"`
 			Text   string `json:"text"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
+		chatIDInt, _ := strconv.ParseInt(strings.TrimSpace(payload.ChatID), 10, 64)
 		tgMu.Lock()
 		deliveredTexts = append(deliveredTexts, payload.Text)
 		msgID := 700 + len(deliveredTexts)
@@ -595,7 +609,7 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 			"ok": true,
 			"result": map[string]interface{}{
 				"message_id": msgID,
-				"chat":       map[string]interface{}{"id": payload.ChatID},
+				"chat":       map[string]interface{}{"id": chatIDInt},
 			},
 		})
 	}))
@@ -607,8 +621,7 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 		baseURL: fakeTG.URL,
 	}
 	routing := TelegramRouting{
-		SiteOpsChats:   map[string]string{siteID.String(): "-10099887766"},
-		DefaultAdminID: "-10011223344",
+		SiteOpsChats: map[string]string{siteID.String(): "-10099887766"},
 	}
 
 	makeCam := func(code string) models.CCTV {
@@ -820,8 +833,13 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 	sentCount := len(deliveredTexts)
 	allBodies := strings.Join(deliveredTexts, "\n---\n")
 	tgMu.Unlock()
-	if sentCount != 2 {
-		t.Fatalf("expected exactly 2 Telegram messages delivered (camA + camPreempt), got %d", sentCount)
+	if sentCount < 1 || sentCount > 2 {
+		t.Fatalf("expected 1 (batched) or 2 Telegram messages delivered (camA + camPreempt), got %d", sentCount)
+	}
+	var sentOutboxCount int64
+	db.Model(&Outbox{}).Where("incident_id IN ? AND status = 'sent'", []uuid.UUID{incA.ID, incPreempt.ID}).Count(&sentOutboxCount)
+	if sentOutboxCount != 2 {
+		t.Fatalf("expected both outbox rows (camA + camPreempt) marked sent, got %d", sentOutboxCount)
 	}
 	if !strings.Contains(allBodies, incA.TicketNumber) || !strings.Contains(allBodies, incPreempt.TicketNumber) || !strings.Contains(allBodies, "[Pasca-Pemeliharaan Terjadwal]") {
 		t.Fatalf("delivered Telegram payload missing expected post-maintenance context: %s", allBodies)
@@ -852,5 +870,190 @@ func TestPostgresPostMaintenanceUnknownStaysPendingAndPreventsPreemption(t *test
 	}
 	if err := db.Create(&telRow).Error; err != nil {
 		t.Fatalf("failed inserting ProbeTelemetry with new closure evidence columns: %v", err)
+	}
+}
+
+func TestPostgresAutoAssignRoundRobinAndChannelRouting(t *testing.T) {
+	db, cam1 := integrationDB(t)
+	ctx := context.Background()
+	siteID := *cam1.SiteID
+	zeroCoalesce := time.Duration(0)
+	svc := Service{DB: db, CoalesceWindow: &zeroCoalesce}
+
+	admin := createTestUser(t, db, "admin", nil)
+	baseCreated := time.Date(2026, 11, 13, 1, 0, 0, 0, time.UTC)
+	createOrderedTech := func(name string, offset time.Duration) models.User {
+		u := createTestUser(t, db, "teknisi", &siteID)
+		_ = db.Model(&models.User{}).Where("id = ?", u.ID).Updates(map[string]interface{}{
+			"full_name":  name,
+			"created_at": baseCreated.Add(offset),
+		}).Error
+		db.First(&u, "id = ?", u.ID)
+		return u
+	}
+	tech1 := createOrderedTech("Teknisi Satu", 0)
+	tech2 := createOrderedTech("Teknisi Dua", time.Second)
+	tech3 := createOrderedTech("Teknisi Tiga", 2*time.Second)
+
+	makeCam := func(code, nama string) models.CCTV {
+		id := uuid.New()
+		cam := models.CCTV{
+			Base:              models.Base{ID: id},
+			KodeCCTV:          code + "-" + id.String()[:4],
+			QrPayload:         id.String(),
+			Nama:              nama,
+			LokasiArea:        "Zona A",
+			SiteID:            &siteID,
+			Status:            "aktif",
+			MonitoringEnabled: true,
+		}
+		if err := db.Create(&cam).Error; err != nil {
+			t.Fatal(err)
+		}
+		return cam
+	}
+	cam2 := makeCam("RR-02", "Kamera Dua")
+	cam3 := makeCam("RR-03", "Kamera Tiga")
+	cam4 := makeCam("RR-04", "Kamera Empat")
+
+	t0 := time.Now().UTC().Truncate(time.Microsecond).Add(-30 * time.Minute)
+	orderedCams := []models.CCTV{cam1, cam2, cam3, cam4}
+	expectedTechs := []models.User{tech1, tech2, tech3, tech1}
+	var openedIncidents []Incident
+	for idx, cam := range orderedCams {
+		at := t0.Add(time.Duration(idx) * time.Second)
+		if err := svc.Observe(ctx, cam, StateOffline, at); err != nil {
+			t.Fatal(err)
+		}
+		var inc Incident
+		if err := db.Joins("JOIN cctv_incident_cameras m ON m.incident_id = cctv_incidents.id").
+			Where("m.cctv_id = ?", cam.ID).
+			First(&inc).Error; err != nil {
+			t.Fatal(err)
+		}
+		if inc.Status != StatusInProgress || inc.AssignedTo == nil || *inc.AssignedTo != expectedTechs[idx].ID {
+			t.Fatalf("ticket #%d expected auto-assign to %s (%s), got status=%s assigned=%v",
+				idx+1, expectedTechs[idx].FullName, expectedTechs[idx].ID, inc.Status, inc.AssignedTo)
+		}
+		if inc.MaintenanceLogID == nil {
+			t.Fatalf("ticket #%d expected auto-created MaintenanceLog", idx+1)
+		}
+		openedIncidents = append(openedIncidents, inc)
+	}
+
+	// Admin tetap dapat mengganti teknisi hasil auto-assign.
+	if err := svc.Assign(ctx, openedIncidents[0].ID, siteID, tech3.ID, t0.Add(10*time.Second)); err != nil {
+		t.Fatalf("expected Admin reassignment override to succeed: %v", err)
+	}
+	var reassigned Incident
+	db.First(&reassigned, "id = ?", openedIncidents[0].ID)
+	if reassigned.AssignedTo == nil || *reassigned.AssignedTo != tech3.ID {
+		t.Fatalf("expected reassigned_to %s, got %v", tech3.ID, reassigned.AssignedTo)
+	}
+
+	// Kirim tiket #1 (CCTV_OFFLINE lalu INCIDENT_ASSIGNED) lewat Fake Telegram Server -> uji reply_to_message_id.
+	var mu sync.Mutex
+	var opsPayloads []map[string]interface{}
+	var adminPayloads []map[string]interface{}
+	var seq int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var p map[string]interface{}
+		_ = json.Unmarshal(raw, &p)
+		mu.Lock()
+		seq++
+		cur := seq
+		switch p["chat_id"] {
+		case "-1001":
+			opsPayloads = append(opsPayloads, p)
+		case "-1002":
+			adminPayloads = append(adminPayloads, p)
+		}
+		mu.Unlock()
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"chat":{"id":%v}}}`, cur, p["chat_id"])
+	}))
+	defer srv.Close()
+
+	sender := TelegramSender{Token: "test", Client: srv.Client(), baseURL: srv.URL}
+	routing := TelegramRouting{
+		SiteOpsChats:   map[string]string{siteID.String(): "-1001"},
+		SiteAdminChats: map[string]string{siteID.String(): "-1002"},
+	}
+
+	// Stabilkan cam1 5 menit (kirim CCTV_RECOVERED -> masuk admin_group, bukan ops_group),
+	// lalu flapping offline lagi (tidak boleh mengirim CCTV_OFFLINE_AGAIN ke Telegram).
+	for _, sec := range []int{20, 80, 140, 200, 260, 320} {
+		if err := svc.Observe(ctx, cam1, "live", t0.Add(time.Duration(sec)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.Observe(ctx, cam1, StateOffline, t0.Add(330*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	for _, sec := range []int{340, 400, 460, 520, 580, 640} {
+		if err := svc.Observe(ctx, cam1, "live", t0.Add(time.Duration(sec)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.Resolve(ctx, openedIncidents[0].ID, siteID, admin.ID, "Selesai dicek lapangan", t0.Add(645*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verifikasi isi outbox per channel: ops_group hanya 3 momen, nol CCTV_OFFLINE_AGAIN / CCTV_PARTIAL_RECOVERY.
+	var spamCount int64
+	db.Model(&Outbox{}).
+		Where("site_id = ? AND event_type IN ?", siteID, []string{"CCTV_OFFLINE_AGAIN", "CCTV_PARTIAL_RECOVERY"}).
+		Count(&spamCount)
+	if spamCount != 0 {
+		t.Fatalf("expected 0 flapping/partial-recovery outbox spam rows, got %d", spamCount)
+	}
+
+	var opsTypes []string
+	db.Model(&Outbox{}).Where("site_id = ? AND target_channel = ?", siteID, ChannelOpsGroup).
+		Distinct().Pluck("event_type", &opsTypes)
+	for _, et := range opsTypes {
+		switch et {
+		case "CCTV_OFFLINE", "INCIDENT_ASSIGNED", "INCIDENT_RESOLVED":
+		default:
+			t.Fatalf("unexpected event_type %q in ops_group; expected only 3 technician moments", et)
+		}
+	}
+
+	var recOpsCount, recAdminCount int64
+	db.Model(&Outbox{}).Where("incident_id = ? AND event_type = 'CCTV_RECOVERED' AND target_channel = ?", openedIncidents[0].ID, ChannelOpsGroup).Count(&recOpsCount)
+	db.Model(&Outbox{}).Where("incident_id = ? AND event_type = 'CCTV_RECOVERED' AND target_channel = ?", openedIncidents[0].ID, ChannelAdminGroup).Count(&recAdminCount)
+	if recOpsCount != 0 || recAdminCount == 0 {
+		t.Fatalf("expected CCTV_RECOVERED routed to admin_group only, got ops=%d admin=%d", recOpsCount, recAdminCount)
+	}
+
+	// Bersihkan sisa antrean admin_group dari test lain di DB test bersama agar pengiriman terisolasi ke site uji ini.
+	if err := db.Where("site_id <> ?", siteID).Delete(&Outbox{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for step := 0; step < 20; step++ {
+		worked, err := DeliverWithRouting(ctx, db, sender, routing, nil, t0.Add(650*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !worked {
+			break
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(opsPayloads) == 0 || len(adminPayloads) == 0 {
+		t.Fatalf("expected messages sent to both ops and admin channels, got ops=%d admin=%d", len(opsPayloads), len(adminPayloads))
+	}
+	// Cek apakah INCIDENT_ASSIGNED pada tiket #1 memakai reply_to_message_id ke pesan awalnya.
+	var sawReplyToInitial bool
+	for _, p := range opsPayloads {
+		txt, _ := p["text"].(string)
+		if strings.Contains(txt, "[🔄 ALIH TUGAS]") && p["reply_to_message_id"] != nil {
+			sawReplyToInitial = true
+		}
+	}
+	if !sawReplyToInitial {
+		t.Fatalf("expected [🔄 ALIH TUGAS] update to reply to initial ticket message, got payloads: %+v", opsPayloads)
 	}
 }

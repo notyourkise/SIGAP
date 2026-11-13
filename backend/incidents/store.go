@@ -34,7 +34,7 @@ func (s Service) coalesceDuration(disable bool) time.Duration {
 	if s.CoalesceWindow != nil {
 		return *s.CoalesceWindow
 	}
-	return DefaultCoalesceWindow
+	return TelegramCoalesceWindow()
 }
 
 // lockSite serializes incident mutations within a site using PostgreSQL transaction-scoped advisory locks.
@@ -94,6 +94,7 @@ type enqueueOpts struct {
 	TargetChannel  string
 	CoalesceWindow time.Duration
 	SLADeadlineAt  *time.Time
+	Preformatted   bool
 }
 
 func enqueueWithOpts(tx *gorm.DB, i *Incident, siteID uuid.UUID, episodeID *uuid.UUID, kind, body string, now time.Time, opts enqueueOpts) (*Outbox, error) {
@@ -102,15 +103,20 @@ func enqueueWithOpts(tx *gorm.DB, i *Incident, siteID uuid.UUID, episodeID *uuid
 		ch = ChannelOpsGroup
 	}
 	var incID *uuid.UUID
-	text := fmt.Sprintf("[SIGAP] %s\n%s", kind, body)
+	text := body
 	if i != nil {
 		idCopy := i.ID
 		incID = &idCopy
-		ref := i.TicketNumber
-		if ref == "" {
-			ref = i.ID.String()
+	}
+	if !opts.Preformatted {
+		text = fmt.Sprintf("[SIGAP] %s\n%s", kind, body)
+		if i != nil {
+			ref := i.TicketNumber
+			if ref == "" {
+				ref = i.ID.String()
+			}
+			text = fmt.Sprintf("[SIGAP] %s\n%s\nTiket: %s", kind, body, ref)
 		}
-		text = fmt.Sprintf("[SIGAP] %s\n%s\nTiket: %s", kind, body, ref)
 	}
 	job := &Outbox{
 		ID:               uuid.New(),
@@ -163,7 +169,8 @@ func (s Service) ObserveDetailed(ctx context.Context, obs CameraObservation) err
 		firstFailed = *obs.FirstFailedObservedAt
 	}
 
-	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var autoNotices []*autoAssignedNotice
+	txErr := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockSite(tx, *camera.SiteID); err != nil {
 			return err
 		}
@@ -188,14 +195,14 @@ func (s Service) ObserveDetailed(ctx context.Context, obs CameraObservation) err
 			}
 			// Jangan biarkan jalur monitoring biasa mendahului evaluasi pasca-maintenance yang masih tertunda
 			// (mis. akibat sampel `unknown`) dengan membuat tiket gangguan di luar jadwal (`unplanned_outage`).
-			handledPending, err := s.resolvePendingPostMaintenanceObservationTx(tx, obs, state, at)
+			handledPending, err := s.resolvePendingPostMaintenanceObservationTx(tx, obs, state, at, &autoNotices)
 			if err != nil {
 				return err
 			}
 			if handledPending || state != StateOffline {
 				return nil
 			}
-			return s.openSingleIncidentTx(tx, obs, firstFailed, at)
+			return s.openSingleIncidentTx(tx, obs, firstFailed, at, &autoNotices)
 		}
 
 		if member.LastObservedAt != nil && !at.After(*member.LastObservedAt) {
@@ -217,7 +224,7 @@ func (s Service) ObserveDetailed(ctx context.Context, obs CameraObservation) err
 			return err
 		}
 
-		allReady, totalActive, recoveredCount, remainingNames, err := evaluateIncidentActiveMembersTx(tx, i.ID, at)
+		allReady, totalActive, recoveredCount, _, err := evaluateIncidentActiveMembersTx(tx, i.ID, at)
 		if err != nil {
 			return err
 		}
@@ -240,41 +247,37 @@ func (s Service) ObserveDetailed(ctx context.Context, obs CameraObservation) err
 				map[string]interface{}{"recovered_count": recoveredCount, "total_active": totalActive}, at)
 
 			if allReady {
+				var allMembers []Member
+				_ = tx.Where("incident_id = ?", i.ID).Find(&allMembers).Error
+				camSummary := formatMembersSummary(allMembers, i.Title)
 				_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "CCTV_RECOVERED",
-					fmt.Sprintf("%s stabil online selama 5 menit berdasarkan pemeriksaan berkala (%d/%d kamera aktif pulih). Menunggu verifikasi Admin; tiket belum ditutup.",
-						camera.Nama, recoveredCount, totalActive),
-					at, enqueueOpts{TargetChannel: ChannelOpsGroup})
+					formatAdminReadyVerifyMessage(i, camSummary, recoveredCount, totalActive),
+					at, enqueueOpts{
+						TargetChannel:  ChannelAdminGroup,
+						CoalesceWindow: s.coalesceDuration(false),
+						Preformatted:   true,
+					})
 				return err
 			}
-
-			// Pemulihan sebagian pada tiket bersama: debounce 30 detik agar grup tidak banjir.
-			var recentPartial int64
-			_ = tx.Model(&Outbox{}).
-				Where("incident_id = ? AND event_type = 'CCTV_PARTIAL_RECOVERY' AND created_at >= ?", i.ID, at.Add(-PartialRecoveryDebounceGap)).
-				Count(&recentPartial).Error
-			if recentPartial == 0 {
-				_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "CCTV_PARTIAL_RECOVERY",
-					fmt.Sprintf("Pemulihan sebagian (%d/%d kamera pulih; baru pulih: %s). Masih menunggu pemulihan: %s. Tiket tetap terbuka.",
-						recoveredCount, totalActive, camera.Nama, strings.Join(remainingNames, ", ")),
-					at, enqueueOpts{TargetChannel: ChannelOpsGroup})
-				return err
-			}
+			// Pemulihan sebagian tetap tercatat di timeline tiket web; tidak mengirim spam ke Telegram.
 			return nil
 		}
 
 		if state == StateOffline && old != StateOffline {
+			// Perubahan flapping dicatat di riwayat tiket web tanpa membanjiri grup Telegram.
 			_ = recordIncidentEvent(tx, i.ID, &camera.ID, nil, "MEMBER_OFFLINE_AGAIN",
 				fmt.Sprintf("Kamera %s kembali terkonfirmasi offline; hitungan pemulihan dimulai ulang", camera.Nama), nil, at)
-			_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "CCTV_OFFLINE_AGAIN",
-				camera.Nama+" kembali offline. Tiket yang sama tetap digunakan.",
-				at, enqueueOpts{TargetChannel: ChannelOpsGroup})
-			return err
 		}
 		return nil
 	})
+	if txErr != nil {
+		return txErr
+	}
+	dispatchAutoAssignedNotices(s.DB, autoNotices)
+	return nil
 }
 
-func (s Service) openSingleIncidentTx(tx *gorm.DB, obs CameraObservation, firstFailed, confirmedAt time.Time) error {
+func (s Service) openSingleIncidentTx(tx *gorm.DB, obs CameraObservation, firstFailed, confirmedAt time.Time, notices *[]*autoAssignedNotice) error {
 	camera := obs.Camera
 	ticketNo, err := nextTicketNumber(tx, confirmedAt)
 	if err != nil {
@@ -347,19 +350,26 @@ func (s Service) openSingleIncidentTx(tx *gorm.DB, obs CameraObservation, firstF
 			"sla_clock_basis":          slaBasis,
 		}, confirmedAt)
 
-	body := fmt.Sprintf("%s - %s\nLokasi: %s\nGagal teramati pertama: %s WITA\nOffline terkonfirmasi: %s WITA\nMenunggu penugasan Admin melalui website SIGAP.",
-		camera.KodeCCTV, camera.Nama, camera.LokasiArea,
-		firstFailed.In(time.FixedZone("WITA", 8*3600)).Format("15:04:05"),
-		confirmedAt.In(time.FixedZone("WITA", 8*3600)).Format("15:04:05"))
-	if origin == OriginPostPlannedMaintenance {
-		body = fmt.Sprintf("[Pasca-Pemeliharaan Terjadwal]\n%s", body)
+	tech, autoNotice, assignErr := autoAssignIncidentTx(tx, &i, camera.ID, WorkScopeIncidentCamera, title, confirmedAt)
+	if assignErr != nil {
+		return assignErr
 	}
+	if autoNotice != nil && notices != nil {
+		*notices = append(*notices, autoNotice)
+	}
+
+	msgTime := firstFailed
+	if origin == OriginPostPlannedMaintenance {
+		msgTime = slaStart
+	}
+	body := formatTicketNewSingleMessage(ticketNo, camera, origin, msgTime, tech)
 
 	coalesce := s.coalesceDuration(obs.DisableBatching)
 	_, err = enqueueWithOpts(tx, &i, i.SiteID, nil, "CCTV_OFFLINE", body, confirmedAt, enqueueOpts{
 		TargetChannel:  ChannelOpsGroup,
 		CoalesceWindow: coalesce,
 		SLADeadlineAt:  &slaDeadline,
+		Preformatted:   true,
 	})
 	return err
 }
@@ -396,7 +406,8 @@ func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UU
 		}
 	}
 
-	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var autoNotices []*autoAssignedNotice
+	txErr := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockSite(tx, siteID); err != nil {
 			return err
 		}
@@ -418,7 +429,7 @@ func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UU
 			if suppressed {
 				continue
 			}
-			handledPending, err := s.resolvePendingPostMaintenanceObservationTx(tx, obs, StateOffline, obs.ObservedAt)
+			handledPending, err := s.resolvePendingPostMaintenanceObservationTx(tx, obs, StateOffline, obs.ObservedAt, &autoNotices)
 			if err != nil {
 				return err
 			}
@@ -472,7 +483,7 @@ func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UU
 			if eligible[0].FirstFailedObservedAt != nil && !eligible[0].FirstFailedObservedAt.IsZero() {
 				firstFailed = *eligible[0].FirstFailedObservedAt
 			}
-			return s.openSingleIncidentTx(tx, eligible[0], firstFailed, eligible[0].ObservedAt)
+			return s.openSingleIncidentTx(tx, eligible[0], firstFailed, eligible[0].ObservedAt, &autoNotices)
 		}
 
 		earliestFirstFailed := eligible[0].ObservedAt
@@ -546,12 +557,27 @@ func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UU
 			names = append(names, obs.Camera.KodeCCTV+" ("+obs.Camera.Nama+")")
 		}
 
-		if !isNewIncident {
+		var assignedTech *models.User
+		if isNewIncident {
+			var autoNotice *autoAssignedNotice
+			var assignErr error
+			assignedTech, autoNotice, assignErr = autoAssignIncidentTx(tx, &shared, eligible[0].Camera.ID, WorkScopeSharedInfrastructure, shared.Title, latestConfirmed)
+			if assignErr != nil {
+				return assignErr
+			}
+			if autoNotice != nil {
+				autoNotices = append(autoNotices, autoNotice)
+			}
+		} else {
 			var activeCount int64
 			_ = tx.Model(&Member{}).Where("incident_id = ? AND is_active_member = true", shared.ID).Count(&activeCount).Error
 			shared.Title = fmt.Sprintf("Gangguan Bersama NVR %s (%d CCTV terdampak)", ipNVR, activeCount)
 			if shared.AssignedTo != nil {
 				shared.Status = StatusInProgress
+				var curTech models.User
+				if tx.First(&curTech, "id = ?", *shared.AssignedTo).Error == nil {
+					assignedTech = &curTech
+				}
 			} else {
 				shared.Status = StatusOpen
 			}
@@ -571,15 +597,20 @@ func (s Service) ObserveSharedCorrelatedWave(ctx context.Context, siteID uuid.UU
 			deadlinePtr = &slaDeadline
 		}
 		_, err := enqueueWithOpts(tx, &shared, siteID, nil, "CCTV_OFFLINE",
-			fmt.Sprintf("Bukti gangguan bersama pada NVR %s (host tidak merespons).\nKamera terdampak (%d): %s\nMenunggu penugasan Admin.",
-				ipNVR, len(names), strings.Join(names, ", ")),
+			formatTicketNewSharedNVRMessage(shared.TicketNumber, ipNVR, names, latestConfirmed, assignedTech),
 			latestConfirmed, enqueueOpts{
 				TargetChannel:  ChannelOpsGroup,
 				CoalesceWindow: s.coalesceDuration(false),
 				SLADeadlineAt:  deadlinePtr,
+				Preformatted:   true,
 			})
 		return err
 	})
+	if txErr != nil {
+		return txErr
+	}
+	dispatchAutoAssignedNotices(s.DB, autoNotices)
+	return nil
 }
 
 func evaluateIncidentActiveMembersTx(tx *gorm.DB, incidentID uuid.UUID, refTime time.Time) (allReady bool, totalActive int, recoveredCount int, remainingNames []string, err error) {

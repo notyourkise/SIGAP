@@ -95,10 +95,10 @@ func (s Service) ReportMonitorFailure(ctx context.Context, siteID *uuid.UUID, ca
 		}
 
 		epID := episode.ID
-		body := fmt.Sprintf("Gangguan Pemantau CCTV (%s)\nDetail: %s\nKamera belum dapat dipastikan (unknown): %d unit.\nSistem menahan pembuatan tiket offline kamera palsu sampai pemantau kembali sehat.",
-			cause, detail, affectedCameras)
+		body := formatAdminMonitorDegradedMessage(cause, detail, affectedCameras)
 		outbox, err := enqueueWithOpts(tx, nil, siteCopy, &epID, "MONITOR_DEGRADED", body, now, enqueueOpts{
 			TargetChannel: ChannelAdminGroup,
+			Preformatted:  true,
 		})
 		if err != nil {
 			return err
@@ -156,8 +156,11 @@ func (s Service) ReportMonitorHealthyCycle(ctx context.Context, siteID uuid.UUID
 		episode.ResolvedAt = &now
 		epID := episode.ID
 		outbox, err := enqueueWithOpts(tx, nil, siteID, &epID, "MONITOR_RECOVERED",
-			fmt.Sprintf("Pemantau CCTV kembali sehat setelah 2 siklus berturut-turut (sebab sebelumnya: %s). Pemeriksaan kamera normal dilanjutkan.", episode.Cause),
-			now, enqueueOpts{TargetChannel: ChannelAdminGroup})
+			formatAdminMonitorRecoveredMessage(episode.Cause),
+			now, enqueueOpts{
+				TargetChannel: ChannelAdminGroup,
+				Preformatted:  true,
+			})
 		if err != nil {
 			return err
 		}
@@ -268,9 +271,11 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 			}
 
 			outbox, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_ASSIGN_REMINDER",
-				fmt.Sprintf("Pengingat %s: Tiket %s (%s) masih terbuka, belum ditugaskan ke teknisi, dan %d kamera belum pulih.",
-					remLabel, i.TicketNumber, i.Title, unrecovered),
-				now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+				formatAdminReminderMessage(i, remLabel, unrecovered),
+				now, enqueueOpts{
+					TargetChannel: ChannelAdminGroup,
+					Preformatted:  true,
+				})
 			if err != nil {
 				return err
 			}
@@ -338,9 +343,11 @@ func (s Service) EvaluateRemindersAndSLABreaches(ctx context.Context, now time.T
 			}
 
 			outbox, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_UNRECOVERED_ESCALATION",
-				fmt.Sprintf("Eskalasi Internal Admin: Tiket %s (%s) belum pulih setelah %s sejak dibuka (%d kamera masih terganggu).",
-					i.TicketNumber, i.Title, escThreshold.Round(time.Minute), unrecovered),
-				now, enqueueOpts{TargetChannel: ChannelAdminGroup})
+				formatAdminEscalationMessage(i, escThreshold, unrecovered),
+				now, enqueueOpts{
+					TargetChannel: ChannelAdminGroup,
+					Preformatted:  true,
+				})
 			if err != nil {
 				return err
 			}

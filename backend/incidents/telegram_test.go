@@ -3,14 +3,18 @@ package incidents
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"sigap-backend/models"
 )
 
 func TestTelegramSenderChecksAPIResultAndChat(t *testing.T) {
@@ -162,5 +166,63 @@ func TestChatRateLimiterRespects20PerMinute(t *testing.T) {
 	}
 	if sent >= 20 || sent < 18 {
 		t.Fatalf("expected 18..19 messages per minute (<20 limit), got %d", sent)
+	}
+}
+
+func TestTelegramSendWithOptionsAndBadgeFormatters(t *testing.T) {
+	var captured map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		_, _ = fmt.Fprint(w, `{"ok":true,"result":{"message_id":99,"chat":{"id":-100}}}`)
+	}))
+	defer server.Close()
+
+	sender := TelegramSender{Token: "test", Client: server.Client(), baseURL: server.URL}
+	id, err := sender.SendWithOptions(context.Background(), "-100", "<b>[🚨 TIKET BARU]</b>", SendOptions{
+		ParseMode:        "HTML",
+		ReplyToMessageID: 55,
+	})
+	if err != nil || id != 99 {
+		t.Fatalf("expected message_id 99 without error, got id=%d err=%v", id, err)
+	}
+	if captured["parse_mode"] != "HTML" {
+		t.Fatalf("expected parse_mode HTML, got %v", captured["parse_mode"])
+	}
+	if captured["reply_to_message_id"] != float64(55) || captured["allow_sending_without_reply"] != true {
+		t.Fatalf("expected reply_to_message_id=55 and allow_sending_without_reply=true, got %+v", captured)
+	}
+
+	t.Setenv("CCTV_TELEGRAM_COALESCE_SECONDS", "45")
+	if got := TelegramCoalesceWindow(); got != 45*time.Second {
+		t.Fatalf("expected 45s coalesce window from env, got %v", got)
+	}
+	t.Setenv("CCTV_TELEGRAM_COALESCE_SECONDS", "invalid")
+	if got := TelegramCoalesceWindow(); got != DefaultCoalesceWindow {
+		t.Fatalf("expected fallback to DefaultCoalesceWindow, got %v", got)
+	}
+
+	cam := models.CCTV{
+		KodeCCTV:   "CAM-01",
+		Nama:       "Gerbang <Timur> & A",
+		LokasiArea: "Zona A",
+	}
+	tech := &models.User{FullName: "Budi & Rekan"}
+	msg := formatTicketNewSingleMessage("INC-20261113-0001", cam, OriginUnplannedOutage, time.Date(2026, 11, 13, 15, 0, 0, 0, time.UTC), tech)
+	if !strings.HasPrefix(msg, "[🚨 TIKET BARU] <b>INC-20261113-0001</b>") {
+		t.Fatalf("expected ticket badge at top of message, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "Gerbang &lt;Timur&gt; &amp; A") || !strings.Contains(msg, "<b>Budi &amp; Rekan</b> (Otomatis)") {
+		t.Fatalf("expected escaped HTML camera & auto technician in message, got:\n%s", msg)
+	}
+
+	batchResolved := formatBatchText(&claimedBatch{
+		Jobs: []Outbox{
+			{EventType: "INCIDENT_RESOLVED", Text: "[✅ TIKET SELESAI] <b>INC-001</b>\n📹 CAM-01"},
+			{EventType: "INCIDENT_RESOLVED", Text: "[✅ TIKET SELESAI] <b>INC-002</b>\n📹 CAM-02"},
+		},
+	})
+	if !strings.HasPrefix(batchResolved, "<b>[✅ 2 TIKET SELESAI]</b>") {
+		t.Fatalf("expected batch resolved badge header, got:\n%s", batchResolved)
 	}
 }

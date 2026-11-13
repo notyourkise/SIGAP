@@ -49,6 +49,11 @@ type DeliveryError struct {
 
 func (e *DeliveryError) Error() string { return e.Reason }
 
+type SendOptions struct {
+	ParseMode        string
+	ReplyToMessageID int64
+}
+
 type TelegramSender struct {
 	Token   string
 	Client  *http.Client
@@ -62,11 +67,26 @@ type TelegramSender struct {
 //
 // Kredensial token bot tidak pernah disertakan pada pesan error.
 func (s TelegramSender) Send(ctx context.Context, chatID, text string) (int64, error) {
+	return s.SendWithOptions(ctx, chatID, text, SendOptions{})
+}
+
+func (s TelegramSender) SendWithOptions(ctx context.Context, chatID, text string, opts SendOptions) (int64, error) {
 	destination, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64)
 	if err != nil || destination >= 0 || strings.TrimSpace(s.Token) == "" {
 		return 0, &DeliveryError{Permanent: true, Reason: "Telegram: konfigurasi tujuan atau token tidak valid"}
 	}
-	body, _ := json.Marshal(map[string]string{"chat_id": strings.TrimSpace(chatID), "text": text})
+	payload := map[string]interface{}{
+		"chat_id": strings.TrimSpace(chatID),
+		"text":    text,
+	}
+	if strings.TrimSpace(opts.ParseMode) != "" {
+		payload["parse_mode"] = strings.TrimSpace(opts.ParseMode)
+	}
+	if opts.ReplyToMessageID > 0 {
+		payload["reply_to_message_id"] = opts.ReplyToMessageID
+		payload["allow_sending_without_reply"] = true
+	}
+	body, _ := json.Marshal(payload)
 	base := s.baseURL
 	if base == "" {
 		base = "https://api.telegram.org"
@@ -264,12 +284,13 @@ func claimDueBatch(db *gorm.DB, now time.Time, routing TelegramRouting) (*claime
 		batchID := uuid.New()
 		jobs := []Outbox{head}
 
-		// Penggabungan pesan (batching) untuk notifikasi CCTV_OFFLINE baru pada site & channel yang sama.
-		if head.Status == "pending" && head.Attempts == 0 && head.EventType == "CCTV_OFFLINE" {
+		// Penggabungan pesan (batching) untuk gelombang event sejenis pada site & channel yang sama.
+		batchable := head.EventType == "CCTV_OFFLINE" || head.EventType == "INCIDENT_RESOLVED" || head.EventType == "CCTV_RECOVERED"
+		if head.Status == "pending" && head.Attempts == 0 && batchable {
 			var peers []Outbox
 			if peerErr := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-				Where("id <> ? AND site_id = ? AND target_channel = ? AND event_type = 'CCTV_OFFLINE' AND status = 'pending' AND attempts = 0 AND next_attempt_at <= ?",
-					head.ID, head.SiteID, head.TargetChannel, now).
+				Where("id <> ? AND site_id = ? AND target_channel = ? AND event_type = ? AND status = 'pending' AND attempts = 0 AND next_attempt_at <= ?",
+					head.ID, head.SiteID, head.TargetChannel, head.EventType, now).
 				Order("created_at ASC, id ASC").
 				Limit(24).
 				Find(&peers).Error; peerErr == nil && len(peers) > 0 {
@@ -314,15 +335,40 @@ func claimDueBatch(db *gorm.DB, now time.Time, routing TelegramRouting) (*claime
 	return batch, nil
 }
 
+func batchHeaderBadge(eventType string, count int) string {
+	switch eventType {
+	case "INCIDENT_RESOLVED":
+		return fmt.Sprintf("[✅ %d TIKET SELESAI]", count)
+	case "CCTV_RECOVERED":
+		return fmt.Sprintf("[🟢 %d TIKET SIAP VERIFIKASI]", count)
+	default:
+		return fmt.Sprintf("[🚨 %d TIKET BARU]", count)
+	}
+}
+
+func stripSingleItemBadgePrefix(text string) string {
+	for _, prefix := range []string{
+		"[🚨 TIKET BARU] ",
+		"[🚨 GANGGUAN NVR] ",
+		"[✅ TIKET SELESAI] ",
+		"[🛠️ TUTUP • GANTI UNIT] ",
+		"[🟢 SIAP VERIFIKASI] ",
+		"[SIGAP] CCTV_OFFLINE\n",
+	} {
+		text = strings.TrimPrefix(text, prefix)
+	}
+	return text
+}
+
 func formatBatchText(b *claimedBatch) string {
 	var text string
 	if len(b.Jobs) == 1 {
 		text = b.Jobs[0].Text
 	} else {
 		parts := make([]string, 0, len(b.Jobs)+1)
-		parts = append(parts, fmt.Sprintf("[SIGAP] RINGKASAN %d TIKET GANGGUAN CCTV BARU", len(b.Jobs)))
+		parts = append(parts, fmt.Sprintf("<b>%s</b>", batchHeaderBadge(b.Jobs[0].EventType, len(b.Jobs))))
 		for idx, j := range b.Jobs {
-			cleaned := strings.TrimPrefix(j.Text, "[SIGAP] CCTV_OFFLINE\n")
+			cleaned := stripSingleItemBadgePrefix(j.Text)
 			parts = append(parts, fmt.Sprintf("%d) %s", idx+1, cleaned))
 		}
 		text = strings.Join(parts, "\n\n")
@@ -335,12 +381,20 @@ func formatBatchText(b *claimedBatch) string {
 			ticketRef = head.IncidentID.String()[:8]
 			if idx := strings.LastIndex(head.Text, "Tiket: "); idx != -1 {
 				ticketRef = strings.TrimSpace(head.Text[idx+len("Tiket: "):])
+			} else if idx := strings.Index(head.Text, "INC-"); idx != -1 {
+				rest := head.Text[idx:]
+				end := strings.IndexAny(rest, "< \n\t)")
+				if end > 0 {
+					ticketRef = rest[:end]
+				} else if len(rest) > 0 {
+					ticketRef = rest
+				}
 			}
 		}
 		if b.WasAmbiguous {
-			text += fmt.Sprintf("\n[Pengiriman ulang karena konfirmasi jaringan sebelumnya terputus — mengacu pada Tiket %s yang sama]", ticketRef)
+			text += fmt.Sprintf("\n<i>[Pengiriman ulang karena konfirmasi jaringan sebelumnya terputus — mengacu pada Tiket %s yang sama]</i>", escapeTG(ticketRef))
 		} else {
-			text += "\n[Pengiriman ulang; mengacu pada tiket insiden yang sama]"
+			text += "\n<i>[Pengiriman ulang; mengacu pada tiket insiden yang sama]</i>"
 		}
 	}
 
@@ -399,10 +453,24 @@ func DeliverWithRouting(ctx context.Context, db *gorm.DB, sender TelegramSender,
 		}
 	}
 
+	var replyToMsgID int64
+	if len(batch.Jobs) == 1 && batch.Jobs[0].IncidentID != nil && batch.Jobs[0].EventType != "CCTV_OFFLINE" {
+		_ = db.WithContext(ctx).Model(&Outbox{}).
+			Select("message_id").
+			Where("incident_id = ? AND target_channel = ? AND status = 'sent' AND message_id > 0",
+				*batch.Jobs[0].IncidentID, batch.TargetChannel).
+			Order("sent_at ASC, created_at ASC").
+			Limit(1).
+			Scan(&replyToMsgID).Error
+	}
+
 	text := formatBatchText(batch)
 	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	messageID, sendErr := sender.Send(sendCtx, chat, text)
+	messageID, sendErr := sender.SendWithOptions(sendCtx, chat, text, SendOptions{
+		ParseMode:        "HTML",
+		ReplyToMessageID: replyToMsgID,
+	})
 	completedAt := now
 	if realNow := time.Now().UTC(); realNow.After(completedAt) && completedAt.Sub(realNow) > -time.Minute {
 		// Jika berjalan di waktu nyata (bukan jam simulasi masa depan/masa lalu jauh), pakai waktu konfirmasi aktual.

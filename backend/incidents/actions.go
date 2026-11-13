@@ -65,9 +65,14 @@ func (s Service) Assign(ctx context.Context, id, site, technician uuid.UUID, now
 		}
 
 		var prevTech *uuid.UUID
+		var prevTechName string
 		if i.AssignedTo != nil {
 			oldCopy := *i.AssignedTo
 			prevTech = &oldCopy
+			var prevUser models.User
+			if tx.Select("id", "full_name").First(&prevUser, "id = ?", oldCopy).Error == nil {
+				prevTechName = prevUser.FullName
+			}
 		}
 
 		workScope := WorkScopeIncidentCamera
@@ -134,7 +139,12 @@ func (s Service) Assign(ctx context.Context, id, site, technician uuid.UUID, now
 		_ = recordIncidentEvent(tx, i.ID, nil, nil, eventLabel, msg,
 			map[string]interface{}{"technician_id": technician.String(), "work_scope": workScope, "maintenance_log_id": task.ID.String()}, now)
 
-		_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_ASSIGNED", msg, now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+		camSummary := formatMembersSummary(i.Members, i.Title)
+		tgMsg := formatIncidentAssignedMessage(i, camSummary, tech.FullName, prevTechName, workScope)
+		_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_ASSIGNED", tgMsg, now, enqueueOpts{
+			TargetChannel: ChannelOpsGroup,
+			Preformatted:  true,
+		})
 		return err
 	})
 	if err != nil {
@@ -308,9 +318,14 @@ func (s Service) Resolve(ctx context.Context, id, site, admin uuid.UUID, note st
 		case ResolutionPartialRecoveryAndEscalation:
 			label = "Campuran Pulih & Eskalasi Penggantian Perangkat"
 		}
+		camSummary := formatMembersSummary(activeMembers, i.Title)
 		_, err := enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_RESOLVED",
-			fmt.Sprintf("Admin telah memverifikasi pemulihan dan menutup insiden (%s).", label),
-			now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+			formatIncidentResolvedMessage(i, camSummary, label),
+			now, enqueueOpts{
+				TargetChannel:  ChannelOpsGroup,
+				CoalesceWindow: s.coalesceDuration(false),
+				Preformatted:   true,
+			})
 		return err
 	})
 }
@@ -469,6 +484,10 @@ func (s Service) MergeIncidents(ctx context.Context, targetID uuid.UUID, sourceI
 			if err := tx.Omit("Members", "Events").Save(src).Error; err != nil {
 				return err
 			}
+			if src.MaintenanceLogID != nil && (target.MaintenanceLogID == nil || *src.MaintenanceLogID != *target.MaintenanceLogID) {
+				_ = tx.Where("id = ? AND maintenance_result_id IS NULL AND status IN ('scheduled', 'ongoing')", *src.MaintenanceLogID).
+					Delete(&models.MaintenanceLog{}).Error
+			}
 
 			_ = tx.Model(&Outbox{}).
 				Where("incident_id = ? AND status = 'pending'", src.ID).
@@ -500,15 +519,26 @@ func (s Service) MergeIncidents(ctx context.Context, targetID uuid.UUID, sourceI
 		if err := tx.Omit("Members", "Events").Save(target).Error; err != nil {
 			return err
 		}
+		if target.MaintenanceLogID != nil && target.ScopeType == ScopeManualMerged {
+			_ = tx.Model(&models.MaintenanceLog{}).
+				Where("id = ? AND status IN ('scheduled', 'ongoing')", *target.MaintenanceLogID).
+				Updates(map[string]interface{}{
+					"work_scope":   WorkScopeSharedInfrastructure,
+					"action_taken": fmt.Sprintf("[Perbaikan Bersama NVR/Jaringan] %s (%d kamera terdampak)", target.TicketNumber, totalActive),
+					"updated_at":   now,
+				}).Error
+		}
 
 		_ = recordIncidentEvent(tx, target.ID, nil, &admin, "INCIDENT_MERGED_IN",
 			fmt.Sprintf("Menerima penggabungan %d kamera dari tiket %s (%s)", transferredCount, strings.Join(mergedTicketNos, ", "), mergeReason),
 			map[string]interface{}{"source_tickets": mergedTicketNos, "transferred_cameras": transferredCount}, now)
 
 		_, err = enqueueWithOpts(tx, target, target.SiteID, nil, "INCIDENT_MERGED",
-			fmt.Sprintf("Admin menggabungkan tiket [%s] ke tiket bersama %s.\nAlasan: %s\nTotal kamera aktif dipantau: %d.",
-				strings.Join(mergedTicketNos, ", "), target.TicketNumber, mergeReason, totalActive),
-			now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+			formatAdminMergedMessage(*target, mergedTicketNos, mergeReason, totalActive),
+			now, enqueueOpts{
+				TargetChannel: ChannelAdminGroup,
+				Preformatted:  true,
+			})
 		return err
 	})
 }
@@ -678,10 +708,15 @@ func (s Service) EscalateReplacement(ctx context.Context, incidentID, site, admi
 			if err := tx.Omit("Members", "Events").Save(&i).Error; err != nil {
 				return err
 			}
+			var allMembers []Member
+			_ = tx.Where("incident_id = ?", i.ID).Find(&allMembers).Error
+			camSummary := formatMembersSummary(allMembers, i.Title)
 			_, err = enqueueWithOpts(tx, &i, i.SiteID, nil, "INCIDENT_ESCALATED_REPLACEMENT",
-				fmt.Sprintf("Insiden ditutup dengan alasan Eskalasi Penggantian Perangkat.\nKamera dinonaktifkan sementara menunggu ganti unit: %s.",
-					strings.Join(escalatedNames, ", ")),
-				now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+				formatIncidentEscalatedClosedMessage(i, camSummary, escalatedNames),
+				now, enqueueOpts{
+					TargetChannel: ChannelOpsGroup,
+					Preformatted:  true,
+				})
 			return err
 		}
 
@@ -698,9 +733,11 @@ func (s Service) EscalateReplacement(ctx context.Context, incidentID, site, admi
 		}
 
 		_, err = enqueueWithOpts(tx, &i, i.SiteID, nil, "CAMERA_ESCALATED_REPLACEMENT",
-			fmt.Sprintf("Kamera [%s] diekskalasi untuk penggantian perangkat (dinonaktifkan sementara). %d kamera lain pada tiket ini masih dipantau.",
-				strings.Join(escalatedNames, ", "), remainingActive),
-			now, enqueueOpts{TargetChannel: ChannelOpsGroup})
+			formatAdminCameraEscalatedMessage(i, escalatedNames, remainingActive),
+			now, enqueueOpts{
+				TargetChannel: ChannelAdminGroup,
+				Preformatted:  true,
+			})
 		return err
 	})
 	if err != nil {
