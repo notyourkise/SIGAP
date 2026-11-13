@@ -179,7 +179,7 @@ func TestTelegramSendWithOptionsAndBadgeFormatters(t *testing.T) {
 	defer server.Close()
 
 	sender := TelegramSender{Token: "test", Client: server.Client(), baseURL: server.URL}
-	id, err := sender.SendWithOptions(context.Background(), "-100", "<b>[🚨 TIKET BARU]</b>", SendOptions{
+	id, err := sender.SendWithOptions(context.Background(), "-100", "<b>[TIKET BARU]</b>", SendOptions{
 		ParseMode:        "HTML",
 		ReplyToMessageID: 55,
 	})
@@ -224,5 +224,51 @@ func TestTelegramSendWithOptionsAndBadgeFormatters(t *testing.T) {
 	})
 	if !strings.HasPrefix(batchResolved, "2 TIKET SELESAI\n\n1) INC-001") {
 		t.Fatalf("expected plain text batch resolved header, got:\n%s", batchResolved)
+	}
+}
+
+func TestTelegramMessagesContainNoEmojis(t *testing.T) {
+	now := time.Date(2026, 11, 14, 1, 2, 43, 0, time.UTC)
+	cam := models.CCTV{KodeCCTV: "THD-11", Nama: "REST AREA PARKIRAN", LokasiArea: "Rest Area"}
+	tech := &models.User{FullName: "Rifqy"}
+	inc := Incident{TicketNumber: "INC-20261114-0005"}
+
+	messages := []struct {
+		name string
+		text string
+	}{
+		{"new_single", formatTicketNewSingleMessage("INC-20261114-0005", cam, OriginUnplannedOutage, now, tech)},
+		{"new_shared_nvr", formatTicketNewSharedNVRMessage("INC-20261114-0005", "10.0.0.10", []string{"THD-11", "THD-12"}, now, tech)},
+		{"assigned", formatIncidentAssignedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", "Rifqy", "", "remote")},
+		{"reassigned", formatIncidentAssignedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", "Andi", "Rifqy", "field")},
+		{"resolved", formatIncidentResolvedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", "Pulih Setelah Penanganan")},
+		{"escalated_closed", formatIncidentEscalatedClosedMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", []string{"THD-11"})},
+		{"admin_ready_verify", formatAdminReadyVerifyMessage(inc, "THD-11 - REST AREA PARKIRAN (Rest Area)", 1, 1)},
+		{"admin_reminder", formatAdminReminderMessage(inc, "1 jam", 1)},
+		{"admin_escalation", formatAdminEscalationMessage(inc, 4*time.Hour, 1)},
+		{"admin_merged", formatAdminMergedMessage(inc, []string{"INC-20261114-0004"}, "Shared NVR", 2)},
+		{"admin_camera_escalated", formatAdminCameraEscalatedMessage(inc, []string{"THD-11"}, 0)},
+		{"admin_monitor_degraded", formatAdminMonitorDegradedMessage("NVR timeout", "koneksi terputus", 3)},
+		{"admin_monitor_recovered", formatAdminMonitorRecoveredMessage("NVR timeout")},
+		{"batch", formatBatchText(&claimedBatch{
+			Jobs: []Outbox{
+				{EventType: "CCTV_OFFLINE", Text: "TIKET BARU - INC-001\nKamera: THD-11"},
+				{EventType: "CCTV_OFFLINE", Text: "TIKET BARU - INC-002\nKamera: THD-12"},
+			},
+		})},
+	}
+
+	for _, tc := range messages {
+		if strings.TrimSpace(tc.text) == "" {
+			t.Fatalf("%s returned empty message", tc.name)
+		}
+		for _, r := range tc.text {
+			if r > 127 {
+				t.Fatalf("%s contains non-ASCII character %q (%U) in:\n%s", tc.name, r, r, tc.text)
+			}
+		}
+		if strings.Contains(tc.text, "<b>") || strings.Contains(tc.text, "</b>") {
+			t.Fatalf("%s unexpectedly contains HTML bold tag in:\n%s", tc.name, tc.text)
+		}
 	}
 }
