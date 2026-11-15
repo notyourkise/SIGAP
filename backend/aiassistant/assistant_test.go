@@ -177,3 +177,51 @@ func TestAnswerHandlesGreetingsWithoutGateway(t *testing.T) {
 		t.Fatalf("unexpected thanks output: out=%+v err=%v", thanks, err)
 	}
 }
+
+func TestAnswerCachesDocumentEmbeddingsAcrossCalls(t *testing.T) {
+	var embeddingCounts []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/embeddings" {
+			var in struct {
+				Input []string `json:"input"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			embeddingCounts = append(embeddingCounts, len(in.Input))
+			rows := make([]map[string]interface{}, len(in.Input))
+			for i := range rows {
+				rows[i] = map[string]interface{}{"index": i, "embedding": []float64{1, 0}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": rows})
+			return
+		}
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["tools"] != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{map[string]interface{}{"message": map[string]interface{}{"role": "assistant", "tool_calls": []interface{}{map[string]interface{}{"id": "call_1", "type": "function", "function": map[string]interface{}{"name": "cari_dokumen", "arguments": "{}"}}}}}}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{map[string]interface{}{"message": map[string]interface{}{"content": `{"jawaban":"Periksa dokumentasi.","bukti":[{"sumber":"DOC-A","kutipan":"Panduan backup harian"}],"dapat_ditentukan":true}`}}}})
+	}))
+	defer server.Close()
+
+	c := Client{BaseURL: server.URL, APIKey: "test", Model: "test", EmbeddingModel: "test-embed", HTTP: server.Client()}
+	docs := []Document{
+		{ID: "DOC-A", Text: "Panduan backup harian SIGAP."},
+		{ID: "DOC-B", Text: "Panduan restore database SIGAP."},
+	}
+
+	if _, err := c.Answer(context.Background(), "apa panduan backup?", docs); err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+	if _, err := c.Answer(context.Background(), "bagaimana jadwal backup?", docs); err != nil {
+		t.Fatalf("second call failed: %v", err)
+	}
+
+	if len(embeddingCounts) != 2 {
+		t.Fatalf("expected 2 embedding calls, got %d (%v)", len(embeddingCounts), embeddingCounts)
+	}
+	if embeddingCounts[0] != 3 || embeddingCounts[1] != 1 {
+		t.Fatalf("expected first call to embed 3 inputs (q+2 docs) and second call only 1 input (cached docs), got %v", embeddingCounts)
+	}
+}

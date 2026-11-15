@@ -38,6 +38,7 @@ type ChatMessage = {
 };
 
 type QuestionCategory =
+  | 'Ringkasan Operasional'
   | 'Akses & Backup'
   | 'Streaming & Codec'
   | 'Log & Verifikasi'
@@ -52,6 +53,25 @@ type LibraryQuestion = {
 };
 
 const QUESTION_LIBRARY: LibraryQuestion[] = [
+  {
+    id: 'lib-17',
+    category: 'Ringkasan Operasional',
+    question: 'Rangkum CCTV yang mati dalam 7 hari terakhir beserta penyebabnya',
+    sourceLabel: 'Data Live 7 Hari',
+    featured: true,
+  },
+  {
+    id: 'lib-18',
+    category: 'Ringkasan Operasional',
+    question: 'Kamera CCTV mana yang paling sering mengalami gangguan dalam 7 hari terakhir?',
+    sourceLabel: 'Data Live 7 Hari',
+  },
+  {
+    id: 'lib-19',
+    category: 'Ringkasan Operasional',
+    question: 'Apa penyebab terbanyak kamera offline selama 7 hari terakhir?',
+    sourceLabel: 'Data Live 7 Hari',
+  },
   {
     id: 'lib-01',
     category: 'Akses & Backup',
@@ -158,6 +178,7 @@ const QUESTION_LIBRARY: LibraryQuestion[] = [
 
 const CATEGORIES: Array<'Semua' | QuestionCategory> = [
   'Semua',
+  'Ringkasan Operasional',
   'Akses & Backup',
   'Streaming & Codec',
   'Log & Verifikasi',

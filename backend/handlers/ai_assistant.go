@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"os"
 	"sigap-backend/aiassistant"
+	"sigap-backend/config"
 	"time"
 )
 
@@ -21,6 +23,13 @@ func AskAIAssistant(c *fiber.Ctx) error {
 	docs, err := aiassistant.Corpus()
 	if err != nil {
 		return c.Status(503).JSON(fiber.Map{"status": "error", "message": "Fontes de conhecimento indisponíveis"})
+	}
+	if isOperationalSummaryQuestion(req.Question) && config.DB != nil {
+		siteStr, _ := c.Locals("site_id").(string)
+		siteID, _ := uuid.Parse(siteStr)
+		if summaryDoc, ok, sumErr := buildSevenDaySummaryDocument(ctx, config.DB, siteID, time.Now().UTC()); sumErr == nil && ok {
+			docs = append(append([]aiassistant.Document(nil), docs...), summaryDoc)
+		}
 	}
 	result, err := client.Answer(ctx, req.Question, docs)
 	if err != nil {

@@ -4,6 +4,8 @@ package aiassistant
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +15,44 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
+
+const maxDocEmbeddingCacheEntries = 1024
+
+var docEmbeddingCache = struct {
+	mu      sync.RWMutex
+	entries map[string][]float64
+}{
+	entries: make(map[string][]float64),
+}
+
+func docEmbeddingCacheKey(baseURL, model string, d Document) string {
+	sum := sha256.Sum256([]byte(d.ID + "\x00" + d.Text))
+	return strings.TrimRight(baseURL, "/") + "\x00" + model + "\x00" + hex.EncodeToString(sum[:])
+}
+
+func getCachedDocEmbedding(key string) ([]float64, bool) {
+	docEmbeddingCache.mu.RLock()
+	vec, ok := docEmbeddingCache.entries[key]
+	docEmbeddingCache.mu.RUnlock()
+	return vec, ok
+}
+
+func putCachedDocEmbedding(key string, vec []float64) {
+	if len(vec) == 0 {
+		return
+	}
+	copied := make([]float64, len(vec))
+	copy(copied, vec)
+	docEmbeddingCache.mu.Lock()
+	if len(docEmbeddingCache.entries) >= maxDocEmbeddingCacheEntries {
+		docEmbeddingCache.entries = make(map[string][]float64)
+	}
+	docEmbeddingCache.entries[key] = copied
+	docEmbeddingCache.mu.Unlock()
+}
 
 type Document struct {
 	ID   string `json:"id"`
@@ -110,8 +148,19 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 	if len(docs) > 100 {
 		return Response{}, errors.New("jumlah dokumen melebihi batas")
 	}
-	input := []string{question}
-	for _, d := range docs {
+	docVectors := make([][]float64, len(docs))
+	uncachedDocIndices := make([]int, 0, len(docs))
+	uncachedKeys := make([]string, 0, len(docs))
+	input := make([]string, 1, 1+len(docs))
+	input[0] = question
+	for i, d := range docs {
+		key := docEmbeddingCacheKey(c.BaseURL, c.EmbeddingModel, d)
+		if vec, ok := getCachedDocEmbedding(key); ok && len(vec) > 0 {
+			docVectors[i] = vec
+			continue
+		}
+		uncachedDocIndices = append(uncachedDocIndices, i)
+		uncachedKeys = append(uncachedKeys, key)
 		input = append(input, d.Text)
 	}
 	var vectors struct {
@@ -133,13 +182,18 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 		}
 		ordered[v.Index] = v.Embedding
 	}
+	for pos, docIdx := range uncachedDocIndices {
+		vec := ordered[pos+1]
+		docVectors[docIdx] = vec
+		putCachedDocEmbedding(uncachedKeys[pos], vec)
+	}
 	type hit struct {
 		doc   Document
 		score float64
 	}
 	hits := make([]hit, 0, len(docs))
 	for i, d := range docs {
-		score, err := cosine(ordered[0], ordered[i+1])
+		score, err := cosine(ordered[0], docVectors[i])
 		if err != nil {
 			return Response{}, err
 		}
@@ -150,8 +204,21 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 		hits = hits[:4]
 	}
 	selected := make([]Document, 0, len(hits))
+	selectedIDs := make(map[string]bool, len(hits))
 	for _, h := range hits {
 		selected = append(selected, h.doc)
+		selectedIDs[h.doc.ID] = true
+	}
+	// Sertakan dokumen ringkasan live bila tersedia agar pertanyaan operasional tidak tersisih dari top-4.
+	for _, d := range docs {
+		if strings.HasPrefix(d.ID, "live-db://") && !selectedIDs[d.ID] {
+			if len(selected) >= 4 {
+				selected[len(selected)-1] = d
+			} else {
+				selected = append(selected, d)
+			}
+			selectedIDs[d.ID] = true
+		}
 	}
 	system := SystemPrompt
 	messages := []interface{}{map[string]string{"role": "system", "content": system}, map[string]string{"role": "user", "content": question}}
