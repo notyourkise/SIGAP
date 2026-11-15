@@ -247,6 +247,13 @@ func (s Service) ObserveDetailed(ctx context.Context, obs CameraObservation) err
 				map[string]interface{}{"recovered_count": recoveredCount, "total_active": totalActive}, at)
 
 			if allReady {
+				suppress, supErr := shouldSuppressAdminReadyVerifyTx(tx, i.ID, at, AdminReadyVerifyCooldown)
+				if supErr != nil {
+					return supErr
+				}
+				if suppress {
+					return nil
+				}
 				var allMembers []Member
 				_ = tx.Where("incident_id = ?", i.ID).Find(&allMembers).Error
 				camSummary := formatMembersSummary(allMembers, i.Title)
@@ -691,4 +698,35 @@ func (s Service) ResetObservations(ctx context.Context) error {
 			"next_attempt_at": now.Add(AmbiguousRetryFirstDelay),
 			"last_error":      "Telegram: hasil pengiriman belum dapat dipastikan karena proses worker terhenti sebelum konfirmasi diterima",
 		}).Error
+}
+
+// AdminReadyVerifyCooldown membatasi pengulangan notifikasi SIAP VERIFIKASI untuk tiket yang sama.
+const AdminReadyVerifyCooldown = time.Hour
+
+// shouldSuppressAdminReadyVerifyTx mencegah banjir notifikasi SIAP VERIFIKASI ke grup Admin
+// bila tiket sudah pernah diberitahukan dan tidak ada gangguan offline baru setelahnya (atau masih dalam cooldown).
+func shouldSuppressAdminReadyVerifyTx(tx *gorm.DB, incidentID uuid.UUID, at time.Time, cooldown time.Duration) (bool, error) {
+	var lastOutbox Outbox
+	err := tx.Where("incident_id = ? AND event_type = ? AND target_channel = ?",
+		incidentID, "CCTV_RECOVERED", ChannelAdminGroup).
+		Order("created_at DESC").
+		Limit(1).
+		First(&lastOutbox).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if cooldown > 0 && at.Sub(lastOutbox.CreatedAt) < cooldown {
+		return true, nil
+	}
+	var offlineSinceLast int64
+	if err := tx.Model(&IncidentEvent{}).
+		Where("incident_id = ? AND event_type = ? AND created_at > ?",
+			incidentID, "MEMBER_OFFLINE_AGAIN", lastOutbox.CreatedAt).
+		Count(&offlineSinceLast).Error; err != nil {
+		return false, err
+	}
+	return offlineSinceLast == 0, nil
 }

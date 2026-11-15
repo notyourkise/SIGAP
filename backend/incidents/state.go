@@ -29,14 +29,14 @@ func Advance(m *Member, state string, at time.Time) bool {
 		m.RecoveredAt = nil
 		m.ConsecutiveLiveCount = 0
 	case "live":
+		if m.ConnectionState == StateRecovered {
+			m.ConsecutiveLiveCount++
+			return false
+		}
 		if previous == nil || at.Sub(*previous) > MaxEvidenceGap || m.RecoveryStartedAt == nil {
 			m.RecoveryStartedAt = &at
 			m.ConsecutiveLiveCount = 1
 			m.ConnectionState = StateRecovering
-			return false
-		}
-		if m.ConnectionState == StateRecovered {
-			m.ConsecutiveLiveCount++
 			return false
 		}
 		m.ConsecutiveLiveCount++

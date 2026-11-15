@@ -89,7 +89,11 @@ func TestGapOver105SecondsAndRepeatedRecovery(t *testing.T) {
 	if Advance(&m, "live", start.Add(420*time.Second)) {
 		t.Fatal("repeated live must not repeat recovery notification")
 	}
-	Advance(&m, StateOffline, start.Add(430*time.Second))
+	// Celah > 105s saat kamera SUDAH berstatus recovered tetap harus mempertahankan status recovered bila bukti tetap live.
+	if Advance(&m, "live", start.Add(560*time.Second)) || m.ConnectionState != StateRecovered {
+		t.Fatalf("gap > 105s while already recovered and live must not re-trigger recovery cycle, got state=%s", m.ConnectionState)
+	}
+	Advance(&m, StateOffline, start.Add(570*time.Second))
 	if m.ConnectionState != StateOffline || !m.IsActiveMember || m.RecoveredAt != nil {
 		t.Fatal("offline recurrence must retain active membership and clear recovered_at")
 	}
