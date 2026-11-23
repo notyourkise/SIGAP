@@ -325,9 +325,11 @@ func (c Client) AnswerWithOptions(ctx context.Context, question string, docs []D
 			if call.ID == "" || call.Type != "function" || (call.Function.Name != "cari_dokumen" && call.Function.Name != "lihat_batas_monitoring" && call.Function.Name != "daftar_sumber") {
 				return errors.New("tool tidak diizinkan")
 			}
-			var args map[string]interface{}
-			if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || len(args) != 0 {
-				return errors.New("argumen tool tidak valid")
+			if strings.TrimSpace(call.Function.Arguments) != "" {
+				var args map[string]interface{}
+				if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || len(args) != 0 {
+					return errors.New("argumen tool tidak valid")
+				}
 			}
 			usage.ToolsCalled = append(usage.ToolsCalled, call.Function.Name)
 			var output interface{}

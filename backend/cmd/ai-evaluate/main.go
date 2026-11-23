@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"sigap-backend/aiassistant"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,7 @@ type result struct {
 func main() {
 	path := flag.String("cases", "../ai-engineering/evaluasi/pertanyaan.json", "file kasus uji JSON")
 	mode := flag.String("mode", aiassistant.ModeFull, "mode jawaban: penuh atau ringkas")
+	delay := flag.Duration("delay", 4500*time.Millisecond, "jeda antar kasus uji untuk menghindari rate limit gateway")
 	flag.Parse()
 	if os.Getenv("AI_GATEWAY_KEY") == "" {
 		fmt.Fprintln(os.Stderr, "AI_GATEWAY_KEY belum dikonfigurasi; tidak ada evaluasi model nyata yang dijalankan")
@@ -54,14 +56,29 @@ func main() {
 	results := make([]result, 0, len(cases))
 	var sumEmbTokens, sumChatPrompt, sumChatCompletion, sumTotalTokens, sumCacheHits int
 	var sumLatencyMs int64
-	for _, tc := range cases {
-		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-		answer, err := client.AnswerWithOptions(ctx, tc.Question, docs, aiassistant.AnswerOptions{
-			Mode:                   *mode,
-			MaxSteps:               aiassistant.DefaultMaxAgentSteps,
-			AllowMultiStepToolLoop: true,
-		})
-		cancel()
+	for idx, tc := range cases {
+		if idx > 0 && *delay > 0 {
+			time.Sleep(*delay)
+		}
+		var answer aiassistant.Response
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+			answer, err = client.AnswerWithOptions(ctx, tc.Question, docs, aiassistant.AnswerOptions{
+				Mode:                   *mode,
+				MaxSteps:               aiassistant.DefaultMaxAgentSteps,
+				AllowMultiStepToolLoop: true,
+			})
+			cancel()
+			if err == nil {
+				break
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "429") && !strings.Contains(msg, "503") && !strings.Contains(msg, "tidak tersedia") {
+				break
+			}
+			time.Sleep(15 * time.Second)
+		}
 		r := result{ID: tc.ID, Type: tc.Type, SemanticReview: "belum dinilai manusia"}
 		if err != nil {
 			r.Error = err.Error()
