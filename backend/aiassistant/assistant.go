@@ -84,6 +84,7 @@ type UsageStats struct {
 	StepsUsed             int      `json:"steps_used"`
 	ToolsCalled           []string `json:"tools_called,omitempty"`
 	MaxStepsReached       bool     `json:"max_steps_reached,omitempty"`
+	GuardrailBlocked      bool     `json:"guardrail_blocked,omitempty"`
 	Mode                  string   `json:"mode"`
 	LatencyMs             int64    `json:"latency_ms"`
 }
@@ -404,7 +405,14 @@ func (c Client) AnswerWithOptions(ctx context.Context, question string, docs []D
 		}
 		messages = append(messages, map[string]interface{}{"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
 		if err := executeTools(msg.ToolCalls); err != nil {
-			return Response{}, err
+			usage.GuardrailBlocked = true
+			usage.LatencyMs = time.Since(started).Milliseconds()
+			return Response{
+				Jawaban:         "Tidak dapat menentukan jawaban dengan sumber yang dapat diverifikasi.",
+				DapatDitentukan: false,
+				Bukti:           []Citation{},
+				Usage:           &usage,
+			}, nil
 		}
 		if step == opts.MaxSteps && opts.AllowMultiStepToolLoop {
 			usage.MaxStepsReached = true
@@ -448,6 +456,7 @@ func (c Client) AnswerWithOptions(ctx context.Context, question string, docs []D
 
 	usage.LatencyMs = time.Since(started).Milliseconds()
 	if err := Validate(answer, exposed); err != nil {
+		usage.GuardrailBlocked = true
 		return Response{Jawaban: "Tidak dapat menentukan jawaban dengan sumber yang dapat diverifikasi.", DapatDitentukan: false, Bukti: []Citation{}, Usage: &usage}, nil
 	}
 	if !answer.DapatDitentukan {

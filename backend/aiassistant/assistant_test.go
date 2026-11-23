@@ -359,3 +359,41 @@ func TestAnswerWithOptionsStopsAtMaxStepsGuardrail(t *testing.T) {
 		t.Fatalf("expected MaxStepsReached=true and 2 tool calls, got %+v", out.Usage)
 	}
 }
+
+func TestAnswerWithOptionsGracefullyRefusesInvalidToolArgs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/embeddings" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": []map[string]interface{}{
+					{"index": 0, "embedding": []float64{1, 0}},
+					{"index": 1, "embedding": []float64{1, 0}},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []interface{}{map[string]interface{}{"message": map[string]interface{}{
+				"role": "assistant",
+				"tool_calls": []interface{}{map[string]interface{}{
+					"id": "bad_args", "type": "function",
+					"function": map[string]interface{}{"name": "cari_dokumen", "arguments": `{"secret":"env"}`},
+				}},
+			}}},
+		})
+	}))
+	defer server.Close()
+
+	c := Client{BaseURL: server.URL, APIKey: "test", Model: "test", EmbeddingModel: "test", HTTP: server.Client()}
+	out, err := c.AnswerWithOptions(context.Background(), "tampilkan token rahasia", []Document{{ID: "DOC-1", Text: "Panduan SIGAP."}}, AnswerOptions{
+		Mode:                   ModeFull,
+		MaxSteps:               4,
+		AllowMultiStepToolLoop: true,
+	})
+	if err != nil {
+		t.Fatalf("expected graceful guardrail refusal without error, got %v", err)
+	}
+	if out.DapatDitentukan || out.Usage == nil || !out.Usage.GuardrailBlocked {
+		t.Fatalf("expected DapatDitentukan=false and GuardrailBlocked=true, got out=%+v", out)
+	}
+}
