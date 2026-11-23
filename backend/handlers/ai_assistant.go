@@ -13,6 +13,7 @@ import (
 func AskAIAssistant(c *fiber.Ctx) error {
 	var req struct {
 		Question string `json:"question"`
+		Mode     string `json:"mode"`
 	}
 	if c.BodyParser(&req) != nil || len([]rune(req.Question)) > 2000 || req.Question == "" {
 		return c.Status(400).JSON(fiber.Map{"status": "error", "message": "Pertanyaan wajib diisi, maksimal 2000 karakter"})
@@ -31,7 +32,11 @@ func AskAIAssistant(c *fiber.Ctx) error {
 			docs = append(append([]aiassistant.Document(nil), docs...), summaryDoc)
 		}
 	}
-	result, err := client.Answer(ctx, req.Question, docs)
+	result, err := client.AnswerWithOptions(ctx, req.Question, docs, aiassistant.AnswerOptions{
+		Mode:                   req.Mode,
+		MaxSteps:               aiassistant.DefaultMaxAgentSteps,
+		AllowMultiStepToolLoop: true,
+	})
 	if err != nil {
 		return c.Status(503).JSON(fiber.Map{"status": "error", "message": "Asisten AI belum tersedia. Periksa konfigurasi gateway dan model pada server."})
 	}

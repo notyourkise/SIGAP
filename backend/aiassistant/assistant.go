@@ -62,10 +62,37 @@ type Citation struct {
 	Sumber  string `json:"sumber"`
 	Kutipan string `json:"kutipan"`
 }
+
+const (
+	DefaultMaxAgentSteps = 4
+	ModeFull             = "penuh"
+	ModeConcise          = "ringkas"
+)
+
+type AnswerOptions struct {
+	Mode                   string
+	MaxSteps               int
+	AllowMultiStepToolLoop bool
+}
+
+type UsageStats struct {
+	EmbeddingPromptTokens int      `json:"embedding_prompt_tokens"`
+	EmbeddingCacheHits    int      `json:"embedding_cache_hits"`
+	ChatPromptTokens      int      `json:"chat_prompt_tokens"`
+	ChatCompletionTokens  int      `json:"chat_completion_tokens"`
+	TotalTokens           int      `json:"total_tokens"`
+	StepsUsed             int      `json:"steps_used"`
+	ToolsCalled           []string `json:"tools_called,omitempty"`
+	MaxStepsReached       bool     `json:"max_steps_reached,omitempty"`
+	Mode                  string   `json:"mode"`
+	LatencyMs             int64    `json:"latency_ms"`
+}
+
 type Response struct {
-	Jawaban         string     `json:"jawaban"`
-	Bukti           []Citation `json:"bukti"`
-	DapatDitentukan bool       `json:"dapat_ditentukan"`
+	Jawaban         string      `json:"jawaban"`
+	Bukti           []Citation  `json:"bukti"`
+	DapatDitentukan bool        `json:"dapat_ditentukan"`
+	Usage           *UsageStats `json:"usage,omitempty"`
 }
 type Client struct {
 	BaseURL, APIKey, Model, EmbeddingModel string
@@ -135,15 +162,66 @@ func (c Client) post(ctx context.Context, path string, body interface{}, out int
 	return nil
 }
 
+type apiUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+type toolCallMsg struct {
+	ID           string          `json:"id"`
+	Type         string          `json:"type"`
+	ExtraContent json.RawMessage `json:"extra_content,omitempty"`
+	Function     struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type chatChoiceMsg struct {
+	Role      string        `json:"role"`
+	Content   *string       `json:"content"`
+	ToolCalls []toolCallMsg `json:"tool_calls"`
+}
+
+func normalizeAnswerOptions(opts AnswerOptions) AnswerOptions {
+	if strings.EqualFold(strings.TrimSpace(opts.Mode), ModeConcise) {
+		opts.Mode = ModeConcise
+	} else {
+		opts.Mode = ModeFull
+	}
+	if opts.MaxSteps <= 0 {
+		opts.MaxSteps = DefaultMaxAgentSteps
+	}
+	if opts.MaxSteps > 8 {
+		opts.MaxSteps = 8
+	}
+	return opts
+}
+
 func (c Client) Answer(ctx context.Context, question string, docs []Document) (Response, error) {
+	return c.AnswerWithOptions(ctx, question, docs, AnswerOptions{
+		Mode:     ModeFull,
+		MaxSteps: DefaultMaxAgentSteps,
+	})
+}
+
+func (c Client) AnswerWithOptions(ctx context.Context, question string, docs []Document, rawOpts AnswerOptions) (Response, error) {
+	started := time.Now()
+	opts := normalizeAnswerOptions(rawOpts)
+	usage := UsageStats{Mode: opts.Mode}
+
 	if strings.TrimSpace(question) == "" || len([]rune(question)) > 2000 {
 		return Response{}, errors.New("pertanyaan wajib diisi dan maksimal 2000 karakter")
 	}
-	if resp, ok := greetingResponse(question); ok {
+	if resp, ok := greetingResponse(question, opts.Mode); ok {
+		usage.LatencyMs = time.Since(started).Milliseconds()
+		resp.Usage = &usage
 		return resp, nil
 	}
 	if len(docs) == 0 {
-		return Response{Jawaban: "Tidak dapat ditentukan dari dokumen yang tersedia.", DapatDitentukan: false}, nil
+		usage.LatencyMs = time.Since(started).Milliseconds()
+		return Response{Jawaban: "Tidak dapat ditentukan dari dokumen yang tersedia.", DapatDitentukan: false, Bukti: []Citation{}, Usage: &usage}, nil
 	}
 	if len(docs) > 100 {
 		return Response{}, errors.New("jumlah dokumen melebihi batas")
@@ -157,6 +235,7 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 		key := docEmbeddingCacheKey(c.BaseURL, c.EmbeddingModel, d)
 		if vec, ok := getCachedDocEmbedding(key); ok && len(vec) > 0 {
 			docVectors[i] = vec
+			usage.EmbeddingCacheHits++
 			continue
 		}
 		uncachedDocIndices = append(uncachedDocIndices, i)
@@ -168,9 +247,16 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 			Index     int       `json:"index"`
 			Embedding []float64 `json:"embedding"`
 		} `json:"data"`
+		Usage apiUsage `json:"usage"`
 	}
 	if err := c.post(ctx, "/embeddings", map[string]interface{}{"model": c.EmbeddingModel, "input": input}, &vectors); err != nil {
 		return Response{}, err
+	}
+	usage.EmbeddingPromptTokens += vectors.Usage.PromptTokens
+	if vectors.Usage.TotalTokens > 0 {
+		usage.TotalTokens += vectors.Usage.TotalTokens
+	} else {
+		usage.TotalTokens += vectors.Usage.PromptTokens
 	}
 	if len(vectors.Data) != len(input) {
 		return Response{}, errors.New("jumlah embedding tidak sesuai")
@@ -221,97 +307,152 @@ func (c Client) Answer(ctx context.Context, question string, docs []Document) (R
 		}
 	}
 	system := SystemPrompt
+	if opts.Mode == ModeConcise {
+		system += ` Mode jawaban RINGKAS aktif: tulis field "jawaban" maksimal 2-3 kalimat padat atau 3 poin singkat tanpa pengantar panjang, tetap isi "bukti" dan "dapat_ditentukan" persis sesuai aturan.`
+	}
 	messages := []interface{}{map[string]string{"role": "system", "content": system}, map[string]string{"role": "user", "content": question}}
 	tool := func(name, description string) map[string]interface{} {
 		return map[string]interface{}{"type": "function", "function": map[string]interface{}{"name": name, "description": description, "parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}}}
 	}
 	tools := []interface{}{tool("cari_dokumen", "Ambil hingga empat kutipan dokumen SIGAP yang paling relevan dengan pertanyaan."), tool("lihat_batas_monitoring", "Ambil hanya kutipan terpilih yang membahas monitoring atau verifikasi CCTV."), tool("daftar_sumber", "Lihat ID dokumen yang tersedia tanpa mengambil isi dokumen; jangan menggunakannya sebagai bukti jawaban.")}
-	var decision struct {
-		Choices []struct {
-			Message struct {
-				Role      string  `json:"role"`
-				Content   *string `json:"content"`
-				ToolCalls []struct {
-					ID           string          `json:"id"`
-					Type         string          `json:"type"`
-					ExtraContent json.RawMessage `json:"extra_content,omitempty"`
-					Function     struct {
-						Name      string `json:"name"`
-						Arguments string `json:"arguments"`
-					} `json:"function"`
-				} `json:"tool_calls"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := c.post(ctx, "/chat/completions", map[string]interface{}{"model": c.Model, "temperature": 0, "messages": messages, "tools": tools, "tool_choice": "required"}, &decision); err != nil {
-		return Response{}, err
-	}
-	if len(decision.Choices) == 0 || len(decision.Choices[0].Message.ToolCalls) == 0 || len(decision.Choices[0].Message.ToolCalls) > 3 {
-		return Response{}, errors.New("model tidak memilih tool yang tersedia")
-	}
-	msg := decision.Choices[0].Message
-	messages = append(messages, map[string]interface{}{"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
+
 	var exposed []Document
-	for _, call := range msg.ToolCalls {
-		if call.ID == "" || call.Type != "function" || (call.Function.Name != "cari_dokumen" && call.Function.Name != "lihat_batas_monitoring" && call.Function.Name != "daftar_sumber") {
-			return Response{}, errors.New("tool tidak diizinkan")
+	executeTools := func(calls []toolCallMsg) error {
+		if len(calls) > 3 {
+			return errors.New("jumlah tool call melebihi batas")
 		}
-		var args map[string]interface{}
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || len(args) != 0 {
-			return Response{}, errors.New("argumen tool tidak valid")
-		}
-		var output interface{}
-		switch call.Function.Name {
-		case "cari_dokumen":
-			output = selected
-			exposed = append(exposed, selected...)
-		case "lihat_batas_monitoring":
-			filtered := []Document{}
-			for _, doc := range selected {
-				lower := strings.ToLower(doc.Text)
-				if strings.Contains(lower, "monitoring") || strings.Contains(lower, "verifikasi") {
-					filtered = append(filtered, doc)
+		for _, call := range calls {
+			if call.ID == "" || call.Type != "function" || (call.Function.Name != "cari_dokumen" && call.Function.Name != "lihat_batas_monitoring" && call.Function.Name != "daftar_sumber") {
+				return errors.New("tool tidak diizinkan")
+			}
+			var args map[string]interface{}
+			if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || len(args) != 0 {
+				return errors.New("argumen tool tidak valid")
+			}
+			usage.ToolsCalled = append(usage.ToolsCalled, call.Function.Name)
+			var output interface{}
+			switch call.Function.Name {
+			case "cari_dokumen":
+				output = selected
+				exposed = append(exposed, selected...)
+			case "lihat_batas_monitoring":
+				filtered := []Document{}
+				for _, doc := range selected {
+					lower := strings.ToLower(doc.Text)
+					if strings.Contains(lower, "monitoring") || strings.Contains(lower, "verifikasi") {
+						filtered = append(filtered, doc)
+					}
 				}
+				output = filtered
+				exposed = append(exposed, filtered...)
+			case "daftar_sumber":
+				ids := make([]string, 0, len(docs))
+				for _, doc := range docs {
+					ids = append(ids, doc.ID)
+				}
+				output = ids
 			}
-			output = filtered
-			exposed = append(exposed, filtered...)
-		case "daftar_sumber":
-			ids := make([]string, 0, len(docs))
-			for _, doc := range docs {
-				ids = append(ids, doc.ID)
+			encoded, err := json.Marshal(output)
+			if err != nil {
+				return err
 			}
-			output = ids
+			messages = append(messages, map[string]interface{}{"role": "tool", "tool_call_id": call.ID, "content": string(encoded)})
 		}
-		encoded, err := json.Marshal(output)
-		if err != nil {
+		return nil
+	}
+
+	var rawFinalContent string
+	for step := 1; step <= opts.MaxSteps; step++ {
+		if step > 1 && !opts.AllowMultiStepToolLoop {
+			break
+		}
+		usage.StepsUsed = step
+		toolChoice := "auto"
+		if step == 1 {
+			toolChoice = "required"
+		}
+		var stepRes struct {
+			Choices []struct {
+				Message chatChoiceMsg `json:"message"`
+			} `json:"choices"`
+			Usage apiUsage `json:"usage"`
+		}
+		if err := c.post(ctx, "/chat/completions", map[string]interface{}{"model": c.Model, "temperature": 0, "messages": messages, "tools": tools, "tool_choice": toolChoice}, &stepRes); err != nil {
 			return Response{}, err
 		}
-		messages = append(messages, map[string]interface{}{"role": "tool", "tool_call_id": call.ID, "content": string(encoded)})
+		usage.ChatPromptTokens += stepRes.Usage.PromptTokens
+		usage.ChatCompletionTokens += stepRes.Usage.CompletionTokens
+		if stepRes.Usage.TotalTokens > 0 {
+			usage.TotalTokens += stepRes.Usage.TotalTokens
+		} else {
+			usage.TotalTokens += stepRes.Usage.PromptTokens + stepRes.Usage.CompletionTokens
+		}
+		if len(stepRes.Choices) == 0 {
+			return Response{}, errors.New("model tidak mengembalikan pilihan respons")
+		}
+		msg := stepRes.Choices[0].Message
+		if len(msg.ToolCalls) == 0 {
+			if step == 1 {
+				return Response{}, errors.New("model tidak memilih tool yang tersedia")
+			}
+			if msg.Content != nil {
+				rawFinalContent = strings.TrimSpace(*msg.Content)
+			}
+			break
+		}
+		messages = append(messages, map[string]interface{}{"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
+		if err := executeTools(msg.ToolCalls); err != nil {
+			return Response{}, err
+		}
+		if step == opts.MaxSteps && opts.AllowMultiStepToolLoop {
+			usage.MaxStepsReached = true
+		}
 	}
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := c.post(ctx, "/chat/completions", map[string]interface{}{"model": c.Model, "temperature": 0, "response_format": map[string]string{"type": "json_object"}, "messages": messages}, &result); err != nil {
-		return Response{}, err
-	}
-	if len(result.Choices) == 0 {
-		return Response{}, errors.New("model tidak mengembalikan jawaban")
-	}
+
 	var answer Response
-	if err := json.Unmarshal([]byte(result.Choices[0].Message.Content), &answer); err != nil {
-		return Response{}, errors.New("format jawaban model tidak valid")
+	parsedFinal := false
+	if rawFinalContent != "" {
+		if err := json.Unmarshal([]byte(rawFinalContent), &answer); err == nil {
+			parsedFinal = true
+		}
 	}
+	if !parsedFinal {
+		usage.StepsUsed++
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+			Usage apiUsage `json:"usage"`
+		}
+		if err := c.post(ctx, "/chat/completions", map[string]interface{}{"model": c.Model, "temperature": 0, "response_format": map[string]string{"type": "json_object"}, "messages": messages}, &result); err != nil {
+			return Response{}, err
+		}
+		usage.ChatPromptTokens += result.Usage.PromptTokens
+		usage.ChatCompletionTokens += result.Usage.CompletionTokens
+		if result.Usage.TotalTokens > 0 {
+			usage.TotalTokens += result.Usage.TotalTokens
+		} else {
+			usage.TotalTokens += result.Usage.PromptTokens + result.Usage.CompletionTokens
+		}
+		if len(result.Choices) == 0 {
+			return Response{}, errors.New("model tidak mengembalikan jawaban")
+		}
+		if err := json.Unmarshal([]byte(result.Choices[0].Message.Content), &answer); err != nil {
+			return Response{}, errors.New("format jawaban model tidak valid")
+		}
+	}
+
+	usage.LatencyMs = time.Since(started).Milliseconds()
 	if err := Validate(answer, exposed); err != nil {
-		return Response{Jawaban: "Tidak dapat menentukan jawaban dengan sumber yang dapat diverifikasi.", DapatDitentukan: false, Bukti: []Citation{}}, nil
+		return Response{Jawaban: "Tidak dapat menentukan jawaban dengan sumber yang dapat diverifikasi.", DapatDitentukan: false, Bukti: []Citation{}, Usage: &usage}, nil
 	}
 	if !answer.DapatDitentukan {
 		answer.Jawaban = "Tidak dapat menentukan jawaban berdasarkan dokumen yang tersedia."
 		answer.Bukti = []Citation{}
 	}
+	answer.Usage = &usage
 	return answer, nil
 }
 
@@ -333,21 +474,29 @@ func cosine(a, b []float64) (float64, error) {
 
 // greetingResponse handles pure conversational greetings/thanks without invoking the RAG gateway,
 // keeping factual document grounding untouched for any substantive query.
-func greetingResponse(question string) (Response, bool) {
+func greetingResponse(question, mode string) (Response, bool) {
 	cleaned := strings.ToLower(strings.TrimSpace(question))
 	cleaned = strings.TrimRight(cleaned, "!?., ")
 	switch cleaned {
 	case "hai", "halo", "hallo", "hi", "hello", "hey",
 		"selamat pagi", "selamat siang", "selamat sore", "selamat malam",
 		"pagi", "siang", "sore", "malam", "assalamualaikum":
+		msg := "Halo! Saya Asisten Operasional SIGAP. Silakan tanyakan seputar dokumentasi SIGAP (akses Docker, backup & restore, log stream CCTV, batasan codec/snapshot, verifikasi aktif, atau multi-site)."
+		if mode == ModeConcise {
+			msg = "Halo! Asisten SIGAP siap menjawab pertanyaan dokumentasi atau ringkasan CCTV secara ringkas."
+		}
 		return Response{
-			Jawaban:         "Halo! Saya Asisten Operasional SIGAP. Silakan tanyakan seputar dokumentasi SIGAP (akses Docker, backup & restore, log stream CCTV, batasan codec/snapshot, verifikasi aktif, atau multi-site).",
+			Jawaban:         msg,
 			DapatDitentukan: false,
 			Bukti:           []Citation{},
 		}, true
 	case "terima kasih", "makasih", "thanks", "thank you":
+		msg := "Sama-sama! Silakan tanyakan kembali jika ada informasi dokumentasi SIGAP lain yang dibutuhkan."
+		if mode == ModeConcise {
+			msg = "Sama-sama! Ada pertanyaan lain?"
+		}
 		return Response{
-			Jawaban:         "Sama-sama! Silakan tanyakan kembali jika ada informasi dokumentasi SIGAP lain yang dibutuhkan.",
+			Jawaban:         msg,
 			DapatDitentukan: false,
 			Bukti:           []Citation{},
 		}, true

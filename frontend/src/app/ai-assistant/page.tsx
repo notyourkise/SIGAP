@@ -240,6 +240,7 @@ export default function AIAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [outputMode, setOutputMode] = useState<'penuh' | 'ringkas'>('penuh');
 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'Semua' | QuestionCategory>('Semua');
@@ -299,7 +300,7 @@ export default function AIAssistantPage() {
     try {
       const res = await apiRequest<Answer>('/ai-assistant/ask', {
         method: 'POST',
-        body: JSON.stringify({ question: trimmed }),
+        body: JSON.stringify({ question: trimmed, mode: outputMode }),
       });
 
       if (!res.data) {
@@ -384,6 +385,37 @@ export default function AIAssistantPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Mode panjang jawaban AI"
+              className="inline-flex rounded-lg border border-border bg-card p-0.5 text-xs"
+            >
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setOutputMode('penuh')}
+                className={`rounded-md px-2.5 py-1.5 font-medium transition-colors ${
+                  outputMode === 'penuh'
+                    ? 'bg-primary text-white'
+                    : 'text-muted hover:text-foreground'
+                }`}
+              >
+                Penuh
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setOutputMode('ringkas')}
+                className={`rounded-md px-2.5 py-1.5 font-medium transition-colors ${
+                  outputMode === 'ringkas'
+                    ? 'bg-primary text-white'
+                    : 'text-muted hover:text-foreground'
+                }`}
+              >
+                Ringkas
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => setLibraryOpen((prev) => !prev)}
@@ -608,8 +640,10 @@ export default function AIAssistantPage() {
                 </button>
               </div>
 
-              <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
-                <span>Enter untuk kirim · Shift+Enter untuk baris baru</span>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-muted">
+                <span>
+                  Jawaban dihasilkan AI dan dapat keliru — verifikasi kutipan sumber; keputusan tiket tetap dilakukan petugas.
+                </span>
                 <div className="flex items-center gap-3">
                   {input.length > 1500 && <span>{input.length}/2000</span>}
                   {!libraryOpen && (

@@ -29,6 +29,7 @@ type result struct {
 
 func main() {
 	path := flag.String("cases", "../ai-engineering/evaluasi/pertanyaan.json", "file kasus uji JSON")
+	mode := flag.String("mode", aiassistant.ModeFull, "mode jawaban: penuh atau ringkas")
 	flag.Parse()
 	if os.Getenv("AI_GATEWAY_KEY") == "" {
 		fmt.Fprintln(os.Stderr, "AI_GATEWAY_KEY belum dikonfigurasi; tidak ada evaluasi model nyata yang dijalankan")
@@ -51,15 +52,29 @@ func main() {
 	}
 	client := aiassistant.Client{BaseURL: os.Getenv("AI_GATEWAY_URL"), APIKey: os.Getenv("AI_GATEWAY_KEY"), Model: os.Getenv("AI_CHAT_MODEL"), EmbeddingModel: os.Getenv("AI_EMBEDDING_MODEL")}
 	results := make([]result, 0, len(cases))
+	var sumEmbTokens, sumChatPrompt, sumChatCompletion, sumTotalTokens, sumCacheHits int
+	var sumLatencyMs int64
 	for _, tc := range cases {
 		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-		answer, err := client.Answer(ctx, tc.Question, docs)
+		answer, err := client.AnswerWithOptions(ctx, tc.Question, docs, aiassistant.AnswerOptions{
+			Mode:                   *mode,
+			MaxSteps:               aiassistant.DefaultMaxAgentSteps,
+			AllowMultiStepToolLoop: true,
+		})
 		cancel()
 		r := result{ID: tc.ID, Type: tc.Type, SemanticReview: "belum dinilai manusia"}
 		if err != nil {
 			r.Error = err.Error()
 		} else {
 			r.Answer = &answer
+			if answer.Usage != nil {
+				sumEmbTokens += answer.Usage.EmbeddingPromptTokens
+				sumChatPrompt += answer.Usage.ChatPromptTokens
+				sumChatCompletion += answer.Usage.ChatCompletionTokens
+				sumTotalTokens += answer.Usage.TotalTokens
+				sumCacheHits += answer.Usage.EmbeddingCacheHits
+				sumLatencyMs += answer.Usage.LatencyMs
+			}
 			if tc.Type == "tidak_ada" {
 				r.SourceCoverage = !answer.DapatDitentukan
 			} else {
@@ -77,7 +92,19 @@ func main() {
 		}
 		results = append(results, r)
 	}
-	output := map[string]interface{}{"waktu_utc": time.Now().UTC().Format(time.RFC3339), "model": client.Model, "embedding_model": client.EmbeddingModel, "hasil": results, "catatan": "Kecocokan kutipan bukan penilaian kebenaran semantik; semua jawaban perlu ditinjau manusia."}
+	avgLatency := int64(0)
+	if len(cases) > 0 {
+		avgLatency = sumLatencyMs / int64(len(cases))
+	}
+	tokenSummary := map[string]interface{}{
+		"embedding_prompt_tokens": sumEmbTokens,
+		"embedding_cache_hits":    sumCacheHits,
+		"chat_prompt_tokens":      sumChatPrompt,
+		"chat_completion_tokens":  sumChatCompletion,
+		"total_tokens":            sumTotalTokens,
+		"avg_latency_ms":          avgLatency,
+	}
+	output := map[string]interface{}{"waktu_utc": time.Now().UTC().Format(time.RFC3339), "mode": *mode, "model": client.Model, "embedding_model": client.EmbeddingModel, "ringkasan_token": tokenSummary, "hasil": results, "catatan": "Kecocokan kutipan bukan penilaian kebenaran semantik; semua jawaban perlu ditinjau manusia."}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(output); err != nil {
